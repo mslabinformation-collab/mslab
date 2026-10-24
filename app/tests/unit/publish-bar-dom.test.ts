@@ -68,12 +68,16 @@ describe("PublishBar", () => {
       phoneCount: "Avaldamata {n}",
       phonePreview: "Eelvaade",
       phonePublish: "Avalda",
+      // piece3-texts S3-P3-a: on every bar, after the labels (the desktop bar; the phone's stays one line)
+      previous: "Avalikul lehel on näha eelmine versioon.",
     });
     await show();
     const bar = $("[data-publish-bar]")!;
     expect(bar.getAttribute("role")).toBe("region");
     expect(text("[data-publish-count]")).toBe("Avaldamata muudatused: 3");
-    expect(text("[data-publish-fields]")).toBe(" · Lühikirjeldus, Hind, Moodul 03");
+    expect(text("[data-publish-fields]")).toBe(" · Lühikirjeldus, Hind, Moodul 03. Avalikul lehel on näha eelmine versioon.");
+    // the drawn sentence of P3:94, whole
+    expect(text("[data-publish-words]")).toBe("Avaldamata muudatused: 3 · Lühikirjeldus, Hind, Moodul 03. Avalikul lehel on näha eelmine versioon.");
     const preview = $<HTMLAnchorElement>("[data-publish-preview]")!;
     expect(preview.textContent).toBe("Eelvaade ↗");
     expect(preview.getAttribute("href")).toBe(PREVIEW);
@@ -85,7 +89,7 @@ describe("PublishBar", () => {
     // one change: the count follows
     await show({ changed: ["Slaid 2 pealkiri"] });
     expect(text("[data-publish-count]")).toBe("Avaldamata muudatused: 1");
-    expect(text("[data-publish-fields]")).toBe(" · Slaid 2 pealkiri");
+    expect(text("[data-publish-fields]")).toBe(" · Slaid 2 pealkiri. Avalikul lehel on näha eelmine versioon.");
   });
 
   it("the phone's form (W9): „Avaldamata 3 · Eelvaade“ with the preview as its link, and „Avalda“; no „Loobu muudatustest“ there", async () => {
@@ -188,19 +192,42 @@ describe("PublishBar", () => {
     expect(onPublish).toHaveBeenCalledTimes(2);
   });
 
-  it("blocked fields are listed after publish", async () => {
+  it("after a publish, what it could not publish (S3-P3-b): „Puudub: {väljad}“, and the fields changed meanwhile with their labels", async () => {
+    expect(adminEt.publish).toMatchObject({
+      missing: "Puudub: {fields}",
+      changedMeanwhile: "Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.",
+    });
     await show();
     expect($("[data-publish-blocked]")).toBeNull();
-    await show({ changed: ["Hind"], blocked: ["Hind"] });
-    const list = $("[data-publish-blocked]")!;
-    expect(list.tagName).toBe("UL");
-    expect(Array.from(list.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["Hind"]);
-    // the labels only: no sentence of the bar's own round them (the design gives none)
-    expect(list.textContent).toBe("Hind");
-    await show({ changed: ["Hind", "Moodul 03"], blocked: ["Hind", "Moodul 03"] });
+    // a published course without its price
+    await show({ changed: ["Hind"], blocked: { missing: ["hind"] } });
+    const box = $("[data-publish-blocked]")!;
+    expect(box.getAttribute("role")).toBe("alert");
+    expect(box.textContent).toBe("Puudub: hind");
+    // two parts another tab changed: the sentence, then their labels as a list
+    await show({ changed: ["Hind", "Moodul 03"], blocked: { changed: ["Hind", "Moodul 03"] } });
+    expect(text("[data-blocked-changed]")).toBe("Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.");
     expect(Array.from($("[data-publish-blocked]")!.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["Hind", "Moodul 03"]);
-    await show({ blocked: [] });
+    expect($("[data-blocked-missing]")).toBeNull();
+    // both at once, the missing field first
+    await show({ changed: ["Hind", "Lühikirjeldus"], blocked: { missing: ["hind"], changed: ["Lühikirjeldus"] } });
+    expect(text("[data-blocked-missing]")).toBe("Puudub: hind");
+    expect(Array.from($("[data-publish-blocked]")!.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["Lühikirjeldus"]);
+    // the bar stays while something is blocked, also with nothing else left
+    await show({ changed: [], blocked: { missing: ["hind"] } });
+    expect($("[data-publish-bar]")).not.toBeNull();
+    await show({ blocked: {} });
     expect($("[data-publish-blocked]")).toBeNull();
+  });
+
+  it("the screen's word on a publish or a discard that failed stands in the bar, as an alert", async () => {
+    await show({ error: "Salvestamine ei õnnestunud. Proovi uuesti." });
+    const line = $("[data-publish-error]")!;
+    expect(line.getAttribute("role")).toBe("alert");
+    expect(line.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect($("[data-publish-bar]")!.contains(line)).toBe(true); // on the phone too: in the bar at the foot of the screen
+    await show({ error: null });
+    expect($("[data-publish-error]")).toBeNull();
   });
 
   it("no unpublished change: no bar", async () => {

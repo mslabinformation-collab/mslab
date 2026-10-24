@@ -151,7 +151,7 @@ describe("admin guards are inherited by every admin entry point", () => {
     const content = files().find((f) => f.path === "server/actions/admin-content.ts")!;
     const contentExports = [...strip(content.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
     // admin UX pass piece 3a, Task 4: the editor's instant switches „Avaldatud“ (R-d) and „Näidissisu“
-    expect(contentExports).toEqual(["saveCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "saveSession", "deleteSession"]);
+    expect(contentExports).toEqual(["createCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "saveSession", "deleteSession"]);
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);

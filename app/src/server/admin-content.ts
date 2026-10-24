@@ -284,6 +284,26 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   return { ok: true, id: saved.id, created: d.id == null };
 }
 
+/**
+ * „Lisa koolitus“ (admin UX pass piece 3a, Task 7; piece3-texts S3-P3-g, P-6): the new-course page's one explicit create, saveCourseForm for a draft
+ * with no id. A draft with an id is refused (`invalid`) and nothing is written: an existing course changes only through its cards' autosave, its draft
+ * and „Avalda muudatused“, and „Avaldatud“ only through the switch (R-d) — the old whole-course „Salvesta“, which could unpublish around R-d (Task 4
+ * review M-4), has no way in any more.
+ */
+export async function createCourseForm(db: Db, formData: FormData): Promise<EditResult> {
+  const raw = field(formData, "data");
+  if (!raw || raw.length > DRAFT_MAX) return { ok: false, error: "invalid" };
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "invalid" };
+  }
+  const parsed = draftSchema.safeParse(json);
+  if (!parsed.success || parsed.data.id != null) return { ok: false, error: "invalid" };
+  return saveCourseForm(db, formData);
+}
+
 /** The course list's move: `{ id, index }`, the course and the place (0 is the first) it goes to; ↑ / ↓ send the neighbour's place, a drop its own. */
 const moveRequest = z.object({ id: z.number().int().positive().max(ID_MAX), index: z.number().int().min(0).max(ID_MAX) });
 

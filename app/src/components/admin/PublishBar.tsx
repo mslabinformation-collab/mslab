@@ -9,29 +9,35 @@ import styles from "./PublishBar.module.css";
 
 /**
  * The bar of a published thing with unpublished changes (admin UX pass, README §1.8; the draft layer, server/drafts.ts). It stands under the H1:
- * „Avaldamata muudatused: {n}“ with the changed fields' labels, „Eelvaade ↗“ (the public page in draft mode, api/admin/eelvaade), „Loobu
- * muudatustest“ behind a ConfirmPanel (danger: „Kas loobun {n} muudatusest? Avalikul lehel jääb praegune versioon.“ / „Jah, loobu“) and „Avalda
- * muudatused“, which publishes only on its press.
+ * „Avaldamata muudatused: {n}“ with the changed fields' labels and „Avalikul lehel on näha eelmine versioon.“ (piece3-texts S3-P3-a, on every bar),
+ * „Eelvaade ↗“ (the public page in draft mode, api/admin/eelvaade), „Loobu muudatustest“ behind a ConfirmPanel (danger: „Kas loobun {n} muudatusest?
+ * Avalikul lehel jääb praegune versioon.“ / „Jah, loobu“) and „Avalda muudatused“, which publishes only on its press.
  *
  * Below 900px (the admin's phone width) the CSS makes it the phone's bar at the bottom of the screen (strings.md W9): „Avaldamata {n} · Eelvaade“
  * with „Eelvaade“ as the link, and „Avalda“. „Loobu muudatustest“ is not there: on a phone it is on the preview page, in draft mode (spec C3).
  *
  * - `changed`: the labels of the changed fields, in screen order; none (and nothing blocked): no bar at all.
  * - `previewHref`: the preview link, `/api/admin/eelvaade?tee=<the public page's path>`; it opens in a tab of its own.
- * - `blocked`: after a publish, the labels of the fields it could not copy (changed live meanwhile); they are listed under the bar, labels only.
+ * - `blocked`: after a publish, what it could not publish (S3-P3-b), under the bar as an alert: `missing`, the labels in lowercase of the fields a
+ *   published thing must have („Puudub: hind“); `changed`, the labels of the fields changed live meanwhile (in another tab), under „Neid välju ei
+ *   avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.“. The bar stays while anything is blocked.
+ * - `error`: the screen's word on a publish or a discard that failed, an alert in the bar (the phone's bar too, at the foot of the screen).
  * - `onDiscard`, `onPublish`: the screen's actions. While one runs, the bar is aria-busy and its buttons are aria-disabled (they keep the focus) and
- *   do nothing. The screen reports a failure itself; a rejected promise only ends the busy state (and a failed discard leaves the question open).
+ *   do nothing. The screen reports a failure itself (`error`); a rejected promise only ends the busy state (and a failed discard leaves the
+ *   question open).
  */
 export function PublishBar({
   changed,
   previewHref,
   blocked,
+  error,
   onDiscard,
   onPublish,
 }: {
   changed: string[];
   previewHref: string;
-  blocked?: string[];
+  blocked?: { missing?: string[]; changed?: string[] };
+  error?: string | null;
   onDiscard(): Promise<void>;
   onPublish(): Promise<void>;
 }) {
@@ -72,21 +78,24 @@ export function PublishBar({
     setConfirming(false);
   };
 
-  if (changed.length === 0 && !blocked?.length) return null;
+  const missing = blocked?.missing ?? [];
+  const meanwhile = blocked?.changed ?? [];
+  const held = missing.length > 0 || meanwhile.length > 0;
+  if (changed.length === 0 && !held) return null;
   const n = changed.length;
 
   return (
     <div className={styles.wrap}>
       <div role="region" aria-labelledby={countId} aria-busy={busy || undefined} className={styles.bar} data-publish-bar="" data-fab-avoid="">
         <p className={styles.summary}>
-          <span className={styles.wide}>
+          <span className={styles.wide} data-publish-words="">
             <b id={countId} data-publish-count="">
               {fill(t.count, { n })}
             </b>
             {n > 0 && (
               <span className={styles.fields} data-publish-fields="">
                 {" · "}
-                {changed.join(", ")}
+                {changed.join(", ")}. {t.previous}
               </span>
             )}
           </span>
@@ -131,6 +140,11 @@ export function PublishBar({
             </span>
           </button>
         </div>
+        {error && (
+          <p role="alert" className={styles.error} data-publish-error="">
+            {error}
+          </p>
+        )}
         {confirming && (
           <div className={styles.confirm}>
             <ConfirmPanel
@@ -148,12 +162,20 @@ export function PublishBar({
           </div>
         )}
       </div>
-      {blocked && blocked.length > 0 && (
-        <ul className={styles.blocked} data-publish-blocked="">
-          {blocked.map((label, i) => (
-            <li key={i}>{label}</li>
-          ))}
-        </ul>
+      {held && (
+        <div role="alert" className={styles.blocked} data-publish-blocked="">
+          {missing.length > 0 && <p data-blocked-missing="">{fill(t.missing, { fields: missing.join(", ") })}</p>}
+          {meanwhile.length > 0 && (
+            <>
+              <p data-blocked-changed="">{t.changedMeanwhile}</p>
+              <ul>
+                {meanwhile.map((label, i) => (
+                  <li key={i}>{label}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

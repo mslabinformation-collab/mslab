@@ -205,6 +205,9 @@ export const adminEt = {
       invalid: "Üks väli vajab parandamist.",
       signedOut: "Logi uuesti sisse.",
       upload: "Üleslaadimine käib.",
+      // a record made by its one explicit button, typed into and not created yet (piece3-texts S3-P3-g): {thing} is the thing in the partitive,
+      // capitalised („Koolitust“, „Toimumist“); the source names it
+      notCreated: "{thing} pole veel lisatud.",
     },
   },
 
@@ -221,6 +224,14 @@ export const adminEt = {
     phoneCount: "Avaldamata {n}",
     phonePreview: "Eelvaade",
     phonePublish: "Avalda",
+    // piece3-texts S3-P3-a (Dim 23.10): on every bar, after the list of labels (the desktop bar; the phone's stays one line)
+    previous: "Avalikul lehel on näha eelmine versioon.",
+    // S3-P3-b: what „Avalda muudatused“ could not publish, under the bar. {fields}: the missing fields' labels in lowercase, joined with ", "
+    // („Puudub: hind“); the parts changed meanwhile in another tab are listed by their labels under the sentence
+    missing: "Puudub: {fields}",
+    changedMeanwhile: "Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.",
+    // README §1.8 (B2 drawn „Lühikirjeldus · avaldamata“; strings.md 3.1): the label of a field whose text waits for „Avalda muudatused“
+    fieldTag: "avaldamata",
   },
 
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“
@@ -1522,7 +1533,8 @@ export const adminEt = {
   // Prototype D adminBadges ("Koolituse märgis"), Maria C36: "Väga meeldib see blokk. Jätame."
   badge: {
     title: "Koolituse märgis",
-    lead: "Lisa koolituse kaardile silt, nt „Uus“ või „Populaarne“. Vali tekst ja värv — pärast salvestamist on muudatus kohe näha koolituste lehel.",
+    // (piece3-texts P-5: the card autosaves and a published course's change waits for „Avalda muudatused“)
+    lead: "Lisa koolituse kaardile silt, nt „Uus“ või „Populaarne“. Vali tekst ja värv — muudatus on koolituste lehel näha pärast avaldamist.",
     presets: "Kiirvalik",
     none: "Puudub",
     own: "Oma tekst (kuni 18 märki)",
@@ -1565,11 +1577,18 @@ export const adminEt = {
     noPrice: "—",
   },
 
+  // The course editor (admin UX pass piece 3a, Task 7; README B2, §1.8; piece3-texts S3-P3-g, P-2…P-6): the way back „← Koolitused“ (glossary
+  // „← {Lehe nimi}“), SaveStatus's „gone“ word (P-2), the new-course page's header line before the create (S3-P3-g: {button} is the create's label,
+  // courses.add) and the leave guard's thing (S3-P3-g's {Asja}), the conflict's „Taasta minu tekst“ (README §1.3, B13)
   courseEditor: {
-    crumb: "Koolitused",
+    backLink: "← Koolitused",
     editCrumb: "Muuda koolitust",
-    newCrumb: "Uus koolitus",
     newTitle: "Uus koolitus",
+    thing: "koolitust",
+    newRequired: "Täida kohustuslikud väljad",
+    newReady: "Vajuta „{button}“.",
+    newThing: "Koolitust",
+    restore: "Taasta minu tekst",
     created: "Koolitus loodud. Lisa pildid ja avalda, kui kõik on valmis.",
     viewSite: "Vaata lehel",
     notFound: "Seda koolitust ei leitud.",
@@ -1599,7 +1618,8 @@ export const adminEt = {
       body: "Pikk kirjeldus",
       bodyHint: "Tühi rida alustab uut lõiku.",
       type: "Õppevorm",
-      typeHint: "Koolitus on kas e-õpe või kontaktõpe. Teise õppevormi väljad eemaldatakse salvestamisel.",
+      // (piece3-texts P-5: the type changes at once, README B2)
+      typeHint: "Koolitus on kas e-õpe või kontaktõpe. Õppevormi vahetamisel eemaldatakse teise õppevormi väljad.",
       price: "Hind (€)",
       accessMonths: "Ligipääs (kuud)",
       videoCount: "Videotunde",
@@ -1676,13 +1696,10 @@ export const adminEt = {
       sample: "Näidissisu",
       sampleHint: "Prototüübi näidis. Eemalda märge, kui tekstid ja fotod on päris.",
     },
-    save: "Salvesta",
-    saving: "Salvestan…",
-    saved: "Salvestatud.",
+    // (the lesson drawer's status, until Task 10 gives it SaveStatus)
     dirty: "Salvestamata muudatused",
+    // a refused create (the new-course page) and the calendar drawer's save
     invalid: "Kontrolli märgitud välju.",
-    stale: "Seda koolitust salvestati vahepeal mujal (nt teises aknas). Laadi leht uuesti, et näha kehtivat seisu; sinu siinsed muudatused jäävad siis salvestamata.",
-    reload: "Laadi uuesti",
     // an e-course with lessons or students keeps its type (errors.typeLocked says it for a contact course)
     typeLockedOnline: "Sellel e-koolitusel on õppetunde või õpilasi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.",
     // the PublishBar's names of the modules' and lessons' changes (piece 3 texts P-3; drawn „Lühikirjeldus, Hind, Moodul 03“): a change inside a
@@ -1698,7 +1715,8 @@ export const adminEt = {
   lessons: {
     title: "Moodulid ja õppetunnid",
     hint: "Õpilane avab õppetunnid järjekorras: järgmine avaneb, kui eelmine on tehtud.",
-    saveFirst: "Salvesta koolitus, et lisada mooduleid.",
+    // (piece3-texts P-5: shown on the new-course page, before the course exists)
+    saveFirst: "Vajuta „Lisa koolitus“, et lisada mooduleid.",
     empty: "Mooduleid veel pole.",
     moduleName: "Mooduli nimi",
     newModule: "Uue mooduli nimi",

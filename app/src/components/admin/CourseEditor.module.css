@@ -1,30 +1,36 @@
-/* Prototype B editor: breadcrumb, Jost title, .editor-grid (main column + side column), a save bar that stays at the
-   bottom of the screen. */
+/* The course editor (admin UX pass piece 3a, Task 7; README B2; the Part 3 desktop frame "B2 Course editor", the Part 4 phone frame): the header with
+   „← Koolitused“ over the H1, then under it the PublishBar, then from 1180 px three columns — the 190 px section map (SectionMap, sticky), the cards,
+   the 300 px sticky side column — 22 px apart; below 1180 px one column: the map's „Jaotised ▾“ select under the header, the side column („Avaldamine“,
+   „Koolituse märgis“) straight after it, then the cards (README: "the side column comes straight after the header"). The cards are 16 px apart, as
+   drawn. No save bar: every card autosaves. */
 
 .headText {
   min-width: 0;
 }
 
-/* B .breadcrumb */
-.crumb {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-  font-size: 12px;
+/* „← Koolitused“ (600 13px, drawn above the H1) */
+.back {
+  margin: 0 0 4px;
+  font: 600 13px/1.3 var(--font-body);
 }
 
-.crumb a {
+.back a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--ink);
-  text-underline-offset: 3px;
 }
 
 .title {
   overflow-wrap: anywhere;
+}
+
+.title:focus {
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
 }
 
 .tags {
@@ -40,23 +46,94 @@
   color: var(--ink);
 }
 
-/* B .editor-grid */
-.grid {
+/* The chip's place in the H1 row: as wide as its usual words („Mustand salvestatud 14:02“, „Salvestamata muudatused“, „Salvestan…“), so that a
+   change of them — a field left, its save on the way — moves nothing beside it: a tap on ET | RU or „Järgmine →“ that leaves a field would
+   otherwise land beside the button it pressed (the press goes down on it, the row shifts, the release comes up elsewhere). Up to 900 px the row
+   starts at the left (ui.module.css), the switch stands before the chip and nothing moves it: the chip keeps its own width there. */
+.statusSlot {
+  display: inline-flex;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+@media (min-width: 901px) {
+  .statusSlot {
+    min-width: 15rem;
+  }
+}
+
+/* the new-course page's header line in the chip's place, then „Lisa koolitus“ (S3-P3-g) */
+.create {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.createLine {
+  color: var(--muted);
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.createError {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);
-  gap: 25px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
+}
+
+/* below 1180 px: the „Jaotised ▾“ select first, the side column next, the cards after them */
+.layout > [data-section-select] {
+  order: -2;
 }
 
 .main,
 .side {
   display: grid;
-  gap: 25px;
+  gap: 16px;
   min-width: 0;
+}
+
+/* the cards' own two-column grids fold to one in a narrow column (editor.module.css: @container course-cards) */
+.main {
+  container: course-cards / inline-size;
+}
+
+.side {
+  order: -1;
 }
 
 .cardTitle {
   margin-bottom: 22px;
+}
+
+/* „Moodulid ja õppetunnid“ / „Programm“: LessonsEditor draws its own card; this is the section map's target round it */
+.modules {
+  min-width: 0;
+}
+
+.modules:focus {
+  outline: none;
+}
+
+/* the cards the map jumps to take the focus (tabindex -1): no ring for a jump, one for the keyboard */
+.main > section:focus {
+  outline: none;
+}
+
+.main > section:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* after a conflict: „Taasta minu tekst“ at the foot of the card */
+.restore {
+  margin: 18px 0 0;
 }
 
 /* "Tunnistus" (phase 3d): the card's lead, its lines and its volume, one under another */
@@ -66,44 +143,27 @@
   min-width: 0;
 }
 
-.typeSwitch {
+/* (the element in the selector: editor.module.css .fieldset has margin 0, and which of the two sheets comes later depends on the bundle's order) */
+fieldset.typeSwitch {
   margin-bottom: 22px;
 }
 
-/* Always within reach: the status of the draft and "Salvesta". */
-.saveBar {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px 18px;
-  margin-top: 25px;
-  padding: 14px 20px;
-  border: 1px solid var(--line);
-  border-radius: 18px 18px 0 0;
-  background: var(--paper);
-  box-shadow: 0 -10px 30px rgba(34, 34, 34, 0.06);
-}
-
-.saveBar p {
-  flex: 1 1 260px;
-}
-
-@media (max-width: 1180px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 640px) {
-  .saveBar {
-    padding: 12px 14px;
+@media (min-width: 1180px) {
+  .layout {
+    grid-template-columns: 190px minmax(0, 1fr) 300px;
+    gap: 22px;
   }
 
-  .saveBar button {
-    flex: 1 1 100%;
+  .side {
+    order: 0;
+    position: sticky;
+    top: 24px;
+    /* taller than the window (the badge's card preview): it scrolls inside, so its foot can be reached */
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* the cards' focus rings stay inside the scrolling box */
+    padding: 3px;
+    margin: -3px;
   }
 }

@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CourseEditor, type OtherCourse } from "@/components/admin/CourseEditor";
+import { CourseEditor, type CourseEditorData, type OtherCourse } from "@/components/admin/CourseEditor";
 import { Drawer } from "@/components/admin/Drawer";
 import { LessonDrawer } from "@/components/admin/LessonDrawer";
-import { LessonsEditor } from "@/components/admin/LessonsEditor";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { courseUsage, getCourseForEdit, listAllCourses, typeLocked } from "@/db/queries/admin";
 import { getCourseBySlug } from "@/db/queries/public";
-import { draftFromCourse, newCourseDraft } from "@/domain/course-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
@@ -17,6 +15,7 @@ import { parseRowId } from "@/lib/row-id";
 import { listCourseLessons } from "@/server/admin-lessons";
 import { requireAdmin } from "@/server/auth";
 import { bunnyConfig } from "@/server/bunny";
+import { readCourseEditor } from "@/server/course-parts";
 import { upcomingFrom } from "@/domain/calendar";
 
 export const dynamic = "force-dynamic";
@@ -34,23 +33,26 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
 }
 
 /**
- * The course editor: /admin/koolitused/uus (new) and /admin/koolitused/<id>; under it "Moodulid ja õppetunnid" (an e-course) or
- * "Programm" (a contact course), and with ?oppetund=<lesson id> that lesson in the drawer.
+ * The course editor (admin UX pass piece 3a, Task 7; README B2): /admin/koolitused/uus, the new course, created by its one explicit „Lisa koolitus“
+ * (S3-P3-g); /admin/koolitused/<id>, a saved course, every card autosaving its part from the versions read here (server/course-parts.ts
+ * readCourseEditor), with „Moodulid ja õppetunnid“ (an e-course) or „Programm“ (a contact course) among the cards; with ?oppetund=<lesson id> that
+ * lesson in the drawer.
  */
 export default async function CourseEditPage({ params, searchParams }: Props) {
   await requireAdmin();
   const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
   const id = parseId(raw);
   const db = getDb();
-  const [course, all, usage, modules] = await Promise.all([
+  const [course, all, usage, modules, editor] = await Promise.all([
     typeof id === "number" ? getCourseForEdit(db, id) : null,
     listAllCourses(db),
     typeof id === "number" ? courseUsage(db, id) : null,
     typeof id === "number" ? listCourseLessons(db, id) : [],
+    typeof id === "number" ? readCourseEditor(db, id) : null,
   ]);
   const t = adminEt.courseEditor;
 
-  if (id === null || (id !== "new" && !course)) {
+  if (id === null || (id !== "new" && (!course || !editor))) {
     return (
       <div className={ui.page}>
         <div className={ui.heading}>
@@ -76,17 +78,15 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
     .filter((c) => c.id !== course?.id)
     .map((c) => ({ id: c.id, title: pick(c.title, "et"), type: c.type, published: c.published }));
 
+  // a saved course: its cards' parts (the draft's values on a published course, with live's beside them), its live address and state
+  const data: CourseEditorData | null =
+    course && editor
+      ? { id: course.id, slug: course.slug, published: course.published, isSample: course.isSample, typeLocked: typeLocked(usage), liveType: course.type, parts: editor.parts, outline: editor.outline }
+      : null;
+
   return (
     <>
-      <CourseEditor
-        initial={course ? draftFromCourse(course) : newCourseDraft()}
-        others={others}
-        next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null}
-        publicHref={course?.published ? `/koolitused/${course.slug}` : null}
-        created={sp.loodud === "1"}
-        typeLocked={typeLocked(usage)}
-      />
-      <LessonsEditor courseId={course?.id ?? null} online={course?.type === "e_learning"} modules={course ? modules : []} />
+      <CourseEditor course={data} others={others} next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null} created={sp.loodud === "1"} modules={course ? modules : []} />
       {course && lesson && (
         <Drawer
           key={lesson.id}

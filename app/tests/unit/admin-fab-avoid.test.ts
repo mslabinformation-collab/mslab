@@ -61,9 +61,10 @@ describe("the admin's bars are marked data-fab-avoid", () => {
     expect($("[data-save-bar]")!.hasAttribute("data-fab-avoid")).toBe(true);
   });
 
-  it("the course editor's own save bar (its markup is in CourseEditor.tsx)", () => {
+  it("the course editor has no save bar of its own any more (piece 3a, Task 7: every card autosaves; the PublishBar is the bottom bar there)", () => {
     const source = readFileSync(join(process.cwd(), "src", "components", "admin", "CourseEditor.tsx"), "utf8");
-    expect(source).toMatch(/<div className=\{styles\.saveBar\} data-save-bar="" data-fab-avoid="">/);
+    expect(source).not.toContain("data-save-bar");
+    expect(source).not.toContain("saveBar");
   });
 
   it("the practical work's send bar (fixed at the bottom on a phone; its markup is in AssessmentSend.tsx)", () => {
@@ -113,10 +114,9 @@ describe("a bar fixed or sticky at the bottom of the screen is known", () => {
     expect(names.some((n) => n.startsWith("app/admin/") && n.endsWith(".css"))).toBe(true);
   });
 
-  it("is the UndoBar's region, the PublishBar's phone bar, the two save bars and the practical work's send bar: each marked above; a new one is to be marked too", () => {
+  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar and the practical work's send bar: each marked above; a new one is to be marked too", () => {
     expect(bottomBars()).toEqual([
       "components/admin/Assessment.module.css .dock",
-      "components/admin/CourseEditor.module.css .saveBar",
       "components/admin/PublishBar.module.css .bar",
       "components/admin/UndoBar.module.css .region",
       "components/admin/site-editor.module.css .saveBar",

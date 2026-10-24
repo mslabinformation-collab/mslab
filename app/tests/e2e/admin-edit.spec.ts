@@ -46,7 +46,12 @@ test.beforeEach(({ page }) => {
   page.on("dialog", (d) => void d.accept());
 });
 
-test.afterEach(async ({}, info) => {
+test.afterEach(async ({ page }, info) => {
+  // the course editor autosaves (admin UX pass piece 3a): a save still waiting or on its way when the test ends would land after the course is put
+  // back, as a draft of it the next test would see; so the page first settles (or gives up after 10 s) and goes, then the course is put back
+  const editing = page.locator("[data-course-editor] [data-save-status]");
+  if (await editing.count().catch(() => 0)) await expect(editing).not.toHaveAttribute("data-save-kind", /^(dirty|saving)$/, { timeout: 10_000 }).catch(() => {});
+  await page.goto("about:blank").catch(() => {});
   for (const step of undo.splice(0).reverse()) await step();
   await removeAdminRows({ tokens: created.tokens, sessions: created.sessions }).catch(() => {});
   created.tokens.clear();
@@ -65,18 +70,32 @@ async function changing(slug: string): Promise<number> {
 const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmin(page, context, ip, created);
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-const status = (page: Page) => page.locator("[data-save-status]");
 
-async function save(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-  await expect(status(page)).toHaveText("Salvestatud.");
+/** The course editor's one status chip (SaveStatus; README §1.4) and the words its status region speaks (the whole sentence, on a phone too). */
+const chip = (page: Page) => page.locator("[data-course-editor] [data-save-status]");
+const spoken = (page: Page) => chip(page).locator("[role=status]");
+/** The answer to a card's autosave of `part` (POST api/admin/koolitus/<id>/osa/<part>), with the status `status`. */
+const partSaved = (page: Page, part: string, status = 200) =>
+  page.waitForResponse((r) => r.url().endsWith(`/osa/${part}`) && r.request().method() === "POST" && r.status() === status);
+/** The PublishBar (README §1.8): its words on the desktop bar (S3-P3-a's line after the labels), and its „Avalda muudatused“ (the phone's „Avalda“). */
+const publishBar = (page: Page) => page.locator("[data-publish-bar]");
+const barWords = (page: Page) => page.locator("[data-publish-words]");
+const draftWords = (labels: string) => `Avaldamata muudatused: ${labels.split(", ").length} · ${labels}. Avalikul lehel on näha eelmine versioon.`;
+
+/** „Avalda muudatused“: every card's waiting save first, then the publish (api/admin/koolitus/<id>/avalda); the bar goes and the cards start from live. */
+async function publish(page: Page): Promise<void> {
+  const answer = page.waitForResponse((r) => /\/api\/admin\/koolitus\/\d+\/avalda$/.test(r.url()) && r.request().method() === "POST");
+  await page.locator("[data-publish-go]").click();
+  expect((await answer).status()).toBe(200);
+  await expect(publishBar(page)).toHaveCount(0);
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
 }
 
 /** The course's card in the public catalogue. */
 const publicCard = (page: Page, slug: string, prefix = ""): Locator => page.locator(`[data-course-card][href="${prefix}/koolitused/${slug}"]`);
 
 test.describe("course editor", () => {
-  test("the ET title edited in the admin is on the public course page and card; RU falls back, then gets its own", async ({ page, context, visitorIp }, info) => {
+  test("a published course's ET title: autosaved into its draft (the bar names it, the public page keeps the old one) until „Avalda muudatused“; RU the same way", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     // the seed has a Russian title now (round 2): this test starts from a course without one (put back afterwards)
@@ -93,25 +112,44 @@ test.describe("course editor", () => {
     expect(await noOverflow(page)).toBe(true);
     await row.getByRole("link", { name: `Muuda: ${c.title}` }).click();
     await expect(page).toHaveURL(new RegExp(`/admin/koolitused/${id}$`));
+    await adminReady(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.title);
+    await expect(page.getByRole("link", { name: "← Koolitused", exact: true })).toHaveAttribute("href", "/admin/koolitused");
     await expect(page.locator("[data-course-editor] [data-sample]")).toHaveText("Näidis");
     await expect(page.getByRole("link", { name: /Vaata lehel/ })).toHaveAttribute("href", `/koolitused/${c.slug}`);
+    // no page-wide „Salvesta“ any more, and nothing unpublished yet: no bar
+    await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
 
     const title = page.getByRole("textbox", { name: "Koolituse nimi (eesti keeles)" });
     await expect(title).toHaveValue(c.title);
-    await expect(status(page)).toHaveText("");
     const newTitle = `${c.title} · E2E ${unique()}`;
+    const saved = partSaved(page, "basics");
     await title.fill(newTitle);
-    await expect(status(page)).toHaveText("Salvestamata muudatused");
-    await save(page);
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "dirty");
+    await title.blur();
+    await saved;
+    await expect(spoken(page)).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(barWords(page)).toHaveText(draftWords("Koolituse nimi"));
+    await expect(title.locator("xpath=ancestor::*[@data-i18n-box][1]").locator("[data-unpublished-tag]")).toHaveText("· avaldamata");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
+    // the record is live's still (a draft): the public page has the old title
+    expect((await storedCourse(c.slug)).title).toEqual(before.title);
+    await page.goto(`/koolitused/${c.slug}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.title);
+
+    // „Avalda muudatused“: live, on the public site's very next request
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+    await expect(title).toHaveValue(newTitle); // (the draft, read again)
+    await publish(page);
     const after = await storedCourse(c.slug);
     expect(after.title).toEqual({ et: newTitle });
     expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
     expect(after.images).toEqual(before.images);
+    await expect(title).toHaveValue(newTitle);
     expect(await noOverflow(page)).toBe(true);
-
-    // the public site, on its very next request
     await page.goto(`/koolitused/${c.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
     await expect(page).toHaveTitle(new RegExp(newTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -131,9 +169,12 @@ test.describe("course editor", () => {
     await expect(titleBox.locator("[data-et-ref]")).toHaveText(`ET${newTitle}`);
     await expect(ru).toHaveAttribute("placeholder", newTitle);
     await expect(titleBox.locator("[data-ru-pending]")).toHaveText("tõlge tulekul");
+    const savedRu = partSaved(page, "basics");
     await ru.fill("Форма бровей E2E");
     await expect(titleBox.locator("[data-ru-pending]")).toHaveCount(0);
-    await save(page);
+    await ru.blur();
+    await savedRu;
+    await publish(page);
     expect((await storedCourse(c.slug)).title).toEqual({ et: newTitle, ru: "Форма бровей E2E" });
     await page.goto(`/ru/koolitused/${c.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Форма бровей E2E");
@@ -141,9 +182,147 @@ test.describe("course editor", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
   });
 
+  test("„Eelvaade ↗“ shows the draft on the course's live address with the preview bar; „Loobu muudatustest“ asks, then the cards show live again", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "„Loobu muudatustest“ is on the desktop bar (on a phone, behind „Eelvaade“): the desktop project");
+    const c = mine(info);
+    const id = await changing(c.slug);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+    const summary = page.getByRole("textbox", { name: "Lühikirjeldus (eesti keeles)" });
+    const live = await summary.inputValue();
+    const draft = `${live} E2E eelvaade ${unique()}`;
+    const saved = partSaved(page, "basics");
+    await summary.fill(draft);
+    await summary.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Lühikirjeldus"));
+    // the preview: the public page at its live address in draft mode (a new tab of its own)
+    const preview = page.locator("[data-publish-preview]");
+    await expect(preview).toHaveAttribute("href", `/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${c.slug}`)}`);
+    await expect(preview).toHaveAttribute("target", "_blank");
+    const tab = await context.newPage();
+    await tab.goto((await preview.getAttribute("href"))!);
+    await expect(tab).toHaveURL(new RegExp(`/koolitused/${c.slug}$`));
+    await expect(tab.getByText(draft, { exact: true }).first()).toBeVisible();
+    await expect(tab.locator("[data-preview-bar] [data-preview-count]")).toHaveText("Avaldamata 1");
+    // a visitor (no session, no draft mode) has the live text and no bar
+    const visitor = await context.browser()!.newContext();
+    const other = await visitor.newPage();
+    await other.goto(`/koolitused/${c.slug}`);
+    await expect(other.getByText(draft, { exact: true })).toHaveCount(0);
+    await expect(other.locator("[data-preview-bar]")).toHaveCount(0);
+    await visitor.close();
+    // the preview's way out („Vaata kodulehte“): live again, without the bar
+    await tab.locator("[data-preview-exit]").click();
+    await expect(tab).toHaveURL(new RegExp(`/koolitused/${c.slug}$`));
+    await expect(tab.locator("[data-preview-bar]")).toHaveCount(0);
+    await expect(tab.getByText(draft, { exact: true })).toHaveCount(0);
+    await tab.close();
+
+    // „Loobu muudatustest“: asked first; „Katkesta“ keeps the draft; „Jah, loobu“ drops it, the field shows live, the bar goes
+    await page.locator("[data-publish-discard]").click();
+    const panel = page.locator("[data-publish-bar] [data-confirm-panel]");
+    await expect(panel).toContainText("Kas loobun 1 muudatusest? Avalikul lehel jääb praegune versioon.");
+    await panel.getByRole("button", { name: "Katkesta" }).click();
+    await expect(page.locator("[data-publish-discard]")).toBeFocused();
+    await page.locator("[data-publish-discard]").click();
+    const discarded = page.waitForResponse((r) => r.url().endsWith(`/api/admin/koolitus/${id}/loobu`) && r.status() === 200);
+    await panel.getByRole("button", { name: "Jah, loobu" }).click();
+    await discarded;
+    await expect(publishBar(page)).toHaveCount(0);
+    await expect(summary).toHaveValue(live);
+    expect(await onLocalDb((sql) => sql`select part from content_drafts where entity = 'course' and entity_id = ${id}`)).toHaveLength(0);
+  });
+
+  test("two tabs on one published course: the second tab's save of the same card is a conflict, never an overwrite; „Taasta minu tekst“ saves it over", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "two windows side by side: the desktop project");
+    const c = mine(info);
+    const id = await changing(c.slug);
+    await signIn(page, context, visitorIp);
+    const other = await context.newPage();
+    for (const p of [page, other]) {
+      await p.goto(`/admin/koolitused/${id}`);
+      await adminReady(p);
+    }
+    const summaryOf = (p: Page) => p.getByRole("textbox", { name: "Lühikirjeldus (eesti keeles)" });
+    // tab A types first: its draft
+    const first = partSaved(page, "basics");
+    await summaryOf(page).fill("E2E tab A");
+    await summaryOf(page).blur();
+    await first;
+    // tab B, still on the version it opened with: 409, the chip says so, B's text stays in its field and nothing is written over A's
+    const refused = partSaved(other, "basics", 409);
+    await summaryOf(other).fill("E2E tab B");
+    await summaryOf(other).blur();
+    await refused;
+    await expect(chip(other)).toHaveAttribute("data-save-kind", "conflict");
+    await expect(spoken(other)).toHaveText("Muudeti teises aknas — vaata üle");
+    await expect(summaryOf(other)).toHaveValue("E2E tab B");
+    const draftOf = async () => (await onLocalDb((sql) => sql<{ value: { summary: { et: string } } }[]>`select value from content_drafts where entity = 'course' and entity_id = ${id} and part = 'basics'`))[0]?.value.summary.et;
+    expect(await draftOf()).toBe("E2E tab A");
+    // „Taasta minu tekst“ (B13): B's text over A's, explicitly
+    const restored = partSaved(other, "basics");
+    await other.locator("[data-part-restore]").click();
+    await restored;
+    await expect(chip(other)).toHaveAttribute("data-save-kind", "saved");
+    expect(await draftOf()).toBe("E2E tab B");
+    // and tab A's next save of that card is the conflict now
+    const late = partSaved(page, "basics", 409);
+    await summaryOf(page).fill("E2E tab A again");
+    await summaryOf(page).blur();
+    await late;
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "conflict");
+    expect(await draftOf()).toBe("E2E tab B");
+    await other.close();
+  });
+
+  test("on a 375×812 phone: „Jaotised ▾“ under the H1 in the map's place, „Avaldamine“ next, the PublishBar at the foot of the screen with „Avalda“", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "a phone's size and touch: the phone project");
+    const c = mine(info);
+    const id = await changing(c.slug);
+    await signIn(page, context, visitorIp);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+    await expect(page.locator("nav[aria-label='Jaotised']")).toBeHidden();
+    const select = page.locator("[data-section-select]");
+    await expect(select).toBeVisible();
+    await expect(select.locator("[data-section-face]")).toHaveText(/Jaotised · Põhiinfo/);
+    // the order down the page: the H1, the select, „Avaldamine“, then the cards
+    const top = async (selector: string) => (await page.locator(selector).first().boundingBox())!.y;
+    const [h1, map, side, basics] = [await top("h1"), await top("[data-section-select]"), await top("[data-publish-card]"), await top("#course-basics")];
+    expect(h1 < map && map < side && side < basics).toBe(true);
+    expect(await noOverflow(page)).toBe(true);
+    // a choice in the select goes to its card
+    await select.locator("select").selectOption((await select.locator("option").filter({ hasText: /^Galerii/ }).getAttribute("value"))!);
+    await expect.poll(async () => Math.round((await page.locator("#course-gallery").boundingBox())!.y)).toBeLessThan(140);
+
+    // a change: the bar sticks to the bottom of the screen, „Avaldamata 1 · Eelvaade“ and „Avalda“ (44 px and more), above the page
+    await page.locator("#course-basics").scrollIntoViewIfNeeded();
+    const summary = page.getByRole("textbox", { name: "Lühikirjeldus (eesti keeles)" });
+    const saved = partSaved(page, "basics");
+    await summary.fill(`${await summary.inputValue()} E2E telefon`);
+    await summary.blur();
+    await saved;
+    const bar = publishBar(page);
+    await expect(page.locator("[data-publish-phone]")).toHaveText("Avaldamata 1 · Eelvaade");
+    await expect(barWords(page)).toBeHidden();
+    await expect(page.locator("[data-publish-discard]")).toBeHidden();
+    const box = (await bar.boundingBox())!;
+    expect(Math.round(box.y + box.height)).toBe(812);
+    expect(Math.round(box.width)).toBe(375);
+    const go = (await page.locator("[data-publish-go]").boundingBox())!;
+    expect(go.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator("[data-publish-go] [data-phone]")).toHaveText("Avalda");
+    await expect(bar).toHaveAttribute("data-fab-avoid", "");
+    expect(await noOverflow(page)).toBe(true);
+    await publish(page);
+  });
+
   test("one ET | RU switch in the heading sets every field, is kept on reload, counts the empty Russian fields and walks them; „Kopeeri eesti keelest“ fills one", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
-    const id = await changing(c.slug); // (nothing is saved here, the page is only changed on the screen; put back all the same)
+    const id = await changing(c.slug); // (what is typed here autosaves into the course's draft: put back all the same)
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/koolitused/${id}`);
     await adminReady(page);
@@ -178,6 +357,8 @@ test.describe("course editor", () => {
     await ru.fill("");
     const line = page.locator("[data-ru-missing]");
     await expect(line).toContainText(/^RU puudub \d+ väljal/);
+    // the section map says it at the card too (desktop: the list; phone: the select's option)
+    await expect(page.locator("nav[aria-label='Jaotised'] a, [data-section-select] option").filter({ hasText: /^Põhiinfo/ }).first()).toContainText("RU puudub");
     await page.locator("[data-ru-next]").click();
     await expect(ru).toBeFocused();
     const copy = titleBox.getByRole("button", { name: "Kopeeri eesti keelest" });
@@ -188,9 +369,12 @@ test.describe("course editor", () => {
     await expect(copy).toHaveCount(0);
     await expect(ru).toBeFocused();
     expect(await noOverflow(page)).toBe(true);
+    // (what was typed has autosaved into the course's draft by the time the test ends: the course is put back after it)
+    await ru.blur();
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
   });
 
-  test("badge 'Uus' in Orhidee (D badge editor): the live card preview, then the public card; 'Puudub' takes it off", async ({ page, context, visitorIp }, info) => {
+  test("badge 'Uus' in Orhidee (D badge editor): the live card preview, then the public card after „Avalda muudatused“; 'Puudub' takes it off", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     await signIn(page, context, visitorIp);
@@ -199,12 +383,15 @@ test.describe("course editor", () => {
 
     const editor = page.locator("[data-badge-editor]");
     await expect(editor.getByRole("heading", { name: "Koolituse märgis" })).toBeVisible();
+    await expect(editor).toContainText("muudatus on koolituste lehel näha pärast avaldamist."); // (P-5)
     await expect(editor.getByRole("button", { name: "Puudub" })).toHaveAttribute("aria-pressed", "true");
     const preview = editor.locator("[data-badge-preview] [data-course-card]");
     await expect(preview).toContainText(c.title); // the real course card, with this course's data
     await expect(preview.getByText("Uus", { exact: true })).toHaveCount(0);
 
+    const saved = partSaved(page, "badge");
     await editor.getByRole("button", { name: "Uus", exact: true }).click();
+    await saved; // a pick saves at once
     await editor.getByRole("button", { name: "Orhidee" }).click();
     await expect(editor.getByRole("button", { name: "Orhidee" })).toHaveAttribute("aria-pressed", "true");
     const own = editor.getByLabel("Oma tekst (kuni 18 märki)");
@@ -216,7 +403,8 @@ test.describe("course editor", () => {
     await expect(previewBadge).toHaveCSS("background-color", "rgb(221, 212, 220)");
     await expect(previewBadge).toHaveCSS("color", "rgb(34, 34, 34)");
     for (const b of await editor.locator("button").all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    await save(page);
+    await expect(barWords(page)).toHaveText(draftWords("Koolituse märgis"));
+    await publish(page);
     expect((await storedCourse(c.slug)).badge).toEqual({ label: { et: "Uus", ru: "Новинка" }, bg: "#DDD4DC", fg: "#222222" });
 
     await page.goto("/koolitused");
@@ -245,19 +433,19 @@ test.describe("course editor", () => {
     await editor.getByRole("button", { name: "Ploom" }).click();
     await expect(preview.getByText("Sügise hitt", { exact: true })).toHaveCSS("background-color", "rgb(107, 79, 92)");
     await expect(editor.getByRole("button", { name: "Uus", exact: true })).toHaveAttribute("aria-pressed", "false");
-    await save(page);
+    await publish(page);
     expect((await storedCourse(c.slug)).badge).toEqual({ label: { et: "Sügise hitt", ru: "Хит осени" }, bg: "#6B4F5C", fg: "#ffffff" });
     await editor.getByRole("button", { name: "Puudub" }).click();
     await expect(own).toHaveValue("");
     await expect(ownRu).toBeDisabled();
     await expect(preview.getByText("Sügise hitt")).toHaveCount(0);
-    await save(page);
+    await publish(page);
     expect((await storedCourse(c.slug)).badge).toBeNull();
     await page.goto("/koolitused");
     await expect(publicCard(page, c.slug).getByText("Uus", { exact: true })).toHaveCount(0);
   });
 
-  test("the type switch shows only that type's fields; a published course without a price is refused, nothing saved", async ({ page, context, visitorIp }, info) => {
+  test("the type switch shows only that type's cards and fields; a published course without a price: „Avalda muudatused“ is held, „Puudub: hind“, nothing live changes", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     const before = await storedCourse(c.slug);
@@ -279,24 +467,38 @@ test.describe("course editor", () => {
     await expect(page.locator("[data-protocol-stages]")).toContainText("E-kursusel on need praktilise töö punktid: õpilane lisab iga punkti juurde 1–3 fotot.");
     await expect(page.locator("[data-test-editor] h3")).toHaveText("Teadmiste test");
     await expect(page.getByText(/hübriid/i)).toHaveCount(0); // no third type anywhere
+    await expect(page.locator("[data-type-hint]")).toHaveText("Koolitus on kas e-õpe või kontaktõpe. Õppevormi vahetamisel eemaldatakse teise õppevormi väljad."); // (P-5)
 
+    // the type is instant: into the basics' draft at once, and the cards follow it (the section map too)
+    const switched = partSaved(page, "basics");
     await typeSwitch.getByRole("radio", { name: "Kontaktõpe" }).check();
+    await switched;
     for (const name of ["Grupikoolituse hind (€)", "Individuaalkoolituse hind (€)", /^Kestus/]) await expect(field(name)).toHaveCount(1);
     for (const name of ["Hind (€)", "Ligipääs (kuud)", "Videotunde", /^Soodustus/]) await expect(field(name)).toHaveCount(0);
     await expect(page.locator('[data-list-editor="includes"] h3')).toHaveText("Koolitus sisaldab");
     await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");
     await expect(page.locator("[data-protocol-stages]")).toContainText("Koolituspäeva protokolli etapid");
     await expect(page.locator("[data-test-editor]")).toHaveCount(0);
+    await expect(page.locator("[data-section-select] option").filter({ hasText: /^Programm/ })).toHaveCount(1);
+    await expect(page.locator("[data-section-select] option").filter({ hasText: /^Teadmiste test/ })).toHaveCount(0);
+    await expect(barWords(page)).toHaveText(draftWords("Õppevorm"));
+    const back = partSaved(page, "basics");
     await typeSwitch.getByRole("radio", { name: "E-õpe" }).check();
+    await back;
     await expect(page.getByLabel("Hind (€)")).toHaveValue(c.price); // switching back keeps what was there
+    await expect(publishBar(page)).toHaveCount(0); // typed back to live: no change waits
 
-    // published without a price: the field is marked and gets the focus; the database is untouched
+    // the price emptied: a draft may wait without one, the publish may not (S3-P3-b), and the field says why
+    const emptied = partSaved(page, "price");
     await page.getByLabel("Hind (€)").fill("");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
-    await expect(page.getByLabel("Hind (€)")).toHaveAttribute("aria-invalid", "true");
-    await expect(page.getByLabel("Hind (€)")).toBeFocused();
-    await expect(page.getByText("Avaldatud koolitusel peab olema hind.")).toBeVisible();
+    await page.getByLabel("Hind (€)").blur();
+    await emptied;
+    await expect(barWords(page)).toHaveText(draftWords("Hind"));
+    const answer = page.waitForResponse((r) => r.url().endsWith(`/api/admin/koolitus/${id}/avalda`));
+    await page.locator("[data-publish-go]").click();
+    expect(await (await answer).json()).toEqual({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
+    await expect(page.locator("[data-publish-blocked]")).toHaveText("Puudub: hind");
+    await expect(page.locator("[data-plain-field]", { has: page.getByLabel("Hind (€)") }).locator("[data-field-error]")).toHaveText("Avaldatud koolitusel peab olema hind.");
     const after = await storedCourse(c.slug);
     expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
   });
@@ -321,7 +523,7 @@ test.describe("course editor", () => {
       await expect(page.locator("[data-badge-editor]").getByRole("button", { name, exact: true })).toHaveCount(1);
   });
 
-  test("lists (ET/RU rows, ↑ ↓, add, remove) are saved in their order", async ({ page, context, visitorIp }, info) => {
+  test("lists (ET/RU rows, ↑ ↓, add, remove) autosave in their order and go live with „Avalda muudatused“", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     await signIn(page, context, visitorIp);
@@ -332,10 +534,12 @@ test.describe("course editor", () => {
     const count = await rows.count();
     const first = await rows.nth(0).locator("[data-lang-field]").inputValue();
     const second = await rows.nth(1).locator("[data-lang-field]").inputValue();
-    // ↑ is aria-disabled on the first row, ↓ on the last; the focus stays on the moved row's button
+    // ↑ is aria-disabled on the first row, ↓ on the last; the focus stays on the moved row's button; a move saves at once
     await expect(outcomes.getByRole("button", { name: "Liiguta rida 1 üles" })).toHaveAttribute("aria-disabled", "true");
     await expect(outcomes.getByRole("button", { name: `Liiguta rida ${count} alla` })).toHaveAttribute("aria-disabled", "true");
+    const moved = partSaved(page, "outcomes");
     await outcomes.getByRole("button", { name: "Liiguta rida 2 üles" }).click();
+    await moved;
     await expect(rows.nth(0).locator("[data-lang-field]")).toHaveValue(second);
     await expect(rows.nth(1).locator("[data-lang-field]")).toHaveValue(first);
     await outcomes.getByRole("button", { name: "Lisa rida" }).click();
@@ -347,7 +551,8 @@ test.describe("course editor", () => {
     await editLang(page, "et");
     await outcomes.getByRole("button", { name: "Eemalda rida 3" }).click();
     await expect(rows).toHaveCount(count);
-    await save(page);
+    await expect(barWords(page)).toHaveText(draftWords("Õpiväljundid"));
+    await publish(page);
 
     await page.goto(`/koolitused/${c.slug}`);
     const items = page.locator("[data-outcomes] li");
@@ -359,7 +564,7 @@ test.describe("course editor", () => {
     await expect(page.locator("[data-outcomes] li").last()).toContainText("E2E результат");
   });
 
-  test("gallery: upload (resized, without camera data), reorder, describe; the public page and /media show it", async ({ page, context, visitorIp, isMobile }, info) => {
+  test("gallery: upload (resized, without camera data), reorder, describe — autosaved, then „Avalda muudatused“; the public page and /media show it", async ({ page, context, visitorIp, isMobile }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     await signIn(page, context, visitorIp);
@@ -424,7 +629,7 @@ test.describe("course editor", () => {
     const pngIndex = (await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-gallery-item")))).indexOf(pngKey);
     await gallery.getByRole("button", { name: `Eemalda pilt ${pngIndex + 1}` }).click();
     await expect(items).toHaveCount(before + 1);
-    await save(page);
+    await publish(page);
     const stored = await storedCourse(c.slug);
     expect(stored.images[0]).toBe(jpgKey);
     expect(stored.images).not.toContain(pngKey);
@@ -525,17 +730,24 @@ test.describe("course editor", () => {
     expect(Buffer.compare(await (await page.request.get(`/media/${key}`)).body(), jpeg)).toBe(0);
   });
 
-  test("'Lisa koolitus' creates a draft (not on the public site) with a slug made from its name", async ({ page, context, visitorIp }, info) => {
+  test("'Lisa koolitus' (S3-P3-g): the header says what is missing, then to press it; leaving asks; the press creates an unpublished course whose cards autosave", async ({ page, context, visitorIp }, info) => {
     await signIn(page, context, visitorIp);
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await page.locator("[data-add-course]").click();
     await expect(page).toHaveURL(/\/admin\/koolitused\/uus$/);
+    await adminReady(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uus koolitus");
     await expect(page.locator("[data-course-state]")).toHaveText("Mustand");
     await expect(page.locator("[data-type-switch]").getByRole("radio", { name: "Kontaktõpe" })).toBeChecked();
+    // nothing saves before the course exists: no chip, the header's line instead (P1:248), and the modules wait for the course
+    const line = page.locator("[data-new-course-line]");
+    await expect(line).toHaveText("Täida kohustuslikud väljad");
+    await expect(chip(page)).toHaveCount(0);
+    await expect(page.locator("[data-lessons-editor]")).toContainText("Vajuta „Lisa koolitus“, et lisada mooduleid.");
     const name = `E2E uus ${info.project.name} ${unique()}`;
     await page.getByRole("textbox", { name: "Koolituse nimi (eesti keeles)" }).fill(name);
+    await expect(line).toHaveText("Vajuta „Lisa koolitus“.");
     await page.getByLabel("Grupikoolituse hind (€)").fill("199,50");
     // "Protokolli punktid" (phase protocols): a new contact course has none yet; the headings go with the course, a blank row is dropped, the order is kept
     const stages = page.locator("[data-protocol-stages]");
@@ -546,8 +758,19 @@ test.describe("course editor", () => {
     await stages.locator("[data-add-stage]").click();
     await page.keyboard.type("  Värvimine ");
     await expect(stages.locator("[data-protocol-stage]")).toHaveCount(3);
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+
+    // leaving with typed text and nothing created asks, with the reason (S3-P3-g); „Jää siia“ keeps everything
+    await page.getByRole("link", { name: "← Koolitused", exact: true }).click();
+    const notice = page.locator("[data-leave-notice]");
+    await expect(notice.locator("[data-leave-title]")).toHaveText("Muudatust „Koolituse nimi“ ei saanud veel salvestada.");
+    await expect(notice.locator("[data-leave-reason]")).toHaveText("Koolitust pole veel lisatud.");
+    await notice.getByRole("button", { name: "Jää siia" }).click();
+    await expect(page).toHaveURL(/\/admin\/koolitused\/uus$/);
+    await expect(page.getByRole("textbox", { name: "Koolituse nimi (eesti keeles)" })).toHaveValue(name);
+
+    await page.locator("[data-create-course]").click();
     await expect(page).toHaveURL(/\/admin\/koolitused\/\d+\?loodud=1$/);
+    await adminReady(page);
     await expect(page.getByText("Koolitus loodud.", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
     const slug = name.toLowerCase().replace(/ /g, "-");
@@ -558,7 +781,16 @@ test.describe("course editor", () => {
     await expect(stages.locator('[data-protocol-stage="0"]')).toHaveValue("Ettevalmistus");
     await expect(stages.locator('[data-protocol-stage="1"]')).toHaveValue("Värvimine");
     expect((await courseOrder()).indexOf(slug)).toBeGreaterThanOrEqual(6); // after the six seed courses
-    expect((await page.request.get(`/koolitused/${slug}`)).status()).toBe(404); // a draft
+    expect((await page.request.get(`/koolitused/${slug}`)).status()).toBe(404); // not published
+    // from now on every card autosaves, straight to the record (an unpublished course has no draft and no bar)
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    const saved = partSaved(page, "price");
+    await page.getByLabel("Individuaalkoolituse hind (€)").fill("250");
+    await page.getByLabel("Individuaalkoolituse hind (€)").blur();
+    await saved;
+    await expect(spoken(page)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await onLocalDb((sql) => sql`select price_individual from courses where slug = ${slug}`)).toEqual([{ price_individual: 25000 }]);
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await expect(page.locator(`[data-course-row="${slug}"] [data-course-state]`)).toHaveText("Mustand");
@@ -720,7 +952,7 @@ test.describe("course editor", () => {
     expect(new Set(shown).size).toBe(shown.length);
   });
 
-  test("'Teadmiste test' (e-course completion): a question without a right answer is marked in its card and nothing is saved; with one it saves with the course", async ({ page, context, visitorIp }, info) => {
+  test("'Teadmiste test' (e-course completion): a question without a right answer is held back, marked in its card, nothing saved; with one it autosaves and goes live with the course", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     const before = await storedCourseTest(id);
@@ -735,17 +967,28 @@ test.describe("course editor", () => {
     await expect(question.locator("[data-question-text]")).toBeFocused();
     await question.locator("[data-question-text]").fill("Mitu kihti värvi kanname?");
     await question.locator('[data-option="0"] [data-option-text]').fill("Ühe");
+    const refused = partSaved(page, "test", 400);
     await question.locator('[data-option="1"] [data-option-text]').fill("Kaks");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
+    await question.locator('[data-option="1"] [data-option-text]').blur();
+    await refused;
+    // the check's words in the question's card; the chip says a field waits; nothing is stored, not even a draft
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "invalid");
     await expect(question).toHaveAttribute("data-invalid", "");
     await expect(question).toContainText("Märgi vähemalt üks vastus õigeks.");
-    await expect(question).toBeFocused();
     expect(await storedCourseTest(id)).toEqual(before);
+    expect(await onLocalDb((sql) => sql`select part from content_drafts where entity = 'course' and entity_id = ${id} and part = 'test'`)).toHaveLength(0);
+    // „Näita“ goes to it
+    await chip(page).getByRole("button", { name: "Näita" }).click();
+    await expect(question).toBeFocused();
 
+    const saved = partSaved(page, "test");
     await question.locator('[data-option="1"] [data-option-correct]').check();
     await editor.locator("[data-test-pass]").fill("90");
-    await save(page);
+    await editor.locator("[data-test-pass]").blur();
+    await saved;
+    await expect(question).not.toHaveAttribute("data-invalid", "");
+    await expect(barWords(page)).toHaveText(draftWords("Teadmiste test"));
+    await publish(page);
     expect(await storedCourseTest(id)).toMatchObject({
       passPercent: 90,
       tries: 3,

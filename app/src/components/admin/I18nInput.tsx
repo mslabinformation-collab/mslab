@@ -46,6 +46,11 @@ type Props = {
   labelHidden?: boolean;
   /** data-i18n attribute (tests, the first-error focus). */
   name?: string;
+  /**
+   * The field's text waits for „Avalda muudatused“ (a published thing's draft differs from live, README §1.8): „· avaldamata“ after the label (in
+   * #6b4f5c, the token --warn) and the field's border in #9e8993 (--rose). It is the field's description too, not part of its name.
+   */
+  unpublished?: boolean;
 };
 
 /**
@@ -54,7 +59,7 @@ type Props = {
  * input (it is also the placeholder: what the Russian page shows while the translation is missing), an empty RU field offers „Kopeeri eesti
  * keelest“, and „tõlge tulekul“ stays on the field. The field tells the page when its Russian text is missing, for „RU puudub {n} väljal“.
  */
-export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name }: Props) {
+export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished }: Props) {
   const uid = useId();
   const { lang, register } = useEditLang();
   const t = adminEt.i18n;
@@ -64,7 +69,8 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
   const pending = lacksRu(value);
   // the "missing translation" line under the field (list rows have no room for it: they have the tag and the copy link)
   const showMissing = ru && pending && !labelHidden;
-  const describedBy = [hint ? `${uid}-hint` : "", error ? `${uid}-error` : "", showMissing ? `${uid}-missing` : ""].filter(Boolean).join(" ") || undefined;
+  const describedBy =
+    [unpublished ? `${uid}-unpublished` : "", hint ? `${uid}-hint` : "", error ? `${uid}-error` : "", showMissing ? `${uid}-missing` : ""].filter(Boolean).join(" ") || undefined;
   const text = (ru ? value.ru : value.et) ?? "";
   const set = (v: string) => onChange(ru ? { ...value, ru: v } : { ...value, et: v });
 
@@ -95,12 +101,17 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
   } as const;
 
   return (
-    <div ref={box} id={uid} className={styles.i18n} data-i18n-box="">
+    <div ref={box} id={uid} className={styles.i18n} data-i18n-box="" data-unpublished={unpublished ? "" : undefined}>
       <div className={styles.i18nHead}>
         <label id={`${uid}-label`} htmlFor={inputId} className={labelHidden ? ui.sr : styles.label}>
           {label}
           <span className={ui.sr}> ({t.langName[lang]})</span>
         </label>
+        {unpublished && (
+          <span id={`${uid}-unpublished`} className={styles.unpublished} data-unpublished-tag="">
+            · {adminEt.publish.fieldTag}
+          </span>
+        )}
         {pending && (
           <span className={styles.missing} data-ru-pending="">
             {t.missing}

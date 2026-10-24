@@ -94,7 +94,7 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   const s = await student("main", info);
   const lines = ["Kulmude kuju ja proportsioonid", "Värvi valik ja segamine"];
 
-  // Maria fills the course's "Tunnistus" card (Koolitused → the course), saved with the course
+  // Maria fills the course's "Tunnistus" card (Koolitused → the course); the card autosaves (piece 3a: an unpublished course's straight to the record)
   await signInAsAdmin(page, context, visitorIp, created);
   await page.goto(`/admin/koolitused/${s.courseId}`);
   await adminReady(page);
@@ -105,9 +105,9 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
     await card.locator(`[data-certificate-skill="${i}"]`).fill(line);
   }
   await card.locator('[data-field="certificateVolume"]').fill("10 akadeemilist tundi");
-  await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-  await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
-  expect(await storedCourseCertificate(s.courseId)).toEqual({ skills: lines, volume: "10 akadeemilist tundi" });
+  await card.locator('[data-field="certificateVolume"]').blur();
+  await expect.poll(() => storedCourseCertificate(s.courseId)).toEqual({ skills: lines, volume: "10 akadeemilist tundi" });
+  await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
 
   // the student: "Lõpetamine" has the "Tunnistus" row, her account's name in the field
   await holdTerms(info);

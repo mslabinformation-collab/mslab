@@ -30,6 +30,8 @@ const texts = (n: number): PreviewBarTexts => ({
   discard: adminEt.publish.discard,
   question: fill(adminEt.publish.confirm, { n }),
   yes: adminEt.publish.confirmYes,
+  failed: adminEt.common.saveError,
+  signedOut: adminEt.leave.reasons.signedOut,
 });
 const show = (over: Partial<Props> = {}) => act(async () => root.render(createElement(PreviewBar, { courseId: 7, count: 3, exitHref: EXIT, t: texts(over.count ?? 3), ...over })));
 
@@ -142,12 +144,22 @@ describe("PreviewBar", () => {
     expect(assign).not.toHaveBeenCalled();
     expect(panel()).not.toBeNull();
     expect(panelButtons().map((b) => b.getAttribute("aria-disabled"))).toEqual([null, null]);
+    // the admin's own words of a save that failed (adminEt.common.saveError; the design has none of its own), as an alert in the bar
+    const line = () => $("[data-preview-error]");
+    expect(line()!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(line()!.getAttribute("role")).toBe("alert");
     await click(panelButtons()[0]);
+    expect(line()).toBeNull(); // (gone while it is tried again)
     await f.answer(new TypeError("Failed to fetch"));
     expect(assign).not.toHaveBeenCalled();
     expect(panel()).not.toBeNull();
+    expect(line()!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    // signed out meanwhile (withAdmin's 401): „Logi uuesti sisse.“
     await click(panelButtons()[0]);
-    expect(f.calls).toHaveLength(3);
+    await f.answer(Response.json({ ok: false, error: "unauthorized" }, { status: 401 }));
+    expect(line()!.textContent).toBe("Logi uuesti sisse.");
+    await click(panelButtons()[0]);
+    expect(f.calls).toHaveLength(4);
     await f.answer(ok());
     expect(assign).toHaveBeenCalledExactlyOnceWith(EXIT);
   });

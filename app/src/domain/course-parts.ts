@@ -1,4 +1,4 @@
-import type { CourseDraft, TestDraft } from "./course-editor";
+import type { CourseDraft, CourseType, TestDraft } from "./course-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { stableJson } from "@/lib/version";
@@ -66,6 +66,14 @@ export type PartValues = {
   recommendations: Pick<CourseDraft, "recommendationIds">;
   badge: Pick<CourseDraft, "badge">;
 };
+
+/**
+ * A card's part as the course editor starts from it (server/course-parts.ts readCourseEditor; Task 7): its version (R-b), its value (the draft's, else
+ * live's) and live's value beside it, which the PublishBar's labels and the fields' „· avaldamata“ are worked out against.
+ */
+export type PartSeed<P extends EditorPart> = { version: string; value: PartValues[P]; live: PartValues[P] };
+/** Every card's part: all the parts but the outline (the modules' and lessons' rows, which their own card reads). */
+export type EditorParts = { [P in EditorPart]: PartSeed<P> };
 
 /** A part's value out of the editor's whole draft (the test part is the draft's `test`; the outline is no field of it). */
 export function partValue<P extends EditorPart>(part: P, draft: CourseDraft): PartValues[P] {
@@ -140,6 +148,19 @@ export function changedFields(part: CoursePart, value: unknown, live: unknown): 
   const v = (value ?? {}) as Record<string, unknown>;
   const l = (live ?? {}) as Record<string, unknown>;
   return Object.fromEntries(PART_FIELDS[part].filter((f) => stableJson(v[f]) !== stableJson(l[f])).map((f) => [f, v[f]]));
+}
+
+/**
+ * The PublishBar's labels of a drafted part's changes against `live` (P-3): the changed fields' labels, the price's only of the fields of `type` (the
+ * type the part is stored with: the other type's are emptied); none when nothing differs. The server's courseChanges and the editor's bar both use it.
+ */
+export function changeLabels(part: EditorPart, value: unknown, live: unknown, type: CourseType): string[] {
+  let changed = changedFields(part, value, live);
+  if (part === "price") {
+    const own: readonly string[] = TYPE_PRICE_FIELDS[type];
+    changed = Object.fromEntries(Object.entries(changed).filter(([f]) => own.includes(f)));
+  }
+  return partLabels(part, changed);
 }
 
 /** The label of the price in „Puudub: {väljad}“ (S3-P3-b: the labels in lowercase): `hind`. A contact course needs a group or an individual price. */

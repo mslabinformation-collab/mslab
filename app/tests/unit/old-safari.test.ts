@@ -113,6 +113,8 @@ const BROWSER_FILES = [
   "src/domain/money-text.ts",
   // the B screens, Task 4: a course's parts, their fields and the PublishBar's labels, which the course editor's cards run in the browser (pure; it pulls the admin dict and lib/version.ts)
   "src/domain/course-parts.ts",
+  // the B screens, Task 7: the course editor's pure rules — its cards per type, the section map, the PublishBar's labels, the one chip (pure; it pulls domain/course-parts.ts)
+  "src/components/admin/course/course-view.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

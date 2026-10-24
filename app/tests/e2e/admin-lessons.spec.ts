@@ -378,11 +378,11 @@ test("a refused kind switch (the lesson is gone meanwhile) puts the choice back 
   await expect(kind.getByRole("radio", { name: "Tekst" })).not.toBeChecked();
 });
 
-test("a new course says to save it first", async ({ page, context, visitorIp }) => {
+test("a new course says to create it first (piece3-texts P-5)", async ({ page, context, visitorIp }) => {
   await signInAsAdmin(page, context, visitorIp, created);
   await page.goto("/admin/koolitused/uus");
   await adminReady(page);
   const editor = page.locator("[data-lessons-editor]");
-  await expect(editor).toContainText("Salvesta koolitus, et lisada mooduleid.");
+  await expect(editor).toContainText("Vajuta „Lisa koolitus“, et lisada mooduleid.");
   await expect(editor.locator("[data-add-module]")).toHaveCount(0);
 });

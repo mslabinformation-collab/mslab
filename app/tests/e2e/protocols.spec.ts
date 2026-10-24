@@ -43,7 +43,7 @@ test("the headings in the course editor; Kalender's 'Protokollid'; two students 
   const fx = await fixtures("two", runName(info), ["Mari Maasikas", "Anu Aas"], { headings: [] });
   const [mari, anu] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
-  // Protokolli punktid: three headings, saved with the course
+  // Protokolli punktid: three headings; the card autosaves (admin UX pass piece 3a: an unpublished course's cards save straight to the record)
   await page.goto(`/admin/koolitused/${fx.course.id}`);
   await adminReady(page);
   const stages = page.locator("[data-protocol-stages]");
@@ -51,8 +51,10 @@ test("the headings in the course editor; Kalender's 'Protokollid'; two students 
     await stages.locator("[data-add-stage]").click();
     await stages.locator(`[data-protocol-stage="${i}"]`).fill(title);
   }
-  await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-  await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
+  const stagesSaved = page.waitForResponse((r) => r.url().endsWith(`/api/admin/koolitus/${fx.course.id}/osa/protocolStages`) && r.status() === 200);
+  await stages.locator(`[data-protocol-stage="${E2E_HEADINGS.length - 1}"]`).blur();
+  await stagesSaved;
+  await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
   // the session's drawer in Kalender: one tap to the course day's screen
   await page.goto(`/admin/kalender?id=${fx.session.id}`);
   await adminReady(page);

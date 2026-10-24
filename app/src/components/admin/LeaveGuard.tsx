@@ -9,22 +9,26 @@ import styles from "./LeaveGuard.module.css";
 /** How long a move waits for a save on its way (README §1.5): then it goes on, and the copy in this browser keeps the text. */
 export const LEAVE_WAIT_MS = 3000;
 
-/** Why a source's text is not confirmed: the engine's reasons (autosave/engine.ts Unconfirmed) and an upload still running. */
-export type GuardReason = "offline" | "error" | "invalid" | "signedOut" | "upload";
+/**
+ * Why a source's text is not confirmed: the engine's reasons (autosave/engine.ts Unconfirmed), an upload still running, and a record typed into that its
+ * one explicit button has not created yet (piece3-texts S3-P3-g: a new course, a new session).
+ */
+export type GuardReason = "offline" | "error" | "invalid" | "signedOut" | "upload" | "notCreated";
 
 /**
  * Something on the page that holds text the server may not have yet (useAutosave registers each form part; an upload may register too).
  * - `label`: the visible name of the field concerned, for the notice („Muudatust „{field}“ …“). Every source names one: the design has no
  *   sentence without it.
  * - `flush`: save now; true when the text is confirmed. A source that cannot save now (an upload running) answers false at once.
- * - `unconfirmed`: null when the server holds it all; else why not.
+ * - `unconfirmed`: null when the server holds it all; else why not, and for "notCreated" the thing that is not created yet, in the partitive and
+ *   capitalised (`thing`: „Koolitust“ → „Koolitust pole veel lisatud.“).
  * - `focus`: „Jää siia“ puts the focus on the field concerned.
  */
 export type GuardSource = {
   id: string;
   label: () => string;
   flush: () => Promise<boolean>;
-  unconfirmed: () => { reason: GuardReason } | null;
+  unconfirmed: () => { reason: GuardReason; thing?: string } | null;
   focus: () => void;
 };
 
@@ -40,6 +44,7 @@ type Notice = {
   source: string;
   label: string;
   reason: GuardReason;
+  thing: string;
   stay: () => void;
   go: () => void;
 };
@@ -218,6 +223,7 @@ export function LeaveGuardProvider({ children }: { children: React.ReactNode }) 
           source: source.id,
           label: source.label(),
           reason: why.reason,
+          thing: why.thing ?? "",
           stay: () => failed.get().focus(),
           go,
         });
@@ -346,7 +352,7 @@ export function LeaveNotice({ where }: { where: LeaveWhere }) {
         {fill(t.notice, { field: shown.label })}
       </p>
       <p id={`${ids}-reason`} className={styles.reason} data-leave-reason="">
-        {t.reasons[shown.reason]}
+        {fill(t.reasons[shown.reason], { thing: shown.thing })}
       </p>
       <div className={styles.buttons}>
         <button type="button" className={`${styles.button} ${styles.primary}`} onClick={api.stay}>

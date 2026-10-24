@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult } from "../admin-content";
+import { createCourseForm, deleteSessionForm, moveCourseRequest, saveSessionForm, type EditResult } from "../admin-content";
 import { adminAction } from "../auth";
 import { parseSwitch, switchCoursePublished, switchCourseSample, type SwitchResult } from "../course-parts";
 import { logFailure } from "../log";
@@ -30,9 +30,12 @@ async function run(what: string, change: PublicChange, work: (db: Db) => Promise
   }
 }
 
-/** Course editor "Salvesta": field data (the draft as JSON). A new course continues at its own address. */
-export const saveCourse = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
-  const result = await run("course save", { kind: "courses" }, (db) => saveCourseForm(db, formData));
+/**
+ * The new-course page's „Lisa koolitus“ (piece 3a, Task 7; S3-P3-g): field data (the draft as JSON, no id). The new course continues at its own
+ * address, where every card autosaves. An existing course is never written here (createCourseForm refuses an id).
+ */
+export const createCourse = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
+  const result = await run("course create", { kind: "courses" }, (db) => createCourseForm(db, formData));
   if (result.ok && result.created) redirect(`/admin/koolitused/${result.id}?loodud=1`);
   return result;
 });

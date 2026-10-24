@@ -827,6 +827,8 @@ async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
     await tx`delete from course_tests where course_id = ${s.id}`;
     if (s.test)
       await tx`insert into course_tests (course_id, questions, pass_percent, tries) values (${s.id}, ${tx.json(s.test.questions as postgres.JSONValue)}, ${s.test.pass_percent}, ${s.test.tries})`;
+    // the course editor's drafts of it (admin UX pass piece 3a: a published course's cards autosave into content_drafts until „Avalda muudatused“)
+    await tx`delete from content_drafts where entity = 'course' and entity_id = ${s.id}`;
   });
 }
 

@@ -5,7 +5,7 @@ import { clearOtherCourseType, EMPTIED_FOR_TYPE, lockCourse, updateCourseColumns
 import { courseImages, courseModules, courses, courseTests, lessonFiles, lessons, type Course, type CourseImage, type CourseTest } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import { COURSE_LANGUAGES, draftFromCourse, type CourseType } from "@/domain/course-editor";
-import { changedFields, COURSE_PARTS, isCoursePart, PART_FIELDS, partLabels, partTitle, partValue, PRICE_MISSING, TYPE_PRICE_FIELDS, type CoursePart, type PartValues } from "@/domain/course-parts";
+import { changeLabels, COURSE_PARTS, isCoursePart, PART_FIELDS, partTitle, partValue, PRICE_MISSING, type CoursePart, type EditorParts, type PartValues } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { ROW_ID_MAX } from "@/lib/row-id";
@@ -158,6 +158,26 @@ export async function readCoursePart(db: Q, courseId: number, part: CoursePart):
   return { version: s.version, value: s.value };
 }
 
+/**
+ * The course editor's start (Task 7; README B2): every card's part in one read (one live course, one read of the drafts), each as its card reads it
+ * (readCoursePart: the version and the value) with live's value beside it, and the PublishBar's labels of the modules and lessons (courseChanges'
+ * outline: the outline draft and the rows flagged `unpublished`, which the editor's cards do not hold). An unpublished course: live, no labels. Null
+ * when there is no such course.
+ */
+export async function readCourseEditor(db: Q, courseId: number): Promise<{ parts: EditorParts; outline: string[] } | null> {
+  const [course] = await db.select().from(courses).where(eq(courses.id, courseId));
+  if (!course) return null;
+  const s = await stateOf(db, course);
+  const parts: Record<string, unknown> = {};
+  for (const part of COURSE_PARTS) {
+    if (part === "outline") continue;
+    const p = await partStateOf(s, part);
+    parts[part] = { version: p.version, value: p.value, live: p.liveValue };
+  }
+  const outline = course.published ? (changesOf(s.live, s.drafts).find((c) => c.part === "outline")?.labels ?? []) : [];
+  return { parts: parts as EditorParts, outline };
+}
+
 // ---------- each part's check and writer ----------
 
 type CheckContext = { q: Q; course: Course; type: CourseType };
@@ -292,16 +312,7 @@ export async function writeCoursePart(
  * `value`: the part's draft value (null for the outline: no draft, only flagged rows).
  */
 function labelsOf(l: LiveCourse, part: CoursePart, value: unknown, type: CourseType): string[] {
-  let labels: string[];
-  if (part === "outline") labels = outlineLabels(l.outline, value as PartValues["outline"] | null, type === "contact");
-  else {
-    let changed = changedFields(part, value, liveValue(l, part));
-    if (part === "price") {
-      const own: readonly string[] = TYPE_PRICE_FIELDS[type];
-      changed = Object.fromEntries(Object.entries(changed).filter(([f]) => own.includes(f)));
-    }
-    labels = partLabels(part, changed);
-  }
+  const labels = part === "outline" ? outlineLabels(l.outline, value as PartValues["outline"] | null, type === "contact") : changeLabels(part, value, liveValue(l, part), type);
   return labels.length > 0 ? labels : [type === "contact" && part === "outline" ? adminEt.courseEditor.sections.modulesC : partTitle(part)];
 }
 

@@ -221,6 +221,20 @@ describe("the leave guard: a menu link", () => {
     expect(document.activeElement).toBe(document.querySelector("#seats"));
   });
 
+  it("a record not created yet (S3-P3-g): the reason names the thing, „Koolitust pole veel lisatud.“", async () => {
+    expect(adminEt.leave.reasons.notCreated).toBe("{thing} pole veel lisatud.");
+    function NotCreated() {
+      useGuardSource({ id: "new", label: () => "Koolituse nimi", flush: async () => false, unconfirmed: () => ({ reason: "notCreated", thing: "Koolitust" }), focus: () => {} });
+      return null;
+    }
+    await mount(createElement(NotCreated));
+    await click(menu());
+    expect(router.push).not.toHaveBeenCalled();
+    expect(notice()?.querySelector("[data-leave-title]")?.textContent).toBe("Muudatust „Koolituse nimi“ ei saanud veel salvestada.");
+    expect(notice()?.querySelector("[data-leave-reason]")?.textContent).toBe("Koolitust pole veel lisatud.");
+    expect(unload()).toBe(true); // closing the tab asks too
+  });
+
   it("„Sulge, tekst jääb seadmesse“ leaves; the local copy stays for next time", async () => {
     await mount();
     await type("title", "Uus nimi");

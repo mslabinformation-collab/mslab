@@ -952,16 +952,18 @@
         "Vajuta uuesti „Lisa küsimus“ ja vali „Vaba vastusega“.",
         "Kirjuta teine küsimus.",
         "Vaata üle „Läbimise piir (%)“ ja „Katseid“.",
-        "Vajuta lehe all „Salvesta“."
+        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
       ],
       "expect": [
-        "Pärast salvestamist näed „Salvestatud.“.",
+        "Päises on „Salvestatud“ koos kellaajaga.",
         "Pärast lehe uuesti laadimist on mõlemad küsimused alles.",
         "Valikküsimusel on õige vastus märgitud."
       ],
       "why": "Test on e-koolituse lõpetamise teine samm.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ekursus-punktid",
@@ -974,16 +976,18 @@
         "Ava sama e-koolitus ja keri plokini „Protokolli punktid“.",
         "Vajuta „Lisa punkt“ ja kirjuta esimese punkti nimi.",
         "Vajuta uuesti „Lisa punkt“ ja kirjuta teise punkti nimi.",
-        "Vajuta lehe all „Salvesta“."
+        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
       ],
       "expect": [
         "Ploki juures on selgitus, et e-kursusel on need praktilise töö punktid.",
-        "Pärast salvestamist näed „Salvestatud.“.",
+        "Päises on „Salvestatud“ koos kellaajaga.",
         "Mõlemad punktid jäävad alles, kui lehe uuesti laadid."
       ],
       "why": "Õpilane lisab iga punkti juurde fotod ja sina hindad neid.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ekursus-tunnistus",
@@ -996,15 +1000,17 @@
         "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
         "Lisa „Oskused tunnistusel“ alla read nupuga „Lisa rida“ või jäta tühjaks.",
         "Kirjuta „Maht“, näiteks 10 akadeemilist tundi.",
-        "Vajuta lehe all „Salvesta“."
+        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
       ],
       "expect": [
         "Tühja loendi korral on kirjas, et tunnistusel on „Õpiväljundid“ read.",
-        "Pärast salvestamist näed „Salvestatud.“."
+        "Päises on „Salvestatud“ koos kellaajaga."
       ],
       "why": "Need read trükitakse õpilase tunnistusele.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ekursus-avalda",
@@ -1015,10 +1021,12 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava sama e-koolitus ja keri plokini „Avaldamine“.",
-        "Märgi „Avaldatud“ ja vajuta „Salvesta“.",
+        "Märgi „Avaldatud“: see salvestub kohe, nuppu pole vaja.",
+        "Lae leht uuesti.",
         "Vajuta üleval „Vaata lehel ↗“."
       ],
       "expect": [
+        "Pärast uuesti laadimist on „Avaldatud“ märgitud ja päises silt „Avaldatud“.",
         "Koolituste loendis on e-koolituse staatus „Avaldatud“.",
         "Avalikul lehel on koolitus koos hinnaga.",
         "Lehe moodulite loendis on sinu moodul.",
@@ -1026,7 +1034,9 @@
       ],
       "why": "Ainult avaldatud e-koolitust saab osta.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-kontakt-punktid",
@@ -1038,16 +1048,19 @@
       "steps": [
         "Ava kontaktkoolitus, millele registreerid alas „Registreerimine ja maksmine“.",
         "Keri plokini „Protokolli punktid“.",
-        "Lisa vähemalt kaks punkti nupuga „Lisa punkt“.",
-        "Vajuta lehe all „Salvesta“."
+        "Lisa vähemalt kaks punkti nupuga „Lisa punkt“ ja klõpsa väljast välja.",
+        "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“.",
+        "Lae leht uuesti."
       ],
       "expect": [
-        "Pärast salvestamist näed „Salvestatud.“.",
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
         "Punktid jäävad alles, kui lehe uuesti laadid."
       ],
       "why": "Koolituspäeva protokoll kasutab neid punkte.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-tekst",
@@ -1057,21 +1070,25 @@
       "title": "Koolituse tekst",
       "href": "/admin/koolitused",
       "steps": [
-        "Ava mõni koolitus.",
-        "Lisa „Lühikirjeldus“ lõppu sõna Proov.",
-        "Vajuta „Salvesta“.",
+        "Ava mõni avaldatud koolitus.",
+        "Lisa „Lühikirjeldus“ lõppu sõna Proov ja klõpsa väljast välja.",
         "Ava avalik koolituste loend ja selle koolituse leht.",
-        "Kustuta sõna Proov ja salvesta uuesti."
+        "Vajuta halduses pealkirja all „Avalda muudatused“ ja ava avalik leht uuesti.",
+        "Kustuta sõna Proov, klõpsa väljast välja ja vajuta uuesti „Avalda muudatused“."
       ],
       "expect": [
-        "Muutmise ajal näed „Salvestamata muudatused“.",
-        "Pärast salvestamist näed „Salvestatud.“.",
-        "Sõna Proov on kaardil ja koolituse lehe päises.",
-        "Pärast tagasimuutmist on sõna kadunud ka avalikult lehelt."
+        "Kirjutamise ajal näed päises „Salvestamata muudatused“, siis „Mustand salvestatud“ koos kellaajaga.",
+        "Pealkirja all on riba „Avaldamata muudatused: 1 · Lühikirjeldus“.",
+        "Välja „Lühikirjeldus“ nime järel on „· avaldamata“.",
+        "Enne avaldamist on avalikul lehel veel vana tekst.",
+        "Pärast „Avalda muudatused“ on sõna Proov kaardil ja koolituse lehe päises.",
+        "Pärast tagasimuutmist ja avaldamist on sõna kadunud ka avalikult lehelt."
       ],
       "why": "Maria muudab tekste ise ja muudatus peab kohe näha olema.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-hind",
@@ -1082,12 +1099,12 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava mõni kontaktkoolitus, millel on täidetud „Grupikoolituse hind (€)“ ja „Individuaalkoolituse hind (€)“.",
-        "Kirjuta mõlemale väljale ühe euro võrra suurem hind, vajuta „Salvesta“ ja ava koolituse avalik leht.",
-        "Ava mõni e-koolitus ja kirjuta „Hind (€)“ väljale ühe euro võrra suurem hind.",
-        "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
-        "Ava selle e-koolituse leht.",
-        "Vajuta „Osta kohe“.",
-        "Pane kõik kolm hinda tagasi, nagu need olid, ja salvesta.",
+        "Kirjuta mõlemale väljale ühe euro võrra suurem hind ja vajuta „Avalda muudatused“.",
+        "Ava selle koolituse avalik leht.",
+        "Ava mõni e-koolitus, kirjuta „Hind (€)“ väljale ühe euro võrra suurem hind ja vajuta „Avalda muudatused“.",
+        "Ava avalik koolituste loend, siis selle e-koolituse leht, ja vajuta „Osta kohe“.",
+        "Tühjenda e-koolituse „Hind (€)“ ja vajuta „Avalda muudatused“.",
+        "Pane kõik kolm hinda tagasi, nagu need olid, ja vajuta mõlemas „Avalda muudatused“.",
         "Ava mõlema koolituse avalik leht uuesti."
       ],
       "expect": [
@@ -1095,11 +1112,14 @@
         "Ka „Individuaalkoolitus“ juures on uus hind.",
         "E-koolituse kaardil on uus hind.",
         "Ostukorvi real „Kokku“ on uus hind.",
+        "Tühja hinnaga ei avaldu midagi: riba all on „Puudub: hind“ ja väljal „Avaldatud koolitusel peab olema hind.“.",
         "Pärast tagasipanekut on mõlemal lehel jälle vana hind."
       ],
       "why": "Maria muudab hindu ise ja õpilane peab nägema õiget hinda.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ru-tekst",
@@ -1165,20 +1185,23 @@
       "title": "Koolituse märgis",
       "href": "/admin/koolitused",
       "steps": [
-        "Ava mõni koolitus ja keri plokini „Koolituse märgis“.",
+        "Ava mõni avaldatud koolitus ja keri plokini „Koolituse märgis“.",
         "Vali „Kiirvalik“ alt „Uus“.",
         "Vali „Värv“ alt mõni teine värv.",
-        "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
-        "Pane märgis tagasi, nagu see oli, ja salvesta."
+        "Vajuta pealkirja all „Avalda muudatused“ ja ava avalik koolituste loend.",
+        "Pane märgis tagasi, nagu see oli, ja vajuta uuesti „Avalda muudatused“."
       ],
       "expect": [
         "„Eelvaade“ näitab kaarti uue märgisega kohe.",
+        "Pealkirja all olev riba nimetab „Koolituse märgis“.",
         "Avalikus loendis on kaardil märgis „Uus“ valitud värviga.",
         "Pärast tagasipanekut on kaart nagu enne."
       ],
       "why": "Märgis tõstab koolituse esile.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-pildid",
@@ -1188,11 +1211,11 @@
       "title": "Koolituse pildid",
       "href": "/admin/koolitused",
       "steps": [
-        "Ava mõni koolitus ja keri plokini „Galerii“.",
+        "Ava mõni avaldatud koolitus ja keri plokini „Galerii“.",
         "Vajuta „Lisa pilte“ ja vali tahvlist üks pilt.",
         "Liiguta uus pilt noolega esimeseks.",
-        "Vajuta „Salvesta“ ja ava koolitus avalikul lehel.",
-        "Eemalda uus pilt ✕ nupuga ja salvesta."
+        "Vajuta pealkirja all „Avalda muudatused“ ja ava koolitus avalikul lehel.",
+        "Eemalda uus pilt ✕ nupuga ja vajuta uuesti „Avalda muudatused“."
       ],
       "expect": [
         "Pilt laaditakse üles ja ilmub galeriisse.",
@@ -1202,7 +1225,96 @@
       ],
       "why": "Maria lisab pildid otse tahvlist.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-koolitus-mustand-eelvaade",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Avaldatud koolituse muutmine ja eelvaade",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni avaldatud koolitus ja lisa „Lühikirjeldus“ lõppu sõna Proov.",
+        "Vajuta pealkirja all ribal „Eelvaade ↗“.",
+        "Ava sama koolituse leht teises brauseris, kus sa pole sisse logitud.",
+        "Vajuta eelvaate all ribal „Vaata kodulehte“.",
+        "Ava uuesti „Eelvaade ↗“, logi halduses välja ja lae koolituse leht uuesti.",
+        "Logi sisse, ava sama koolitus ja vajuta „Avalda muudatused“.",
+        "Kustuta sõna Proov ja vajuta uuesti „Avalda muudatused“."
+      ],
+      "expect": [
+        "Riba on „Avaldamata muudatused: 1 · Lühikirjeldus. Avalikul lehel on näha eelmine versioon.“.",
+        "Eelvaade avaneb uues aknas: lehel on sõna Proov ja all riba „Avaldamata 1“.",
+        "Teises brauseris pole sõna Proov ega riba.",
+        "„Vaata kodulehte“ lõpetab eelvaate: sõna Proov ja riba on kadunud.",
+        "Väljalogimine lõpetab eelvaate samamoodi.",
+        "Pärast „Avalda muudatused“ on sõna Proov kõigile näha ja riba kaob.",
+        "Pärast tagasimuutmist ja avaldamist on sõna kadunud."
+      ],
+      "why": "Avaldatud koolituse muudatus on avalikul lehel näha alles pärast „Avalda muudatused“.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-koolitus-loobu",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Avaldamata muudatustest loobumine",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni avaldatud koolitus ja lisa „Lühikirjeldus“ lõppu sõna Proov.",
+        "Vajuta pealkirja all ribal „Loobu muudatustest“ ja siis „Katkesta“.",
+        "Vajuta uuesti „Loobu muudatustest“ ja siis „Jah, loobu“.",
+        "Lisa sõna Proov uuesti ja vajuta ribal „Eelvaade ↗“.",
+        "Vajuta eelvaate all ribal „Loobu muudatustest“ ja siis „Jah, loobu“.",
+        "Ava sama koolitus halduses uuesti."
+      ],
+      "expect": [
+        "Küsimus on „Kas loobun 1 muudatusest? Avalikul lehel jääb praegune versioon.“.",
+        "„Katkesta“ jätab muudatuse alles ja riba jääb.",
+        "Pärast „Jah, loobu“ kaob riba ja väljal on jälle avalik tekst.",
+        "Eelvaate ribal loobumine viib avalikule lehele, eelvaade on läbi ja sõna Proov kadunud.",
+        "Halduses pole riba ega sõna Proov."
+      ],
+      "why": "Maria saab avaldamata muudatused ära visata, avalikku lehte muutmata.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-koolitus-uus",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Uus koolitus",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava „Koolitused“ ja vajuta „Lisa koolitus“.",
+        "Vaata päist, siis kirjuta „Koolituse nimi“ väljale Proov ja number.",
+        "Vajuta menüüs „Koolitused“ ja siis „Jää siia“.",
+        "Vajuta päises „Lisa koolitus“.",
+        "Kirjuta „Lühikirjeldus“ ja klõpsa väljast välja."
+      ],
+      "expect": [
+        "Enne nime on päises „Täida kohustuslikud väljad“, pärast nime „Vajuta „Lisa koolitus“.“.",
+        "Lahkudes küsib leht „Muudatust „Koolituse nimi“ ei saanud veel salvestada.“, põhjus „Koolitust pole veel lisatud.“.",
+        "„Jää siia“ jätab nime alles.",
+        "„Lisa koolitus“ avab uue koolituse ja ütleb „Koolitus loodud. Lisa pildid ja avalda, kui kõik on valmis.“.",
+        "Pärast „Lühikirjeldus“ muutmist on päises „Salvestatud“ koos kellaajaga.",
+        "Koolituste loendis on uus koolitus staatusega „Mustand“."
+      ],
+      "why": "Uus koolitus tekib ühe nupuga ja pooleli tekst ei kao märkamatult.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-jarjekord",

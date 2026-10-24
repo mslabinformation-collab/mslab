@@ -77,15 +77,35 @@
   margin: 0;
 }
 
-/* after a publish: the labels of the fields it could not copy, under the bar */
+/* a publish or a discard that failed: the screen's word, a line of its own in the bar */
+.error {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--bad);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* after a publish: what it could not publish (S3-P3-b), under the bar — „Puudub: …“, and the sentence over the labels changed meanwhile */
 .blocked {
   display: grid;
   gap: 4px;
   margin: 10px 0 0;
-  padding: 0 0 0 22px;
   color: var(--bad);
   font-size: 13px;
   line-height: 1.4;
+}
+
+.blocked p {
+  margin: 0;
+}
+
+.blocked ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 22px;
 }
 
 .phone {

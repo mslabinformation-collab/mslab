@@ -6,7 +6,7 @@ import { clients, contentDrafts, courseAccess, courseImages, courseModules, cour
 import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, moveCourseTo } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { draftFromCourse, newCourseDraft, type CourseDraft } from "@/domain/course-editor";
-import { deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
+import { createCourseForm, deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
 
 // Task 13: the course editor's and the calendar's form handling and queries on a real (PGlite) database.
 
@@ -35,6 +35,23 @@ const form = (fields: Record<string, string>) => {
 const save = (draft: CourseDraft) => saveCourseForm(db, form({ data: JSON.stringify(draft) }));
 const load = async (id: number) => draftFromCourse((await getCourseForEdit(db, id))!);
 const fieldsOf = (r: EditResult) => (r.ok ? {} : (r.fields ?? {}));
+
+describe("createCourseForm: „Lisa koolitus“ (piece 3a, Task 7: the editor's one explicit create; every card autosaves after it)", () => {
+  test("creates a new course as saveCourseForm does", async () => {
+    const r = await createCourseForm(db, form({ data: JSON.stringify({ ...newCourseDraft(), title: { et: "Uus kulmukoolitus" }, priceGroup: "199,50" }) }));
+    expect(r).toMatchObject({ ok: true, created: true });
+    expect(await getCourseForEdit(db, (r as { id: number }).id)).toMatchObject({ slug: "uus-kulmukoolitus", priceGroup: 19950, published: false });
+  });
+
+  test("never writes an existing course (the old „Salvesta“ path, which could unpublish around R-d, is gone): an id is refused, nothing changes", async () => {
+    const before = await getCourseForEdit(db, online.id);
+    const draft = { ...(await load(online.id)), title: { et: "Üle kirjutatud" }, published: false };
+    expect(await createCourseForm(db, form({ data: JSON.stringify(draft) }))).toEqual({ ok: false, error: "invalid" });
+    expect(await getCourseForEdit(db, online.id)).toEqual(before);
+    expect(await createCourseForm(db, form({ data: "{" }))).toEqual({ ok: false, error: "invalid" });
+    expect(await createCourseForm(db, new FormData())).toEqual({ ok: false, error: "invalid" });
+  });
+});
 
 describe("saveCourseForm: a new course", () => {
   test("is created after the others with a slug made from its title, its images and badge", async () => {

@@ -21,7 +21,7 @@ const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
 
 import {
-  COURSE_PARTS, courseChanges, coursePublisher, discardCourse, partLabels, publishCourse, readCoursePart, switchCoursePublished, switchCourseSample, writeCoursePart,
+  COURSE_PARTS, courseChanges, coursePublisher, discardCourse, partLabels, publishCourse, readCourseEditor, readCoursePart, switchCoursePublished, switchCourseSample, writeCoursePart,
 } from "@/server/course-parts";
 
 const MARIA = { email: "maria@example.test" };
@@ -514,5 +514,32 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
     const liveRead = log.findIndex((q, i) => i > courseLock(log) && /from "course_images"/.test(q));
     const written = log.findIndex((q) => /^update "courses"/.test(q));
     expect([courseLock(log) < draftsLock, courseLock(log) < liveRead, draftsLock < written, liveRead < written]).toEqual([true, true, true, true]);
+  });
+});
+
+describe("the editor's start (Task 7): every card's part at once", () => {
+  test("each part's version and value as its card reads it (readCoursePart), with live's value beside it; the outline's labels; null for no course", async () => {
+    await write(online.id, "basics", { summary: { et: "Uus" } }, (await read(online.id, "basics")).version);
+    const state = (await readCourseEditor(db, online.id))!;
+    expect(Object.keys(state.parts)).toEqual(COURSE_PARTS.filter((p) => p !== "outline"));
+    for (const part of Object.keys(state.parts)) {
+      const one = await read(online.id, part);
+      expect(state.parts[part as keyof typeof state.parts], part).toMatchObject({ version: one.version, value: one.value });
+    }
+    // the draft's value is the card's, live's stays beside it (the PublishBar's compare)
+    expect(state.parts.basics.value.summary).toEqual({ et: "Uus" });
+    expect(state.parts.basics.live.summary).toEqual({ et: "" });
+    expect(state.parts.price.live).toEqual(state.parts.price.value);
+    // the answer key is in the admin's editor (its test card), never elsewhere
+    expect(state.parts.test.value.questions).toEqual([QUESTION]);
+    expect(state.outline).toEqual([]);
+    // a new module waiting on the published course: the outline's labels (Moodul 01)
+    await db.insert(courseModules).values({ courseId: online.id, position: 1, title: { et: "Uus moodul" }, unpublished: true });
+    expect((await readCourseEditor(db, online.id))!.outline).toEqual(["Moodul 01"]);
+    // an unpublished course: live, and no labels
+    const off = (await readCourseEditor(db, hidden.id))!;
+    expect(off.parts.basics.value).toEqual(off.parts.basics.live);
+    expect(off.outline).toEqual([]);
+    expect(await readCourseEditor(db, 999_999)).toBeNull();
   });
 });
