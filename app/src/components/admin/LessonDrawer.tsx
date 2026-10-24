@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { LESSON_LIMITS, lessonTextProblems } from "@/domain/lesson-limits";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
@@ -13,6 +14,7 @@ import { patchSender, type Fields, type SendPatch } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
 import { Choice } from "./Choice";
 import { ConfirmPanel } from "./ConfirmPanel";
+import { focusFell } from "./focus-fell";
 import { I18nInput } from "./I18nInput";
 import { LessonFiles } from "./LessonFiles";
 import { LessonVideoField } from "./LessonVideoField";
@@ -38,12 +40,10 @@ import styles from "./LessonsEditor.module.css";
 // - the switch „Õpilastele nähtav“ (the shared Switch) with the existing hint for a lesson with progress; off, the UndoBar „Õppetund peidetud.“, whose
 //   „Võta tagasi“ shows it again (S3-P3-c); on, no bar;
 // - „Kustuta õppetund“, only without progress, after a ConfirmPanel.
-// No ET | RU switch of its own (Dim 22.10): the fields follow the page's language.
+// No ET | RU switch of its own (Dim 22.10): the fields follow the page's language. A file dropped anywhere on the drawer but its drop zone (its
+// backdrop too) is taken and does nothing (final review P10-2): the browser would open it in the tab, and the admin would be gone.
 
 const t = adminEt.lessons;
-/** A lesson's name and short text, at most (server/course-outline.ts LESSON_LIMITS; the server checks them again: no server module comes here). */
-const TITLE_MAX = 120;
-const BODY_MAX = 5000;
 
 type Action = (fd: FormData) => void;
 const send = (action: Action, fields: Record<string, string | number>) => {
@@ -62,26 +62,14 @@ type TextField = "title" | "body";
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const sameText = (a: I18n, b: I18n) => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
 
-/** The name and the short text as the server checks them (server/edit-check.ts Check.text): a name needed, each language within its limit. */
-function checkText(f: Fields): Record<string, string> {
-  const out: Record<string, string> = {};
-  const title = f.title as I18n;
-  const body = f.body as I18n;
-  const titleEt = title.et.trim();
-  if (titleEt.length > TITLE_MAX || (title.ru ?? "").trim().length > TITLE_MAX) out.title = "tooLong";
-  else if (!titleEt) out.title = "required";
-  if (body.et.trim().length > BODY_MAX || (body.ru ?? "").trim().length > BODY_MAX) out.body = "tooLong";
-  else if (!body.et.trim() && (body.ru ?? "").trim()) out.body = "required";
-  return out;
-}
+/**
+ * The name and the short text as the server checks them (domain/lesson-limits.ts, the rule of server/edit-check.ts Check.text): a name needed, each
+ * language within its limit, trimmed.
+ */
+const checkText = (f: Fields): Record<string, string> => lessonTextProblems({ title: f.title as I18n, body: f.body as I18n });
 const labelOf = (field: string) => (field === "body" ? t.drawer.body : t.drawer.name);
 const fieldOf = (field: string) => document.querySelector<HTMLElement>(`[data-i18n="lesson-${field === "body" ? "body" : "title"}"]`);
 const focusField = (field: string) => fieldOf(field)?.focus();
-/** The focus has nowhere to be: on <body>, on an element that is gone, or in the UndoBar (which goes once its undo is done). */
-const focusFell = () => {
-  const active = document.activeElement;
-  return !active || active === document.body || !active.isConnected || active.closest("[data-undo-bar]") !== null;
-};
 
 /**
  * The name and the short text's autosave (README B2 „Õppetunni nimi, Lühike tekst (autosave)“; R-b2): the shared engine on POST
@@ -148,6 +136,30 @@ function useLessonText(courseId: number, lesson: AdminLesson) {
 }
 type LessonText = ReturnType<typeof useLessonText>;
 
+/** A drag that carries files (a text dragged inside a field carries none, and is left to the browser). */
+const carriesFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
+/**
+ * Files dragged over the drawer's dialog (`inside`'s, else `inside` itself) and dropped beside its drop zone do nothing: the browser's own drop
+ * (open the file in the tab) is prevented. The drop zone takes its drop first and uploads it (LessonFiles.tsx); other drags are left as they are.
+ */
+function useFileDropsKept(inside: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = inside.current;
+    const host = el?.closest("dialog") ?? el;
+    if (!host) return;
+    const keep = (e: DragEvent) => {
+      if (carriesFiles(e)) e.preventDefault();
+    };
+    host.addEventListener("dragover", keep);
+    host.addEventListener("drop", keep);
+    return () => {
+      host.removeEventListener("dragover", keep);
+      host.removeEventListener("drop", keep);
+    };
+  }, [inside]);
+}
+
 type Props = {
   courseId: number;
   /** The course is published: a live lesson's text saves to the draft, and the chip says „Mustand salvestatud“ (README §1.4). */
@@ -161,10 +173,12 @@ type Props = {
 
 export function LessonDrawer({ courseId, published, lesson, place, bunnyReady }: Props) {
   const text = useLessonText(courseId, lesson);
+  const root = useRef<HTMLDivElement>(null);
+  useFileDropsKept(root);
   // the name as its field has it (a blank field keeps the stored one), in the header and the delete's question
   const name = text.value.title.et.trim() || lesson.title.et.trim();
   return (
-    <div className={styles.lessonDrawer} data-lesson-drawer={lesson.id}>
+    <div ref={root} className={styles.lessonDrawer} data-lesson-drawer={lesson.id}>
       <header className={`${cd.head} ${styles.drawerHead}`} data-lesson-head="">
         <p className={styles.drawerPlace} data-lesson-place="">
           {fill(t.drawer.place, { nn: String(place.module).padStart(2, "0"), m: place.module, n: place.lesson })}
@@ -192,7 +206,7 @@ export function LessonDrawer({ courseId, published, lesson, place, bunnyReady }:
 function LessonTextFields({ text }: { text: LessonText }) {
   return (
     <section className={`${cd.section} ${styles.drawerText}`} onBlur={text.flush} data-lesson-text="">
-      <I18nInput label={t.drawer.name} name="lesson-title" value={text.value.title} onChange={(v) => text.set("title", v)} maxLength={TITLE_MAX} error={text.error("title")} />
+      <I18nInput label={t.drawer.name} name="lesson-title" value={text.value.title} onChange={(v) => text.set("title", v)} maxLength={LESSON_LIMITS.title} error={text.error("title")} />
       <I18nInput
         label={t.drawer.body}
         hint={t.drawer.bodyHint}
@@ -201,7 +215,7 @@ function LessonTextFields({ text }: { text: LessonText }) {
         onChange={(v) => text.set("body", v)}
         multiline
         rows={6}
-        maxLength={BODY_MAX}
+        maxLength={LESSON_LIMITS.body}
         error={text.error("body")}
       />
       {text.conflict && (

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Q, Tx } from "@/db/client";
 import { courseModules, lessons, type Course } from "@/db/schema";
 import type { OutlineValue } from "@/domain/course-parts";
+import { LESSON_LIMITS } from "@/domain/lesson-limits";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
@@ -36,8 +37,8 @@ import type { Check } from "./edit-check";
 const ENTITY = "course";
 export const OUTLINE_PART = "outline";
 
-/** A module's and a lesson's name and a lesson's short text at most (characters per language). */
-export const LESSON_LIMITS = { title: 120, body: 5000 } as const;
+/** A module's and a lesson's name and a lesson's short text at most (characters per language): domain/lesson-limits.ts, the browser's fields' too. */
+export { LESSON_LIMITS };
 
 // ---------- the value ----------
 

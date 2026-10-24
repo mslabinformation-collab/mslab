@@ -1,4 +1,5 @@
 import { LIMITS } from "@/domain/course-editor";
+import { textProblem } from "@/domain/lesson-limits";
 import { parseEuroCents } from "@/domain/money";
 import { hasLocalePrefix, isFocal, isHttpsUrl, isSiteHref } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
@@ -82,12 +83,16 @@ export class Check {
     return Object.keys(this.errors).length === 0;
   }
 
-  /** A text in both languages: trimmed, the Russian one left out when blank. Null when `optional` and empty. */
+  /**
+   * A text in both languages: trimmed, the Russian one left out when blank. Null when `optional` and empty. The rule is domain/lesson-limits.ts
+   * textProblem's, which the browser's lesson and module fields check by too.
+   */
   text(name: string, f: I18n, max: number, opts: { required?: boolean } = {}): I18n | null {
+    const problem = textProblem(f, max, opts);
+    if (problem) return this.fail(name, problem);
     const et = f.et.trim();
     const ru = (f.ru ?? "").trim();
-    if (et.length > max || ru.length > max) return this.fail(name, "tooLong");
-    if (!et) return ru ? this.fail(name, "required") : opts.required ? this.fail(name, "required") : null;
+    if (!et) return null;
     return ru ? { et, ru } : { et };
   }
 

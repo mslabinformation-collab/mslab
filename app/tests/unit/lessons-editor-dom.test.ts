@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LessonsEditor } from "@/components/admin/LessonsEditor";
 import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
+import { LESSON_LIMITS } from "@/domain/lesson-limits";
 import type { AdminLesson, AdminModule } from "@/server/admin-lessons";
 import { stubFetch } from "../fakes";
 
@@ -279,6 +280,23 @@ describe("the module's name edits in its row (README B2: autosave, no „Salvest
     expect(fetched.calls.filter((c) => c.url.startsWith("/api/admin/moodul/"))).toEqual([]);
     expect(text($('[data-module="1"]'))).toContain("Kirjuta nimi.");
     expect(titleField(1)!.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("the name's limit is the server's, on the trimmed text (domain/lesson-limits.ts; final review M-2): spaces round it never hold a name back", async () => {
+    await show();
+    // LESSON_LIMITS.title characters with a space on each side: the server takes it (it trims), so it is sent
+    const padded = ` ${"a".repeat(LESSON_LIMITS.title)} `;
+    await type(titleField(1), padded);
+    await leave(titleField(1));
+    await settle();
+    expect(fetched.calls.filter((c) => c.url === "/api/admin/moodul/1").map((c) => c.body)).toEqual([{ version: "t:m1", patch: { title: { et: padded } } }]);
+    expect(titleField(1)!.getAttribute("aria-invalid")).toBeNull();
+    // one character more, trimmed: held back with „Liiga pikk.“, as the server would refuse it
+    await type(titleField(2), "b".repeat(LESSON_LIMITS.title + 1));
+    await leave(titleField(2));
+    await settle();
+    expect(fetched.calls.filter((c) => c.url === "/api/admin/moodul/2")).toEqual([]);
+    expect(text($('[data-module="2"]'))).toContain("Liiga pikk.");
   });
 
   it("another tab saved the name meanwhile: „Taasta minu tekst“ saves this row's name over it", async () => {

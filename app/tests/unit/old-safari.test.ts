@@ -119,6 +119,14 @@ const BROWSER_FILES = [
   "src/lib/course-copies.ts",
   // the B screens, Task 8: the list editors' row keys, which follow a JSON list's rows through moves, typing and an undo (it pulls lib/version.ts)
   "src/components/admin/row-keys.ts",
+  // the B screens, final review M-1: the optimistic reorder the course list and the modules card run in the browser (pure, imports nothing), and
+  // „· avaldamata“ after a field's label (plain markup with no "use client" line, drawn by I18nInput and the course cards; it pulls the admin dict)
+  "src/components/admin/reorder.ts",
+  "src/components/admin/UnpublishedTag.tsx",
+  // the B screens, final review P10-1: the lesson texts' limits and rule the lesson drawer and the modules card check by (pure, types only), and
+  // where the focus may go after an undo (the list editors, the lesson drawer and its files)
+  "src/domain/lesson-limits.ts",
+  "src/components/admin/focus-fell.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

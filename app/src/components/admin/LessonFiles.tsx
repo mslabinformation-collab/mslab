@@ -7,6 +7,7 @@ import { fill, formatSize } from "@/i18n/format";
 import { removeLessonFile, undoRemoveLessonFile } from "@/server/actions/admin-lessons";
 import type { AdminLessonFile } from "@/server/admin-lessons";
 import type { EditResult } from "@/server/edit-check";
+import { focusFell } from "./focus-fell";
 import { useGuardSource } from "./LeaveGuard";
 import { lessonError } from "./LessonsEditor";
 import { useUndo } from "./UndoBar";
@@ -45,12 +46,6 @@ async function answerText(res: Response): Promise<string | null> {
   if (res.status === 413) return t.size;
   return t.server; // "missing" and anything else
 }
-
-/** The focus has nowhere to be: on <body>, on an element that is gone, or in the UndoBar (which goes once its undo is done). */
-const focusFell = () => {
-  const active = document.activeElement;
-  return !active || active === document.body || !active.isConnected || active.closest("[data-undo-bar]") !== null;
-};
 
 const without = (set: ReadonlySet<number>, id: number): ReadonlySet<number> => {
   const next = new Set(set);

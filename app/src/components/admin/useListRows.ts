@@ -16,12 +16,6 @@ import { useUndo } from "./UndoBar";
 /** Each list's editors on the page now, and the bar to take away when the last one goes. */
 const owners = new Map<string, { count: number; withdraw: (() => void) | null }>();
 
-/** After an undo the restored row may take the focus only where the focus fell (on the body: the bar's button is gone) or is still on the bar. */
-export function focusFell(): boolean {
-  const now = document.activeElement;
-  return !now || now === document.body || now.closest("[data-undo-bar]") !== null;
-}
-
 export function useListRows<T>(o: { owner: string; items: readonly T[]; onChange?: (items: T[]) => void; onUpdate?: (fn: (items: T[]) => T[]) => void }): {
   /** A change of the rows, to the list as it is when it lands. */
   change: (fn: (list: T[]) => T[]) => void;

@@ -9,7 +9,8 @@ import { DragList } from "./DragList";
 import { I18nInput } from "./I18nInput";
 import { insertAt, newRowKey, removeAt, useRowKeys } from "./row-keys";
 import { UnpublishedTag } from "./UnpublishedTag";
-import { focusFell, useListRows } from "./useListRows";
+import { focusFell } from "./focus-fell";
+import { useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 

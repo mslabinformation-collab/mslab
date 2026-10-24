@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { startTransition, useActionState, useCallback, useEffect, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, type ReactNode } from "react";
+import { LESSON_LIMITS, lessonTextProblems } from "@/domain/lesson-limits";
 import { moveLesson, type ModuleLayout } from "@/domain/lessons";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
@@ -40,8 +41,6 @@ import styles from "./LessonsEditor.module.css";
 // its button is aria-disabled (a disabled button would drop the focus) and a second press does nothing.
 
 const t = adminEt.lessons;
-/** A module's or programme point's name, at most (server/course-outline.ts LESSON_LIMITS.title; the server checks it again). */
-const TITLE_MAX = 120;
 
 type Action = (fd: FormData) => void;
 /** Sends these fields through `action` (a server action of useActionState). */
@@ -220,13 +219,11 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const sameText = (a: I18n, b: I18n) => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
 
-/** A module's name as its check refuses it, before anything is sent (the server's own check: required, at most TITLE_MAX characters a language). */
-function checkTitle(f: Fields): Record<string, string> {
-  const v = f.title as I18n;
-  if (!v.et.trim()) return { title: "required" };
-  if (v.et.length > TITLE_MAX || (v.ru ?? "").length > TITLE_MAX) return { title: "tooLong" };
-  return {};
-}
+/**
+ * A module's name as its check refuses it, before anything is sent: the server's own rule (domain/lesson-limits.ts, server/edit-check.ts Check.text):
+ * needed, at most LESSON_LIMITS.title characters a language, each language trimmed (final review M-2).
+ */
+const checkTitle = (f: Fields): Record<string, string> => lessonTextProblems({ title: f.title as I18n });
 
 /**
  * A module's name, autosaved on its own route (README B2 „the title edits inline (autosave)“; R-b2): the shared engine on POST /api/admin/moodul/<id>
@@ -344,7 +341,7 @@ function ModuleRow({ module: m, n, courseId, online, handle, arrows, onName, mov
             name={`module-${m.id}`}
             value={title.value}
             onChange={title.set}
-            maxLength={TITLE_MAX}
+            maxLength={LESSON_LIMITS.title}
             error={title.error}
             describedBy={m.changed ? `${uid}-tag` : undefined}
           />
@@ -524,7 +521,7 @@ function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: num
           className={ui.input}
           type="text"
           autoComplete="off"
-          maxLength={TITLE_MAX}
+          maxLength={LESSON_LIMITS.title}
           aria-invalid={error ? true : undefined}
           aria-describedby={`${uid}-msg`}
         />
@@ -573,7 +570,7 @@ function AddModuleForm({ courseId, online, field }: { courseId: number; online: 
           className={ui.input}
           type="text"
           autoComplete="off"
-          maxLength={TITLE_MAX}
+          maxLength={LESSON_LIMITS.title}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);

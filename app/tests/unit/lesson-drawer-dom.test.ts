@@ -370,6 +370,36 @@ describe("„Failid“ (README B2, S3-P3-c): a drop zone and the list; „Eemald
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it("a file dropped beside the drop zone (the head, a field, ✕, the backdrop) does nothing: never the browser's own drop, which opens it in the tab (final review P10-2)", async () => {
+    await show();
+    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], "Juhend.pdf", { type: "application/pdf" });
+    /** A drag event at `el` carrying `types`; true when something on the page took it (the browser's own action prevented). */
+    const drag = (kind: "dragover" | "drop", el: Element, types: string[] = ["Files"]) => {
+      const e = new Event(kind, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, "dataTransfer", { value: { files: types.includes("Files") ? [file] : [], types } });
+      el.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const beside = [$("[data-lesson-head]")!, nameField()!, $("[data-lesson-visibility]")!, buttonNamed("Sulge", dialog())!, dialog()];
+    await act(async () => {
+      for (const el of beside) {
+        expect(drag("dragover", el), el.tagName).toBe(true);
+        expect(drag("drop", el), el.tagName).toBe(true);
+      }
+    });
+    await settle();
+    // nothing is uploaded, and the drawer stays
+    expect(fetched.calls).toEqual([]);
+    expect(dialog().open).toBe(true);
+    // a text dragged inside a field is the browser's (it moves the text): left alone
+    expect(drag("dragover", nameField()!, ["text/plain"])).toBe(false);
+    expect(drag("drop", bodyField()!, ["text/plain"])).toBe(false);
+    // and the zone's own drop still uploads
+    await act(async () => void drag("drop", $("[data-file-drop]")!));
+    await settle();
+    expect(fetched.calls.map((c) => [c.method, c.url])).toEqual([["POST", "/api/admin/lesson-file"]]);
+  });
+
   it("✕ while a file uploads asks through the guard: „Muudatust „Failid“ ei saanud veel salvestada.“ · „Üleslaadimine käib.“", async () => {
     let release = () => {};
     hold = new Promise<void>((resolve) => (release = resolve));
