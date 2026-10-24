@@ -900,19 +900,54 @@
         "Ava „Koolitused“ ja vajuta oma päris e-koolituse nimele.",
         "Keri plokini „Moodulid ja õppetunnid“.",
         "Kirjuta „Uue mooduli nimi“ ja vajuta „Lisa moodul“.",
+        "Muuda uue mooduli nimes üht sõna ja klõpsa väljast välja.",
         "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund“.",
         "Vali avanenud paneelis „Õppetunni liik“ all „Tekst“.",
-        "Kirjuta „Lühike tekst“ ja vajuta „Salvesta“."
+        "Kirjuta „Lühike tekst“ ja vajuta „Salvesta“.",
+        "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
       ],
       "expect": [
-        "Moodul ilmub loendisse oma numbriga, näiteks 01.",
+        "Moodul ilmub loendisse oma numbriga, näiteks 01, ja ploki pealkirja kõrval on moodulite ja õppetundide arv.",
+        "Mooduli nime juures pole nuppu „Salvesta“: päises on „Salvestatud“ või „Mustand salvestatud“ koos kellaajaga.",
         "Õppetund ilmub mooduli alla ja selle paneel avaneb ise.",
         "Paneelis näed pärast salvestamist „Salvestatud.“.",
-        "Õppetunni real on märge „Tekst“."
+        "Õppetunni real on märge „Tekst“.",
+        "Avaldatud koolitusel on uue mooduli ja õppetunni real „avaldamata“, kuni vajutad „Avalda muudatused“."
       ],
       "why": "Alad 4–7 kasutavad seda e-koolitust; see töö on vaja teha ka avamiseks.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-ekursus-moodulite-jarjekord",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Moodulite järjekord: lohistamine, nooled ja kustutamine",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava oma päris e-koolitus ja keri plokini „Moodulid ja õppetunnid“.",
+        "Lohista teise mooduli käepide ⋮⋮ sõrmega esimeseks ja lase lahti.",
+        "Vajuta sama mooduli juures noolt alla.",
+        "Lisa tühi moodul nimega Proov ja vajuta selle juures „Kustuta moodul“.",
+        "Vajuta „Katkesta“, siis uuesti „Kustuta moodul“ ja „Jah, kustuta“.",
+        "Ava mõni kontaktkoolitus, lisa plokki „Programm“ punkt Proov ja vajuta selle juures „Kustuta moodul“.",
+        "Vajuta „Jah, kustuta“."
+      ],
+      "expect": [
+        "Moodul liigub kohe uude kohta ja on seal ka pärast lehe uuesti laadimist.",
+        "Avaldatud koolitusel on pealkirja all „Moodulite järjekord“, kuni vajutad „Avalda muudatused“.",
+        "Nupu asemel küsitakse „Kas kustutan mooduli „Proov“?“ ja „Katkesta“ jätab mooduli alles.",
+        "Kontaktkoolitusel küsitakse „Kas kustutan punkti „Proov“?“.",
+        "„Kustuta moodul“ on ainult moodulil, milles pole õppetunde."
+      ],
+      "why": "Maria seab mooduleid tahvlis sõrmega ja kustutamine küsib enne üle.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ekursus-video",
@@ -932,11 +967,13 @@
         "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega.",
         "Seejärel näed „Töötlemisel…“.",
         "Mõne minuti pärast näed „Valmis“ koos video pikkusega.",
-        "Õppetunni real on märge „Video“ koos video pikkusega."
+        "Õppetunni real on töötlemise ajal märge „Töötlemisel“ ja hiljem „Valmis“."
       ],
       "why": "Videotund on e-koolituse põhiosa.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-ekursus-test",

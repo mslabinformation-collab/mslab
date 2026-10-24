@@ -137,6 +137,16 @@ async function stateOf(q: Q, course: Course): Promise<CourseState> {
   return { live, drafts, type: effectiveType(live, drafts) };
 }
 
+/**
+ * The type a course's cards follow (R-a; README B2 „the card follows the draft „Õppevorm““): on a published course the drafted one while its basics
+ * have a draft, else its own. Read under the caller's lock (server/admin-lessons.ts: „Lisa õppetund“ takes lessons only for an e-course, Task 5 review M-4).
+ */
+export async function draftedType(q: Q, course: Course): Promise<CourseType> {
+  if (!course.published) return course.type;
+  const drafts = await readDrafts(q, ENTITY, course.id, { only: ["basics"] });
+  return drafts.length === 0 ? course.type : effectiveType(await liveOf(q, course), drafts);
+}
+
 /** A draft's version as its editor holds it (R-b, I-1): the row's id and its counter, "d:<id>.<n>": never an earlier draft's of the part. */
 const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
 

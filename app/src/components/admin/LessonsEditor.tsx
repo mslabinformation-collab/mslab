@@ -1,28 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useActionState, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { formatDuration, moveLesson, type ModuleLayout } from "@/domain/lessons";
+import { startTransition, useActionState, useCallback, useEffect, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, type ReactNode } from "react";
+import { moveLesson, type ModuleLayout } from "@/domain/lessons";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
-import { addLesson, addModule, deleteModule, moveLessonInList, moveModuleInList, renameModule } from "@/server/actions/admin-lessons";
+import { COURSE_COPY_OWNER, courseCopyKey } from "@/lib/course-copies";
+import { addLesson, addModule, deleteModule, moveLessonInList, moveModuleTo } from "@/server/actions/admin-lessons";
 import type { AdminLesson, AdminModule } from "@/server/admin-lessons";
 import type { EditResult } from "@/server/edit-check";
+import { patchSender, type Fields, type SendPatch } from "./autosave/engine";
+import { useAutosave } from "./autosave/useAutosave";
+import { ConfirmPanel } from "./ConfirmPanel";
+import { useOutlineTexts } from "./course/OutlineTexts";
+import { DragList } from "./DragList";
 import { I18nInput } from "./I18nInput";
+import { reorder } from "./reorder";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import forms from "./RegistrationForms.module.css";
-import cd from "./ClientDrawer.module.css";
 import styles from "./LessonsEditor.module.css";
 
-// "Moodulid ja õppetunnid" (an e-course) or "Programm" (a contact course: module titles only), under the course editor. Every
-// change is saved at once by its own small form (server/actions/admin-lessons.ts); the page then comes back with the stored
-// state. The course editor's "Salvesta" is not needed for any of it. A lesson opens in the drawer (?oppetund=<id>,
-// LessonDrawer.tsx). Submitted through startTransition (React keeps the fields after an error); while one is on its way its
-// button is aria-disabled (a disabled button would drop the keyboard focus) and a second press does nothing.
+// „Moodulid ja õppetunnid“ (an e-course) or „Programm“ (a contact course: module names only) among the course editor's cards (admin UX pass piece 3a,
+// Task 9; README B2 and B18; the Part 3 frame's modules card; piece3-texts P-3, P-4, S3-P3-e, S3-P3-m):
+// - the card's title with its summary „{n} moodulit · {m} õppetundi“ (P-4; none yet: „Mooduleid veel pole.“ in its place);
+// - each module a box: the handle ⋮⋮, its number, its name edited in the row and autosaved on its own route (api/admin/moodul/<id> from its „t:“
+//   version, R-b2: no „Salvesta“), „avaldamata“ while it waits for „Avalda muudatused“ (P-3: new, or changed in the draft), and ↑ / ↓. A drag, ↑ and ↓
+//   are one `moveModuleTo` each (DragList, S3-P3-m's names and announcement), shown at once and stored as the server says: on a published course in its
+//   outline draft, on an unpublished one in the rows (server/admin-lessons.ts);
+// - an e-course module's lessons: the name (read-only here: the drawer edits it), „avaldamata“, „Peidetud“, the video tag („Valmis“, „Töötlemisel
+//   {n}%“ or „Töötlemisel“ without a figure, „Video puudub“, „Tekst“; the undrawn „Video üleslaadimisel“ and „Video viga“), ↑ / ↓ (across modules at an
+//   edge, as before) and › to its drawer (?oppetund=<id>, LessonDrawer.tsx); then „Lisa õppetund“;
+// - „Kustuta moodul“ only where it can go (AdminModule.deletable; else hidden, as before when it had lessons): a ConfirmPanel in its place, „Kas
+//   kustutan punkti „{title}“?“ for a programme point, „Kas kustutan mooduli „{title}“?“ for a module; then „+ Lisa moodul“ / „+ Lisa punkt“.
+// The adds, moves and deletes are server actions whose answer brings the page's new read (the course editor takes it without starting its cards
+// over, course/SavedCourse.tsx). Inside the editor a name's autosave is one of the editor's (course/OutlineTexts.ts). While an action is on its way
+// its button is aria-disabled (a disabled button would drop the focus) and a second press does nothing.
 
 const t = adminEt.lessons;
+/** A module's or programme point's name, at most (server/course-outline.ts LESSON_LIMITS.title; the server checks it again). */
+const TITLE_MAX = 120;
 
 type Action = (fd: FormData) => void;
 /** Sends these fields through `action` (a server action of useActionState). */
@@ -42,12 +60,30 @@ export function lessonError(r: EditResult | null, inUse: string = t.errors.inUse
   return t.errors.server;
 }
 
-const same = (a: I18n, b: I18n) => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
+/** The card's summary beside its title (P-4, P-8): an e-course's „{n} moodulit · {m} õppetundi“, none yet „Mooduleid veel pole.“; a programme only the latter. */
+function summaryOf(modules: readonly AdminModule[], online: boolean): string | null {
+  if (modules.length === 0) return t.empty;
+  if (!online) return null;
+  const lessons = modules.reduce((n, m) => n + m.lessons.length, 0);
+  return fill(t.summary, {
+    modules: modules.length === 1 ? t.modulesOne : fill(t.modulesN, { n: modules.length }),
+    lessons: lessons === 1 ? t.lessonsOne : fill(t.lessonsN, { n: lessons }),
+  });
+}
+
+/** A lesson row's video tag (P-4): „Töötlemisel {n}%“ only with a figure Bunny gave (S3-P3-e: none, or 0, is „Töötlemisel“). */
+function videoTag(l: AdminLesson): string {
+  if (l.videoStatus === "processing" && l.videoProgress !== null && l.videoProgress > 0) return fill(t.videoProgress, { n: Math.min(100, Math.round(l.videoProgress)) });
+  return t.videoTag[l.videoStatus];
+}
+
+/** The video tag's colours (the Part 3 frame): „Valmis“ green, „Töötlemisel“ the status accent, „Video puudub“ and „Video viga“ red (they keep the lessons after it locked for students). */
+const VIDEO_TONE: Record<AdminLesson["videoStatus"], string> = { none: ui.bad, uploading: styles.quietTag, processing: ui.warn, ready: ui.ok, failed: ui.bad };
 
 type Props = {
-  /** The saved course; null on a new course (nothing can be added before it is saved). */
+  /** The saved course; null on a new course (nothing can be added before it is created). */
   courseId: number | null;
-  /** An e-course: modules with lessons. A contact course: its programme (module titles only). */
+  /** An e-course: modules with lessons. A contact course: its programme (module names only). The type the editor's cards follow (the drafted one). */
   online: boolean;
   modules: AdminModule[];
 };
@@ -55,34 +91,44 @@ type Props = {
 export function LessonsEditor({ courseId, online, modules }: Props) {
   const uid = useId();
   const addField = useRef<HTMLInputElement>(null);
-  // ↑ / ↓ and "Kustuta moodul" live here, not in the rows: a moved lesson can land in another module's list (a new row), a deleted
+  // a move shows at once (in the same tick as the drop or the press), and the page's new read brings the stored order; refused, the order goes back
+  const [items, moveOptimistic] = useOptimistic(modules, (list: AdminModule[], m: { from: number; to: number }) => reorder(list, m.from, m.to));
+  const [moveFailed, setMoveFailed] = useState<{ id: number; error: string } | null>(null);
+  // a lesson's ↑ / ↓ and „Kustuta moodul“ live here, not in the rows: a moved lesson can land in another module's list (a new row), a deleted
   // module's row is gone. The answer comes with the page's new state, so the effects below run once the rows are in place.
-  const [moduleMove, moveModuleAction, moduleMoving] = useActionState<EditResult | null, FormData>(moveModuleInList, null);
   const [lessonMove, moveLessonAction, lessonMoving] = useActionState<EditResult | null, FormData>(moveLessonInList, null);
   const [moduleDelete, deleteModuleAction, deleting] = useActionState<EditResult | null, FormData>(deleteModule, null);
-  /** The ↑ / ↓ last pressed (its id), so the focus stays on it where its row is now. */
+  /** The lesson's ↑ / ↓ last pressed (its id), so the focus stays on it where its row is now. */
   const moved = useRef<string | null>(null);
-  /** Which module or lesson the last move or delete was for (its error goes under that row). */
-  const [target, setTarget] = useState<{ moduleMove?: number; lessonMove?: number; moduleDelete?: number }>({});
+  /** Which lesson or module the last lesson move or module delete was for (its error goes under that row). */
+  const [target, setTarget] = useState<{ lessonMove?: number; moduleDelete?: number }>({});
 
   useEffect(() => {
     const id = moved.current;
     moved.current = null;
     if (id) document.getElementById(id)?.focus();
-  }, [moduleMove, lessonMove]);
+  }, [lessonMove]);
 
   // a module deleted: its row is gone, the focus goes to the field for a new one
   useEffect(() => {
     if (moduleDelete?.ok) addField.current?.focus();
   }, [moduleDelete]);
 
-  const layout: ModuleLayout[] = modules.map((m) => ({ moduleId: m.id, lessonIds: m.lessons.map((l) => l.id) }));
+  const layout: ModuleLayout[] = items.map((m) => ({ moduleId: m.id, lessonIds: m.lessons.map((l) => l.id) }));
 
-  const moveModule = (m: AdminModule, i: number, dir: "up" | "down") => {
-    if (moduleMoving || (dir === "up" ? i === 0 : i === modules.length - 1)) return;
-    moved.current = `module-${m.id}-${dir}`;
-    setTarget((x) => ({ ...x, moduleMove: m.id }));
-    send(moveModuleAction, { id: m.id, dir });
+  const moveModule = (from: number, to: number) => {
+    const id = items[from].id;
+    setMoveFailed(null);
+    startTransition(async () => {
+      moveOptimistic({ from, to });
+      let result: EditResult;
+      try {
+        result = await moveModuleTo({ id, index: to });
+      } catch {
+        result = { ok: false, error: "server" };
+      }
+      if (!result.ok) setMoveFailed({ id, error: lessonError(result) ?? t.errors.server });
+    });
   };
   const moveLessonTo = (l: AdminLesson, dir: "up" | "down") => {
     if (lessonMoving || !moveLesson(layout, l.id, dir === "up" ? -1 : 1)) return;
@@ -91,12 +137,21 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
     send(moveLessonAction, { id: l.id, dir });
   };
 
+  const summary = courseId === null ? null : summaryOf(items, online);
+
   return (
     <section className={`${ui.card} ${styles.editor}`} aria-labelledby={`${uid}-title`} data-lessons-editor="">
       <div className={styles.intro}>
-        <h2 id={`${uid}-title`} className={ui.h2}>
-          {online ? t.title : adminEt.courseEditor.sections.modulesC}
-        </h2>
+        <div className={styles.titleRow}>
+          <h2 id={`${uid}-title`} className={ui.h2}>
+            {online ? t.title : adminEt.courseEditor.sections.modulesC}
+          </h2>
+          {summary !== null && (
+            <span className={styles.summary} data-modules-summary="">
+              {summary}
+            </span>
+          )}
+        </div>
         <p className={ui.hint}>{online ? t.hint : adminEt.courseEditor.fields.modulesCHint}</p>
       </div>
 
@@ -104,32 +159,34 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
         <p className={ui.notice}>{t.saveFirst}</p>
       ) : (
         <>
-          {modules.length === 0 ? (
-            <p className={`${ui.muted} ${ui.small}`}>{t.empty}</p>
-          ) : (
-            <ol className={styles.modules}>
-              {modules.map((m, i) => (
+          {items.length > 0 && (
+            <DragList<AdminModule>
+              items={items}
+              keyOf={(m) => String(m.id)}
+              label={(m) => m.title.et.trim()}
+              onMove={moveModule}
+              className={styles.modules}
+              rowClassName={styles.module}
+              renderRow={(m, i, handle, arrows) => (
                 <ModuleRow
-                  key={m.id}
                   module={m}
                   n={i + 1}
-                  first={i === 0}
-                  last={i === modules.length - 1}
+                  courseId={courseId}
                   online={online}
-                  onMove={(dir) => moveModule(m, i, dir)}
-                  moveError={target.moduleMove === m.id ? lessonError(moduleMove) : null}
+                  handle={handle}
+                  arrows={arrows}
+                  moveError={moveFailed?.id === m.id ? moveFailed.error : null}
                   deleteError={target.moduleDelete === m.id ? lessonError(moduleDelete) : null}
+                  deleting={deleting && target.moduleDelete === m.id}
                   onDelete={() => {
                     if (deleting) return;
                     setTarget((x) => ({ ...x, moduleDelete: m.id }));
                     send(deleteModuleAction, { id: m.id });
                   }}
-                  deleting={deleting}
                 >
                   {online && (
                     <LessonList
                       module={m}
-                      n={i + 1}
                       layout={layout}
                       courseId={courseId}
                       onMove={moveLessonTo}
@@ -137,8 +194,8 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
                     />
                   )}
                 </ModuleRow>
-              ))}
-            </ol>
+              )}
+            />
           )}
           <AddModuleForm courseId={courseId} online={online} field={addField} />
         </>
@@ -147,115 +204,168 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
   );
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const sameText = (a: I18n, b: I18n) => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
+
+/** A module's name as its check refuses it, before anything is sent (the server's own check: required, at most TITLE_MAX characters a language). */
+function checkTitle(f: Fields): Record<string, string> {
+  const v = f.title as I18n;
+  if (!v.et.trim()) return { title: "required" };
+  if (v.et.length > TITLE_MAX || (v.ru ?? "").length > TITLE_MAX) return { title: "tooLong" };
+  return {};
+}
+
+/**
+ * A module's name, autosaved on its own route (README B2 „the title edits inline (autosave)“; R-b2): the shared engine on POST /api/admin/moodul/<id>
+ * from the version the page read (`t:<hash>`); a published course's live module waits in the outline draft, a new one and an unpublished course's are
+ * written on the row (server/admin-lessons.ts writeOutlineText). The copy in this browser is `mslab-draft:koolitus:<course>-moodul<id>:<tab>`, so the
+ * public preview's „Loobu muudatustest“ drops it with the course's (lib/course-copies.ts). Inside the course editor it is one of the editor's
+ * autosaves (course/OutlineTexts.ts).
+ */
+function useModuleTitle(courseId: number, m: AdminModule, label: string) {
+  const texts = useOutlineTexts();
+  /** The editor's hold as it is when an answer comes (a save's answer comes after its render). */
+  const editor = useRef(texts);
+  useLayoutEffect(() => {
+    editor.current = texts;
+  });
+  /** The server's refusal code of the name (400), until it is typed in again or saved. */
+  const [refused, setRefused] = useState<string | null>(null);
+  const save = useMemo<SendPatch>(() => {
+    const base = patchSender(`/api/admin/moodul/${m.id}`);
+    return async (body, opts) => {
+      const answer = await base(body, opts);
+      const reply = answer && isRecord(answer.body) ? answer.body : null;
+      if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields) && typeof reply.fields.title === "string") setRefused(reply.fields.title);
+      else if (answer?.status === 200 && reply?.ok === true) {
+        setRefused(null);
+        // stored (its version moved): the PublishBar's labels and the rows' „avaldamata“ are the server's to say
+        if (reply.version !== body.version) editor.current?.stored();
+      }
+      return answer;
+    };
+  }, [m.id]);
+  const named = useCallback(() => label, [label]);
+  const auto = useAutosave({
+    owner: COURSE_COPY_OWNER,
+    key: courseCopyKey(courseId, `moodul${m.id}`),
+    version: m.version,
+    fields: { title: m.title },
+    save,
+    validate: checkTitle,
+    label: named,
+    focusField: () => document.querySelector<HTMLElement>(`[data-i18n="module-${m.id}"]`)?.focus(),
+  });
+
+  const { flush, discardCopy, setField, restore, status } = auto;
+  const join = texts?.join;
+  const report = texts?.report;
+  const key = String(m.id);
+  useEffect(() => join?.({ flush, discardCopy }), [join, flush, discardCopy]);
+  useEffect(() => report?.(key, status), [report, key, status]);
+  useEffect(() => () => report?.(key, null), [report, key]);
+
+  const value = auto.fields.title as I18n;
+  const held = status.kind === "invalid";
+  const code = held ? (checkTitle(auto.fields).title ?? refused ?? "required") : null;
+  return {
+    value,
+    set: (next: I18n) => {
+      if (texts?.frozen) return;
+      if (!sameText(next, value)) setRefused(null);
+      setField("title", next);
+    },
+    flush: () => void flush(),
+    error: code === null ? undefined : code === "tooLong" ? t.errors.tooLong : t.errors.required,
+    conflict: auto.conflict !== null,
+    restore: () => void restore(),
+  };
+}
+
 type ModuleRowProps = {
   module: AdminModule;
   n: number;
-  first: boolean;
-  last: boolean;
+  courseId: number;
   online: boolean;
-  onMove: (dir: "up" | "down") => void;
+  handle: ReactNode;
+  arrows: ReactNode;
   moveError: string | null;
   deleteError: string | null;
-  onDelete: () => void;
   deleting: boolean;
-  children: React.ReactNode;
+  onDelete: () => void;
+  children: ReactNode;
 };
 
-/** One module: its number, its name (ET / RU) with "Salvesta" while changed, ↑ ↓, "Kustuta moodul" while it has no lessons. */
-function ModuleRow({ module: m, n, first, last, online, onMove, moveError, deleteError, onDelete, deleting, children }: ModuleRowProps) {
+/** One module (the Part 3 frame's box): ⋮⋮, its number, its name, „avaldamata“, ↑ ↓; its lessons; „Kustuta moodul“ where it can go. */
+function ModuleRow({ module: m, n, courseId, online, handle, arrows, moveError, deleteError, deleting, onDelete, children }: ModuleRowProps) {
   const uid = useId();
-  const [title, setTitle] = useState<I18n>(m.title);
-  const [stored, setStored] = useState<I18n>(m.title);
-  // the stored name changed (this save, reloaded by the server): the field follows it
-  if (!same(stored, m.title)) {
-    setStored(m.title);
-    setTitle(m.title);
-  }
-  const [state, action, pending] = useActionState<EditResult | null, FormData>(renameModule, null);
-  const [confirming, setConfirming] = useState(false);
-  const question = useRef<HTMLParagraphElement>(null);
+  const label = online ? t.moduleName : adminEt.courseEditor.fields.modulesC;
+  const title = useModuleTitle(courseId, m, label);
+  const [asking, setAsking] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
-  const dirty = !same(title, m.title);
-  const name = m.title.et;
-
+  /** „Katkesta“ was pressed: the button comes back with the focus (README §1.6). */
+  const refocus = useRef(false);
   useEffect(() => {
-    if (confirming) question.current?.focus();
-  }, [confirming]);
-
-  const rename = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending || !dirty) return;
-    send(action, { id: m.id, titleEt: title.et, titleRu: title.ru ?? "" });
-  };
-  // a refused name goes under the field; anything else about this module under the row
-  const fieldError = state && !state.ok && state.fields ? lessonError(state) : null;
-  const error = (fieldError ? null : lessonError(state)) ?? moveError ?? deleteError;
+    if (asking || !refocus.current) return;
+    refocus.current = false;
+    opener.current?.focus();
+  }, [asking]);
+  const name = m.title.et;
+  const error = moveError ?? deleteError;
 
   return (
-    <li className={styles.module} data-module={m.id}>
+    <div className={styles.box} data-module={m.id}>
       <div className={styles.moduleHead}>
-        <span className={`${ed.num} ${styles.moduleNum}`} aria-hidden="true">
+        {handle && <span className={styles.handle}>{handle}</span>}
+        <span className={styles.moduleNum} aria-hidden="true">
           {String(n).padStart(2, "0")}
         </span>
-        <form className={styles.rename} onSubmit={rename} noValidate data-rename-module="">
+        <div className={styles.name} onBlur={title.flush} data-module-name="">
           <I18nInput
-            label={online ? t.moduleName : adminEt.courseEditor.fields.modulesC}
+            label={label}
+            labelHidden
             name={`module-${m.id}`}
-            value={title}
-            onChange={setTitle}
-            maxLength={120}
-            error={fieldError ?? undefined}
+            value={title.value}
+            onChange={title.set}
+            maxLength={TITLE_MAX}
+            error={title.error}
+            describedBy={m.changed ? `${uid}-tag` : undefined}
           />
-          {dirty && (
-            <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.save}`} aria-disabled={pending || undefined}>
-              {pending ? adminEt.common.saving : t.save}
-            </button>
-          )}
-        </form>
-        <span className={`${ed.tools} ${styles.moduleTools}`}>
-          <button id={`module-${m.id}-up`} type="button" className={ed.iconBtn} aria-label={fill(t.moveUp, { title: name })} aria-disabled={first || undefined} onClick={() => onMove("up")}>
-            ↑
-          </button>
-          <button id={`module-${m.id}-down`} type="button" className={ed.iconBtn} aria-label={fill(t.moveDown, { title: name })} aria-disabled={last || undefined} onClick={() => onMove("down")}>
-            ↓
-          </button>
-        </span>
+        </div>
+        {m.changed && (
+          <span id={`${uid}-tag`} className={styles.rowTag} data-module-tag="">
+            {adminEt.publish.fieldTag}
+          </span>
+        )}
+        {arrows && <span className={styles.arrows}>{arrows}</span>}
       </div>
 
-      {m.lessons.length === 0 &&
-        (confirming ? (
-          <form
-            className={cd.confirm}
-            role="group"
-            aria-labelledby={`${uid}-q`}
-            onSubmit={(e) => {
-              e.preventDefault();
-              onDelete();
+      {title.conflict && (
+        <p className={styles.restore}>
+          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={title.restore} data-module-restore="">
+            {adminEt.courseEditor.restore}
+          </button>
+        </p>
+      )}
+
+      {children}
+
+      {m.deletable &&
+        (asking ? (
+          <ConfirmPanel
+            question={fill(online ? t.deleteModuleConfirm : t.deletePointConfirm, { title: name })}
+            yesLabel={t.deleteYes}
+            tone="danger"
+            busy={deleting}
+            onYes={onDelete}
+            onCancel={() => {
+              refocus.current = true;
+              setAsking(false);
             }}
-            data-delete-module-confirm=""
-          >
-            <p id={`${uid}-q`} ref={question} tabIndex={-1} className={`${ui.notice} ${cd.question}`}>
-              {fill(t.deleteModuleConfirm, { title: name })}
-            </p>
-            <div className={forms.actions}>
-              <button type="submit" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-disabled={deleting || undefined}>
-                {deleting ? adminEt.common.saving : t.deleteYes}
-              </button>
-              <button
-                type="button"
-                className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
-                onClick={() => {
-                  setConfirming(false);
-                  requestAnimationFrame(() => opener.current?.focus());
-                }}
-              >
-                {t.deleteNo}
-              </button>
-            </div>
-          </form>
+          />
         ) : (
           <div className={forms.actions}>
-            <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setConfirming(true)} data-delete-module="">
+            <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-delete-module="">
               {t.deleteModule}
             </button>
           </div>
@@ -266,23 +376,19 @@ function ModuleRow({ module: m, n, first, last, online, onMove, moveError, delet
           {error}
         </p>
       )}
-
-      {children}
-    </li>
+    </div>
   );
 }
 
-/** An e-course module's lessons: number, name, tags, ↑ ↓ and "Muuda" (the drawer); then "Lisa õppetund". */
+/** An e-course module's lessons: name, tags, ↑ ↓ and › (the drawer); then „Lisa õppetund“. */
 function LessonList({
   module: m,
-  n,
   layout,
   courseId,
   onMove,
   moveError,
 }: {
   module: AdminModule;
-  n: number;
   layout: ModuleLayout[];
   courseId: number;
   onMove: (l: AdminLesson, dir: "up" | "down") => void;
@@ -294,30 +400,32 @@ function LessonList({
         <p className={`${ui.muted} ${ui.small}`}>{t.noLessons}</p>
       ) : (
         <ol className={styles.lessons} data-lessons="">
-          {m.lessons.map((l, i) => {
+          {m.lessons.map((l) => {
             const title = l.title.et;
             const error = moveError(l);
             return (
               <li key={l.id} className={styles.lesson} data-lesson={l.id}>
-                <span className={styles.lessonNum} aria-hidden="true">
-                  {n}.{i + 1}
-                </span>
                 <span className={styles.lessonTitle} data-lesson-title="">
                   {title}
                 </span>
                 <span className={styles.tags}>
+                  {l.changed && (
+                    <span className={styles.rowTag} data-lesson-tag="">
+                      {adminEt.publish.fieldTag}
+                    </span>
+                  )}
                   {l.hidden && (
                     <span className={`${ui.tag} ${ui.muted}`} data-lesson-hidden="">
                       {t.hiddenTag}
                     </span>
                   )}
                   {l.kind === "text" ? (
-                    <span className={ui.tag} data-lesson-kind="text">
+                    <span className={`${ui.tag} ${styles.quietTag}`} data-lesson-kind="text">
                       {t.textTag}
                     </span>
                   ) : (
                     <span className={`${ui.tag} ${VIDEO_TONE[l.videoStatus]}`} data-lesson-video={l.videoStatus}>
-                      {fill(t.videoTag[l.videoStatus], { duration: formatDuration(l.durationSec ?? 0) })}
+                      {videoTag(l)}
                     </span>
                   )}
                 </span>
@@ -344,13 +452,13 @@ function LessonList({
                   </button>
                   <Link
                     id={`edit-lesson-${l.id}`}
-                    className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
+                    className={styles.open}
                     href={`/admin/koolitused/${courseId}?oppetund=${l.id}`}
                     scroll={false}
                     aria-label={fill(t.editLabel, { title })}
                     data-edit-lesson=""
                   >
-                    {t.edit}
+                    <span aria-hidden="true">›</span>
                   </Link>
                 </span>
                 {error && (
@@ -368,9 +476,6 @@ function LessonList({
     </div>
   );
 }
-
-/** The video tag's colour: "Video puudub" and "Video viga" keep the lessons after it locked for students. */
-const VIDEO_TONE: Record<AdminLesson["videoStatus"], string> = { none: ui.bad, uploading: "", processing: "", ready: ui.ok, failed: ui.bad };
 
 /** "Lisa õppetund": a name and one button; the new lesson opens in the drawer. */
 function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: number }) {
@@ -399,7 +504,7 @@ function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: num
           className={ui.input}
           type="text"
           autoComplete="off"
-          maxLength={120}
+          maxLength={TITLE_MAX}
           aria-invalid={error ? true : undefined}
           aria-describedby={`${uid}-msg`}
         />
@@ -414,7 +519,7 @@ function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: num
   );
 }
 
-/** "Lisa moodul" / "Lisa punkt" at the end: a name and one button; the field is cleared once the module is there. */
+/** „+ Lisa moodul“ / „+ Lisa punkt“ at the end (the frame's pill; the „+“ in the text, as the list's „Lisa koolitus +“): a name and one button; cleared once it is there. */
 function AddModuleForm({ courseId, online, field }: { courseId: number; online: boolean; field: React.RefObject<HTMLInputElement | null> }) {
   const uid = useId();
   const [value, setValue] = useState("");
@@ -448,7 +553,7 @@ function AddModuleForm({ courseId, online, field }: { courseId: number; online: 
           className={ui.input}
           type="text"
           autoComplete="off"
-          maxLength={120}
+          maxLength={TITLE_MAX}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
@@ -459,7 +564,7 @@ function AddModuleForm({ courseId, online, field }: { courseId: number; online: 
         />
       </div>
       <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={pending || undefined}>
-        {pending ? adminEt.common.saving : online ? t.addModule : t.addItem}
+        {pending ? adminEt.common.saving : `+ ${online ? t.addModule : t.addItem}`}
       </button>
       <p id={`${uid}-msg`} role="status" className={`${ui.error} ${styles.addMsg}`}>
         {error ?? ""}

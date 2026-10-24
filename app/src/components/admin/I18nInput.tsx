@@ -52,6 +52,8 @@ type Props = {
    * #6b4f5c, the token --warn) and the field's border in #9e8993 (--rose). It is the field's description too, not part of its name.
    */
   unpublished?: boolean;
+  /** More of the field's description, by element id (a list row's own tag beside the field, the modules card's „avaldamata“). */
+  describedBy?: string;
 };
 
 /**
@@ -60,7 +62,7 @@ type Props = {
  * input (it is also the placeholder: what the Russian page shows while the translation is missing), an empty RU field offers „Kopeeri eesti
  * keelest“, and „tõlge tulekul“ stays on the field. The field tells the page when its Russian text is missing, for „RU puudub {n} väljal“.
  */
-export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished }: Props) {
+export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished, describedBy: more }: Props) {
   const uid = useId();
   const { lang, register } = useEditLang();
   const t = adminEt.i18n;
@@ -71,7 +73,7 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
   // the "missing translation" line under the field (list rows have no room for it: they have the tag and the copy link)
   const showMissing = ru && pending && !labelHidden;
   const describedBy =
-    [unpublished ? `${uid}-unpublished` : "", hint ? `${uid}-hint` : "", error ? `${uid}-error` : "", showMissing ? `${uid}-missing` : ""].filter(Boolean).join(" ") || undefined;
+    [unpublished ? `${uid}-unpublished` : "", more ?? "", hint ? `${uid}-hint` : "", error ? `${uid}-error` : "", showMissing ? `${uid}-missing` : ""].filter(Boolean).join(" ") || undefined;
   const text = (ru ? value.ru : value.et) ?? "";
   const set = (v: string) => onChange(ru ? { ...value, ru: v } : { ...value, et: v });
 

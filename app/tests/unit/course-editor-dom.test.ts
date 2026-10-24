@@ -27,13 +27,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const actions = vi.hoisted(() => ({ create: vi.fn(), published: vi.fn(), sample: vi.fn() }));
 vi.mock("@/server/actions/admin-content", () => ({ createCourse: actions.create, setCoursePublished: actions.published, setCourseSample: actions.sample }));
+const lessonActions = vi.hoisted(() => ({ moveModuleTo: vi.fn() }));
 vi.mock("@/server/actions/admin-lessons", () => ({
   addLesson: vi.fn(),
   addModule: vi.fn(),
   deleteModule: vi.fn(),
   moveLessonInList: vi.fn(),
-  moveModuleInList: vi.fn(),
-  renameModule: vi.fn(),
+  moveModuleTo: lessonActions.moveModuleTo,
 }));
 // a picked picture goes to the upload as it is (the browser's shrinking is lib/shrink-image's own tests')
 vi.mock("@/lib/shrink-image", () => ({ shrinkImage: async (file: File) => file, ShrinkError: class ShrinkError extends Error {} }));
@@ -93,8 +93,8 @@ const data = (over: Partial<CourseEditorData> = {}, d: CourseDraft = STORED): Co
 });
 
 const MODULES: AdminModule[] = [
-  { id: 1, title: { et: "Alustame" }, unpublished: false, deletable: true, lessons: [] },
-  { id: 2, title: { et: "Kujud" }, unpublished: false, deletable: true, lessons: [] },
+  { id: 1, title: { et: "Alustame" }, version: "t:m1", unpublished: false, changed: false, deletable: true, lessons: [] },
+  { id: 2, title: { et: "Kujud" }, version: "t:m2", unpublished: false, changed: false, deletable: true, lessons: [] },
 ];
 const OTHERS = [
   { id: 2, title: "Lash Lift", type: "contact" as const, published: true },
@@ -123,6 +123,8 @@ const remote = {
   avalda: (): Response | Promise<Response> => Response.json({ published: ["basics"], blocked: [] }),
   loobu: (): Response | Promise<Response> => Response.json({ discarded: 1 }),
   log: [] as { part: string; version: string; patch: Record<string, unknown> }[],
+  /** api/admin/moodul/<id>: each module's name as stored, at its „t:“ version (Task 9; R-b2). Its saves are logged as the part `moodul<id>`. */
+  modules: {} as Record<number, { version: string; value: { title: unknown } }>,
 };
 function resetRemote(d: CourseDraft = STORED, published = d.published) {
   remote.parts = Object.fromEntries(COURSE_PARTS.filter((p) => p !== "outline").map((p) => [p, { version: `l:${p}`, value: partValue(p as EditorPart, d) as Record<string, unknown> }]));
@@ -136,16 +138,30 @@ function resetRemote(d: CourseDraft = STORED, published = d.published) {
   remote.avalda = () => Response.json({ published: ["basics"], blocked: [] });
   remote.loobu = () => Response.json({ discarded: 1 });
   remote.log = [];
+  remote.modules = Object.fromEntries(MODULES.map((m) => [m.id, { version: m.version, value: { title: m.title } }]));
 }
 const route = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   const held = remote.hold;
-  if (held && url.endsWith(`/osa/${held.part}`)) return new Promise<Response>((resolve) => held.waiting.push(() => resolve(respond(url, init))));
+  if (held && (url.endsWith(`/osa/${held.part}`) || url.endsWith(`/${held.part.replace(/^moodul/, "moodul/")}`)))
+    return new Promise<Response>((resolve) => held.waiting.push(() => resolve(respond(url, init))));
   return respond(url, init);
 };
 const respond = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   const publish = url.match(/\/api\/admin\/koolitus\/\d+\/(avalda|loobu)$/);
   if (publish) return publish[1] === "avalda" ? remote.avalda() : remote.loobu();
   if (url === "/api/admin/upload") return remote.upload();
+  const named = url.match(/^\/api\/admin\/moodul\/(\d+)$/);
+  if (named) {
+    const part = `moodul${named[1]}`;
+    const body = JSON.parse(String(init?.body)) as { version: string; patch: { title: unknown } };
+    remote.log.push({ part, ...body });
+    if (remote.fail?.part === part) return Response.json({ ok: false, error: "server" }, { status: remote.fail.status ?? 500 });
+    const now = remote.modules[Number(named[1])];
+    if (body.version !== now.version) return Response.json({ ok: false, error: "conflict", version: now.version, value: now.value }, { status: 409 });
+    remote.n += 1;
+    remote.modules[Number(named[1])] = { version: `t:m${named[1]}-${remote.n}`, value: { title: body.patch.title } };
+    return Response.json({ ok: true, version: `t:m${named[1]}-${remote.n}`, savedAt: "2026-10-24T09:41:00.000Z" });
+  }
   const m = url.match(/\/api\/admin\/koolitus\/\d+\/osa\/(\w+)$/);
   if (!m) return Response.json({ ok: false }, { status: 404 });
   const part = m[1];
@@ -230,6 +246,8 @@ beforeEach(() => {
   fetched = stubFetch(route);
   router.refresh.mockReset();
   for (const a of Object.values(actions)) a.mockReset();
+  lessonActions.moveModuleTo.mockReset();
+  lessonActions.moveModuleTo.mockResolvedValue({ ok: true, id: 2 });
   actions.published.mockResolvedValue({ ok: true });
   actions.sample.mockResolvedValue({ ok: true });
   container = document.createElement("div");
@@ -1134,5 +1152,117 @@ describe("a new course: one explicit „Lisa koolitus“", () => {
     expect(router.push).not.toHaveBeenCalled();
     expect(text(document.querySelector("[data-leave-title]"))).toBe("Muudatust „Koolituse nimi“ ei saanud veel salvestada.");
     expect(text(document.querySelector("[data-leave-reason]"))).toBe("Koolitust pole veel lisatud.");
+  });
+});
+
+describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => {
+  const moduleName = (id: number) => $<HTMLInputElement>(`[data-i18n="module-${id}"]`);
+  const moduleCopies = () => Object.keys(localStorage).filter((k) => k.startsWith(`mslab-draft:koolitus:${ID}-moodul`));
+
+  it("a module moved: the PublishBar's labels follow the page's new read, and a field typed but not saved in another card stays as it is (no card starts over)", async () => {
+    await show();
+    const summary = field("summary");
+    await type(summary, "Pooleli tekst.");
+    // ↑ on „Kujud“ (DragList: the same one move as a drag)
+    await click($('[data-lessons-editor] [data-drag-row="2"] [data-drag-tool="up"]'));
+    expect(lessonActions.moveModuleTo).toHaveBeenCalledExactlyOnceWith({ id: 2, index: 0 });
+    // the action's answer brings the page's new read: the modules in their new order and the outline's labels (server/course-parts.ts courseChanges)
+    await show({ course: data({ outline: ["Moodulite järjekord"] }), modules: [MODULES[1], MODULES[0]] });
+    expect(field("summary")).toBe(summary); // the same node: the card did not start over
+    expect(field("summary")!.value).toBe("Pooleli tekst.");
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 2 · Lühikirjeldus, Moodulite järjekord. Avalikul lehel on näha eelmine versioon.");
+    expect($$("[data-lessons-editor] [data-drag-row]").map((r) => r.dataset.dragRow)).toEqual(["2", "1"]);
+    expect(router.refresh).not.toHaveBeenCalled();
+    // the typed text still saves, from the version the card started with
+    await leave(field("summary"));
+    expect(remote.log.map((s) => [s.part, s.version])).toEqual([["basics", "l:basics"]]);
+  });
+
+  it("a module's name autosaves on its own route; the page is read again for the bar's labels, and its cards do not start over", async () => {
+    await show();
+    await type(field("summary"), "Pooleli.");
+    const summary = field("summary");
+    await type(moduleName(1), "Alustame uuesti");
+    await leave(moduleName(1));
+    expect(remote.log.map((s) => [s.part, s.version, s.patch])).toEqual([["moodul1", "t:m1", { title: { et: "Alustame uuesti" } }]]);
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    await show({ course: data({ outline: ["Moodul 01"] }), modules: [{ ...MODULES[0], title: { et: "Alustame uuesti" }, version: "t:m1-1", changed: true }, MODULES[1]] });
+    expect(field("summary")).toBe(summary);
+    expect(field("summary")!.value).toBe("Pooleli.");
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 2 · Lühikirjeldus, Moodul 01. Avalikul lehel on näha eelmine versioon.");
+    expect(text($('[data-module="1"] [data-module-tag]'))).toBe("avaldamata");
+  });
+
+  it("„Avalda muudatused“ first saves a module's name still being typed, then publishes; that save asks for no read of its own", async () => {
+    await show({ course: data({ outline: ["Moodul 01"] }) });
+    await type(moduleName(1), "Alustame kolmandat korda");
+    await click($("[data-publish-go]"));
+    const order = fetched.calls.map((c) => c.url).filter((u) => u.includes("/moodul/") || u.endsWith("/avalda"));
+    expect(order).toEqual(["/api/admin/moodul/1", `/api/admin/koolitus/${ID}/avalda`]);
+    expect(router.refresh).toHaveBeenCalledTimes(1); // the publish's read only
+  });
+
+  it("„Loobu muudatustest“ drops a module name's copy in this browser too, and nothing is sent for it again", async () => {
+    remote.fail = { part: "moodul1", status: 500 };
+    await show({ course: data({ outline: ["Moodul 01"] }) });
+    await type(moduleName(1), "Ei salvestu");
+    await leave(moduleName(1));
+    expect(moduleCopies()).toHaveLength(1);
+    await click($("[data-publish-discard]"));
+    await click(button("Jah, loobu"));
+    expect(moduleCopies()).toEqual([]);
+    const sent = remote.log.length;
+    resetRemote();
+    await show({ course: data() });
+    await settle();
+    expect(moduleName(1)!.value).toBe("Alustame");
+    expect(remote.log).toHaveLength(0);
+    expect(sent).toBeGreaterThan(0);
+  });
+
+  it("a module's name is in the editor's one chip and its map entry: typed, „Salvestamata muudatused“; another tab's name, „Kontrolli“ and „Taasta minu tekst“", async () => {
+    await show();
+    await type(moduleName(2), "Kujud ja");
+    expect(chip()!.getAttribute("data-save-kind")).toBe("dirty");
+    remote.modules[2] = { version: "t:other", value: { title: { et: "Teise akna nimi" } } };
+    await leave(moduleName(2));
+    expect(chip()!.getAttribute("data-save-kind")).toBe("conflict");
+    expect(mapEntries()).toContain("Moodulid ja õppetunnid 2 · Kontrolli");
+    expect(text($('[data-module="2"] [data-module-restore]'))).toBe("Taasta minu tekst");
+  });
+
+  it("a read for the labels still on its way at the press of „Avalda muudatused“ starts no card over (it may be from before the press); the read after it does", async () => {
+    await show({ course: data({ outline: ["Moodul 01"] }) });
+    await type(moduleName(1), "Alustame uuesti");
+    await leave(moduleName(1));
+    expect(router.refresh).toHaveBeenCalledTimes(1); // the labels' read, not come yet
+    await type(field("summary"), "Avaldatav.");
+    await leave(field("summary"));
+    await click($("[data-publish-go]"));
+    expect(router.refresh).toHaveBeenCalledTimes(2); // the publish's own
+    // the labels' read comes first (the router runs one read after another), from before the press: the cards keep waiting
+    await show({ course: data({ outline: ["Moodul 01"] }) });
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the publish's read: the cards start over from it
+    const after = { ...STORED, summary: { et: "Avaldatav.", ru: "Коротко." } };
+    resetRemote(after);
+    remote.parts.basics.version = "l:basics-live";
+    await show({
+      course: data({ parts: partsOf(after, { basics: { version: "l:basics-live" } }) }),
+      modules: [{ ...MODULES[0], title: { et: "Alustame uuesti" }, version: "t:m1-1" }, MODULES[1]],
+    });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(bar()).toBeNull();
+    await type(field("summary"), "Veel üks.");
+    await leave(field("summary"));
+    expect(remote.log.at(-1)).toMatchObject({ part: "basics", version: "l:basics-live" });
+  });
+
+  it("a contact course whose draft makes it an e-course: the card follows the drafted „Õppevorm“ (lessons and „Lisa õppetund“)", async () => {
+    const contact: CourseDraft = { ...STORED, type: "contact", price: "", priceGroup: "350" };
+    const drafted = { ...partValue("basics", contact), type: "e_learning" as const };
+    await show({ course: data({ liveType: "contact", parts: partsOf(contact, { basics: { version: "d:1.1", value: drafted } }) }, contact) });
+    expect($("[data-lessons-editor] h2")!.textContent).toBe("Moodulid ja õppetunnid");
+    expect($('[data-add-lesson="1"]')).not.toBeNull();
   });
 });

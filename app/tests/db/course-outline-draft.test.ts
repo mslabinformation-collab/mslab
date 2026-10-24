@@ -21,8 +21,8 @@ const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
 
 import {
-  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, readOutlineText, renameModuleForm, saveLessonForm,
-  setLessonHiddenForm, writeOutlineText,
+  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, moveModuleToRequest, readOutlineText, renameModuleForm,
+  saveLessonForm, setLessonHiddenForm, writeOutlineText,
 } from "@/server/admin-lessons";
 import { courseChanges, discardCourse, publishCourse, readCoursePart, switchCoursePublished, writeCoursePart } from "@/server/course-parts";
 import { saveDraftPart } from "@/server/drafts";
@@ -567,6 +567,8 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
       ["rename", () => renameModuleForm(db, form({ id: m1, titleEt: "Uus nimi" }), MARIA)],
       ["text", () => saveLessonForm(db, form({ id: a, titleEt: "Uus tund" }), MARIA)],
       ["move module", () => moveModuleForm(db, form({ id: m2, dir: "up" }), MARIA)],
+      ["move module to", () => moveModuleToRequest(db, { id: m2, index: 1 }, MARIA)],
+      ["add lesson", () => addLessonForm(db, form({ moduleId: m1, titleEt: "Uus tund" }))],
       ["move lesson", () => moveLessonForm(db, form({ id: b, dir: "down" }), MARIA)],
       ["delete lesson", () => deleteLessonForm(db, form({ id: c }), MARIA)],
       ["add module", () => addModuleForm(db, form({ courseId: course, titleEt: "Uus" }))],
@@ -585,5 +587,102 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
     expect(await saveText("lesson", a, { body: { et: "Uus tekst" } }, v)).toMatchObject({ ok: true });
     expect(courseLock(), "text").toBeGreaterThanOrEqual(0);
     expect(draftsTouched(), "text").toBeGreaterThan(courseLock());
+  });
+});
+
+describe("the modules card (Task 9): a drag's move, the drafted type, the rows' versions and „avaldamata“", () => {
+  test("a module dragged to a place (`{ id, index }`, the drag and ↑ / ↓): a published course's order waits in the draft; past the end is last, its own place nothing", async () => {
+    const [{ id: m3 }] = await db.insert(courseModules).values({ courseId: course, position: 3, title: { et: "Moodul 3" } }).returning();
+    expect(await moveModuleToRequest(db, { id: m3, index: 0 }, MARIA)).toEqual({ ok: true, id: m3 });
+    expect((await adminSees()).map((m) => m[0])).toEqual(["Moodul 3", "Moodul 1", "Moodul 2"]);
+    expect((await studentSees()).map((m) => m[0])).toEqual(["Moodul 1", "Moodul 2", "Moodul 3"]);
+    expect([(await moduleRow(m1)).position, (await moduleRow(m2)).position, (await moduleRow(m3)).position]).toEqual([1, 2, 3]);
+    expect(await courseChanges(db, course)).toEqual([{ part: "outline", labels: ["Moodulite järjekord"] }]);
+    expect((await db.select().from(contentDrafts).where(and(eq(contentDrafts.entityId, course), eq(contentDrafts.part, "outline"))))[0].updatedBy).toBe(MARIA.email);
+    // past the end: last (live's order again, so the draft is dropped); its own place: nothing moves, no draft is made
+    expect(await moveModuleToRequest(db, { id: m3, index: 99 }, MARIA)).toEqual({ ok: true, id: m3 });
+    expect((await adminSees()).map((m) => m[0])).toEqual(["Moodul 1", "Moodul 2", "Moodul 3"]);
+    expect(await outlineDraft()).toBeNull();
+    expect(await moveModuleToRequest(db, { id: m1, index: 0 }, MARIA)).toEqual({ ok: true, id: m1 });
+    expect(await outlineDraft()).toBeNull();
+    // a flagged module moves on its row (nobody sees it), no draft
+    const n = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Uus" })));
+    expect(await moveModuleToRequest(db, { id: n, index: 0 }, MARIA)).toEqual({ ok: true, id: n });
+    expect((await adminSees()).map((m) => m[0])).toEqual(["Uus*", "Moodul 1", "Moodul 2", "Moodul 3"]);
+    expect(await outlineDraft()).toBeNull();
+    expect((await moduleRow(n)).position).toBe(1);
+  });
+
+  test("nothing the browser sends is trusted: a wrong shape is invalid, a module that is not there is notFound", async () => {
+    for (const bad of [null, {}, { id: m1 }, { id: "1", index: 0 }, { id: m1, index: -1 }, { id: m1, index: 1.5 }, { id: 0, index: 0 }, { id: m1, index: 0, extra: 1 }])
+      expect(await moveModuleToRequest(db, bad, MARIA), JSON.stringify(bad)).toEqual({ ok: false, error: "invalid" });
+    expect(await moveModuleToRequest(db, { id: 999_999, index: 0 }, MARIA)).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("an unpublished course's drag writes the rows, numbered 1…n", async () => {
+    db = await makeTestDb();
+    await fixtures(db, false);
+    const [{ id: m3 }] = await db.insert(courseModules).values({ courseId: course, position: 3, title: { et: "Moodul 3" } }).returning();
+    expect(await moveModuleToRequest(db, { id: m3, index: 1 }, MARIA)).toEqual({ ok: true, id: m3 });
+    expect([(await moduleRow(m1)).position, (await moduleRow(m3)).position, (await moduleRow(m2)).position]).toEqual([1, 2, 3]);
+    expect(await readDrafts(db, "course", course)).toEqual([]);
+  });
+
+  test("„Lisa õppetund“ follows the course's drafted type (Task 5 review M-4): a contact course drafted as an e-course takes lessons, the reverse none", async () => {
+    // a published contact course with no sessions (its type can change) and a programme point
+    const [{ id: k }] = await db
+      .insert(courses)
+      .values({ slug: "k-kulm", type: "contact", level: "basic", title: { et: "K-kulm" }, summary: { et: "" }, body: { et: "" }, priceGroup: 35000, published: true })
+      .returning();
+    const [{ id: point }] = await db.insert(courseModules).values({ courseId: k, position: 1, title: { et: "Punkt" } }).returning();
+    expect(await addLessonForm(db, form({ moduleId: point, titleEt: "Tund" }))).toEqual({ ok: false, error: "notFound" });
+    const basics = (await readCoursePart(db, k, "basics"))!;
+    expect(await writeCoursePart(db, k, "basics", { type: "e_learning" }, basics.version, MARIA, NOW)).toMatchObject({ ok: true });
+    const n = idOf(await addLessonForm(db, form({ moduleId: point, titleEt: "Tund" })));
+    expect((await lessonRow(n)).unpublished).toBe(true);
+    // a published e-course without lessons drafted as a contact course: no lesson
+    const [{ id: e }] = await db
+      .insert(courses)
+      .values({ slug: "e-tuhi", type: "e_learning", level: "basic", title: { et: "E-tühi" }, summary: { et: "" }, body: { et: "" }, price: 9500, accessMonths: 6, published: true })
+      .returning();
+    const [{ id: mod }] = await db.insert(courseModules).values({ courseId: e, position: 1, title: { et: "Moodul" } }).returning();
+    const eBasics = (await readCoursePart(db, e, "basics"))!;
+    expect(await writeCoursePart(db, e, "basics", { type: "contact" }, eBasics.version, MARIA, NOW)).toMatchObject({ ok: true });
+    expect(await addLessonForm(db, form({ moduleId: mod, titleEt: "Tund" }))).toEqual({ ok: false, error: "notFound" });
+    expect(await db.select().from(lessons).where(eq(lessons.moduleId, mod))).toEqual([]);
+  });
+
+  test("each module comes with its name's „t:“ version, the one its route compares (R-b2)", async () => {
+    for (const m of await listCourseLessons(db, course)) {
+      expect(m.version).toMatch(TEXT_VERSION);
+      expect(m.version).toBe((await text("module", m.id)).version);
+    }
+    await saveText("module", m1, { title: { et: "Uus nimi" } }, (await text("module", m1)).version);
+    const [first] = await listCourseLessons(db, course);
+    expect(first.title).toEqual({ et: "Uus nimi" });
+    expect(first.version).toBe((await text("module", m1)).version);
+  });
+
+  test("„avaldamata“: a module renamed, holding a new or changed lesson, or new, and such a lesson; a move alone is the order's label; an unpublished course has none", async () => {
+    const changed = async () => (await listCourseLessons(db, course)).map((m) => [m.id, m.changed, m.lessons.filter((l) => l.changed).map((l) => l.id)]);
+    expect(await changed()).toEqual([[m1, false, []], [m2, false, []]]);
+    await saveText("lesson", b, { body: { et: "Uus tekst" } }, (await text("lesson", b)).version);
+    expect(await changed()).toEqual([[m1, true, [b]], [m2, false, []]]);
+    await saveText("module", m2, { title: { et: "Teine nimi" } }, (await text("module", m2)).version);
+    expect(await changed()).toEqual([[m1, true, [b]], [m2, true, []]]);
+    const n = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Uus" })));
+    const fresh = idOf(await addLessonForm(db, form({ moduleId: n, titleEt: "Uus tund" })));
+    expect(await changed()).toEqual([[m1, true, [b]], [m2, true, []], [n, true, [fresh]]]);
+    // a published course's modules moved only: unchanged rows, the bar says „Moodulite järjekord“
+    db = await makeTestDb();
+    await fixtures(db);
+    await moveModuleToRequest(db, { id: m2, index: 0 }, MARIA);
+    expect(await changed()).toEqual([[m2, false, []], [m1, false, []]]);
+    // an unpublished course: everything is live at once, nothing waits
+    db = await makeTestDb();
+    await fixtures(db, false);
+    await renameModuleForm(db, form({ id: m1, titleEt: "Uus nimi" }), MARIA);
+    await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus tund" }));
+    expect((await changed()).every(([, mod, ls]) => mod === false && (ls as number[]).length === 0)).toBe(true);
   });
 });

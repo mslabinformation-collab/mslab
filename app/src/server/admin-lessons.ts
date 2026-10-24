@@ -1,14 +1,16 @@
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { Db, Tx } from "@/db/client";
 import { lockCourse } from "@/db/queries/admin";
 import { courseModules, courses, lessonFiles, lessonProgress, lessons, type Course, type LessonKind, type VideoStatus } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import { dropVideo, moveLesson, type ModuleLayout } from "@/domain/lessons";
 import type { I18n } from "@/i18n/field";
-import { parseRowId } from "@/lib/row-id";
+import { parseRowId, ROW_ID_MAX } from "@/lib/row-id";
 import { contentVersion, stableJson } from "@/lib/version";
 import { fieldCodes } from "./autosave-route";
-import { LESSON_LIMITS, layoutFor, OUTLINE_TEXT_PATCHES, readLayout, storeLayout, storedBody, type Layout, type OutlineRows } from "./course-outline";
+import { changedRows, LESSON_LIMITS, layoutFor, OUTLINE_TEXT_PATCHES, readLayout, storeLayout, storedBody, type Layout, type OutlineRows } from "./course-outline";
+import { draftedType } from "./course-parts";
 import { readDrafts } from "./drafts";
 import { Check, field, invalid, type EditResult } from "./edit-check";
 
@@ -23,6 +25,9 @@ import { Check, field, invalid, type EditResult } from "./edit-check";
 // `outline` draft; a flagged row is renamed and moved on the row itself. The deletes, „Peida“, the lesson's kind, its video and files stay instant.
 // On an unpublished course everything is written to the rows. Every change of the modules and lessons takes the course's lock first (the lock
 // order of server/drafts.ts: a change, a publish and a discard of one course queue on its row) and works on the course's working order.
+// The card (components/admin/LessonsEditor.tsx, Task 9): a module's drag and ↑ / ↓ are one `moveModuleToRequest`; its name autosaves on its own
+// route (writeOutlineText, R-b2), from the „t:“ version listCourseLessons gives with it; „Lisa õppetund“ follows the drafted type (server/course-parts.ts
+// draftedType, the cards' rule). Nothing here revalidates the public pages (course-parts.ts is imported for that read only).
 
 export { LESSON_LIMITS };
 
@@ -50,6 +55,8 @@ export type AdminLesson = {
   hidden: boolean;
   /** Made on a published course and not published yet (piece 3a, R-e): students and the public page do not see it until „Avalda muudatused“. */
   unpublished: boolean;
+  /** Waits for „Avalda muudatused“: new, or its name or short text changed in the outline draft (the card's „avaldamata“, Task 9). */
+  changed: boolean;
   videoStatus: VideoStatus;
   /** Bunny's encode progress in percent while the video is processing (R-g); null when Bunny gave none. */
   videoProgress: number | null;
@@ -63,8 +70,15 @@ export type AdminLesson = {
 export type AdminModule = {
   id: number;
   title: I18n;
+  /** The version its name's autosave starts from (R-b2): "t:" and the hash of its working name, the one api/admin/moodul/<id> compares. */
+  version: string;
   /** As AdminLesson.unpublished: a module made on a published course and not published yet. */
   unpublished: boolean;
+  /**
+   * Waits for „Avalda muudatused“ (the card's „avaldamata“; P-3): new, holding a new lesson, or its name, its lessons, their order or texts changed in
+   * the outline draft — the modules the PublishBar names „Moodul {nn}“. Always false on an unpublished course (nothing waits).
+   */
+  changed: boolean;
   /**
    * „Kustuta moodul“ can delete it: no lesson is in it, live or in the draft. A published course's live module whose lessons the draft moved
    * elsewhere shows no lesson, but still holds them until „Avalda muudatused“ (review M-1).
@@ -116,12 +130,17 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
     readDrafts(db, "course", courseId),
   ]);
   if (!course) return [];
-  const layout = layoutFor(course, { modules: mods, lessons: rows }, drafts);
+  const outline = { modules: mods, lessons: rows };
+  const layout = layoutFor(course, outline, drafts);
+  const changed = course.published ? changedRows(outline, layout) : { modules: new Set<number>(), lessons: new Set<number>() };
+  const versions = await Promise.all(layout.map((m) => textVersion({ title: m.title })));
   const row = new Map(rows.map((r) => [r.id, r]));
-  return layout.map((m) => ({
+  return layout.map((m, i) => ({
     id: m.id,
     title: m.title,
+    version: versions[i],
     unpublished: m.flagged,
+    changed: changed.modules.has(m.id),
     deletable: m.lessons.length === 0 && !rows.some((r) => r.moduleId === m.id),
     lessons: m.lessons.map((l) => {
       const r = row.get(l.id)!;
@@ -133,6 +152,7 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
         kind: r.kind,
         hidden: r.hidden,
         unpublished: r.unpublished,
+        changed: changed.lessons.has(l.id),
         videoStatus: r.videoStatus,
         videoProgress: r.videoProgress,
         durationSec: r.durationSec,
@@ -212,22 +232,41 @@ export async function renameModuleForm(db: Db, fd: FormData, admin: Who): Promis
 }
 
 /**
- * A module's ↑ / ↓: fields id, dir. One that cannot move stays (ok). An unpublished course's modules are numbered 1…n again; a published course's
- * new order is the outline draft's (a flagged module's own place is on its row).
+ * Module `id` to the place `to(i, n)` gives (its place now, the modules' count; outside 0…n-1, or its own place: it stays, ok). An unpublished course's
+ * modules are numbered 1…n again; a published course's new order is the outline draft's (a flagged module's own place is on its row).
  */
+async function moveModule(db: Db, id: number, to: (i: number, n: number) => number, admin: Who): Promise<EditResult> {
+  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const i = layout.findIndex((m) => m.id === id);
+    if (i < 0) return notFound();
+    const j = to(i, layout.length);
+    if (j === i || j < 0 || j >= layout.length) return { ok: true, id };
+    layout.splice(j, 0, ...layout.splice(i, 1));
+    await storeLayout(tx, course, rows, layout, admin.email);
+    return { ok: true, id };
+  });
+}
+
+/** A module's ↑ / ↓ as a form: fields id, dir. One that cannot move stays (ok). See moveModule. */
 export async function moveModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
   const dir = field(fd, "dir");
   if (id === null || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
-  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
-    const i = layout.findIndex((m) => m.id === id);
-    if (i < 0) return notFound();
-    const j = i + (dir === "up" ? -1 : 1);
-    if (j < 0 || j >= layout.length) return { ok: true, id };
-    [layout[i], layout[j]] = [layout[j], layout[i]];
-    await storeLayout(tx, course, rows, layout, admin.email);
-    return { ok: true, id };
-  });
+  return moveModule(db, id, (i) => i + (dir === "up" ? -1 : 1), admin);
+}
+
+/** The card's move of a module: `{ id, index }`, the module and the place it goes to (0 is the first). */
+const moveToRequest = z.object({ id: z.number().int().positive().max(ROW_ID_MAX), index: z.number().int().min(0).max(ROW_ID_MAX) }).strict();
+
+/**
+ * A module's drag, ↑ or ↓ (README B2 „Module rows: drag + ↑/↓“; components/admin/DragList.tsx calls one `onMove(from, to)` for each): `{ id, index }`.
+ * Nothing the browser sends is trusted: another shape is invalid, an index past the end puts it last, its own place moves nothing. See moveModule.
+ */
+export async function moveModuleToRequest(db: Db, input: unknown, admin: Who): Promise<EditResult> {
+  const request = moveToRequest.safeParse(input);
+  if (!request.success) return { ok: false, error: "invalid" };
+  const { id, index } = request.data;
+  return moveModule(db, id, (_, n) => Math.min(index, n - 1), admin);
 }
 
 /**
@@ -249,8 +288,9 @@ export async function deleteModuleForm(db: Db, fd: FormData, admin: Who): Promis
 }
 
 /**
- * "Lisa õppetund": fields moduleId, titleEt, titleRu. Last in its module; no video, no text, visible. Only an e-course has lessons: a module of a
- * contact course is notFound. On a published course it is flagged `unpublished` (R-e), last of its module in the working order.
+ * "Lisa õppetund": fields moduleId, titleEt, titleRu. Last in its module; no video, no text, visible. Only an e-course has lessons — by the type the
+ * card follows, the drafted one on a published course (course-parts.ts draftedType; Task 5 review M-4): a module of a contact course is notFound. On a
+ * published course it is flagged `unpublished` (R-e), last of its module in the working order.
  */
 export async function addLessonForm(db: Db, fd: FormData): Promise<EditResult> {
   const moduleId = idOf(field(fd, "moduleId"));
@@ -260,7 +300,7 @@ export async function addLessonForm(db: Db, fd: FormData): Promise<EditResult> {
   if (!c.ok || !title) return invalid(c.errors);
   return underCourse(db, await courseOfModule(db, moduleId), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
     const m = layout.find((x) => x.id === moduleId);
-    if (!m || course.type !== "e_learning") return notFound();
+    if (!m || (await draftedType(tx, course)) !== "e_learning") return notFound();
     const position = course.published ? m.lessons.length + 1 : lastPlace(rows.lessons.filter((l) => l.moduleId === moduleId)) + 1;
     const [row] = await tx.insert(lessons).values({ moduleId, position, title, unpublished: course.published }).returning();
     return { ok: true, id: row.id, created: true };

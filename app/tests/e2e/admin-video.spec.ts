@@ -77,7 +77,7 @@ test("a lesson's video: chosen, sent to Bunny with tus, processed, replaced, dro
   await expect(field.locator("[data-video-status]")).toHaveText("Valmis · 2:05", { timeout: 20_000 });
   await expect(field.locator("[data-video-waiting]")).toHaveCount(0);
   await expect(field.locator("[data-video-pick]")).toHaveText("Asenda video");
-  await expect(row.locator("[data-lesson-video]")).toHaveText("Video 2:05"); // the list behind the drawer follows
+  await expect(row.locator("[data-lesson-video]")).toHaveText("Valmis"); // the list behind the drawer follows (README B2, P-4)
   const first = await lessonRow(lessonId);
   expect(first).toMatchObject({ kind: "video", videoStatus: "ready", durationSec: 125, replacedVideoId: null, videoWidth: 1920, videoHeight: 1080 }); // the fake's usual 16:9, stored with the length
   expect((await fakeState()).videos.map((v) => v.guid)).toContain(first.videoId);

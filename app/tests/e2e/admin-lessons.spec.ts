@@ -6,13 +6,16 @@ import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { accountCourseSlug, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { smallTargets } from "./targets";
 import { submitsForms, test, expect } from "./test";
+import { dragWithFinger } from "./touch";
 
-// Phase 3a Task 5: the course editor's "Moodulid ja õppetunnid" — modules added, renamed, moved and deleted; a lesson added (it
-// opens in the drawer), its short text saved, "Õppetunni liik" switched (with the in-place question when it has a video), a file
-// added and removed, the lesson hidden and shown, moved and deleted; and the contact course's "Programm". The admin signs in as Dim
-// through the devLink (dev server only, admin-login.ts). The test's own unpublished e-course (slug e2e-konto-les-<project>) is
-// removed after each test with everything under it (removeClientRows: modules, lessons and their files cascade), and the files it
-// uploaded leave .media-local then too (also after a failed run).
+// Phase 3a Task 5, admin UX pass piece 3a Task 9: the course editor's "Moodulid ja õppetunnid" — modules added, renamed in their row (autosaved,
+// no "Salvesta"), moved (drag with the mouse or a finger, ↑ / ↓) and deleted (a ConfirmPanel); a lesson added (it opens in the drawer), its short
+// text saved, "Õppetunni liik" switched (with the in-place question when it has a video), a file added and removed, the lesson hidden and shown,
+// moved and deleted; the video tags ("Valmis", "Töötlemisel {n}%", "Video puudub", "Tekst"); and the contact course's "Programm" with its
+// „Kas kustutan punkti …?“. The admin signs in as Dim through the devLink (dev server only, admin-login.ts). The test's own unpublished e-course
+// (slug e2e-konto-les-<project>) is removed after each test with everything under it (removeClientRows: modules, lessons and their files cascade),
+// and the files it uploaded leave .media-local then too (also after a failed run). Its courses stay unpublished: a published one would show on the
+// public catalogue the other specs read meanwhile (the draft layer's paths are the DOM and db tests').
 
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
 const made = new Set<string>();
@@ -100,7 +103,8 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   const editor = page.locator("[data-lessons-editor]");
   await expect(editor.locator("h2")).toHaveText("Moodulid ja õppetunnid");
   await expect(editor).toContainText("Õpilane avab õppetunnid järjekorras: järgmine avaneb, kui eelmine on tehtud.");
-  await expect(editor).toContainText("Mooduleid veel pole.");
+  // (P-4: nothing yet stands in the summary's place)
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("Mooduleid veel pole.");
 
   // 2. two modules; a blank name is refused in words; ↓ on the first (the focus stays on the arrow), and the database agrees
   const addModule = editor.locator("[data-add-module]");
@@ -119,17 +123,23 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect.poll(() => shownModules(page)).toEqual(["Praktika", "Sissejuhatus"]);
   await expect(down).toBeFocused();
   await expect(down).toHaveAttribute("aria-disabled", "true"); // last now
-  expect(await moduleTitles(courseId)).toEqual(["Praktika", "Sissejuhatus"]);
+  // (the list shows a move at once; the stored order follows with the action's answer)
+  await expect.poll(() => moduleTitles(courseId)).toEqual(["Praktika", "Sissejuhatus"]);
   const intro = await moduleId(courseId, "Sissejuhatus");
   const practice = await moduleId(courseId, "Praktika");
 
-  // a module's name: "Salvesta" only while it differs from the stored one
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("2 moodulit · 0 õppetundi");
+
+  // a module's name edits in its row and autosaves on its own route (README B2, R-b2): nothing to press
   const practiceRow = editor.locator(`[data-module="${practice}"]`);
+  const practiceName = practiceRow.getByRole("textbox", { name: "Mooduli nimi" });
+  await practiceName.fill("Praktika ja kordamine");
   await expect(practiceRow.getByRole("button", { name: "Salvesta" })).toHaveCount(0);
-  await practiceRow.getByRole("textbox", { name: "Mooduli nimi" }).fill("Praktika ja kordamine");
-  await practiceRow.getByRole("button", { name: "Salvesta" }).click();
-  await expect(practiceRow.getByRole("button", { name: "Salvesta" })).toHaveCount(0);
-  expect(await moduleTitles(courseId)).toEqual(["Praktika ja kordamine", "Sissejuhatus"]);
+  const renamed = page.waitForResponse((r) => r.url().endsWith(`/api/admin/moodul/${practice}`) && r.request().method() === "POST" && r.status() === 200);
+  await practiceName.blur();
+  await renamed;
+  await expect.poll(() => moduleTitles(courseId)).toEqual(["Praktika ja kordamine", "Sissejuhatus"]);
+  await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
 
   // 3. a lesson in Sissejuhatus: it opens in the drawer
   const introRow = editor.locator(`[data-module="${intro}"]`);
@@ -144,8 +154,9 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect(drawer.getByRole("heading", { level: 2 })).toHaveText("Tere tulemast");
   await expect(drawer.getByRole("textbox", { name: "Õppetunni nimi" })).toHaveValue("Tere tulemast");
   const row = editor.locator(`[data-lesson="${first}"]`);
-  await expect(row).toContainText("2.1"); // the second module's first lesson
-  await expect(row).toContainText("Tere tulemast");
+  await expect(editor.locator(`[data-module="${intro}"] [data-lesson]`)).toHaveCount(1); // the second module's first lesson
+  await expect(row.locator("[data-lesson-title]")).toHaveText("Tere tulemast");
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("2 moodulit · 1 õppetund");
   // an e-course with a lesson keeps its type: the course editor's Kontaktõpe is locked and says why
   await expect(page.locator("[data-type-switch]").getByRole("radio", { name: "Kontaktõpe" })).toBeDisabled();
   await expect(page.locator("[data-type-hint]")).toHaveText("Sellel e-koolitusel on õppetunde või õpilasi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.");
@@ -190,7 +201,7 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await db((sql) => sql`update lessons set video_id = ${`e2e-video-${info.project.name}`}, video_status = 'ready', duration_sec = 754 where id = ${first}`);
   await page.reload();
   await adminReady(page);
-  await expect(row.locator("[data-lesson-video]")).toHaveText("Video 12:34");
+  await expect(row.locator("[data-lesson-video]")).toHaveText("Valmis"); // README B2, P-4 (the drawer keeps „Valmis · 12:34“)
   await kind.getByRole("radio", { name: "Tekst" }).check();
   const confirm = kind.locator("[data-kind-confirm]");
   await expect(confirm).toContainText("Video kustutatakse. Jätkan?");
@@ -330,11 +341,18 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
     await expect(drawer).toHaveCount(0);
   }
 
-  // 8. "Kustuta moodul" only on the empty one; deleted after the question, the focus on the new module's field
+  // 8. "Kustuta moodul" only on the empty one; a ConfirmPanel in its place (README §1.6): „Katkesta“ gives the button back with the focus;
+  // deleted after „Jah, kustuta“, the focus on the new module's field
   await expect(introRow.locator("[data-delete-module]")).toHaveCount(0);
   await practiceRow.locator("[data-delete-module]").click();
-  await expect(practiceRow).toContainText("Kas kustutan mooduli „Praktika ja kordamine“?");
-  await practiceRow.getByRole("button", { name: "Jah, kustuta" }).click();
+  const question = practiceRow.locator("[data-confirm-panel]");
+  await expect(question).toBeFocused();
+  await expect(question.locator("p")).toHaveText("Kas kustutan mooduli „Praktika ja kordamine“?");
+  await question.getByRole("button", { name: "Katkesta" }).click();
+  await expect(question).toHaveCount(0);
+  await expect(practiceRow.locator("[data-delete-module]")).toBeFocused();
+  await practiceRow.locator("[data-delete-module]").click();
+  await question.getByRole("button", { name: "Jah, kustuta" }).click();
   await expect(editor.locator("[data-module]")).toHaveCount(1);
   await expect(newModule).toBeFocused();
   expect(await moduleTitles(courseId)).toEqual(["Sissejuhatus"]);
@@ -348,7 +366,18 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect(editor.locator("[data-lessons]")).toHaveCount(0);
   await expect(editor.getByRole("button", { name: "Lisa õppetund" })).toHaveCount(0);
   await expect(editor.locator("[data-add-module]").getByLabel("Uus programmi punkt")).toBeVisible();
-  await expect(editor.locator("[data-add-module] button")).toHaveText("Lisa punkt");
+  await expect(editor.locator("[data-add-module] button")).toHaveText("+ Lisa punkt");
+  await expect(editor.locator("[data-modules-summary]")).toHaveCount(0); // a programme has no lessons to count
+  // a programme point's delete asks „Kas kustutan punkti „{title}“?“ (README B2)
+  await editor.locator("[data-add-module]").getByLabel("Uus programmi punkt").fill("Lõpuarutelu");
+  await editor.locator("[data-add-module]").getByRole("button", { name: "Lisa punkt" }).click();
+  await expect(editor.locator("[data-module]")).toHaveCount(2);
+  const point = editor.locator(`[data-module="${await moduleId(courseId, "Lõpuarutelu")}"]`);
+  await point.locator("[data-delete-module]").click();
+  await expect(point.locator("[data-confirm-panel] p")).toHaveText("Kas kustutan punkti „Lõpuarutelu“?");
+  await point.getByRole("button", { name: "Jah, kustuta" }).click();
+  await expect(editor.locator("[data-module]")).toHaveCount(1);
+  expect(await moduleTitles(courseId)).toEqual(["Sissejuhatus"]);
 
   // 10. a phone again, for the programme
   await checkPhone(page, isMobile);
@@ -376,6 +405,96 @@ test("a refused kind switch (the lesson is gone meanwhile) puts the choice back 
   await expect(kind.locator("[data-kind-status]")).toHaveText("Seda ei leitud. Laadi leht uuesti.");
   await expect(kind.getByRole("radio", { name: "Video" })).toBeChecked();
   await expect(kind.getByRole("radio", { name: "Tekst" })).not.toBeChecked();
+});
+
+test("module order (README B2, S3-P3-m): a drag with the mouse or a finger and ↑ / ↓ are one stored move each; a field typed in another card stays; the video tags", async ({ page, context, visitorIp, isMobile }, info) => {
+  const email = clientEmail("les-order", info.project.name);
+  made.add(email);
+  await removeClientRows(email);
+  const { courseId, modules } = await db(async (sql) => {
+    const [{ id }] = await sql<{ id: number }[]>`insert into courses (slug, type, level, title, summary, body, price, access_months, published)
+      values (${accountCourseSlug(email)}, 'e_learning', 'basic', ${sql.json({ et: "E2E järjekord" })}, ${sql.json({ et: "" })}, ${sql.json({ et: "" })}, 9500, 6, false) returning id`;
+    const rows = await sql<{ id: number }[]>`insert into course_modules (course_id, position, title) values
+      (${id}, 1, ${sql.json({ et: "Alustame" })}), (${id}, 2, ${sql.json({ et: "Kujud" })}), (${id}, 3, ${sql.json({ et: "Lõpetame" })}) returning id`;
+    // the video tags of the rows (P-4, S3-P3-e): processing with Bunny's figure, processing without one, ready, none, a text lesson
+    await sql`insert into lessons (module_id, position, title, video_id, video_status, video_progress) values
+      (${rows[0].id}, 1, ${sql.json({ et: "Töös 40" })}, ${`e2e-order-a-${info.project.name}`}, 'processing', 40),
+      (${rows[0].id}, 2, ${sql.json({ et: "Töös" })}, ${`e2e-order-b-${info.project.name}`}, 'processing', null)`;
+    await sql`insert into lessons (module_id, position, title, video_id, video_status, duration_sec) values (${rows[1].id}, 1, ${sql.json({ et: "Valmis tund" })}, ${`e2e-order-c-${info.project.name}`}, 'ready', 90)`;
+    await sql`insert into lessons (module_id, position, title) values (${rows[1].id}, 2, ${sql.json({ et: "Videota" })})`;
+    await sql`insert into lessons (module_id, position, title, kind) values (${rows[2].id}, 1, ${sql.json({ et: "Lugemine" })}, 'text')`;
+    return { courseId: id, modules: rows.map((r) => r.id) };
+  });
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto(`/admin/koolitused/${courseId}`);
+  await adminReady(page);
+  const editor = page.locator("[data-lessons-editor]");
+  const tags = () => editor.locator("[data-lesson-video], [data-lesson-kind='text']").allTextContents();
+  await expect.poll(tags).toEqual(["Töötlemisel 40%", "Töötlemisel", "Valmis", "Video puudub", "Tekst"]);
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("3 moodulit · 5 õppetundi");
+
+  // the order controls of a module row: the handle („lohistatav“) and the arrows, each a 44 px target, nothing wider than the screen
+  const handle = (name: string) => editor.getByRole("button", { name: `Lohista: ${name}` });
+  await expect(handle("Lõpetame")).toHaveAttribute("aria-roledescription", "lohistatav");
+  for (const control of [handle("Lõpetame"), editor.getByRole("button", { name: "Liiguta üles: Lõpetame" }), editor.getByRole("button", { name: "Liiguta alla: Alustame" })]) {
+    const box = (await control.boundingBox())!;
+    expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+  }
+  expect(await noOverflow(page)).toBe(true);
+
+  // a text in another card („Lühikirjeldus“), the same field node before and after the moves: no card starts over (Task 7's restart is for a publish;
+  // the DOM test has a text still unsaved). Saved first, so that the chip's words do not move the page while the finger is measured.
+  const summary = page.locator("[data-course-editor] [data-i18n='summary']");
+  await summary.fill("Kolm moodulit järjekorras.");
+  await summary.blur();
+  await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+  await summary.evaluate((el) => ((el as HTMLElement & { e2eMark?: string }).e2eMark = "same"));
+
+  // „Lõpetame“ dragged one place up, over „Kujud“ (both on the screen), with a finger on a phone and the mouse on a desktop: one move stored, the page
+  // does not scroll with a finger
+  const announced = editor.locator("[data-drag-list] ~ [role=status]");
+  const last = handle("Lõpetame");
+  await editor.locator(`[data-drag-row="${modules[1]}"]`).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  const from = (await last.boundingBox())!;
+  const previous = (await editor.locator(`[data-drag-row="${modules[1]}"]`).boundingBox())!;
+  const to = { x: from.x + from.width / 2, y: previous.y + 8 };
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  if (isMobile) await dragWithFinger(page, { x: from.x + from.width / 2, y: from.y + from.height / 2 }, to, 20);
+  else {
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 20 });
+    await expect(editor.locator(`[data-drag-row="${modules[2]}"]`)).toHaveAttribute("data-dragging", "");
+    await page.mouse.up();
+  }
+  await expect.poll(() => shownModules(page)).toEqual(["Alustame", "Lõpetame", "Kujud"]);
+  await expect.poll(() => moduleTitles(courseId)).toEqual(["Alustame", "Lõpetame", "Kujud"]);
+  if (isMobile) expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+  await expect(handle("Lõpetame")).toBeFocused();
+  await expect(announced).toHaveText("„Lõpetame“ on nüüd 2. kohal.");
+  // the lessons went with their module; its number is its new place
+  await expect(editor.locator(`[data-module="${modules[2]}"] [data-lesson-title]`)).toHaveText(["Lugemine"]);
+  await expect(editor.locator(`[data-module="${modules[2]}"]`)).toContainText("02");
+
+  // ↑ with the arrow: one place up, to the top; the focus stays on it
+  const up = editor.getByRole("button", { name: "Liiguta üles: Lõpetame" });
+  await up.click();
+  await expect.poll(() => moduleTitles(courseId)).toEqual(["Lõpetame", "Alustame", "Kujud"]);
+  await expect(up).toBeFocused();
+  await expect(up).toHaveAttribute("aria-disabled", "true");
+  await expect(announced).toHaveText("„Lõpetame“ on nüüd 1. kohal.");
+
+  // the other card's field is the same node with its text
+  expect(await summary.evaluate((el) => (el as HTMLElement & { e2eMark?: string }).e2eMark)).toBe("same");
+  await expect(summary).toHaveValue("Kolm moodulit järjekorras.");
+  await expect
+    .poll(async () => (await db((sql) => sql<{ s: string }[]>`select summary->>'et' as s from courses where id = ${courseId}`))[0].s)
+    .toBe("Kolm moodulit järjekorras.");
+
+  // the stored order is what a reload shows, no module doubled or lost
+  await page.reload();
+  await adminReady(page);
+  await expect.poll(() => shownModules(page)).toEqual(["Lõpetame", "Alustame", "Kujud"]);
 });
 
 test("a new course says to create it first (piece3-texts P-5)", async ({ page, context, visitorIp }) => {

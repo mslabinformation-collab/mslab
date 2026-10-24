@@ -1734,21 +1734,32 @@ export const adminEt = {
     newItem: "Uus programmi punkt",
     addModule: "Lisa moodul",
     addItem: "Lisa punkt",
+    // (the lesson drawer's „Salvesta“ until its fields autosave, Task 10; the module rows have none, README B2)
     save: "Salvesta",
     moveUp: "Liiguta üles: {title}",
     moveDown: "Liiguta alla: {title}",
     deleteModule: "Kustuta moodul",
     deleteModuleConfirm: "Kas kustutan mooduli „{title}“?",
+    // a contact course's programme point is a „punkt“ in its question (README B2; strings.md B2-3)
+    deletePointConfirm: "Kas kustutan punkti „{title}“?",
     deleteYes: "Jah, kustuta",
     deleteNo: "Ei",
+    // the card's summary beside its title (piece3-texts P-4, drawn „6 moodulit · 3 õppetundi“; P-8 the forms of 1); none: `empty` in its place
+    summary: "{modules} · {lessons}",
+    modulesN: "{n} moodulit",
+    modulesOne: "1 moodul",
+    lessonsN: "{n} õppetundi",
+    lessonsOne: "1 õppetund",
     noLessons: "Selles moodulis pole veel õppetunde.",
     newLesson: "Uue õppetunni nimi",
     addLesson: "Lisa õppetund",
-    edit: "Muuda",
     editLabel: "Muuda õppetundi: {title}",
     hiddenTag: "Peidetud",
     textTag: "Tekst",
-    videoTag: { none: "Video puudub", uploading: "Video üleslaadimisel", processing: "Video töötlemisel", ready: "Video {duration}", failed: "Video viga" },
+    // a lesson row's video (README B2, P-4: drawn „Valmis“, „Töötlemisel {n}%“, „Video puudub“; the two undrawn keep their words); processing with no
+    // figure from Bunny, or 0: „Töötlemisel“ (S3-P3-e), with one: `videoProgress`
+    videoTag: { none: "Video puudub", uploading: "Video üleslaadimisel", processing: "Töötlemisel", ready: "Valmis", failed: "Video viga" },
+    videoProgress: "Töötlemisel {n}%",
     errors: {
       required: "Kirjuta nimi.",
       tooLong: "Liiga pikk.",

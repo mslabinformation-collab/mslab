@@ -16,7 +16,7 @@ class Redirect extends Error {
 
 const mocks = vi.hoisted(() => ({
   names: [
-    "addModuleForm", "renameModuleForm", "moveModuleForm", "deleteModuleForm", "addLessonForm", "saveLessonForm", "moveLessonForm", "setLessonHiddenForm",
+    "addModuleForm", "moveModuleToRequest", "deleteModuleForm", "addLessonForm", "saveLessonForm", "moveLessonForm", "setLessonHiddenForm",
     "setLessonKindForm", "deleteLessonForm", "deleteLessonFileForm", "courseOfLesson",
   ],
   /** The callbacks given to after(): they run once the answer has gone. */
@@ -98,13 +98,25 @@ afterEach(() => {
 
 describe("what a change revalidates", () => {
   test("a module change (titles and order are on the public course page) revalidates the course pages and refreshes the admin page", async () => {
-    for (const run of [actions.addModule, actions.renameModule, actions.moveModuleInList, actions.deleteModule]) {
+    for (const run of [(fd: FormData) => actions.addModule(null, fd), (fd: FormData) => actions.deleteModule(null, fd), () => actions.moveModuleTo({ id: 7, index: 0 })]) {
       mocks.revalidatePublic.mockReset();
       mocks.refresh.mockReset();
-      expect(await run(null, form({ id: 7 }))).toEqual(OK);
+      expect(await run(form({ id: 7 }))).toEqual(OK);
       expect(mocks.revalidatePublic).toHaveBeenCalledExactlyOnceWith({ kind: "courses" });
       expect(mocks.refresh).toHaveBeenCalledOnce();
     }
+  });
+
+  test("a module's drag or ↑ / ↓ (Task 9; DragList): `{ id, index }` goes to moveModuleToRequest as it came, with the admin; a refusal refreshes nothing", async () => {
+    const input = { id: 7, index: 2 };
+    expect(await actions.moveModuleTo(input)).toEqual(OK);
+    expect(mocks.forms.moveModuleToRequest).toHaveBeenCalledExactlyOnceWith("the-db", input, { email: "admin@example.test" });
+    mocks.refresh.mockReset();
+    mocks.revalidatePublic.mockReset();
+    mocks.forms.moveModuleToRequest.mockResolvedValue({ ok: false, error: "invalid" });
+    expect(await actions.moveModuleTo("nonsense")).toEqual({ ok: false, error: "invalid" });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(mocks.revalidatePublic).not.toHaveBeenCalled();
   });
 
   test("a lesson change (only in the account's JSON) refreshes the admin page and revalidates nothing", async () => {
@@ -123,8 +135,6 @@ describe("what a change revalidates", () => {
     const admin = { email: "admin@example.test" };
     const fd = form({ id: 7 });
     for (const [run, name] of [
-      [actions.renameModule, "renameModuleForm"],
-      [actions.moveModuleInList, "moveModuleForm"],
       [actions.deleteModule, "deleteModuleForm"],
       [actions.saveLesson, "saveLessonForm"],
       [actions.moveLessonInList, "moveLessonForm"],
@@ -140,8 +150,8 @@ describe("what a change revalidates", () => {
   });
 
   test("a refused change revalidates and refreshes nothing; a thrown one is `server`, logged without its message", async () => {
-    mocks.forms.renameModuleForm.mockResolvedValue({ ok: false, error: "notFound" });
-    expect(await actions.renameModule(null, form({ id: 7 }))).toEqual({ ok: false, error: "notFound" });
+    mocks.forms.deleteModuleForm.mockResolvedValue({ ok: false, error: "notFound" });
+    expect(await actions.deleteModule(null, form({ id: 7 }))).toEqual({ ok: false, error: "notFound" });
     mocks.forms.addModuleForm.mockRejectedValue(new Error("insert into course_modules … kati@example.test"));
     expect(await actions.addModule(null, form({ courseId: 5 }))).toEqual({ ok: false, error: "server" });
     expect(mocks.revalidatePublic).not.toHaveBeenCalled();

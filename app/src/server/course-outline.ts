@@ -353,12 +353,29 @@ export function outlineLabels(rows: OutlineRows, draft: OutlineValue | null, con
   const labels: string[] = [];
   const liveOrder = live.modules.filter((m) => !rows.modules.find((r) => r.id === m.id)?.unpublished).map((m) => m.id);
   if (!same(layout.filter((m) => !m.flagged).map((m) => m.id), liveOrder)) labels.push(changesText.moduleOrder);
+  const changed = changedRows(rows, layout).modules;
+  for (const [i, m] of layout.entries()) if (changed.has(m.id)) labels.push(fill(changesText.module, { nn: twoDigits(i + 1) }));
+  return labels;
+}
+
+/**
+ * The rows of a working order that wait for „Avalda muudatused“ (P-3, README §1.8; the card's „avaldamata“ in a row, Task 9): a module that is new
+ * (flagged), holds a new lesson, or whose name, lessons, their order or texts differ from live's — the modules the PublishBar names „Moodul {nn}“ —
+ * and a lesson that is new or whose name or short text differs from live's. The modules' order alone changes no row (the bar's „Moodulite järjekord“).
+ */
+export function changedRows(rows: OutlineRows, layout: Layout): { modules: Set<number>; lessons: Set<number> } {
+  const live = liveOutline(rows);
   const liveModule = new Map(live.modules.map((m) => [m.id, m]));
-  for (const [i, m] of layout.entries()) {
+  const liveLesson = new Map(live.modules.flatMap((m) => m.lessons).map((l) => [l.id, l]));
+  const out = { modules: new Set<number>(), lessons: new Set<number>() };
+  for (const m of layout) {
     const was = liveModule.get(m.id);
     const now = m.lessons.filter((l) => !l.flagged).map((l) => ({ id: l.id, title: l.title, body: l.body }));
-    const changed = m.flagged || m.lessons.some((l) => l.flagged) || !was || !same(was.title, m.title) || !same(was.lessons, now);
-    if (changed) labels.push(fill(changesText.module, { nn: twoDigits(i + 1) }));
+    if (m.flagged || m.lessons.some((l) => l.flagged) || !was || !same(was.title, m.title) || !same(was.lessons, now)) out.modules.add(m.id);
+    for (const l of m.lessons) {
+      const before = liveLesson.get(l.id);
+      if (l.flagged || !before || !same(before.title, l.title) || !same(before.body, l.body)) out.lessons.add(l.id);
+    }
   }
-  return labels;
+  return out;
 }

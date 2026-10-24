@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
+import type { AutosaveStatus } from "@/domain/autosave";
 import { type EditorPart, type EditorParts, type PartValues } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
 import { contentVersion } from "@/lib/version";
@@ -15,6 +16,7 @@ import ui from "../ui.module.css";
 import styles from "../CourseEditor.module.css";
 import { combineStatus, publishLabels } from "./course-view";
 import { CourseView } from "./CourseView";
+import { OutlineTextsContext, type OutlineTextRow, type OutlineTexts } from "./OutlineTexts";
 import { usePhoneChip } from "./usePhoneChip";
 import { focusPartField, useCoursePart, type SaveAnswer, type SaveEar } from "./useCoursePart";
 import type { CourseEditorData, CourseParts, OtherCourse } from "./types";
@@ -42,6 +44,12 @@ import type { CourseEditorData, CourseParts, OtherCourse } from "./types";
 // when it is called (an upload's callback comes from the render where the file was picked, review round 3 N-3), and a change that comes while the
 // cards wait goes in once they take typing again, on the version they then hold. What is not the engines' (the published flag, the modules and
 // their labels) follows every new read of the page, and so does what the bar and the switches have to say (kept here, above the restart).
+//
+// The modules card (Task 9) is one more card: its adds, moves and deletes are server actions whose answer brings the page's new read, which the
+// cards take as any other read — no restart, so a field typed and not yet saved stays as it is — and a module's name autosaves on its own route
+// (R-b2) as one of the editor's autosaves (course/OutlineTexts.ts): saved before a publish, a discard or the switch, its copy dropped with a
+// discard, its status in the chip and „Kontrolli“ on the map; once a name is stored the page is read again for the bar's labels, unless a press is
+// on its way (its own read follows, and a read asked before it must not be the one that starts the cards over).
 
 const t = adminEt.courseEditor;
 
@@ -170,6 +178,8 @@ type Waits = {
   reload: (live?: EditorParts) => void;
   /** The page is read again and the cards start over from it; nothing waits meanwhile (an outcome unknown after the bound). */
   reread: () => void;
+  /** The page is read again for what only the server says (the modules' labels), starting no card over; nothing while a press or a switch is on its way. */
+  readLabels: () => void;
   /** A change of a part for the form on screen (now, or once its cards take typing again). */
   route: (change: Change) => void;
   /** The form on screen tells how a change goes in and whether its cards wait (null: it is gone). */
@@ -212,6 +222,24 @@ export function SavedCourse(props: Shared) {
     setLateTick((n) => n + 1);
   }, []);
   const takeLate = useCallback(() => late.current.splice(0), []);
+  // a switch's answer is awaited (its box shows what was asked until the next read): a read for the labels would show the stored state before it
+  const switching = useRef(false);
+  useLayoutEffect(() => {
+    switching.current = said.asked.published !== undefined || said.asked.sample !== undefined;
+  });
+  // the reads for the labels asked and not come yet: a wait that begins meanwhile lets those pass (they may be from before the press; the router runs
+  // one read after another, so the wait's own comes after them) and starts the cards over from the one after them
+  const [labelsAsked, setLabelsAsked] = useState(0);
+  const labelsOnTheWay = useRef(0);
+  useLayoutEffect(() => {
+    labelsOnTheWay.current = labelsAsked;
+  });
+  const [passReads, setPassReads] = useState(0);
+  const readLabels = useCallback(() => {
+    if (holding.current || switching.current) return;
+    setLabelsAsked((n) => n + 1);
+    startTransition(() => router.refresh());
+  }, [router]);
   // the control of the editor the focus was last on (kept above the restart): a restart or a release puts it back there — the control she pressed,
   // or the one she moved to while the cards waited, never one she has left (inert cards drop the focus to <body>, which is no control)
   const lastFocus = useRef<string | null>(null);
@@ -225,7 +253,9 @@ export function SavedCourse(props: Shared) {
   if (data !== seen) {
     setSeen(data);
     setSaid((s) => ({ ...s, asked: {} }));
-    if (awaiting) {
+    if (labelsAsked > 0) setLabelsAsked(labelsAsked - 1);
+    if (awaiting && passReads > 0) setPassReads(passReads - 1);
+    else if (awaiting) {
       setSeeds(data.parts);
       setGeneration((g) => g + 1);
       setAwaiting(false);
@@ -243,6 +273,7 @@ export function SavedCourse(props: Shared) {
     setHold(null);
   }, []);
   const reread = useCallback(() => {
+    setPassReads(labelsOnTheWay.current);
     setAwaiting(true);
     startTransition(() => router.refresh());
   }, [router]);
@@ -301,7 +332,7 @@ export function SavedCourse(props: Shared) {
       seeds={seeds}
       generation={generation}
       waiting={hold !== null}
-      waits={{ hold: beginHold, release, reload, reread, route, onScreen, late: { take: takeLate, tick: lateTick } }}
+      waits={{ hold: beginHold, release, reload, reread, readLabels, route, onScreen, late: { take: takeLate, tick: lateTick } }}
       refocus={refocus}
       said={said}
       setSaid={setSaid}
@@ -334,7 +365,7 @@ function SavedForm({
   setSaid: (update: (s: Said) => Said) => void;
 }) {
   const { id, published, liveType } = data;
-  const { hold, release, reload, reread, route, onScreen, late } = waits;
+  const { hold, release, reload, reread, readLabels, route, onScreen, late } = waits;
   const common = { courseId: id, published, liveType };
   // an unpublished course's „Põhiinfo“ saves are heard (its type)
   const ear = useRef<SaveEar | null>(null);
@@ -392,6 +423,30 @@ function SavedForm({
         };
   });
   const frozen = waiting || typeSaving;
+  // the modules card's names (course/OutlineTexts.ts): each row's autosave joins the editor's, and says its status
+  const textRows = useRef(new Set<OutlineTextRow>());
+  const [textStatus, setTextStatus] = useState<Record<string, AutosaveStatus>>({});
+  const joinText = useCallback((row: OutlineTextRow) => {
+    textRows.current.add(row);
+    return () => void textRows.current.delete(row);
+  }, []);
+  const reportText = useCallback((key: string, status: AutosaveStatus | null) => {
+    setTextStatus((all) => {
+      if (status === null) {
+        if (!(key in all)) return all;
+        const rest = { ...all };
+        delete rest[key];
+        return rest;
+      }
+      return all[key] === status ? all : { ...all, [key]: status };
+    });
+  }, []);
+  const outlineTexts = useMemo<OutlineTexts>(
+    () => ({ join: joinText, report: reportText, stored: published ? readLabels : () => {}, frozen }),
+    [joinText, reportText, published, readLabels, frozen],
+  );
+  const textStatuses = Object.values(textStatus);
+  const textAttention = textStatuses.some((x) => x.kind === "invalid" || x.kind === "conflict" || x.kind === "gone");
   // the form on screen, for `route` (a card's list change, whenever it comes)
   useLayoutEffect(() => {
     onScreen({ frozen, apply: (change) => (hooks[change.part].api.update as unknown as LooseUpdate)(change.name, change.fn) });
@@ -440,8 +495,8 @@ function SavedForm({
   });
   const savesNow = () => Object.fromEntries(order.map((part) => [part, hooks[part].saves]));
 
-  /** Every card's waiting save, sent now and waited for: a publish, a discard or the switch work on what is saved. */
-  const flushAll = () => Promise.all(order.map((part) => hooks[part].flushNow()));
+  /** Every card's waiting save (the modules' names too), sent now and waited for: a publish, a discard or the switch work on what is saved. */
+  const flushAll = () => Promise.all([...order.map((part) => hooks[part].flushNow()), ...Array.from(textRows.current, (row) => row.flush())]);
 
   const publish = async () => {
     setSaid((s) => ({ ...s, barError: null }));
@@ -477,6 +532,7 @@ function SavedForm({
     // what was thrown away must not come back: every part's copy in this browser goes before the cards start over (review I-1); muted, they start
     // over from the read, or at the bound from the live values the discard left (round 2 N-1, round 3)
     for (const part of order) hooks[part].discardCopy();
+    for (const row of textRows.current) row.discardCopy();
     setSaid((s) => ({ ...s, blocked: null }));
     reload(seeds);
   };
@@ -526,7 +582,7 @@ function SavedForm({
   const price = parts.price.fields;
   const missing = blocked.some((b) => b.reason === "missing") || said.priceRefused;
   const hasPrice = type === "e_learning" ? price.price.trim() !== "" : price.priceGroup.trim() !== "" || price.priceIndividual.trim() !== "";
-  const combined = combineStatus(order.map((part) => hooks[part].status));
+  const combined = combineStatus([...order.map((part) => hooks[part].status), ...textStatuses]);
   // after a publish the cards start over with no save of their own yet: the chip keeps the publish's time
   const status = combined.kind === "saved" && combined.at === null && said.publishedAt ? { kind: "saved" as const, at: said.publishedAt } : combined;
   const compared = Object.fromEntries(order.map((part) => [part, { value: parts[part].fields, live: seeds[part].live }])) as { [P in EditorPart]: { value: PartValues[P]; live: PartValues[P] } };
@@ -537,58 +593,65 @@ function SavedForm({
       const why = hooks[part].unconfirmed();
       if (why?.reason === "invalid" && why.field) return focusPartField(part, why.field);
     }
+    // (a module's name held back)
+    document.querySelector<HTMLElement>("[data-lessons-editor] [data-module-name] [aria-invalid='true']")?.focus();
   };
 
+  const mapBlocked = blocked.map((b) => b.part);
+
   return (
-    <CourseView
-      title={parts.basics.fields.title.et.trim() || t.newTitle}
-      published={published}
-      sample={asked.sample ?? data.isSample}
-      // the draft's words („Mustand salvestatud“) while something waits for „Avalda muudatused“; after the publish „Salvestatud {HH:MM}“ (§4)
-      status={
-        <span className={styles.statusSlot}>
-          <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} />
-        </span>
-      }
-      publicHref={published ? `/koolitused/${data.slug}` : null}
-      notice={
-        created ? (
-          <p className={ui.notice} role="status">
-            {t.created}
-          </p>
-        ) : undefined
-      }
-      bar={
-        published ? (
-          <PublishBar
-            changed={changed}
-            previewHref={`/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${data.slug}`)}`}
-            // (nothing left to publish: no bar, never „Avaldamata muudatused: 0“; review M-3)
-            blocked={changed.length > 0 ? blockedOf(blocked) : undefined}
-            error={said.barError}
-            onDiscard={discard}
-            onPublish={publish}
-          />
-        ) : undefined
-      }
-      parts={parts}
-      courseId={id}
-      modules={modules}
-      others={others}
-      next={next}
-      locked={data.typeLocked}
-      liveType={liveType}
-      priceMissing={missing && !hasPrice}
-      blocked={blocked.map((b) => b.part)}
-      frozen={frozen}
-      switches={{
-        published: asked.published ?? published,
-        sample: asked.sample ?? data.isSample,
-        onPublished: (on) => void switchPublished(on),
-        onSample: (on) => void switchSample(on),
-        busy: asked.published !== undefined || asked.sample !== undefined,
-        error: said.switchError,
-      }}
-    />
+    <OutlineTextsContext.Provider value={outlineTexts}>
+      <CourseView
+        title={parts.basics.fields.title.et.trim() || t.newTitle}
+        published={published}
+        sample={asked.sample ?? data.isSample}
+        // the draft's words („Mustand salvestatud“) while something waits for „Avalda muudatused“; after the publish „Salvestatud {HH:MM}“ (§4)
+        status={
+          <span className={styles.statusSlot}>
+            <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} />
+          </span>
+        }
+        publicHref={published ? `/koolitused/${data.slug}` : null}
+        notice={
+          created ? (
+            <p className={ui.notice} role="status">
+              {t.created}
+            </p>
+          ) : undefined
+        }
+        bar={
+          published ? (
+            <PublishBar
+              changed={changed}
+              previewHref={`/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${data.slug}`)}`}
+              // (nothing left to publish: no bar, never „Avaldamata muudatused: 0“; review M-3)
+              blocked={changed.length > 0 ? blockedOf(blocked) : undefined}
+              error={said.barError}
+              onDiscard={discard}
+              onPublish={publish}
+            />
+          ) : undefined
+        }
+        parts={parts}
+        courseId={id}
+        modules={modules}
+        others={others}
+        next={next}
+        locked={data.typeLocked}
+        liveType={liveType}
+        priceMissing={missing && !hasPrice}
+        // (a module's name held back, in conflict or gone: the modules' map entry says „Kontrolli“ too)
+        blocked={textAttention ? [...mapBlocked, "outline"] : mapBlocked}
+        frozen={frozen}
+        switches={{
+          published: asked.published ?? published,
+          sample: asked.sample ?? data.isSample,
+          onPublished: (on) => void switchPublished(on),
+          onSample: (on) => void switchSample(on),
+          busy: asked.published !== undefined || asked.sample !== undefined,
+          error: said.switchError,
+        }}
+      />
+    </OutlineTextsContext.Provider>
   );
 }

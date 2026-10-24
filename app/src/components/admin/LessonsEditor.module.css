@@ -1,12 +1,13 @@
-/* "Moodulid ja õppetunnid" / "Programm" under the course editor (LessonsEditor.tsx) and the parts of the lesson drawer
-   (LessonDrawer.tsx, LessonFiles.tsx). Built from editor.module.css's list rows (B .module), ui.module.css and the student
-   drawer's sections (ClientDrawer.module.css); colours from tokens.css only. Every control is at least 44px tall. */
+/* „Moodulid ja õppetunnid“ / „Programm“ among the course editor's cards (LessonsEditor.tsx; README B2, the Part 3 frame's modules card) and the parts
+   of the lesson drawer (LessonDrawer.tsx, LessonFiles.tsx). The card: its title with the summary on the right (12px #716a6d); each module a box (1px
+   var(--line), radius 14, padding 12 14) whose head is ⋮⋮ | its number (12px mono) | its name | „avaldamata“ (600 11px var(--warn)) | ↑ ↓, then its
+   lessons indented 36 px, each at least 44 px with a rule over it, the name left and the tags and › on the right; then „+ Lisa moodul“. Colours from
+   tokens.css only (tests/unit/colour-tokens.test.ts; the frame's greys #716a6d and #5e5559 are var(--muted), its #f0ebed rule var(--line) mixed with
+   white); every control at least 44 px. Narrow (a phone, or the editor's narrow card column) the name goes under its handle, number, tag and arrows. */
 
-/* below the course editor's save bar */
 .editor {
   display: grid;
   gap: 18px;
-  margin-top: 25px;
 }
 
 .intro {
@@ -14,65 +15,93 @@
   gap: 8px;
 }
 
-.modules {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
 }
 
-/* B .module: one module as a box of its own */
-.module {
+.summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* the modules (DragList's ol) and each module's li: the box */
+.modules {
   display: grid;
   gap: 12px;
+}
+
+.module {
   min-width: 0;
-  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--paper);
 }
 
+.box {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
 .moduleHead {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
-  grid-template-areas: "num name tools";
-  align-items: start;
-  gap: 12px;
+  grid-template-columns: 44px 24px minmax(0, 1fr) auto auto;
+  grid-template-areas: "handle num name tag arrows";
+  align-items: center;
+  gap: 10px;
+}
+
+.handle {
+  grid-area: handle;
+  display: grid;
 }
 
 .moduleNum {
   grid-area: num;
+  color: var(--muted);
+  font: 400 12px/1.2 var(--font-mono);
 }
 
-.rename {
+.name {
   grid-area: name;
-  display: grid;
-  gap: 10px;
   min-width: 0;
 }
 
-.save {
-  justify-self: start;
+.arrows {
+  grid-area: arrows;
 }
 
-/* the arrows sit level with the field (under its label row) */
-.moduleTools {
-  grid-area: tools;
-  padding-top: 51px;
+/* „avaldamata“: a row (a module, a lesson) that waits for „Avalda muudatused“ (README §1.8, P-3; drawn on the frame's module 03) */
+.rowTag {
+  color: var(--warn);
+  font: 600 11px/1.3 var(--font-body);
+  white-space: nowrap;
+}
+
+.moduleHead .rowTag {
+  grid-area: tag;
+}
+
+.restore {
+  margin: 0;
 }
 
 .rowError {
   flex-basis: 100%;
+  margin: 0;
 }
 
-/* an e-course module's lessons, under its name */
+/* an e-course module's lessons, under its head */
 .lessonPart {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  margin-left: 36px;
 }
 
 .lessons {
@@ -86,40 +115,59 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: 6px 10px;
   min-width: 0;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.lesson:first-child {
-  padding-top: 0;
-}
-
-.lessonNum {
-  flex: none;
-  min-width: 30px;
-  color: var(--rose);
-  font: 400 15px/1.2 var(--font-display);
+  min-height: 44px;
+  padding: 4px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, var(--paper));
+  font-size: 13px;
 }
 
 .lessonTitle {
   flex: 1 1 160px;
   min-width: 0;
-  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+/* the neutral tag: „Tekst“, „Video üleslaadimisel“ (the frame's first-light with its grey text) */
+.quietTag {
+  border: 0;
+  background: var(--first);
+  color: var(--muted);
 }
 
 .lessonTools {
   flex-wrap: wrap;
   align-items: center;
-  margin-left: auto;
+}
+
+/* › to the lesson's drawer: a 44 px target */
+.open {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--muted);
+  font: 500 20px/1 var(--font-body);
+  text-decoration: none;
+}
+
+.open:hover {
+  background: var(--first);
+  color: var(--ink);
+}
+
+.open:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
 }
 
 /* "Lisa õppetund", "Lisa moodul": one field and its button */
@@ -142,6 +190,52 @@
 
 .addModule {
   padding-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .box {
+    padding: 12px;
+  }
+
+  /* ⋮⋮, the number, the tag and the arrows on one line, the name under them */
+  .moduleHead {
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "handle num tag arrows"
+      "name name name name";
+    gap: 8px;
+  }
+
+  .lessonPart {
+    margin-left: 0;
+  }
+
+  .lessonTools {
+    margin-left: auto;
+  }
+}
+
+/* the same in the course editor's narrow card column (CourseEditor.module.css: container course-cards; iOS 15 has the media query above) */
+@container course-cards (max-width: 560px) {
+  .box {
+    padding: 12px;
+  }
+
+  .moduleHead {
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "handle num tag arrows"
+      "name name name name";
+    gap: 8px;
+  }
+
+  .lessonPart {
+    margin-left: 0;
+  }
+
+  .lessonTools {
+    margin-left: auto;
+  }
 }
 
 /* ---------- the lesson drawer ---------- */
@@ -193,35 +287,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
-}
-
-@media (max-width: 640px) {
-  .module {
-    padding: 12px;
-  }
-
-  /* the number and the arrows on one line, the name under them */
-  .moduleHead {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "num tools"
-      "name name";
-    align-items: center;
-    gap: 8px;
-  }
-
-  .moduleNum {
-    padding-top: 0;
-  }
-
-  .moduleTools {
-    padding-top: 0;
-  }
-
-  .lessonTools {
-    width: 100%;
-    justify-content: flex-end;
-  }
 }
 
 /* the video field's upload (LessonVideoField.tsx): the browser's own bar, in the palette */

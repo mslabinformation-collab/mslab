@@ -165,7 +165,7 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect([...strip(clients.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(clientExports);
     const lessonActions = files().find((f) => f.path === "server/actions/admin-lessons.ts")!;
     const lessonExports = [...strip(lessonActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(lessonExports).toEqual(["addModule", "renameModule", "moveModuleInList", "deleteModule", "addLesson", "saveLesson", "moveLessonInList", "setLessonHidden", "setLessonKind", "deleteLesson", "deleteLessonFile", "createLessonVideo", "checkLessonVideo"]);
+    expect(lessonExports).toEqual(["addModule", "moveModuleTo", "deleteModule", "addLesson", "saveLesson", "moveLessonInList", "setLessonHidden", "setLessonKind", "deleteLesson", "deleteLessonFile", "createLessonVideo", "checkLessonVideo"]);
     expect(violations(lessonActions.path, lessonActions.source)).toEqual([]);
     expect([...strip(lessonActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(lessonExports);
     const protocolActions = files().find((f) => f.path === "server/actions/admin-protocols.ts")!;

@@ -7,8 +7,8 @@ import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
 import { parseRowId, ROW_ID_MAX } from "@/lib/row-id";
 import {
-  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, moveLessonForm, moveModuleForm, renameModuleForm,
-  saveLessonForm, setLessonHiddenForm, setLessonKindForm, type LessonCleanup,
+  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, moveLessonForm, moveModuleToRequest, saveLessonForm,
+  setLessonHiddenForm, setLessonKindForm, type LessonCleanup,
 } from "../admin-lessons";
 import { adminAction } from "../auth";
 import { bunnyApi, bunnyConfig } from "../bunny";
@@ -24,7 +24,7 @@ import { revalidatePublic } from "../public-cache";
 // only in the account (its JSON is never cached), so they refresh the open admin page only. On a published course (B18, R-e) a new
 // module, a rename and a move wait for „Avalda muudatused“ (its route revalidates once then); the revalidation here is then needless but
 // harmless, and a module's delete is live at once. The changes that may write the course's outline draft are handed the admin (the
-// draft's updated_by).
+// draft's updated_by). A module's name is no action: it autosaves on its own route (api/admin/moodul/<id>, R-b2; the card, Task 9).
 
 async function run(what: string, publicChange: boolean, work: (db: Db) => Promise<EditResult>): Promise<EditResult> {
   try {
@@ -61,8 +61,8 @@ const media = () => {
 };
 
 export const addModule = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("module add", true, (db) => addModuleForm(db, formData)));
-export const renameModule = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module rename", true, (db) => renameModuleForm(db, formData, admin)));
-export const moveModuleInList = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module move", true, (db) => moveModuleForm(db, formData, admin)));
+/** A module's drag, ↑ or ↓ (the card's DragList, README B2): `{ id, index }`, one move to that place. */
+export const moveModuleTo = adminAction(async (admin, input: unknown) => run("module move", true, (db) => moveModuleToRequest(db, input, admin)));
 export const deleteModule = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module delete", true, (db) => deleteModuleForm(db, formData, admin)));
 
 /**
