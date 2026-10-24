@@ -84,6 +84,7 @@ Other sources:
     - `d:` saves compare-and-set the draft;
     - anything else is a conflict.
   - On an unpublished course the part writes the live record, by hash compare.
+- **R-b2. Row text versions** (24.10, Task 5 review): a module title and a lesson's name/short text autosave per row through `/api/admin/moodul/[id]` and `/api/admin/oppetund/[id]`, version `t:<hash of the row's working text>`; the whole `outline` part is never written by an editor (`/osa/outline` refuses), so different editors in one page never conflict.
 - **R-c. Publishing.** `publishDrafts` with a course `Publisher` runs in one transaction: it locks the course row, checks every part's base against its live version, then writes.
   - A part that changed meanwhile stays a draft and is listed as blocked (S3-P3-b, "changed meanwhile").
   - The existing course rules hold at publish. A published course needs a price (S3-P3-b „Puudub: hind“). A slug must be unique; a taken slug is refused already at the draft save with the existing slug error.
