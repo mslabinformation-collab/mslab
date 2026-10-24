@@ -167,6 +167,13 @@ House style (as in P2T): result lines end with a full stop, labels and buttons d
   - after a move by drag, ↑/↓ or the phone menu: `„{nimi}“ on nüüd {k}. kohal.` (rows: `Rida {n} on nüüd {k}. kohal.`)
 - Reference strings: ADM:1531 `courses.moveUp` "Liiguta üles: {name}"; ADM:1462 `list.up` "Liiguta rida {n} üles"; README §3 B1 (`lohistatav`); P4:46 (the „↕“ button).
 
+### Dim 24.10 — answers while 3a was being built
+
+- **D-1 Preview exit.** The public preview bar's exit link reads `Lõpeta eelvaade` (it turns draft mode off and shows the same page as visitors see it). The admin shell's own `Vaata kodulehte` stays.
+- **D-2 Failure lines, per action.** A failed „Avalda muudatused“: `Avaldamine ei õnnestunud. Proovi uuesti.` A failed „Loobu muudatustest“: `Muudatustest loobumine ei õnnestunud. Proovi uuesti.` On the editor's PublishBar and on the preview bar. An expired session still says `Logi uuesti sisse.`
+- **D-3 Switch label.** The „Avaldamine“ card's switches are `Avalikul lehel` and `Näidissisu`, as drawn (Part 3, Part 4), with no hints.
+- **D-4 Catalogue in the preview.** `/koolitused` gets a slim bar in the admin's preview only: `Eelvaade` · `Lõpeta eelvaade`, no discard (discarding stays per course). Visitors keep the static page.
+
 ---
 
 ## 2. P — pattern-derived (builder uses these unless Dim objects)
