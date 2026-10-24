@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
+import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { getCourseBySlug, listPublishedCourses } from "@/db/queries/public";
+import * as schema from "@/db/schema";
 import { courseImages, courseModules, courses, courseTests, lessons, type TestQuestion } from "@/db/schema";
 import { createSession, deleteSession } from "@/server/auth";
 import { makeTestDb } from "./helpers";
@@ -34,8 +39,17 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/public-cache", () => ({ revalidatePublic: vi.fn() }));
+// (the registration form is a client component that reads the router, which a page rendered to HTML here has not got; notFound() stays the real one)
+vi.mock("next/navigation", async (original) => ({
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {}, back: () => {}, forward: () => {}, prefetch: () => {} }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
-import { addLessonForm, addModuleForm, renameModuleForm } from "@/server/admin-lessons";
+import CoursePage from "@/app/[locale]/(site)/koolitused/[slug]/page";
+
+import { addLessonForm, addModuleForm, moveModuleForm, renameModuleForm } from "@/server/admin-lessons";
 import { readCoursePart, writeCoursePart } from "@/server/course-parts";
 import { previewActive } from "@/server/preview";
 
@@ -54,6 +68,7 @@ let db: Db;
 let online: { id: number };
 let contact: { id: number };
 let m1: number;
+let m2: number;
 
 beforeEach(async () => {
   db = await makeTestDb();
@@ -74,7 +89,7 @@ beforeEach(async () => {
   await db.insert(courses).values({ ...base, slug: "mustand", type: "contact", title: { et: "Mustand" }, priceGroup: 10000, sort: 3 });
   await db.insert(courseTests).values({ courseId: online.id, questions: [{ id: "q1", kind: "choice", text: "Vana küsimus", options: [{ id: "a", text: "Jah", correct: true }, { id: "b", text: "Ei", correct: false }] }], passPercent: 80, tries: 3 });
   await db.insert(courseImages).values({ courseId: online.id, key: "/seed/brow-closeup.jpg", alt: { et: "Kulmud" }, sort: 0 });
-  [{ id: m1 }] = await db.insert(courseModules).values([{ courseId: online.id, position: 1, title: { et: "Moodul 1" } }, { courseId: online.id, position: 2, title: { et: "Moodul 2" } }]).returning();
+  [{ id: m1 }, { id: m2 }] = await db.insert(courseModules).values([{ courseId: online.id, position: 1, title: { et: "Moodul 1" } }, { courseId: online.id, position: 2, title: { et: "Moodul 2" } }]).returning();
   await db.insert(lessons).values({ moduleId: m1, position: 1, title: { et: "Esimene" } });
 });
 afterEach(() => {
@@ -275,7 +290,13 @@ describe("the course page's data (getCourseBySlug with the preview's drafts)", (
     const m3 = idOf(await addModuleForm(db, form({ courseId: online.id, titleEt: "Kordamine" })));
     await asAdmin();
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Sissejuhatus", "Moodul 2", "Kordamine"]);
-    expect(m3).toBeGreaterThan(0);
+    // a move of a live module is a draft move too (Task 5): „Moodul 2“ goes before the renamed first one; the new module keeps its place at the end
+    idOf(await moveModuleForm(db, form({ id: m2, dir: "up" }), MARIA));
+    expect(titles(await pageCourse("e-kulm"))).toEqual(["Moodul 2", "Sissejuhatus", "Kordamine"]);
+    // and the new module moves directly, to the front
+    idOf(await moveModuleForm(db, form({ id: m3, dir: "up" }), MARIA));
+    idOf(await moveModuleForm(db, form({ id: m3, dir: "up" }), MARIA));
+    expect(titles(await pageCourse("e-kulm"))).toEqual(["Kordamine", "Moodul 2", "Sissejuhatus"]);
     state.draftOn = false;
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Moodul 1", "Moodul 2"]);
   });
@@ -309,6 +330,89 @@ describe("the catalogue (listPublishedCourses with the preview's drafts)", () =>
     state.draftOn = true;
     state.cookie = undefined;
     expect((await catalogue())[0].title.et).toBe("E-kulm");
+  });
+});
+
+describe("the answer key stays out of the preview's reads (Task 6 review, M-2)", () => {
+  test("the test part's draft is left out in the query and the course's test row is not read at all", async () => {
+    const log: { query: string; params: unknown[] }[] = [];
+    const logged: Db = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string, params: unknown[]) => void log.push({ query, params }) } });
+    await migrate(logged, { migrationsFolder: "./drizzle" });
+    state.db = logged;
+    const [c] = await logged
+      .insert(courses)
+      .values({ slug: "e-kulm", type: "e_learning", level: "basic", title: { et: "E-kulm" }, summary: { et: "" }, body: { et: "" }, price: 9500, accessMonths: 6, published: true })
+      .returning();
+    await logged.insert(courseTests).values({ courseId: c.id, questions: [SECRET], passPercent: 80, tries: 3 });
+    const saved = async (part: string, patch: Record<string, unknown>) => {
+      const { version } = (await readCoursePart(logged, c.id, part as never))!;
+      expect((await writeCoursePart(logged, c.id, part as never, patch, version, MARIA, NOW)).ok).toBe(true);
+    };
+    await saved("test", { passPercent: "90" });
+    await saved("basics", { title: { et: "E-kulm (uus)" } });
+    log.length = 0;
+    const page = (await getCourseBySlug(logged, "e-kulm", { drafts: true }))!;
+    expect(page.title).toEqual({ et: "E-kulm (uus)" });
+    const draftReads = log.filter((q) => /from "content_drafts"/.test(q.query));
+    expect(draftReads.length).toBeGreaterThan(0);
+    // every read of the drafts is limited by part: the parts' drafts without the test's, or the outline's alone (the module titles); none takes them all
+    for (const read of draftReads) {
+      if (/"part" not in \(/.test(read.query)) expect(read.params).toEqual(expect.arrayContaining(["test", "outline"]));
+      else {
+        expect(read.query).toMatch(/"part" in \(/);
+        expect(read.params).toEqual(expect.not.arrayContaining(["test"]));
+      }
+    }
+    expect(draftReads.map((r) => /"part" not in \(/.test(r.query))).toContain(true);
+    expect(log.filter((q) => /"course_tests"/.test(q.query))).toEqual([]);
+  });
+});
+
+describe("the preview bar on the course page (Task 6 review: spec C3, Part 4)", () => {
+  const html = (locale: "et" | "ru", slug = "e-kulm") => CoursePage({ params: Promise.resolve({ locale, slug }) }).then((tree) => renderToStaticMarkup(tree));
+  const BAR = "data-preview-bar";
+
+  test("in the admin's preview: „Avaldamata 4“ (every label the PublishBar counts), the way out to this page, „Loobu muudatustest“", async () => {
+    await draft(online.id, "basics", { title: { et: "E-kulm (uus)" }, summary: { et: "Uus kokkuvõte" } });
+    await draft(online.id, "outcomes", { outcomes: [{ et: "Oskus Z" }] });
+    idOf(await addModuleForm(db, form({ courseId: online.id, titleEt: "Moodul 3" })));
+    await asAdmin();
+    const page = await html("et");
+    expect(page).toContain(BAR);
+    expect(page).toContain("E-kulm (uus)");
+    expect(page).toContain("Avaldamata 4");
+    expect(page).toContain("Loobu muudatustest");
+    expect(page).toContain("Vaata kodulehte");
+    // the way out ends draft mode and comes back to this very page, as a visitor sees it
+    expect(page).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fkoolitused%2Fe-kulm"');
+    expect(page).toContain('data-fab-avoid=""');
+    // the Russian page leaves to the Russian page
+    expect(await html("ru")).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fru%2Fkoolitused%2Fe-kulm"');
+  });
+
+  test("in the preview with nothing unpublished: the way out only", async () => {
+    await asAdmin();
+    const page = await html("et");
+    expect(page).toContain(BAR);
+    expect(page).not.toContain("data-preview-count");
+    expect(page).not.toContain("Loobu muudatustest");
+    expect(page).toContain("Vaata kodulehte");
+  });
+
+  test("never for a visitor: draft mode off, or draft mode on without an admin session (the page shows the live data and no bar)", async () => {
+    await draft(online.id, "basics", { title: { et: "E-kulm (uus)" } });
+    state.cookie = await createSession(db, ME);
+    const off = await html("et");
+    state.draftOn = true;
+    state.cookie = undefined;
+    const stranger = await html("et");
+    for (const page of [off, stranger]) {
+      expect(page).not.toContain(BAR);
+      expect(page).not.toContain("Loobu muudatustest");
+      expect(page).not.toContain("eelvaade?lopeta");
+      expect(page).not.toContain("E-kulm (uus)");
+      expect(page).toContain("E-kulm");
+    }
   });
 });
 

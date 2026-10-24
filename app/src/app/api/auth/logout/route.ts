@@ -4,7 +4,7 @@ import { getDb } from "@/db/client";
 import { PREVIEW_COOKIE } from "@/lib/preview-cookie";
 import { SESSION_COOKIE, deleteSession, isCrossSite, sessionCookieOptions } from "@/server/auth";
 import { logFailure } from "@/server/log";
-import { clearPreviewCookie } from "@/server/preview";
+import { clearPreviewCookie, endDraftMode } from "@/server/preview";
 
 /**
  * Logout (POST from the button in the admin area): deletes the session row, clears the `__Host-mslab_admin` cookie and
@@ -15,7 +15,8 @@ import { clearPreviewCookie } from "@/server/preview";
  * Deliberately not wrapped in withAdmin: a session that has expired, or whose address has left the allow-list, must still
  * be able to clear its cookies and get to the login page instead of a JSON 401. A request without the cookies just gets
  * the redirect (a cross-site POST does not carry them, SameSite=Lax); each cookie the request carries is cleared, the
- * preview cookie also without a session. The static check in tests/unit/admin-guards.test.ts covers app/admin and
+ * preview cookie also without a session. Next's draft-mode cookie (the draft preview, api/admin/eelvaade) ends with it, before the early return below, so a
+ * session that has expired is covered too. The static check in tests/unit/admin-guards.test.ts covers app/admin and
  * app/api/admin; this route lives under app/api/auth because it is part of signing in and out.
  */
 export async function POST(request: Request): Promise<Response> {
@@ -25,6 +26,7 @@ export async function POST(request: Request): Promise<Response> {
   const res = NextResponse.redirect(new URL("/admin/login", new URL(request.url).origin), 303);
   res.headers.set("cache-control", "no-store");
   if (jar.get(PREVIEW_COOKIE) !== undefined) clearPreviewCookie(res); // the gate's pass ends with the session
+  await endDraftMode(); // and so does the draft preview, whether or not a session is left to end
   if (!raw) return res;
   try {
     await deleteSession(getDb(), raw);

@@ -53,6 +53,16 @@ export async function previewActive(): Promise<boolean> {
   return (await currentAdminEmail()) !== null;
 }
 
+/**
+ * Ends this browser's draft-mode preview when it is on: Next's cookie (`__prerender_bypass`) is cleared on the answer. Nothing is set when draft mode
+ * is off, so a request that carries no such cookie gets no Set-Cookie for it. Called where the preview must not outlive what she does next: signing
+ * out (api/auth/logout, also with an expired session), and „Vaata kodulehte“ (api/admin/preview), which shows the live site (task 6 review).
+ */
+export async function endDraftMode(): Promise<void> {
+  const draft = await draftMode();
+  if (draft.isEnabled) draft.disable();
+}
+
 /** The longest `tee` the draft preview follows (a page's path with its query); a longer one goes to the home page. */
 const PREVIEW_PATH_MAX = 2048;
 

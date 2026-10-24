@@ -51,6 +51,20 @@ function settingsPublisher(entity: string, id: number, o: { failOn?: string } = 
 }
 
 describe("saveDraftPart and readDrafts", () => {
+  it("readDrafts can leave parts out in the query itself (the public preview never loads the test's answer key)", async () => {
+    for (const part of ["basics", "test", "outline"]) {
+      const base = await setLive("course", 7, part, { [part]: "live" });
+      expect(await saveDraftPart(db, { entity: "course", entityId: 7, part, value: { [part]: "draft" }, baseVersion: base, version: null, by: MARIA })).toEqual({ ok: true, version: 1 });
+    }
+    expect((await readDrafts(db, "course", 7)).map((d) => d.part)).toEqual(["basics", "test", "outline"]);
+    expect((await readDrafts(db, "course", 7, { except: ["test", "outline"] })).map((d) => d.part)).toEqual(["basics"]);
+    expect((await readDrafts(db, "course", 7, { except: [] })).map((d) => d.part)).toEqual(["basics", "test", "outline"]);
+    expect(await readDrafts(db, "course", 7, { except: ["basics", "test", "outline"] })).toEqual([]);
+    expect((await readDrafts(db, "course", 7, { only: ["outline"] })).map((d) => d.part)).toEqual(["outline"]);
+    expect((await readDrafts(db, "course", 7, { only: ["basics", "outline"], except: ["basics"] })).map((d) => d.part)).toEqual(["outline"]);
+    expect(await readDrafts(db, "course", 7, { only: [] })).toEqual([]);
+  });
+
   it("saveDraftPart creates version 1, then bumps; a stale version answers conflict with the stored value", async () => {
     const base = await setLive("course", 7, "summary", { summary: { et: "Vana" } });
     const first = { summary: { et: "Uus" } };

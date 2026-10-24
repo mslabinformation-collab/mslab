@@ -211,7 +211,8 @@ export function layoutFor(course: Pick<Course, "id" | "published">, rows: Outlin
 /** The course's working order now (the rows, then its draft when it is published): under the caller's lock, or on its own for a read. */
 export async function readLayout(q: Q, course: Pick<Course, "id" | "published">): Promise<{ rows: OutlineRows; layout: Layout }> {
   const rows = await outlineRows(q, course.id);
-  const drafts = course.published ? await readDrafts(q, ENTITY, course.id) : [];
+  // (only the outline's draft is read: the public preview reads the working order too, and a course's other drafts, the test's answer key among them, are not its business)
+  const drafts = course.published ? await readDrafts(q, ENTITY, course.id, { only: [OUTLINE_PART] }) : [];
   return { rows, layout: layoutFor(course, rows, drafts) };
 }
 

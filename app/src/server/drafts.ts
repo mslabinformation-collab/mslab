@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "@/db/client";
 import type * as schema from "@/db/schema";
@@ -61,12 +61,19 @@ const pg = (db: Q) => db as unknown as PostgresJsDatabase<typeof schema>;
 const ofRow = (entity: string, entityId: number) => and(eq(contentDrafts.entity, entity), eq(contentDrafts.entityId, entityId));
 const ofPart = (entity: string, entityId: number, part: string) => and(ofRow(entity, entityId), eq(contentDrafts.part, part));
 
-/** The drafts of one entity row, in the order their parts were first saved (empty: nothing unpublished). Runs in a caller's transaction too. */
-export async function readDrafts(q: Q, entity: string, entityId: number): Promise<DraftPart[]> {
+/**
+ * The drafts of one entity row, in the order their parts were first saved (empty: nothing unpublished). Runs in a caller's transaction too.
+ * `only` and `except`: the parts the query takes, or leaves out, so the values of the others are never loaded (the public preview does not load a course's
+ * test draft, whose value is the answer key: server/course-parts.ts withCourseDrafts, server/course-outline.ts readLayout).
+ */
+export async function readDrafts(q: Q, entity: string, entityId: number, opts: { only?: readonly string[]; except?: readonly string[] } = {}): Promise<DraftPart[]> {
+  const filters = [ofRow(entity, entityId)];
+  if (opts.only) filters.push(inArray(contentDrafts.part, [...opts.only]));
+  if (opts.except && opts.except.length > 0) filters.push(notInArray(contentDrafts.part, [...opts.except]));
   return q
     .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion, version: contentDrafts.version, updatedAt: contentDrafts.updatedAt })
     .from(contentDrafts)
-    .where(ofRow(entity, entityId))
+    .where(and(...filters))
     .orderBy(asc(contentDrafts.id));
 }
 

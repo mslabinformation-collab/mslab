@@ -11,6 +11,7 @@ import { Gallery } from "@/components/site/Gallery";
 import { Icon } from "@/components/site/Icon";
 import { IncludesList } from "@/components/site/IncludesList";
 import { ModuleList } from "@/components/site/ModuleList";
+import { PreviewBar } from "@/components/site/PreviewBar";
 import { Recommendations } from "@/components/site/Recommendations";
 import { ReviewList } from "@/components/site/ReviewList";
 import { trainerSettings } from "@/components/site/settings";
@@ -61,10 +62,13 @@ export function generateStaticParams(): { slug: string }[] {
   return [];
 }
 
-// One course query per request, shared by generateMetadata and the page. Sessions that have begun are left out. The signed-in admin's draft preview
-// (api/admin/eelvaade; admin UX pass piece 3a, R-h) lays the course's unpublished changes over it: `previewActive()` is true only with draft mode on AND a
-// live admin session, and it reads no cookie otherwise, so for every visitor and for the static render this stays the page cached by revalidation.
-const loadCourse = cache(async (slug: string) => getCourseBySlug(getDb(), slug, { sessionsFrom: upcomingFrom(new Date()), drafts: await previewActive() }));
+// Is this request the signed-in admin's draft preview (api/admin/eelvaade; admin UX pass piece 3a, R-h)? `previewActive()` is true only with draft mode on AND
+// a live admin session, and it reads no cookie otherwise, so for every visitor and for the static render this page stays the one cached by revalidation.
+// Asked once per request: by the course query (the preview lays the course's unpublished changes over it) and by the page (the preview bar).
+const inPreview = cache(() => previewActive());
+
+// One course query per request, shared by generateMetadata and the page. Sessions that have begun are left out.
+const loadCourse = cache(async (slug: string) => getCourseBySlug(getDb(), slug, { sessionsFrom: upcomingFrom(new Date()), drafts: await inPreview() }));
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
@@ -180,6 +184,14 @@ export default async function CoursePage({ params }: Props) {
   const includes = online
     ? [...(course.videoCount ? [fill(c.includesVideos, { n: course.videoCount })] : []), ...c.includesElearning]
     : pickList(course.includes, locale);
+
+  // The admin's draft preview only (spec C3, Part 4): the bar with „Loobu muudatustest“ and the way out. For a visitor, and for the page Next keeps, there is none:
+  // nothing of the draft layer is loaded unless the request is the preview.
+  let previewBar: React.ReactNode = null;
+  if (await inPreview()) {
+    const { previewBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewBar {...await previewBarProps(db, course.id, to(`/koolitused/${course.slug}`))} />;
+  }
 
   return (
     <>
@@ -362,6 +374,7 @@ export default async function CoursePage({ params }: Props) {
       )}
 
       <Recommendations title={c.recommendations} cards={recommended} />
+      {previewBar}
     </>
   );
 }

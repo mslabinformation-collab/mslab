@@ -5,15 +5,31 @@ import { createLoginToken, createSession, SESSION_COOKIE } from "@/server/auth";
 import { makeTestDb } from "./helpers";
 
 // The admins' preview cookie of the coming-soon gate (lib/preview-cookie.ts): set next to the session at sign-in
-// (/api/auth/verify), set again by "Vaata kodulehte" (GET /api/admin/preview, a signed-in admin only), cleared at logout.
-// The routes run with the database (PGlite), the request cookie and the environment faked.
+// (/api/auth/verify), set again by "Vaata kodulehte" (GET /api/admin/preview, a signed-in admin only), cleared at logout. Next's draft mode (the draft
+// preview, api/admin/eelvaade) ends at "Vaata kodulehte" and at logout (piece 3a Task 6 review: the live site is what she sees there).
+// The routes run with the database (PGlite), the request cookies, draft mode and the environment faked.
 
-const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, preview: undefined as string | undefined }));
+const state = vi.hoisted(() => ({
+  db: null as unknown,
+  cookie: undefined as string | undefined,
+  preview: undefined as string | undefined,
+  /** Next's draft mode of the request: on when the browser carries its cookie; `disable` counts the calls that clear it. */
+  draft: { enabled: false, disable: 0 },
+}));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => {
       const value = name === "__Host-mslab_admin" ? state.cookie : name === "mslab_preview" ? state.preview : undefined;
       return value === undefined ? undefined : { name, value };
+    },
+  }),
+  draftMode: async () => ({
+    get isEnabled() {
+      return state.draft.enabled;
+    },
+    disable() {
+      state.draft.disable++;
+      state.draft.enabled = false;
     },
   }),
 }));
@@ -34,6 +50,7 @@ beforeEach(() => {
   state.db = db;
   state.cookie = undefined;
   state.preview = undefined;
+  state.draft = { enabled: false, disable: 0 };
   vi.stubEnv("ADMIN_EMAILS", "admin@example.test,second.admin@example.com");
   vi.stubEnv("PREVIEW_SECRET", SECRET);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -141,6 +158,20 @@ describe("GET /api/admin/preview ('Vaata kodulehte')", () => {
     expect(await verifyPreview(cookies[PREVIEW_COOKIE].value, SECRET)).toBe(true);
   });
 
+  test("it ends the draft-mode preview: the live site is what she sees there (a request without draft mode sets nothing)", async () => {
+    state.cookie = await createSession(db, "admin@example.test");
+    state.draft.enabled = true;
+    expect((await call()).status).toBe(303);
+    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    expect((await call()).status).toBe(303);
+    expect(state.draft.disable).toBe(1);
+    // refused (no session): draft mode is left as it is
+    state.cookie = undefined;
+    state.draft = { enabled: true, disable: 0 };
+    expect((await call()).status).toBe(401);
+    expect(state.draft).toEqual({ enabled: true, disable: 0 });
+  });
+
   test("a link from another site (a top-level GET with the Lax session cookie) only gives the admin the pass: no Origin check on GET", async () => {
     state.cookie = await createSession(db, "admin@example.test");
     const res = await call({ origin: "https://evil.example", referer: "https://evil.example/" });
@@ -242,11 +273,39 @@ describe("POST /api/auth/logout", () => {
     expect(Object.keys(setCookies(await call()))).toEqual([SESSION_COOKIE]);
   });
 
+  test("draft mode ends with the session, whichever way it ended: signed in, an expired or unknown session cookie, or none at all", async () => {
+    // signed in
+    state.cookie = await createSession(db, "admin@example.test");
+    state.draft = { enabled: true, disable: 0 };
+    expect((await call({ origin: ORIGIN })).status).toBe(303);
+    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    // the session expired meanwhile (its row is gone or too old): the early return of "no session" does not skip it
+    state.cookie = await createSession(db, "admin@example.test", new Date("2020-01-01T00:00:00Z"));
+    state.draft = { enabled: true, disable: 0 };
+    expect((await call()).status).toBe(303);
+    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    state.cookie = "A".repeat(43);
+    state.draft = { enabled: true, disable: 0 };
+    await call();
+    expect(state.draft.disable).toBe(1);
+    // no cookie at all, only the draft-mode cookie
+    state.cookie = undefined;
+    state.draft = { enabled: true, disable: 0 };
+    expect((await call()).status).toBe(303);
+    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    // not in draft mode: nothing to clear, so nothing is set
+    state.draft = { enabled: false, disable: 0 };
+    await call();
+    expect(state.draft.disable).toBe(0);
+  });
+
   test("from another site: 403, nothing cleared", async () => {
     state.cookie = await createSession(db, "admin@example.test");
     state.preview = "1.x";
+    state.draft = { enabled: true, disable: 0 };
     const res = await call({ origin: "https://evil.example" });
     expect(res.status).toBe(403);
     expect(res.headers.getSetCookie()).toEqual([]);
+    expect(state.draft).toEqual({ enabled: true, disable: 0 });
   });
 });

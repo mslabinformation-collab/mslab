@@ -147,11 +147,11 @@ describe("GET /api/admin/eelvaade", () => {
     expect(await previewActive()).toBe(false); // signed in, not in her preview
     await call("?tee=%2Fkoolitused%2Fkulmud");
     expect(await previewActive()).toBe(true);
-    // she signs out (or the session ends): Next's draft-mode cookie stays until the browser closes, but the public pages read live data again
+    // the session ends without the draft-mode cookie being cleared (it expired, or is a copy: a logout clears the cookie now): the pages read live data again
     await deleteSession(db, state.cookie);
     expect(state.draft.enabled).toBe(true);
     expect(await previewActive()).toBe(false);
-    // a new session in the same browser is her preview again; „Lõpeta eelvaade“ (?lopeta=1) ends it
+    // a new session in the same browser is her preview again; ?lopeta=1 ends it
     state.cookie = await createSession(db, ME);
     expect(await previewActive()).toBe(true);
     await call("?lopeta=1&tee=%2Fkoolitused%2Fkulmud");

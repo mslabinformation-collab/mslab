@@ -1,16 +1,17 @@
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { SEED_ECOURSE_SLUG } from "./account";
 import { signInAsAdmin, type CreatedRows } from "./admin-login";
 import { test } from "./edit-lock";
-import { insertPreviewDraft, removeAdminRows, removePreviewDrafts } from "./fixtures";
+import { insertPreviewDraft, onLocalDb, PREVIEW_DRAFT_NOTE, removeAdminRows, removePreviewDrafts } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { expect, submitsForms } from "./test";
 
 // The draft preview (admin UX pass piece 3a, Task 6; ruling R-h; README §1.8 „Eelvaade ↗“): api/admin/eelvaade turns on Next's draft mode and sends the
-// admin to the public page, which then shows the course's unpublished changes over its live data; the page is that draft only for a request with
-// the draft-mode cookie AND a live admin session, and every visitor still gets the page the cache holds. A draft of a seed course's title is written
-// straight to the local database (fixtures.ts insertPreviewDraft). In the production build (E2E_PROD_BUILD=1) the pages are cached as on Vercel
-// (incremental static regeneration), and the test checks that a draft-mode render is never kept; under `next dev` every request renders.
+// admin to the public page, which then shows the course's unpublished changes over its live data, and a bar with „Avaldamata {n}“, the way out and
+// „Loobu muudatustest“ (spec C3). The page is that draft only for a request with the draft-mode cookie AND a live admin session, and every visitor still
+// gets the page the cache holds, without the bar. A draft of a seed course's title is written straight to the local database (fixtures.ts
+// insertPreviewDraft). In the production build (E2E_PROD_BUILD=1) the pages are cached as on Vercel (incremental static regeneration), and the test checks
+// that a draft-mode render is never kept; under `next dev` every request renders.
 
 test.skip(({ isMobile }) => isMobile, "the same answers for every browser: desktop project only");
 test.beforeEach(() => submitsForms());
@@ -21,6 +22,7 @@ const PREVIEW = `/api/admin/eelvaade?tee=${encodeURIComponent(COURSE)}`;
 const DRAFT = "E2E eelvaate pealkiri";
 /** Next's draft-mode cookie. */
 const BYPASS = "__prerender_bypass";
+const BAR = "[data-preview-bar]";
 
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
 
@@ -38,33 +40,68 @@ async function fromCache(request: APIRequestContext, path: string) {
   return res;
 }
 
-test("a visitor gets the live page; the admin's „Eelvaade“ shows the draft; neither the preview nor a stale draft-mode cookie changes what the others get", async ({ page, context, browser, request, visitorIp }) => {
-  const live = await insertPreviewDraft(SLUG, DRAFT);
-  expect(live).not.toBe(DRAFT);
-
-  // a visitor: the live title; in the production build the page is the cached one
-  await page.goto(COURSE);
-  await expect(page.locator("h1")).toHaveText(live);
-  expect(await page.content()).not.toContain(DRAFT);
-  if (PROD_BUILD) {
-    const cached = await fromCache(request, COURSE);
-    expect(cached.headers()["x-nextjs-cache"]).toBe("HIT");
-    expect(await cached.text()).not.toContain(DRAFT);
+/**
+ * The preview bar uses the admin's ConfirmPanel, its stylesheet and its words. None of that may reach a visitor: the stylesheets and scripts the visitor's page
+ * links carry neither the ConfirmPanel's styles nor the PublishBar's words (the bar's code is loaded only for a request that renders it).
+ */
+async function expectNoAdminCode(request: APIRequestContext, html: string) {
+  const tags = html.match(/<(?:link|script)\s[^>]*>/g) ?? [];
+  const urls = tags
+    .filter((tag) => /rel="stylesheet"/.test(tag) || (tag.startsWith("<script") && / src="/.test(tag)))
+    .map((tag) => /(?:href|src)="([^"]+)"/.exec(tag)?.[1])
+    .filter((url): url is string => !!url && url.startsWith("/_next/"));
+  expect(urls.length, "the page links its stylesheets and scripts").toBeGreaterThan(0);
+  for (const url of new Set(urls)) {
+    const body = await (await request.get(url)).text();
+    expect(body, url).not.toContain("ConfirmPanel-module");
+    expect(body, url).not.toContain("Loobu muudatustest");
   }
+}
 
-  // the admin's „Eelvaade ↗“: draft mode on and the draft over the live title (the answer is rendered for her alone: no-store)
-  await signInAsAdmin(page, context, visitorIp, created);
+const hasBypass = async (context: BrowserContext) => (await context.cookies()).some((c) => c.name === BYPASS);
+const draftRows = () => onLocalDb(async (sql) => (await sql<{ n: number }[]>`select count(*)::int as n from content_drafts where updated_by = ${PREVIEW_DRAFT_NOTE}`)[0].n, { marksPages: false });
+
+/** Signs in and opens the course in the admin's preview; the draft title and the bar are there. */
+async function openPreview(page: Page, context: BrowserContext, ip: string) {
+  await signInAsAdmin(page, context, ip, created);
   const preview = await page.goto(PREVIEW);
   expect(new URL(page.url()).pathname).toBe(COURSE);
   await expect(page.locator("h1")).toHaveText(DRAFT);
-  expect(preview!.headers()["cache-control"]).toMatch(/no-store/);
+  await expect(page.locator(BAR)).toBeVisible();
+  return preview!;
+}
+
+test("a visitor gets the live page; the admin's „Eelvaade“ shows the draft and the bar; neither the preview nor a stale draft-mode cookie changes what the others get", async ({ page, context, browser, request, visitorIp }) => {
+  const live = await insertPreviewDraft(SLUG, DRAFT);
+  expect(live).not.toBe(DRAFT);
+
+  // a visitor: the live title and no bar; in the production build the page is the cached one
+  await page.goto(COURSE);
+  await expect(page.locator("h1")).toHaveText(live);
+  expect(await page.content()).not.toContain(DRAFT);
+  await expect(page.locator(BAR)).toHaveCount(0);
+  if (PROD_BUILD) {
+    const cached = await fromCache(request, COURSE);
+    expect(cached.headers()["x-nextjs-cache"]).toBe("HIT");
+    const html = await cached.text();
+    expect(html).not.toContain(DRAFT);
+    expect(html).not.toContain("data-preview-bar");
+    await expectNoAdminCode(request, html);
+  }
+
+  // the admin's „Eelvaade ↗“: draft mode on and the draft over the live title (the answer is rendered for her alone: no-store), with the bar
+  const preview = await openPreview(page, context, visitorIp);
+  expect(preview.headers()["cache-control"]).toMatch(/no-store/);
+  await expect(page.locator("[data-preview-count]")).toHaveText("Avaldamata 1");
+  await expect(page.locator("[data-preview-discard]")).toHaveText("Loobu muudatustest");
+  await expect(page.locator("[data-preview-exit]")).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(COURSE)}`);
   const bypass = (await context.cookies()).find((c) => c.name === BYPASS);
   expect(bypass, "the draft-mode cookie").toBeTruthy();
   // and the catalogue's card
   await page.goto("/koolitused");
   await expect(page.locator(`[data-course-card][href="${COURSE}"]`).getByRole("heading")).toHaveText(DRAFT);
 
-  // a visitor who carries the draft-mode cookie (the cookie is no identity) but has no admin session: live
+  // a visitor who carries the draft-mode cookie (the cookie is no identity) but has no admin session: live, and no bar
   const stranger = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `${visitorIp}-stranger` } });
   try {
     await stranger.addCookies([bypass!]);
@@ -72,33 +109,75 @@ test("a visitor gets the live page; the admin's „Eelvaade“ shows the draft; 
     await other.goto(COURSE);
     await expect(other.locator("h1")).toHaveText(live);
     expect(await other.content()).not.toContain(DRAFT);
+    await expect(other.locator(BAR)).toHaveCount(0);
     await other.goto("/koolitused");
     await expect(other.locator(`[data-course-card][href="${COURSE}"]`).getByRole("heading")).toHaveText(live);
   } finally {
     await stranger.close();
   }
 
-  // draft mode outlives logout: the cookie stays, the page is live again
+  // logging out ends the preview with the session: the draft-mode cookie is cleared (a copy of it that survives, as the stranger's, shows nothing)
   const out = await page.request.post("/api/auth/logout", { maxRedirects: 0 });
   expect(out.status()).toBe(303);
-  expect((await context.cookies()).some((c) => c.name === BYPASS), "the draft-mode cookie is still set").toBe(true);
+  expect(await hasBypass(context), "the draft-mode cookie is cleared").toBe(false);
   await page.goto(COURSE);
   await expect(page.locator("h1")).toHaveText(live);
   expect(await page.content()).not.toContain(DRAFT);
+  await expect(page.locator(BAR)).toHaveCount(0);
 
   // nothing of the preview was kept: everyone else still gets the live page (in the production build, from the cache)
   const after = PROD_BUILD ? await fromCache(request, COURSE) : await request.get(COURSE);
   if (PROD_BUILD) expect(after.headers()["x-nextjs-cache"]).toBe("HIT");
-  expect(await after.text()).not.toContain(DRAFT);
+  const html = await after.text();
+  expect(html).not.toContain(DRAFT);
+  expect(html).not.toContain("data-preview-bar");
 });
 
-test("„Lõpeta eelvaade“ (?lopeta=1) leaves draft mode: the same page is live again", async ({ page, context, visitorIp }) => {
+test("the bar's way out (?lopeta=1) leaves draft mode: the same page, live, without the bar", async ({ page, context, visitorIp }) => {
   const live = await insertPreviewDraft(SLUG, DRAFT);
-  await signInAsAdmin(page, context, visitorIp, created);
-  await page.goto(PREVIEW);
-  await expect(page.locator("h1")).toHaveText(DRAFT);
+  await openPreview(page, context, visitorIp);
+  await page.locator("[data-preview-exit]").click();
+  await expect(page).toHaveURL((url) => url.pathname === COURSE);
+  await expect(page.locator("h1")).toHaveText(live);
+  await expect(page.locator(BAR)).toHaveCount(0);
+  expect(await hasBypass(context)).toBe(false);
+  expect(await draftRows(), "leaving the preview keeps the drafts").toBe(1);
+});
+
+test("„Loobu muudatustest“ on the preview page asks, discards the course's drafts, and ends the preview on the live page", async ({ page, context, visitorIp }) => {
+  const live = await insertPreviewDraft(SLUG, DRAFT);
+  await openPreview(page, context, visitorIp);
+  await page.locator("[data-preview-discard]").click();
+  await expect(page.locator("[data-confirm-panel]")).toContainText("Kas loobun 1 muudatusest? Avalikul lehel jääb praegune versioon.");
+  // „Katkesta“ steps back out: nothing was discarded
+  await page.locator("[data-confirm-panel]").getByRole("button", { name: "Katkesta" }).click();
+  await expect(page.locator("[data-confirm-panel]")).toHaveCount(0);
+  await expect(page.locator("[data-preview-discard]")).toBeFocused();
+  expect(await draftRows()).toBe(1);
+  await page.locator("[data-preview-discard]").click();
+  await page.locator("[data-confirm-panel]").getByRole("button", { name: "Jah, loobu" }).click();
+  await expect(page).toHaveURL((url) => url.pathname === COURSE);
+  await expect(page.locator("h1")).toHaveText(live);
+  await expect(page.locator(BAR)).toHaveCount(0);
+  expect(await hasBypass(context)).toBe(false);
+  expect(await draftRows(), "the drafts are gone").toBe(0);
+});
+
+test("„Vaata kodulehte“ (api/admin/preview) ends the preview too: the live site is what she sees there", async ({ page, context, visitorIp }) => {
+  const live = await insertPreviewDraft(SLUG, DRAFT);
+  await openPreview(page, context, visitorIp);
+  await page.goto("/api/admin/preview");
+  expect(await hasBypass(context)).toBe(false);
+  await page.goto(COURSE);
+  await expect(page.locator("h1")).toHaveText(live);
+  await expect(page.locator(BAR)).toHaveCount(0);
+});
+
+test("the eelvaade route's ?lopeta=1 itself leaves draft mode", async ({ page, context, visitorIp }) => {
+  const live = await insertPreviewDraft(SLUG, DRAFT);
+  await openPreview(page, context, visitorIp);
   await page.goto(`/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(COURSE)}`);
   expect(new URL(page.url()).pathname).toBe(COURSE);
   await expect(page.locator("h1")).toHaveText(live);
-  expect((await context.cookies()).some((c) => c.name === BYPASS)).toBe(false);
+  expect(await hasBypass(context)).toBe(false);
 });

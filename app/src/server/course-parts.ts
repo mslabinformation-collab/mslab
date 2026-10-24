@@ -598,13 +598,15 @@ export async function courseExists(db: Q, id: number): Promise<boolean> {
  * - The slug stays the live one: the page is found, linked, favourited and bought by the address it has until the publish.
  * - The gallery's images get no row ids of their own (negative placeholders): nobody keys on them.
  * - The modules and lessons are not here: previewModuleTitles gives the public page's list of module titles.
- * - The test is never laid over, and its row is not even read: a public course has no test, and the answer key stays in course_tests and its draft
- *   (the admin's editor). `live` below carries `test: null` for that reason.
+ * - The test is never laid over, and neither of its two homes is read: the draft's row is left out in the query itself (readDrafts `except`), and
+ *   course_tests is not read at all (`live` below carries `test: null`). A public course has no test; the answer key stays in course_tests and its
+ *   draft, for the admin's editor.
  * An unpublished course has no drafts in effect (spec §10), and a course without drafts comes back as it was, after one small read.
  */
 export async function withCourseDrafts<C extends Course & { images: CourseImage[] }>(db: Q, course: C): Promise<C> {
   if (!course.published) return course;
-  const drafts = (await readDrafts(db, ENTITY, course.id)).filter((d) => isCoursePart(d.part) && d.part !== "outline" && d.part !== "test");
+  // (the test's and the outline's drafts are left out in the query: the test draft's value is the answer key, and it is never loaded here)
+  const drafts = (await readDrafts(db, ENTITY, course.id, { except: ["test", "outline"] })).filter((d) => isCoursePart(d.part));
   if (drafts.length === 0) return course;
   const live: LiveCourse = { course, images: course.images, test: null, outline: { modules: [], lessons: [] } };
   const columns: Record<string, unknown> = {};
@@ -638,4 +640,12 @@ export async function withCourseDrafts<C extends Course & { images: CourseImage[
  */
 export async function previewModuleTitles(db: Q, course: Pick<Course, "id" | "published">): Promise<I18n[]> {
   return (await readLayout(db, course)).layout.map((m) => m.title);
+}
+
+/**
+ * The number the preview bar says, „Avaldamata {n}“ (the course page in the admin's draft preview; components/site/PreviewBar.tsx): how many changes the
+ * PublishBar counts for the course, that is every label of courseChanges. 0 for a course with nothing unpublished (and an unpublished one).
+ */
+export async function previewChangeCount(db: Q, courseId: number): Promise<number> {
+  return (await courseChanges(db, courseId)).reduce((n, change) => n + change.labels.length, 0);
 }

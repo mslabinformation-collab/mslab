@@ -555,23 +555,6 @@ describe("R-d: switching „Avaldatud“ off publishes the outline and the flagg
   });
 });
 
-describe("the admin's preview (Task 6): the student's outline with the draft laid over it", () => {
-  test("courseOutline with `preview` shows the draft's order, names and new rows; without it, live", async () => {
-    const n = idOf(await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" })));
-    await renameModuleForm(db, form({ id: m2, titleEt: "Praktika" }), MARIA);
-    await moveLessonForm(db, form({ id: n, dir: "up" }), MARIA);
-    await setLessonHiddenForm(db, form({ id: b, hidden: "1" }));
-    await db.insert(lessonProgress).values({ clientId: student, lessonId: a, doneAt: NOW });
-    const preview = await courseOutline(db, course, student, { preview: true });
-    expect(preview.modules.map((m) => [m.title.et, m.lessons.map((l) => [l.title.et, l.state])])).toEqual([
-      ["Moodul 1", [["Esimene", "done"], ["Uus", "current"]]],
-      ["Praktika", [["Kolmas", "locked"]]],
-    ]);
-    expect(preview.progress).toEqual({ done: 1, total: 3, next: n });
-    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Moodul 2", ["Kolmas"]]]);
-  });
-});
-
 describe("the lock order (ledger T11, 40P01): the course row first, then content_drafts", () => {
   test("the module and lesson changes of a published course lock the course before they touch content_drafts", async () => {
     const log: string[] = [];
