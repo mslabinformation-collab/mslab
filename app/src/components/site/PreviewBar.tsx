@@ -10,6 +10,8 @@ const ConfirmPanel = lazy(() => import("@/components/admin/ConfirmPanel").then((
 
 /** The words of the bar, filled by the server (server/preview-bar.ts): this module carries no dictionary. */
 export type PreviewBarTexts = { count: string; exit: string; discard: string; question: string; yes: string; failed: string; signedOut: string };
+/** The catalogue's bar's words: its name and the way out. */
+export type PreviewLabelTexts = { label: string; exit: string };
 
 /**
  * The bar of the admin's draft preview on the public course page (admin UX pass piece 3a, Task 6 review; spec C3: „Loobu muudatustest“ on the preview
@@ -17,12 +19,12 @@ export type PreviewBarTexts = { count: string; exit: string; discard: string; qu
  * only for a request that is the admin's preview (server/preview.ts previewActive), so a visitor's page, and the page Next keeps, never has it.
  *
  * - `count`: how many unpublished changes the course has (the PublishBar's count); „Avaldamata {n}“ (`t.count`), and „Loobu muudatustest“, are there when it is not 0.
- * - the way out is the link `exitHref` (api/admin/eelvaade?lopeta=1&tee=<this page>): draft mode off, the same page as a visitor sees it. Its words are
- *   the admin's „Vaata kodulehte“ (shell.preview), which does the same: no frame of the design draws the preview page's own bar, so no word for it is new.
+ * - the way out is the link `exitHref` (api/admin/eelvaade?lopeta=1&tee=<this page>): draft mode off, the same page as a visitor sees it, „Lõpeta
+ *   eelvaade“ (`t.exit`, Dim 24.10 D-1).
  * - „Loobu muudatustest“ asks in the PublishBar's ConfirmPanel (the same words), then discards the course's drafts (POST api/admin/koolitus/<id>/loobu,
- *   Task 4) and ends the preview. A discard that fails leaves the question open (as the PublishBar's does) and says so in the bar, as an alert: the
- *   admin's word of a save that failed, `t.failed` (adminEt.common.saveError), or `t.signedOut` for a session that ended (withAdmin's 401; the leave
- *   guard's „Logi uuesti sisse.“): the design has no words of its own for it (piece 3a, Task 7 ruling).
+ *   Task 4) and ends the preview. A discard that fails leaves the question open (as the PublishBar's does) and says so in the bar, as an alert, in the
+ *   PublishBar's words: `t.failed` („Muudatustest loobumine ei õnnestunud. Proovi uuesti.“, D-2), or `t.signedOut` for a session that ended
+ *   (withAdmin's 401; the leave guard's „Logi uuesti sisse.“).
  */
 export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number; count: number; exitHref: string; t: PreviewBarTexts }) {
   const [busy, setBusy] = useState(false);
@@ -117,6 +119,24 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
           </Suspense>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The catalogue's bar in the admin's draft preview (Dim 24.10, D-4): „Eelvaade“ and the way out (`exitHref`, as the course page's bar), nothing to
+ * discard (the catalogue is many courses). Rendered, as the course page's, only for a request that is the admin's preview.
+ */
+export function PreviewLabelBar({ exitHref, t }: { exitHref: string; t: PreviewLabelTexts }) {
+  return (
+    <div className={styles.bar} data-preview-bar="" data-fab-avoid="">
+      <p className={styles.words}>
+        <b data-preview-label="">{t.label}</b>
+        {" · "}
+        <a className={styles.exit} href={exitHref} data-preview-exit="">
+          {t.exit}
+        </a>
+      </p>
     </div>
   );
 }

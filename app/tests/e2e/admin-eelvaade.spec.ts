@@ -95,6 +95,7 @@ test("a visitor gets the live page; the admin's „Eelvaade“ shows the draft a
   await expect(page.locator("[data-preview-count]")).toHaveText("Avaldamata 1");
   await expect(page.locator("[data-preview-discard]")).toHaveText("Loobu muudatustest");
   await expect(page.locator("[data-preview-exit]")).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(COURSE)}`);
+  await expect(page.locator("[data-preview-exit]")).toHaveText("Lõpeta eelvaade");
   const bypass = (await context.cookies()).find((c) => c.name === BYPASS);
   expect(bypass, "the draft-mode cookie").toBeTruthy();
   // and the catalogue's card
@@ -180,4 +181,53 @@ test("the eelvaade route's ?lopeta=1 itself leaves draft mode", async ({ page, c
   expect(new URL(page.url()).pathname).toBe(COURSE);
   await expect(page.locator("h1")).toHaveText(live);
   expect(await hasBypass(context)).toBe(false);
+});
+
+test("the catalogue in the admin's preview: „Eelvaade“ and the way out „Lõpeta eelvaade“ (Dim 24.10, D-4); a visitor's has no bar and no admin code; the way out leaves draft mode", async ({ page, context, request, visitorIp }) => {
+  const CATALOGUE = "/koolitused";
+  const live = await insertPreviewDraft(SLUG, DRAFT);
+  const card = () => page.locator(`[data-course-card][href="${COURSE}"]`).getByRole("heading");
+
+  // a visitor: the live card and no bar; in the production build the page is the cached one, with nothing of the admin's
+  await page.goto(CATALOGUE);
+  await expect(card()).toHaveText(live);
+  await expect(page.locator(BAR)).toHaveCount(0);
+  if (PROD_BUILD) {
+    const cached = await fromCache(request, CATALOGUE);
+    expect(cached.headers()["x-nextjs-cache"]).toBe("HIT");
+    const html = await cached.text();
+    expect(html).not.toContain(DRAFT);
+    expect(html).not.toContain("data-preview-bar");
+    expect(html).not.toContain("Lõpeta eelvaade");
+    await expectNoAdminCode(request, html);
+  }
+
+  // the admin's preview: the draft on the card, and the slim bar (no count, nothing to discard)
+  await openPreview(page, context, visitorIp);
+  await page.goto(CATALOGUE);
+  await expect(card()).toHaveText(DRAFT);
+  await expect(page.locator(`${BAR} [data-preview-label]`)).toHaveText("Eelvaade");
+  const exit = page.locator(`${BAR} [data-preview-exit]`);
+  await expect(exit).toHaveText("Lõpeta eelvaade");
+  await expect(exit).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(CATALOGUE)}`);
+  await expect(page.locator("[data-preview-discard], [data-preview-count]")).toHaveCount(0);
+  // the Russian catalogue leaves to the Russian catalogue
+  await page.goto(`/ru${CATALOGUE}`);
+  await expect(page.locator(`${BAR} [data-preview-exit]`)).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(`/ru${CATALOGUE}`)}`);
+
+  // the way out: draft mode off, the same catalogue as a visitor sees it, the drafts kept
+  await page.goto(CATALOGUE);
+  await exit.click();
+  await expect(page).toHaveURL((url) => url.pathname === CATALOGUE);
+  await expect(card()).toHaveText(live);
+  await expect(page.locator(BAR)).toHaveCount(0);
+  expect(await hasBypass(context)).toBe(false);
+  expect(await draftRows(), "leaving the preview keeps the drafts").toBe(1);
+
+  // nothing of the preview was kept: everyone else still gets the live catalogue (in the production build, from the cache)
+  const after = PROD_BUILD ? await fromCache(request, CATALOGUE) : await request.get(CATALOGUE);
+  if (PROD_BUILD) expect(after.headers()["x-nextjs-cache"]).toBe("HIT");
+  const html = await after.text();
+  expect(html).not.toContain(DRAFT);
+  expect(html).not.toContain("data-preview-bar");
 });

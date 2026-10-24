@@ -232,6 +232,10 @@ export const adminEt = {
     changedMeanwhile: "Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.",
     // README §1.8 (B2 drawn „Lühikirjeldus · avaldamata“; strings.md 3.1): the label of a field whose text waits for „Avalda muudatused“
     fieldTag: "avaldamata",
+    // Dim 24.10 (D-2): a publish or a discard that failed (a server error, no connection), on the PublishBar and the public preview bar; an ended
+    // session says „Logi uuesti sisse.“ (leave.reasons.signedOut)
+    publishFailed: "Avaldamine ei õnnestunud. Proovi uuesti.",
+    discardFailed: "Muudatustest loobumine ei õnnestunud. Proovi uuesti.",
   },
 
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“

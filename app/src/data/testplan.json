@@ -1239,8 +1239,9 @@
       "steps": [
         "Ava mõni avaldatud koolitus ja lisa „Lühikirjeldus“ lõppu sõna Proov.",
         "Vajuta pealkirja all ribal „Eelvaade ↗“.",
+        "Ava samas aknas menüüst „Koolitused“, siis tule tagasi koolituse lehele.",
         "Ava sama koolituse leht teises brauseris, kus sa pole sisse logitud.",
-        "Vajuta eelvaate all ribal „Vaata kodulehte“.",
+        "Vajuta eelvaate all ribal „Lõpeta eelvaade“.",
         "Ava uuesti „Eelvaade ↗“, logi halduses välja ja lae koolituse leht uuesti.",
         "Logi sisse, ava sama koolitus ja vajuta „Avalda muudatused“.",
         "Kustuta sõna Proov ja vajuta uuesti „Avalda muudatused“."
@@ -1248,8 +1249,9 @@
       "expect": [
         "Riba on „Avaldamata muudatused: 1 · Lühikirjeldus. Avalikul lehel on näha eelmine versioon.“.",
         "Eelvaade avaneb uues aknas: lehel on sõna Proov ja all riba „Avaldamata 1“.",
+        "Koolituste lehel on selle koolituse kaardil sõna Proov ja all riba „Eelvaade · Lõpeta eelvaade“, loobumise nuputa.",
         "Teises brauseris pole sõna Proov ega riba.",
-        "„Vaata kodulehte“ lõpetab eelvaate: sõna Proov ja riba on kadunud.",
+        "„Lõpeta eelvaade“ lõpetab eelvaate: sõna Proov ja riba on kadunud.",
         "Väljalogimine lõpetab eelvaate samamoodi.",
         "Pärast „Avalda muudatused“ on sõna Proov kõigile näha ja riba kaob.",
         "Pärast tagasimuutmist ja avaldamist on sõna kadunud."

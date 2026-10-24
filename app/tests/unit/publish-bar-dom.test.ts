@@ -221,10 +221,10 @@ describe("PublishBar", () => {
   });
 
   it("the screen's word on a publish or a discard that failed stands in the bar, as an alert", async () => {
-    await show({ error: "Salvestamine ei õnnestunud. Proovi uuesti." });
+    await show({ error: "Avaldamine ei õnnestunud. Proovi uuesti." });
     const line = $("[data-publish-error]")!;
     expect(line.getAttribute("role")).toBe("alert");
-    expect(line.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(line.textContent).toBe("Avaldamine ei õnnestunud. Proovi uuesti.");
     expect($("[data-publish-bar]")!.contains(line)).toBe(true); // on the phone too: in the bar at the foot of the screen
     await show({ error: null });
     expect($("[data-publish-error]")).toBeNull();

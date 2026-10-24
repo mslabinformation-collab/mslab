@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PreviewBar, type PreviewBarTexts } from "@/components/site/PreviewBar";
+import { PreviewBar, PreviewLabelBar, type PreviewBarTexts } from "@/components/site/PreviewBar";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 
@@ -26,11 +26,11 @@ type Props = Parameters<typeof PreviewBar>[0];
 /** The words as the server fills them (server/preview-bar.ts): the admin's, whatever the page's language. */
 const texts = (n: number): PreviewBarTexts => ({
   count: fill(adminEt.publish.phoneCount, { n }),
-  exit: adminEt.shell.preview,
+  exit: "Lõpeta eelvaade",
   discard: adminEt.publish.discard,
   question: fill(adminEt.publish.confirm, { n }),
   yes: adminEt.publish.confirmYes,
-  failed: adminEt.common.saveError,
+  failed: adminEt.publish.discardFailed,
   signedOut: adminEt.leave.reasons.signedOut,
 });
 const show = (over: Partial<Props> = {}) => act(async () => root.render(createElement(PreviewBar, { courseId: 7, count: 3, exitHref: EXIT, t: texts(over.count ?? 3), ...over })));
@@ -79,14 +79,13 @@ afterEach(async () => {
 });
 
 describe("PreviewBar", () => {
-  it("„Avaldamata 3“, the way out (the admin's own „Vaata kodulehte“, in this tab) and „Loobu muudatustest“; a bottom bar the 💬 bubble stays above", async () => {
+  it("„Avaldamata 3“, the way out („Lõpeta eelvaade“, Dim 24.10, in this tab) and „Loobu muudatustest“; a bottom bar the 💬 bubble stays above", async () => {
     expect(adminEt.publish).toMatchObject({ phoneCount: "Avaldamata {n}", discard: "Loobu muudatustest", confirm: "Kas loobun {n} muudatusest? Avalikul lehel jääb praegune versioon.", confirmYes: "Jah, loobu" });
-    expect(adminEt.shell.preview).toBe("Vaata kodulehte");
     await show();
     const bar = $("[data-preview-bar]")!;
     expect(bar.hasAttribute("data-fab-avoid")).toBe(true);
     expect($("[data-preview-count]")!.textContent).toBe("Avaldamata 3");
-    expect(exit()!.textContent).toBe("Vaata kodulehte");
+    expect(exit()!.textContent).toBe("Lõpeta eelvaade");
     expect(exit()!.getAttribute("href")).toBe(EXIT);
     expect(exit()!.target).toBe(""); // this tab: the preview ends where it was
     expect(discard()!.textContent).toBe("Loobu muudatustest");
@@ -144,16 +143,16 @@ describe("PreviewBar", () => {
     expect(assign).not.toHaveBeenCalled();
     expect(panel()).not.toBeNull();
     expect(panelButtons().map((b) => b.getAttribute("aria-disabled"))).toEqual([null, null]);
-    // the admin's own words of a save that failed (adminEt.common.saveError; the design has none of its own), as an alert in the bar
+    // the PublishBar's words of a discard that failed (Dim 24.10, D-2), as an alert in the bar
     const line = () => $("[data-preview-error]");
-    expect(line()!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(line()!.textContent).toBe("Muudatustest loobumine ei õnnestunud. Proovi uuesti.");
     expect(line()!.getAttribute("role")).toBe("alert");
     await click(panelButtons()[0]);
     expect(line()).toBeNull(); // (gone while it is tried again)
     await f.answer(new TypeError("Failed to fetch"));
     expect(assign).not.toHaveBeenCalled();
     expect(panel()).not.toBeNull();
-    expect(line()!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(line()!.textContent).toBe("Muudatustest loobumine ei õnnestunud. Proovi uuesti.");
     // signed out meanwhile (withAdmin's 401): „Logi uuesti sisse.“
     await click(panelButtons()[0]);
     await f.answer(Response.json({ ok: false, error: "unauthorized" }, { status: 401 }));
@@ -188,6 +187,17 @@ describe("PreviewBar", () => {
     const source = readFileSync(join(process.cwd(), "src/components/site/PreviewBar.tsx"), "utf8");
     expect(source).not.toMatch(/i18n\/dict\/admin|autosave\/engine|components\/admin\/(?!ConfirmPanel)/);
     localStorage.clear();
+  });
+
+  it("the catalogue's bar (Dim 24.10, D-4): „Eelvaade“ and the way out „Lõpeta eelvaade“, nothing to discard; a bottom bar the 💬 bubble stays above", async () => {
+    const out = "/api/admin/eelvaade?lopeta=1&tee=%2Fkoolitused";
+    await act(async () => root.render(createElement(PreviewLabelBar, { exitHref: out, t: { label: "Eelvaade", exit: "Lõpeta eelvaade" } })));
+    expect($("[data-preview-bar]")!.hasAttribute("data-fab-avoid")).toBe(true);
+    expect($("[data-preview-label]")!.textContent).toBe("Eelvaade");
+    expect(exit()!.textContent).toBe("Lõpeta eelvaade");
+    expect(exit()!.getAttribute("href")).toBe(out);
+    expect(discard()).toBeNull();
+    expect($("[data-preview-count]")).toBeNull();
   });
 
   it("the bar's stylesheet: stuck to the bottom of the page, 44px targets, the ring, no motion under prefers-reduced-motion", () => {

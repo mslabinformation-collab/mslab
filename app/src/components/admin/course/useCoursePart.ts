@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { patchSender, type Fields, type SendPatch } from "@/components/admin/autosave/engine";
+import { patchSender, SAVE_TIMEOUT_MS, type Fields, type SendPatch } from "@/components/admin/autosave/engine";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { EditorPart, PartSeed } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
@@ -14,9 +14,20 @@ import type { PartApi } from "./types";
 // on POST /api/admin/koolitus/<id>/osa/<part> (Task 4: a published course's save is its draft, an unpublished one's goes to the record), from the
 // part's version the page read (R-b). The sender is the engine's patchSender, with an ear on its answers: a 400's field codes are kept, so the card
 // can say at the field what its check refused (the engine holds those fields back and saves the rest), and a field typed in again or saved loses its
-// words. The copy in this browser is `mslab-draft:koolitus:<id>-<part>:<tab>`.
+// words; and the screen's `ear` hears each save as it goes and as it ends (an unpublished course's type, SavedCourse.tsx). A save's end is never
+// waited for beyond SAVE_TIMEOUT_MS, whatever the request does: the sender's own bound, set before the request's, says `late` then (its outcome
+// unknown), so nothing the screen holds for a save's end can wait for good (review round 3). The copy in this browser is
+// `mslab-draft:koolitus:<id>-<part>:<tab>`.
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** A save's answer as the engine takes it: the status and the body, or null (none, or the browser's error). */
+export type SaveAnswer = Awaited<ReturnType<SendPatch>>;
+/**
+ * Hears a card's saves: `sent`, a save goes with this patch; `ended`, it ended with this answer — `late` when none came in SAVE_TIMEOUT_MS (the
+ * answer is then null, its outcome unknown).
+ */
+export type SaveEar = { sent: (patch: Fields) => void; ended: (patch: Fields, answer: SaveAnswer, late: boolean) => void };
 const errors = adminEt.courseEditor.errors as Record<string, string>;
 
 /** The words of a refusal's code: the course editor's field errors (an e-course's locked type has its own); anything else, the generic line. */
@@ -41,19 +52,23 @@ export function useCoursePart<P extends EditorPart>(o: {
   /** A published course: its saves are its draft, and a field that differs from live says „· avaldamata“. */
   published: boolean;
   liveType: string;
+  /** Told of each save as it goes and as it ends (read when it does). */
+  ear?: { readonly current: SaveEar | null };
 }) {
-  const { courseId, part, seed, published, liveType } = o;
+  const { courseId, part, seed, published, liveType, ear } = o;
   const [codes, setCodes] = useState<Record<string, string>>({});
-  /**
-   * What the card heard since it started: `saves`, the saves the server took (a part held back at the publish is listed until its next one, review
-   * M-3); `answeredFor`, per field, the saves that sent it and have ended, whatever their end (no answer included); `confirmed`, each field's value
-   * as the last save the server took sent it (the type's choice answered and confirmed, review round 2 N-2).
-   */
-  const [heard, setHeard] = useState<{ saves: number; answeredFor: Record<string, number>; confirmed: Record<string, unknown> }>({ saves: 0, answeredFor: {}, confirmed: {} });
+  /** The saves the server took since the card started: a part held back at the publish is listed until its next one (review M-3). */
+  const [saves, setSaves] = useState(0);
   const send = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/koolitus/${courseId}/osa/${part}`);
     return async (body, opts) => {
-      const answer = await base(body, opts);
+      // the bound, set before the request's own (patchSender's, at the same delay), so at SAVE_TIMEOUT_MS this one is first: `late`
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), SAVE_TIMEOUT_MS)));
+      ear?.current?.sent(body.patch);
+      const result = await Promise.race([base(body, opts), late]);
+      clearTimeout(timer);
+      const answer = result === "late" ? null : result;
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
         const named = Object.fromEntries(Object.entries(reply.fields).filter(([name, code]) => name in body.patch && typeof code === "string")) as Record<string, string>;
@@ -61,15 +76,11 @@ export function useCoursePart<P extends EditorPart>(o: {
       } else if (answer?.status === 200 && reply?.ok === true) {
         setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
       }
-      const took = answer?.status === 200 && reply?.ok === true;
-      setHeard((h) => ({
-        saves: h.saves + (took ? 1 : 0),
-        answeredFor: { ...h.answeredFor, ...Object.fromEntries(Object.keys(body.patch).map((name) => [name, (h.answeredFor[name] ?? 0) + 1])) },
-        confirmed: took ? { ...h.confirmed, ...body.patch } : h.confirmed,
-      }));
+      if (answer?.status === 200 && reply?.ok === true) setSaves((n) => n + 1);
+      ear?.current?.ended(body.patch, answer, result === "late");
       return answer;
     };
-  }, [courseId, part]);
+  }, [courseId, part, ear]);
   const label = useCallback((field: string) => fieldLabel(part, field), [part]);
   const auto = useAutosave({
     owner: COURSE_COPY_OWNER,
@@ -121,9 +132,7 @@ export function useCoursePart<P extends EditorPart>(o: {
   return {
     api,
     status: auto.status,
-    saves: heard.saves,
-    answeredFor: heard.answeredFor,
-    confirmed: heard.confirmed,
+    saves,
     flushNow: auto.flush,
     unconfirmed: auto.unconfirmed,
     discardCopy: auto.discardCopy,

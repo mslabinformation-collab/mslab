@@ -4,9 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CourseEditor, type CourseEditorData } from "@/components/admin/CourseEditor";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
+import { RETRY_MS, SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { COURSE_PARTS, partValue, type EditorPart, type EditorParts } from "@/domain/course-parts";
 import { newCourseDraft, type CourseDraft } from "@/domain/course-editor";
 import { adminEt } from "@/i18n/dict/admin";
+import { contentVersion } from "@/lib/version";
 import type { AdminModule } from "@/server/admin-lessons";
 import { stubFetch } from "../fakes";
 
@@ -31,6 +33,8 @@ vi.mock("@/server/actions/admin-lessons", () => ({
   moveModuleInList: vi.fn(),
   renameModule: vi.fn(),
 }));
+// a picked picture goes to the upload as it is (the browser's shrinking is lib/shrink-image's own tests')
+vi.mock("@/lib/shrink-image", () => ({ shrinkImage: async (file: File) => file, ShrinkError: class ShrinkError extends Error {} }));
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
@@ -104,9 +108,14 @@ const remote = {
   parts: {} as Record<string, { version: string; value: Record<string, unknown> }>,
   published: true,
   n: 0,
-  refuse: null as null | { part: string; fields: Record<string, string> },
+  /** A part's saves refused with these field codes (`when`: only a save that sends that field). */
+  refuse: null as null | { part: string; fields: Record<string, string>; when?: string },
   /** A part's saves answered with this status (a server error), or not at all (null: no connection). */
   fail: null as null | { part: string; status: number | null },
+  /** A part whose save is stored but its answer lost: the request hangs until the browser gives it up (its abort). */
+  lose: null as null | string,
+  /** /api/admin/upload: a picture's upload. */
+  upload: (): Response | Promise<Response> => Response.json({ ok: true, key: "img/uus.jpg" }),
   avalda: (): Response | Promise<Response> => Response.json({ published: ["basics"], blocked: [] }),
   loobu: (): Response | Promise<Response> => Response.json({ discarded: 1 }),
   log: [] as { part: string; version: string; patch: Record<string, unknown> }[],
@@ -117,6 +126,8 @@ function resetRemote(d: CourseDraft = STORED, published = d.published) {
   remote.n = 0;
   remote.refuse = null;
   remote.fail = null;
+  remote.lose = null;
+  remote.upload = () => Response.json({ ok: true, key: "img/uus.jpg" });
   remote.avalda = () => Response.json({ published: ["basics"], blocked: [] });
   remote.loobu = () => Response.json({ discarded: 1 });
   remote.log = [];
@@ -124,6 +135,7 @@ function resetRemote(d: CourseDraft = STORED, published = d.published) {
 const route = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   const publish = url.match(/\/api\/admin\/koolitus\/\d+\/(avalda|loobu)$/);
   if (publish) return publish[1] === "avalda" ? remote.avalda() : remote.loobu();
+  if (url === "/api/admin/upload") return remote.upload();
   const m = url.match(/\/api\/admin\/koolitus\/\d+\/osa\/(\w+)$/);
   if (!m) return Response.json({ ok: false }, { status: 404 });
   const part = m[1];
@@ -135,10 +147,13 @@ const route = (url: string, init: RequestInit | undefined): Response | Promise<R
     return Response.json({ ok: false, error: "server" }, { status: remote.fail.status });
   }
   if (body.version !== stored.version) return Response.json({ ok: false, error: "conflict", version: stored.version, value: stored.value }, { status: 409 });
-  if (remote.refuse?.part === part) return Response.json({ ok: false, error: "invalid", fields: remote.refuse.fields }, { status: 400 });
+  if (remote.refuse?.part === part && (!remote.refuse.when || remote.refuse.when in body.patch))
+    return Response.json({ ok: false, error: "invalid", fields: remote.refuse.fields }, { status: 400 });
   remote.n += 1;
   stored.value = { ...stored.value, ...body.patch };
   stored.version = remote.published ? `d:1.${remote.n}` : `l:${part}-${remote.n}`;
+  if (remote.lose === part)
+    return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError"))));
   return Response.json({ ok: true, version: stored.version, savedAt: "2026-10-24T09:41:00.000Z" });
 };
 
@@ -187,6 +202,16 @@ const bar = () => $("[data-publish-bar]");
 const mapEntries = () =>
   $$("nav[aria-label='Jaotised'] a").map((a) => [text(a.querySelector("[data-section-label]")), text(a.querySelector("[data-section-status]"))].filter(Boolean).join(" "));
 const button = (name: string) => $$<HTMLButtonElement>("button").find((b) => text(b) === name) ?? null;
+/** Picks a picture in „Galerii“: its upload goes to /api/admin/upload (remote.upload answers it). */
+const pickImage = async () => {
+  const input = $<HTMLInputElement>("#course-gallery [data-image-upload] input[type=file]")!;
+  Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
+  await act(async () => void input.dispatchEvent(new Event("change", { bubbles: true })));
+  await settle();
+};
+/** Lets `ms` go by on the fake clock. */
+const wait = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+const fakeClock = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
 
 beforeEach(() => {
   localStorage.clear();
@@ -326,20 +351,20 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(remote.log.at(-1)).toMatchObject({ part: "basics", version: "l:basics-live" });
   });
 
-  it("a publish that fails says „Salvestamine ei õnnestunud. Proovi uuesti.“; signed out, „Logi uuesti sisse.“", async () => {
+  it("a publish that fails says „Avaldamine ei õnnestunud. Proovi uuesti.“ (Dim 24.10); signed out, „Logi uuesti sisse.“", async () => {
     remote.avalda = () => Response.json({ ok: false, error: "server" }, { status: 500 });
     await show();
     await type(field("summary"), "Uus.");
     await leave(field("summary"));
     await click($("[data-publish-go]"));
-    expect(text($("[data-publish-error]"))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(text($("[data-publish-error]"))).toBe("Avaldamine ei õnnestunud. Proovi uuesti.");
     remote.avalda = () => Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
     await click($("[data-publish-go]"));
     expect(text($("[data-publish-error]"))).toBe("Logi uuesti sisse.");
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
-  it("„Loobu muudatustest“ asks, then discards: the page is read again; a failed discard says so and keeps the question", async () => {
+  it("„Loobu muudatustest“ asks, then discards: the page is read again; a failed discard says „Muudatustest loobumine ei õnnestunud. Proovi uuesti.“ (Dim 24.10) and keeps the question", async () => {
     remote.loobu = () => Response.json({ ok: false, error: "server" }, { status: 500 });
     await show();
     await type(field("summary"), "Uus.");
@@ -347,7 +372,7 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     await click($("[data-publish-discard]"));
     expect(text($("[data-confirm-panel]"))).toContain("Kas loobun 1 muudatusest? Avalikul lehel jääb praegune versioon.");
     await click(button("Jah, loobu"));
-    expect(text($("[data-publish-error]"))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(text($("[data-publish-error]"))).toBe("Muudatustest loobumine ei õnnestunud. Proovi uuesti.");
     expect($("[data-confirm-panel]")).not.toBeNull();
     remote.loobu = () => Response.json({ discarded: 1 });
     await click(button("Jah, loobu"));
@@ -421,52 +446,171 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(field("summary")!.value).toBe("Uus ja parem.");
   });
 
-  it("a gallery change that lands while the cards wait (an upload's end) is not dropped: it goes into the gallery card after the restart (review round 2 N-3)", async () => {
+  it.each([
+    ["during the publish's request", "post"],
+    ["after the cards have started over", "restart"],
+  ])("a picture on its way at the press of „Avalda muudatused“ that ends %s goes in once, on the fresh version, with no conflict (review round 3 N-3)", async (_when, when) => {
+    let uploaded!: (r: Response) => void;
+    remote.upload = () => new Promise<Response>((resolve) => (uploaded = resolve));
     let answer!: (r: Response) => void;
     remote.avalda = () => new Promise<Response>((resolve) => (answer = resolve));
     await show();
     await type(field("summary"), "Avaldatav.");
     await leave(field("summary"));
+    await pickImage();
     await click($("[data-publish-go]"));
-    // (a picture's late change, through GalleryEditor's update function: here its removal)
-    await click($$<HTMLButtonElement>("[data-gallery-editor] button").find((b) => b.getAttribute("aria-label") === "Eemalda pilt 1") ?? null);
-    expect($$("[data-gallery-item]")).toHaveLength(1); // (still shown: the cards wait)
+    const ends = async () => {
+      await act(async () => uploaded(Response.json({ ok: true, key: "img/uus.jpg" })));
+      await settle();
+    };
+    if (when === "post") {
+      await ends();
+      // it waits with the cards: nothing goes onto the version the publish is moving
+      expect(remote.log.filter((s) => s.part === "gallery")).toEqual([]);
+    }
     await act(async () => answer(Response.json({ published: ["basics"], blocked: [] })));
     await settle();
+    expect(router.refresh).toHaveBeenCalledTimes(1);
     const after = { ...STORED, summary: { et: "Avaldatav.", ru: "Коротко." } };
     resetRemote(after);
     await show({ course: data({ parts: partsOf(after) }) });
+    if (when === "restart") await ends();
     await settle();
-    expect($$("[data-gallery-item]")).toHaveLength(0);
-    expect(remote.log.at(-1)).toEqual({ part: "gallery", version: "l:gallery", patch: { images: [] } });
+    expect($$("[data-gallery-item]").map((el) => el.getAttribute("data-gallery-item"))).toEqual(["img/a.jpg", "img/uus.jpg"]);
+    expect(remote.log.filter((s) => s.part === "gallery")).toEqual([
+      { part: "gallery", version: "l:gallery", patch: { images: [...STORED.images, { key: "img/uus.jpg", alt: { et: "" } }] } },
+    ]);
+    expect($("[data-part-restore]")).toBeNull();
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
   });
 
-  it("after a discard the cards start over even when the read is slow: it is asked for again, they wait meanwhile, and the next read restarts them (review round 2 N-1)", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  it("after a discard the cards wait for the read; none in SAVE_TIMEOUT_MS: they start over from the live text on its live versions, take typing, and the next read starts them over again (review round 2 N-1, round 3)", async () => {
+    fakeClock();
     try {
+      // the server after a discard: every part live again, at its live hash (server/course-parts.ts partStateOf)
+      remote.loobu = async () => {
+        for (const part of Object.keys(remote.parts)) {
+          const value = partValue(part as EditorPart, STORED) as Record<string, unknown>;
+          remote.parts[part] = { version: `l:${await contentVersion(value)}`, value };
+        }
+        return Response.json({ discarded: 1 });
+      };
       await show();
       await type(field("summary"), "Uus.");
       await leave(field("summary"));
       await click($("[data-publish-discard]"));
       await click(button("Jah, loobu"));
       expect(router.refresh).toHaveBeenCalledTimes(1);
-      // no read for 15 s: asked again, and the (muted) cards still wait, so nothing typed is lost
-      await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
-      expect(router.refresh).toHaveBeenCalledTimes(2);
+      // the (muted) cards wait: nothing typed lands
       expect($("[data-cards-waiting]")).not.toBeNull();
       await type(field("price"), "99");
       expect(field("price")!.value).toBe("95");
-      // the read comes at last: the cards start over and take typing, and it saves
-      resetRemote();
-      await show({ course: data() });
+      // no read in SAVE_TIMEOUT_MS: they start over from what the discard left (live), and the page is asked for again
+      await wait(SAVE_TIMEOUT_MS);
       expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).toHaveBeenCalledTimes(2);
+      expect(field("summary")!.value).toBe("Lühike tekst.");
+      expect(bar()).toBeNull();
       await type(field("price"), "99");
       await leave(field("price"));
-      expect(remote.log.at(-1)).toEqual({ part: "price", version: "l:price", patch: { price: "99" } });
+      expect(remote.log.at(-1)).toEqual({ part: "price", version: `l:${await contentVersion(partValue("price", STORED))}`, patch: { price: "99" } });
+      expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+      // the read comes at last: the cards start over from it
+      const price = { ...remote.parts.price };
+      await show({ course: data({ parts: partsOf(STORED, { price: { version: price.version, value: price.value } }) }) });
+      expect(field("price")!.value).toBe("99");
+      await type(field("price"), "100");
+      await leave(field("price"));
+      expect(remote.log.at(-1)).toEqual({ part: "price", version: price.version, patch: { price: "100" } });
       expect(Object.keys(localStorage).filter((k) => k.startsWith(`mslab-draft:koolitus:${ID}-`))).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a publish whose request is never answered: SAVE_TIMEOUT_MS after the press the cards take typing and the page is read, with no failure line; its late answer changes nothing (review round 3 NB-4)", async () => {
+    fakeClock();
+    try {
+      let answer!: (r: Response) => void;
+      // (a request that does not even hear its abort)
+      remote.avalda = () => new Promise<Response>((resolve) => (answer = resolve));
+      await show();
+      await type(field("summary"), "Avaldatav.");
+      await leave(field("summary"));
+      await click($("[data-publish-go]"));
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await wait(SAVE_TIMEOUT_MS - 2000);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await wait(2000);
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      expect($("[data-publish-error]")).toBeNull();
+      expect(bar()!.getAttribute("aria-busy")).toBeNull();
+      await type(field("summary"), "Edasi.");
+      expect(field("summary")!.value).toBe("Edasi.");
+      // the answer comes after all: nothing more happens
+      await act(async () => answer(Response.json({ published: ["basics"], blocked: [] })));
+      await settle();
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect($("[data-publish-error]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("„Avalikul lehel“ or „Näidissisu“ never answered: SAVE_TIMEOUT_MS after the press the switch shows the stored state and takes a press again, nothing waits, the page is read; no failure line (review round 3 NB-4)", async () => {
+    fakeClock();
+    try {
+      actions.published.mockReturnValue(new Promise(() => {}));
+      actions.sample.mockReturnValue(new Promise(() => {}));
+      await show();
+      const published = () => $<HTMLInputElement>("[data-field='published']")!;
+      const sample = () => $<HTMLInputElement>("[data-field='isSample']")!;
+      await click(published());
+      expect(published().checked).toBe(false);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await wait(SAVE_TIMEOUT_MS);
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(published().checked).toBe(true);
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      expect($("[data-switch-error]")).toBeNull();
+      expect($("[data-publish-card]")!.getAttribute("aria-busy")).toBeNull();
+      // „Näidissisu“ (it holds no card): the same bound
+      await click(sample());
+      expect(actions.sample).toHaveBeenCalledTimes(1);
+      expect(sample().checked).toBe(true);
+      await wait(SAVE_TIMEOUT_MS);
+      expect(sample().checked).toBe(false);
+      expect(router.refresh).toHaveBeenCalledTimes(2);
+      expect($("[data-switch-error]")).toBeNull();
+      // each takes a press again
+      await click(published());
+      expect(actions.published).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["a part blocked", { ok: false, error: "blocked", blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] }],
+    ["the price required", { ok: false, error: "invalid", fields: { price: "priceRequired" } }],
+    ["an error", { ok: false, error: "server" }],
+  ])("„Avalikul lehel“ refused (%s): the cards take typing again and the focus is back on the switch (review round 3 NB-3)", async (_what, refusal) => {
+    let answer!: (r: unknown) => void;
+    actions.published.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await show();
+    const published = $<HTMLInputElement>("[data-field='published']")!;
+    await act(async () => published.focus());
+    await click(published);
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the waiting cards are inert: the browser takes the focus off the switch (happy-dom does not, so it is done here)
+    await act(async () => published.blur());
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => answer(refusal));
+    await settle();
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(document.activeElement).toBe($("[data-field='published']"));
   });
 
   it("„Avalikul lehel“ is an instant switch (R-d): off asks the server once; a blocked part is listed and the switch stays on; done, the page is read again", async () => {
@@ -588,22 +732,98 @@ describe("an unpublished course: its cards save to the record", () => {
     expect(document.activeElement).toBe($("[data-edit-lang='ru']"));
   });
 
-  it("a read that never comes is given up after a while: the cards take typing again (review M-4)", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  it("a read that never comes: SAVE_TIMEOUT_MS after the freeze began the cards take typing again and the page is asked for again; the next read starts them over (review M-4, round 3)", async () => {
+    fakeClock();
     try {
       resetRemote(DRAFT);
       await show({ course: data({}, DRAFT) });
       await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
-      await act(async () => void (await vi.advanceTimersByTimeAsync(100)));
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      await wait(SAVE_TIMEOUT_MS - 2000);
       expect($("[data-cards-waiting]")).not.toBeNull();
-      await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
+      await wait(2000);
       expect($("[data-cards-waiting]")).toBeNull();
-      // a later read of the page (a lesson's action) is not a restart: the cards keep what they hold
-      await show({ course: data({ outline: [] }, DRAFT) });
-      expect($<HTMLInputElement>("[data-type-switch] input[value='contact']")!.checked).toBe(true);
+      expect(router.refresh).toHaveBeenCalledTimes(2);
+      // the read at last: the cards start over from it (the contact course's emptied price, on its new version)
+      const contact: CourseDraft = { ...DRAFT, type: "contact", price: "", accessMonths: "" };
+      resetRemote(contact, false);
+      remote.parts.price.version = "l:price-emptied";
+      await show({ course: data({ liveType: "contact", parts: partsOf(contact, { price: { version: "l:price-emptied" } }) }, contact) });
+      await type(field("priceGroup"), "350");
+      await leave(field("priceGroup"));
+      expect(remote.log.at(-1)).toEqual({ part: "price", version: "l:price-emptied", patch: { priceGroup: "350" } });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("the type's save unanswered for SAVE_TIMEOUT_MS: the cards take typing and the page is asked for; the retry meets the stored type (a 409 with what was sent): the page is read again, the cards start from it (review round 3 NB-2)", async () => {
+    fakeClock();
+    try {
+      resetRemote(DRAFT);
+      remote.lose = "basics";
+      await show({ course: data({}, DRAFT) });
+      await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      // no answer (the server stored it): its outcome unknown, the cards take typing and the page is asked for
+      await wait(SAVE_TIMEOUT_MS);
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      // the engine's retry: a 409 whose stored value is the one it sent — confirmed, and the page is read again (the server emptied the e-course's parts)
+      await wait(RETRY_MS[0]);
+      await settle();
+      expect(remote.log.map((s) => [s.part, s.version, s.patch])).toEqual([
+        ["basics", "l:basics", { type: "contact" }],
+        ["basics", "l:basics", { type: "contact" }],
+      ]);
+      expect(router.refresh).toHaveBeenCalledTimes(2);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      const contact: CourseDraft = { ...DRAFT, type: "contact", price: "", accessMonths: "" };
+      resetRemote(contact, false);
+      remote.parts.price.version = "l:price-emptied";
+      await show({ course: data({ liveType: "contact", parts: partsOf(contact, { price: { version: "l:price-emptied" } }) }, contact) });
+      expect($("[data-cards-waiting]")).toBeNull();
+      await type(field("priceGroup"), "350");
+      await leave(field("priceGroup"));
+      expect(remote.log.at(-1)).toEqual({ part: "price", version: "l:price-emptied", patch: { priceGroup: "350" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a type chosen while „Põhiinfo“ is in conflict: nothing waits (no save can go); „Taasta minu tekst“ sends it, and the page is read again (review round 3 NB-1)", async () => {
+    resetRemote(DRAFT);
+    await show({ course: data({}, DRAFT) });
+    // another window changed „Põhiinfo“ meanwhile
+    remote.parts.basics = { version: "l:basics-other", value: { ...remote.parts.basics.value, summary: { et: "Teises aknas.", ru: "Коротко." } } };
+    await type(field("summary"), "Minu tekst.");
+    await leave(field("summary"));
+    expect($("#course-basics [data-part-restore]")).not.toBeNull();
+    await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(remote.log).toHaveLength(1); // (the summary's save that met the conflict)
+    // „Taasta minu tekst“: the text and the type over the other window's version; the type confirmed, the page is read again
+    await click($("#course-basics [data-part-restore]"));
+    expect(remote.log.at(-1)).toEqual({ part: "basics", version: "l:basics-other", patch: { type: "contact", summary: { et: "Minu tekst.", ru: "Коротко." } } });
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    const contact: CourseDraft = { ...DRAFT, type: "contact", summary: { et: "Minu tekst.", ru: "Коротко." }, price: "", accessMonths: "" };
+    resetRemote(contact, false);
+    await show({ course: data({ liveType: "contact", parts: partsOf(contact) }, contact) });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect($("[data-part-restore]")).toBeNull();
+  });
+
+  it("the type confirmed while another field of „Põhiinfo“ is held back (refused): the page is read again (review round 2 N-2, round 3)", async () => {
+    resetRemote(DRAFT);
+    remote.refuse = { part: "basics", fields: { title: "required" }, when: "title" };
+    await show({ course: data({}, DRAFT) });
+    await type(field("title"), "");
+    await leave(field("title"));
+    expect(chip()!.getAttribute("data-save-kind")).toBe("invalid");
+    await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
+    expect(remote.log.at(-1)).toEqual({ part: "basics", version: "l:basics", patch: { type: "contact" } });
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -633,7 +853,7 @@ describe("an unpublished course: its cards save to the record", () => {
     expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("the type's save refused (another field of „Põhiinfo“ held back too): no freeze; once the type is confirmed the page is read again (review round 2 N-2)", async () => {
+  it("the type's save refused (the type itself held back): nothing waits, typing goes on, no re-read (review round 2 N-2)", async () => {
     resetRemote(DRAFT);
     remote.refuse = { part: "basics", fields: { type: "typeLocked" } };
     await show({ course: data({}, DRAFT) });

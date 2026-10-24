@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CatalogueFilters, type CatalogueCourse } from "@/components/site/CatalogueFilters";
+import { PreviewLabelBar } from "@/components/site/PreviewBar";
 import { courseCardData } from "@/components/site/course-card-data";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
@@ -53,6 +54,13 @@ export default async function CataloguePage({ params }: Props) {
     text: normalizeSearch(`${pick(c.title, locale)} ${pick(c.summary, locale)}`),
   }));
 
+  // the admin's draft preview only (Dim 24.10, D-4): „Eelvaade“ and the way out „Lõpeta eelvaade“; a visitor's page, and the page Next keeps, has none
+  let previewBar: React.ReactNode = null;
+  if (drafts) {
+    const { catalogueBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewLabelBar {...catalogueBarProps(to("/koolitused"))} />;
+  }
+
   const f = d.formats;
   const c = d.catalogue;
   return (
@@ -91,6 +99,7 @@ export default async function CataloguePage({ params }: Props) {
           results: c.results,
         }}
       />
+      {previewBar}
     </div>
   );
 }

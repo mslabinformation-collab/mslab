@@ -213,7 +213,8 @@ test.describe("course editor", () => {
     await expect(other.getByText(draft, { exact: true })).toHaveCount(0);
     await expect(other.locator("[data-preview-bar]")).toHaveCount(0);
     await visitor.close();
-    // the preview's way out („Vaata kodulehte“): live again, without the bar
+    // the preview's way out („Lõpeta eelvaade“, Dim 24.10): live again, without the bar
+    await expect(tab.locator("[data-preview-exit]")).toHaveText("Lõpeta eelvaade");
     await tab.locator("[data-preview-exit]").click();
     await expect(tab).toHaveURL(new RegExp(`/koolitused/${c.slug}$`));
     await expect(tab.locator("[data-preview-bar]")).toHaveCount(0);

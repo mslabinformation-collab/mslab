@@ -48,6 +48,7 @@ vi.mock("next/navigation", async (original) => ({
 }));
 
 import CoursePage from "@/app/[locale]/(site)/koolitused/[slug]/page";
+import CataloguePage from "@/app/[locale]/(site)/koolitused/page";
 
 import { addLessonForm, addModuleForm, moveModuleForm, renameModuleForm } from "@/server/admin-lessons";
 import { readCoursePart, writeCoursePart } from "@/server/course-parts";
@@ -382,12 +383,19 @@ describe("the preview bar on the course page (Task 6 review: spec C3, Part 4)", 
     expect(page).toContain("E-kulm (uus)");
     expect(page).toContain("Avaldamata 4");
     expect(page).toContain("Loobu muudatustest");
-    expect(page).toContain("Vaata kodulehte");
+    expect(page).toContain("Lõpeta eelvaade");
     // the way out ends draft mode and comes back to this very page, as a visitor sees it
     expect(page).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fkoolitused%2Fe-kulm"');
     expect(page).toContain('data-fab-avoid=""');
     // the Russian page leaves to the Russian page
     expect(await html("ru")).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fru%2Fkoolitused%2Fe-kulm"');
+  });
+
+  test("the bar's words from the server: the way out „Lõpeta eelvaade“, a failed discard „Muudatustest loobumine ei õnnestunud. Proovi uuesti.“ (Dim 24.10, D-1, D-2)", async () => {
+    const { previewBarProps } = await import("@/server/preview-bar");
+    const { t, exitHref } = await previewBarProps(db, online.id, "/ru/koolitused/e-kulm");
+    expect(t).toMatchObject({ exit: "Lõpeta eelvaade", failed: "Muudatustest loobumine ei õnnestunud. Proovi uuesti.", signedOut: "Logi uuesti sisse." });
+    expect(exitHref).toBe("/api/admin/eelvaade?lopeta=1&tee=%2Fru%2Fkoolitused%2Fe-kulm");
   });
 
   test("in the preview with nothing unpublished: the way out only", async () => {
@@ -396,7 +404,7 @@ describe("the preview bar on the course page (Task 6 review: spec C3, Part 4)", 
     expect(page).toContain(BAR);
     expect(page).not.toContain("data-preview-count");
     expect(page).not.toContain("Loobu muudatustest");
-    expect(page).toContain("Vaata kodulehte");
+    expect(page).toContain("Lõpeta eelvaade");
   });
 
   test("never for a visitor: draft mode off, or draft mode on without an admin session (the page shows the live data and no bar)", async () => {
@@ -412,6 +420,41 @@ describe("the preview bar on the course page (Task 6 review: spec C3, Part 4)", 
       expect(page).not.toContain("eelvaade?lopeta");
       expect(page).not.toContain("E-kulm (uus)");
       expect(page).toContain("E-kulm");
+    }
+  });
+});
+
+describe("the preview bar on the catalogue (Dim 24.10, D-4)", () => {
+  const html = (locale: "et" | "ru") => CataloguePage({ params: Promise.resolve({ locale }) }).then((tree) => renderToStaticMarkup(tree));
+  const BAR = "data-preview-bar";
+
+  test("in the admin's preview: „Eelvaade“ and the way out „Lõpeta eelvaade“ to this catalogue page, nothing to discard", async () => {
+    await draft(online.id, "basics", { title: { et: "E-kulm (uus)" } });
+    await asAdmin();
+    const page = await html("et");
+    expect(page).toContain(BAR);
+    expect(page).toContain("E-kulm (uus)");
+    expect(page).toMatch(/<b data-preview-label="">Eelvaade<\/b>/);
+    expect(page).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fkoolitused" data-preview-exit="">Lõpeta eelvaade</a>');
+    expect(page).not.toContain("Loobu muudatustest");
+    expect(page).not.toContain("data-preview-count");
+    expect(page).toContain('data-fab-avoid=""');
+    // the Russian catalogue leaves to the Russian catalogue
+    expect(await html("ru")).toContain('href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fru%2Fkoolitused"');
+  });
+
+  test("never for a visitor: draft mode off, or draft mode on without an admin session", async () => {
+    await draft(online.id, "basics", { title: { et: "E-kulm (uus)" } });
+    state.cookie = await createSession(db, ME);
+    const off = await html("et");
+    state.draftOn = true;
+    state.cookie = undefined;
+    const stranger = await html("et");
+    for (const page of [off, stranger]) {
+      expect(page).not.toContain(BAR);
+      expect(page).not.toContain("Lõpeta eelvaade");
+      expect(page).not.toContain("eelvaade?lopeta");
+      expect(page).not.toContain("E-kulm (uus)");
     }
   });
 });
