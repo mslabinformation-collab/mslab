@@ -26,12 +26,15 @@ import styles from "./PublishBar.module.css";
  * - `onDiscard`, `onPublish`: the screen's actions. While one runs, the bar is aria-busy and its buttons are aria-disabled (they keep the focus) and
  *   do nothing. The screen reports a failure itself (`error`); a rejected promise only ends the busy state (and a failed discard leaves the
  *   question open).
+ * - `waiting`: the screen waits for something else that moves what the bar would publish (the course editor's cards while a switch's answer is on
+ *   its way, final review P7-1): the bar is busy just the same — aria-busy, its buttons aria-disabled, a press does nothing.
  */
 export function PublishBar({
   changed,
   previewHref,
   blocked,
   error,
+  waiting = false,
   onDiscard,
   onPublish,
 }: {
@@ -39,12 +42,15 @@ export function PublishBar({
   previewHref: string;
   blocked?: { missing?: string[]; changed?: string[] };
   error?: string | null;
+  waiting?: boolean;
   onDiscard(): Promise<void>;
   onPublish(): Promise<void>;
 }) {
   const t = adminEt.publish;
   const countId = useId();
-  const [busy, setBusy] = useState(false);
+  const [acting, setActing] = useState(false);
+  // one of its own actions runs, or the screen waits for something else: either way a press does nothing
+  const busy = acting || waiting;
   const [confirming, setConfirming] = useState(false);
   // the guard of a second press before the render that shows busy (two clicks of one event loop turn)
   const running = useRef(false);
@@ -62,9 +68,9 @@ export function PublishBar({
 
   /** Runs one of the screen's actions, alone; true when it went through. */
   async function run(action: () => Promise<void>): Promise<boolean> {
-    if (running.current) return false;
+    if (running.current || waiting) return false;
     running.current = true;
-    setBusy(true);
+    setActing(true);
     try {
       await action();
       return true;
@@ -72,7 +78,7 @@ export function PublishBar({
       return false; // the screen has told what went wrong
     } finally {
       running.current = false;
-      setBusy(false);
+      setActing(false);
     }
   }
 
@@ -122,7 +128,7 @@ export function PublishBar({
               aria-disabled={busy || undefined}
               data-publish-discard=""
               onClick={() => {
-                if (!running.current) setConfirming(true);
+                if (!running.current && !waiting) setConfirming(true);
               }}
             >
               {t.discard}

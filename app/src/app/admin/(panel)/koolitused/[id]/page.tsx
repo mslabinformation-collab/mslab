@@ -44,13 +44,16 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
  * purges the lesson files marked with „Eemalda“ 10 s ago and more (R-f; server/lesson-file-purge.ts), after the answer: the page never waits for R2.
  */
 export default async function CourseEditPage({ params, searchParams }: Props) {
-  await requireAdmin();
-  const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
-  const id = parseId(raw);
   const db = getDb();
+  // the read's stamp, before anything of the course is read: a read at or past a press's answer shows what it did (server/read-stamp.ts;
+  // SavedCourse.tsx). It is taken alongside the admin check (a clock tells nobody anything; final review P9-1: no round trip of its own), and
+  // only for a saved course
+  const parsed = params.then(({ id: raw }) => parseId(raw));
+  const stamped = parsed.then((id) => (typeof id === "number" ? readStamp(db) : 0));
+  stamped.catch(() => {}); // (a sign-in redirect leaves it unawaited: its failure is not an unhandled one; the Promise.all below still sees it)
+  await requireAdmin();
+  const [id, sp, stamp] = await Promise.all([parsed, searchParams, stamped]);
   if (typeof id === "number") after(() => purgeRemovedLessonFiles(db, mediaStore(), new Date()));
-  // the read's stamp, before anything is read: a read at or past a press's answer shows what it did (server/read-stamp.ts; SavedCourse.tsx)
-  const stamp = typeof id === "number" ? await readStamp(db) : 0;
   const [course, all, usage, modules, editor] = await Promise.all([
     typeof id === "number" ? getCourseForEdit(db, id) : null,
     listAllCourses(db),

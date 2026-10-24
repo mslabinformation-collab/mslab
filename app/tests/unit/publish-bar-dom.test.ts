@@ -181,6 +181,34 @@ describe("PublishBar", () => {
     expect($("[data-publish-bar]")!.hasAttribute("aria-busy")).toBe(false);
   });
 
+  it("`waiting` (the screen waits for something else, final review P7-1): busy the same way, nothing pressed goes through; an open question stays as it is", async () => {
+    const onPublish = vi.fn(async () => {});
+    const onDiscard = vi.fn(async () => {});
+    await show({ onPublish, onDiscard, waiting: true });
+    expect($("[data-publish-bar]")!.getAttribute("aria-busy")).toBe("true");
+    expect(publish().getAttribute("aria-disabled")).toBe("true");
+    expect(discard()!.getAttribute("aria-disabled")).toBe("true");
+    await click(publish());
+    await click(discard()!);
+    expect(panel()).toBeNull();
+    // the question opened before the wait began: „Jah, loobu“ and „Katkesta“ wait with the bar
+    await show({ onPublish, onDiscard });
+    await click(discard()!);
+    await show({ onPublish, onDiscard, waiting: true });
+    expect(panelButtons().map((b) => b.getAttribute("aria-disabled"))).toEqual(["true", "true"]);
+    await click(panelButtons()[0]);
+    expect(onPublish).not.toHaveBeenCalled();
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(panel()).not.toBeNull();
+    // the wait over: the bar takes a press again
+    await show({ onPublish, onDiscard });
+    expect($("[data-publish-bar]")!.hasAttribute("aria-busy")).toBe(false);
+    await click(panelButtons()[0]);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    await click(publish());
+    expect(onPublish).toHaveBeenCalledTimes(1);
+  });
+
   it("a callback that fails ends the busy state (the screen tells what went wrong)", async () => {
     const onPublish = vi.fn(async () => {
       throw new Error("offline");

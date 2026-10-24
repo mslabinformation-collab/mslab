@@ -185,6 +185,8 @@ type Hold = { abort: AbortController };
 type Waits = {
   /** The cards wait (from now, or as they already do); the wait's signal is aborted at its bound. */
   hold: () => AbortSignal;
+  /** The cards wait now (a press or a switch is on its way, or its read): the hold as the handlers see it, set in the same turn as the press. */
+  waitingNow: () => boolean;
   /** A refusal or a failure: the cards take typing again, nothing is read. */
   release: () => void;
   /**
@@ -288,6 +290,7 @@ export function SavedCourse(props: Shared) {
     holding.current = null;
     setHold(null);
   }, []);
+  const waitingNow = useCallback(() => holding.current !== null, []);
   const reread = useCallback(
     (from: number | null = null) => {
       setAwaiting({ from });
@@ -312,7 +315,9 @@ export function SavedCourse(props: Shared) {
       hold.abort.abort();
       const live = discarded.current;
       discarded.current = null;
-      void (live ? liveSeeds(live) : Promise.resolve(null)).then((restart) => {
+      // (seeds that cannot be worked out — no crypto.subtle on an insecure origin, final review P7-3 — are none: the cards take typing and the next
+      // read starts them over, as without a discard)
+      void (live ? liveSeeds(live).catch(() => null) : Promise.resolve(null)).then((restart) => {
         if (holding.current !== hold) return; // a read came meanwhile
         holding.current = null;
         setHold(null);
@@ -350,7 +355,7 @@ export function SavedCourse(props: Shared) {
       seeds={seeds}
       generation={generation}
       waiting={hold !== null}
-      waits={{ hold: beginHold, release, reload, stampSeen, reread, readLabels, route, onScreen, late: { take: takeLate, tick: lateTick } }}
+      waits={{ hold: beginHold, waitingNow, release, reload, stampSeen, reread, readLabels, route, onScreen, late: { take: takeLate, tick: lateTick } }}
       refocus={refocus}
       said={said}
       setSaid={setSaid}
@@ -383,7 +388,7 @@ function SavedForm({
   setSaid: (update: (s: Said) => Said) => void;
 }) {
   const { id, published, liveType } = data;
-  const { hold, release, reload, stampSeen, reread, readLabels, route, onScreen, late } = waits;
+  const { hold, waitingNow, release, reload, stampSeen, reread, readLabels, route, onScreen, late } = waits;
   const common = { courseId: id, published, liveType };
   // an unpublished course's „Põhiinfo“ saves are heard (its type)
   const ear = useRef<SaveEar | null>(null);
@@ -516,7 +521,10 @@ function SavedForm({
   /** Every card's waiting save (the modules' names too), sent now and waited for: a publish, a discard or the switch work on what is saved. */
   const flushAll = () => Promise.all([...order.map((part) => hooks[part].flushNow()), ...Array.from(textRows.current, (row) => row.flush())]);
 
+  // „Avalda muudatused“ and „Loobu muudatustest“ never join a wait of the cards (the switch's, final review P7-1: its answer, or its bound, would
+  // end both): while one is on its way the PublishBar is busy (`waiting`), and a press that comes in the same turn does nothing here
   const publish = async () => {
+    if (waitingNow()) return;
     setSaid((s) => ({ ...s, barError: null }));
     const signal = hold();
     if ((await orLate(flushAll(), signal)) === LATE) return;
@@ -537,6 +545,7 @@ function SavedForm({
   };
 
   const discard = async () => {
+    if (waitingNow()) throw new Error("the cards wait"); // (the question stays open)
     setSaid((s) => ({ ...s, barError: null }));
     const signal = hold();
     if ((await orLate(flushAll(), signal)) === LATE) return;
@@ -653,6 +662,8 @@ function SavedForm({
               // (nothing left to publish: no bar, never „Avaldamata muudatused: 0“; review M-3)
               blocked={changed.length > 0 ? blockedOf(blocked) : undefined}
               error={said.barError}
+              // the cards wait (a publish, a discard or the switch, or its read): the bar's buttons do nothing meanwhile
+              waiting={frozen}
               onDiscard={discard}
               onPublish={publish}
             />

@@ -623,6 +623,98 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     }
   });
 
+  it("while „Avalikul lehel“ waits for its answer the PublishBar is busy: „Avalda muudatused“ and „Loobu muudatustest“ send nothing; the switch's wait ends at its own answer (final review P7-1)", async () => {
+    let answer!: (r: unknown) => void;
+    actions.published.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await show();
+    await type(field("summary"), "Uus.");
+    await leave(field("summary"));
+    await click($("[data-field='published']"));
+    expect(actions.published).toHaveBeenCalledWith({ id: ID, on: false });
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the bar says it waits: busy, its buttons aria-disabled (they keep the focus), and a press does nothing
+    expect(bar()!.getAttribute("aria-busy")).toBe("true");
+    expect($("[data-publish-go]")!.getAttribute("aria-disabled")).toBe("true");
+    expect($("[data-publish-discard]")!.getAttribute("aria-disabled")).toBe("true");
+    await click($("[data-publish-go]"));
+    await click($("[data-publish-discard]"));
+    expect($("[data-confirm-panel]")).toBeNull();
+    expect(fetched.calls.filter((c) => /\/koolitus\/\d+\/(avalda|loobu)$/.test(c.url))).toEqual([]);
+    // the switch refused: its wait ends with its answer, and the bar takes a press again
+    await act(async () => answer({ ok: false, error: "server" }));
+    await settle();
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(bar()!.getAttribute("aria-busy")).toBeNull();
+    expect($("[data-publish-go]")!.getAttribute("aria-disabled")).toBeNull();
+    await click($("[data-publish-go]"));
+    expect(fetched.calls.filter((c) => c.url === `/api/admin/koolitus/${ID}/avalda`)).toHaveLength(1);
+  });
+
+  it("„Avalda muudatused“ pressed within the switch's own click does nothing either; the switch's bound alone ends the wait (final review P7-1)", async () => {
+    fakeClock();
+    try {
+      actions.published.mockReturnValue(new Promise(() => {}));
+      await show();
+      await type(field("summary"), "Uus.");
+      await leave(field("summary"));
+      // the publish's press comes while the switch's click is still being handed on, after the editor's handler (React has drawn the busy bar
+      // by then; the editor's own check, SavedCourse.tsx `waitingNow`, would hold it too)
+      const go = $("[data-publish-go]")!;
+      let pressed = false;
+      const pressGo = () => {
+        if (pressed) return; // (its own click bubbles here too)
+        pressed = true;
+        go.click();
+      };
+      document.addEventListener("click", pressGo);
+      try {
+        await act(async () => $("[data-field='published']")!.click());
+      } finally {
+        document.removeEventListener("click", pressGo);
+      }
+      await settle();
+      expect(actions.published).toHaveBeenCalledTimes(1);
+      expect(fetched.calls.filter((c) => c.url === `/api/admin/koolitus/${ID}/avalda`)).toEqual([]);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      // the publish shared no wait: only the switch's bound ends it, and the page is read again once
+      await wait(SAVE_TIMEOUT_MS - 1000);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await wait(1000);
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      expect($("[data-publish-error]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a discard whose live seeds cannot be worked out at the bound (no crypto.subtle on an insecure origin): the cards still take typing and the page is asked for again; the next read starts them over (final review P7-3)", async () => {
+    fakeClock();
+    try {
+      await show();
+      await type(field("summary"), "Uus.");
+      await leave(field("summary"));
+      await click($("[data-publish-discard]"));
+      await click(button("Jah, loobu"));
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      // no read in SAVE_TIMEOUT_MS, and the hash of the live values fails
+      const digest = vi.spyOn(crypto.subtle, "digest").mockRejectedValue(new DOMException("The operation is insecure.", "SecurityError"));
+      await wait(SAVE_TIMEOUT_MS);
+      await settle();
+      expect(digest).toHaveBeenCalled();
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).toHaveBeenCalledTimes(2);
+      digest.mockRestore();
+      // the read comes: the cards start over from the live course
+      await show({ course: data() });
+      expect(field("summary")!.value).toBe("Lühike tekst.");
+      expect(bar()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     ["a part blocked", { ok: false, error: "blocked", blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] }],
     ["the price required", { ok: false, error: "invalid", fields: { price: "priceRequired" } }],
