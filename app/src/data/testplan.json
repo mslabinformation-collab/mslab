@@ -2699,6 +2699,7 @@
       ],
       "expect": [
         "Päises on „2/… kinnitatud“ ja all teade „… õpilast on registreerunud. Muudatusest neile kirja ei saadeta.“.",
+        "Kui kellegi makse on parajasti pooleli, on päises ka „ootab ettemaksu …“.",
         "„Koolitus“ on lukus ja selle all on „Toimumisel on registreeringuid, seega koolitust muuta ei saa.“.",
         "Lõpus pole nuppu „Kustuta toimumine“, vaid „Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.“.",
         "„Kohti“ 1 juures on „Kinnitatud on 2 — kohti ei saa olla vähem.“ ja päises „Salvestamata — kontrolli märgitud välja“.",

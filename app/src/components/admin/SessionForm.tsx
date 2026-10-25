@@ -16,6 +16,7 @@ import { patchSender, type Fields, type SendPatch } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
 import { Choice } from "./Choice";
 import { ConfirmPanel } from "./ConfirmPanel";
+import { focusFell } from "./focus-fell";
 import { useGuardSource } from "./LeaveGuard";
 import { SaveStatus } from "./SaveStatus";
 import ui from "./ui.module.css";
@@ -25,8 +26,8 @@ import styles from "./SessionForm.module.css";
 // The Kalender drawer (admin UX pass piece 3b, Task 3; README B3, the Part 3 frame „B3 Kalender“ and the Part 4 „B3 Session drawer“; piece3-texts
 // S3-P3-g, S3-P3-i, P-2, P-7, P-8; rulings R-a, R-b, R-c). Two drawers:
 // - SessionDrawer, a stored session (?id=<n>), top to bottom: the header — SaveStatus left of the drawer's ✕, the course (Jost 28), „{dd.mm.yyyy} ·
-//   {linn} · {k}/{cap} kinnitatud · ootenimekirjas {n}“ (the phone's „… · {k}/{cap} · ootel {n}“, Part 4; the waitlist's part only when there is one,
-//   P-7) and „Protokollid“, the first button; with registrations the notice „{n} õpilast on registreerunud. Muudatusest neile kirja ei saadeta.“; the
+//   {linn} · {k}/{cap} kinnitatud · ootab ettemaksu {h} · ootenimekirjas {n}“ (the held seats' part Dim's 25.10, the waitlist's P-7, each only when
+//   there is one; the phone's „… · {k}/{cap} · ootab ettemaksu {h} · ootel {n}“, Part 4's with the held part, which fits its line) and „Protokollid“, the first button; with registrations the notice „{n} õpilast on registreerunud. Muudatusest neile kirja ei saadeta.“; the
 //   fields, autosaved (useAutosave on POST /api/admin/toimumine/<id>, server/session-edit.ts writeSession) — „Kuupäev“ or „Algus (Eesti aeg)“ changed on a
 //   booked session says „Muudetud — teavita {n} õpilast ise.“ (#6b4f5c), „Kohti“ commits on blur (piece3-texts §4, behaviours "Server-side changes" 1)
 //   and below the confirmed is refused in the field, „Koolitus“ is disabled once anyone is booked with S3-P3-i under it; „Staatus“, instant
@@ -104,6 +105,8 @@ type FieldView = {
   courses: SessionCourse[];
   /** The course's „—“ (a new session before one is chosen). */
   none: boolean;
+  /** Nothing can be typed (a new session's create on its way: what it sends is what the new drawer shows). */
+  busy?: boolean;
 };
 
 /**
@@ -151,6 +154,7 @@ function SessionFieldList({ view }: { view: FieldView }) {
           className={ui.input}
           autoComplete="off"
           value={view.value(f)}
+          readOnly={view.busy || undefined}
           onChange={(ev) => view.set(f, ev.target.value)}
           aria-invalid={p.invalid}
           aria-describedby={p.describedBy}
@@ -164,7 +168,7 @@ function SessionFieldList({ view }: { view: FieldView }) {
   const course = parts("courseId");
   const language = parts("language");
   return (
-    <div className={styles.fields} onBlur={view.onLeave} data-session-form="">
+    <div className={styles.fields} onBlur={view.onLeave} aria-busy={view.busy || undefined} data-session-form="">
       <div className={ui.field} data-field="courseId">
         <label htmlFor={id("courseId")}>{LABELS.courseId}</label>
         <select
@@ -173,6 +177,7 @@ function SessionFieldList({ view }: { view: FieldView }) {
           className={`${ui.input} ${ed.select}`}
           value={view.value("courseId")}
           disabled={view.locked}
+          aria-disabled={view.busy || undefined}
           onChange={(ev) => {
             view.set("courseId", ev.target.value);
             view.onChoose("courseId");
@@ -210,6 +215,7 @@ function SessionFieldList({ view }: { view: FieldView }) {
           name="language"
           className={`${ui.input} ${ed.select}`}
           value={view.value("language")}
+          aria-disabled={view.busy || undefined}
           onChange={(ev) => {
             view.set("language", ev.target.value);
             view.onChoose("language");
@@ -243,6 +249,8 @@ type DrawerProps = {
   fields: SessionFields;
   status: SessionStatus;
   counts: SessionCounts;
+  /** Its seats held for an unpaid registration now (awaiting its prepayment with a live seat hold: db/queries/seats.ts takesSeat, as the public seats count). */
+  held: number;
   /** Open waitlist requests for it. */
   waitlist: number;
   /** The course's name. */
@@ -406,6 +414,9 @@ export function SessionDrawer(p: DrawerProps) {
       p.when,
       p.fields.city,
       fill(short ? t.drawer.seatsShort : t.drawer.seats, { k: p.counts.confirmed, cap: p.fields.capacity }),
+      // (Dim 25.10: the held seats between the confirmed and the waitlist; on the phone's short line too, where it fits: Part 4's sample with it is
+      // about 302 px of the 343 px a 375 px phone gives the line)
+      p.held > 0 ? fill(t.drawer.held, { n: p.held }) : null,
       p.waitlist > 0 ? fill(short ? t.drawer.waitlistShort : t.drawer.waitlist, { n: p.waitlist }) : null,
     ]
       .filter(Boolean)
@@ -512,19 +523,29 @@ function useStatus(
           return { ok: false, error: "server" };
         }
       })();
+      /** An answer as the drawer shows it: stored (the chip's time, the pill), another tab's change (the chip), or refused (the line). */
+      const show = (r: StatusResult) => {
+        if (r.ok) {
+          setLine(null);
+          setConflict(false);
+          setSavedAt(new Date());
+          setSaid({ status: next, over });
+        } else if (r.error === "conflict") {
+          setConflict(true);
+          router.refresh();
+        } else setLine(r.error === "notFound" ? t.drawer.notFound : adminEt.common.saveError);
+      };
       const result = await bounded(call);
-      if (result === null) void call.then((r) => take(r, from));
+      if (result === null)
+        // late: said not saved for now; the answer still counts when it comes (a success takes the line back and shows the stored status)
+        void call.then((r) => {
+          take(r, from);
+          if (r.ok || r.error === "conflict") show(r);
+        });
       else take(result, from);
       flightRef.current = null;
       land();
-      if (result?.ok) {
-        setConflict(false);
-        setSavedAt(new Date());
-        setSaid({ status: next, over });
-      } else if (result?.error === "conflict") {
-        setConflict(true);
-        router.refresh();
-      } else setLine(result?.error === "notFound" ? t.drawer.notFound : adminEt.common.saveError);
+      show(result ?? { ok: false, error: "server" });
       setAsking(false);
       if (fromPanel || !result?.ok) setFocusTo({ status: result?.ok ? next : over });
     });
@@ -559,13 +580,17 @@ function useStatus(
 
 function StatusChoice({ status }: { status: ReturnType<typeof useStatus> }) {
   const uid = useId();
+  const section = useRef<HTMLElement>(null);
   const { focusTo } = status;
+  // the answer's radio takes the focus only where the focus fell (the panel gone with it) or is still in this section, never from a field she moved to
   useEffect(() => {
-    if (focusTo) document.getElementById(`${uid}-${focusTo.status}`)?.focus();
+    if (!focusTo) return;
+    if (!focusFell() && !section.current?.contains(document.activeElement)) return;
+    document.getElementById(`${uid}-${focusTo.status}`)?.focus();
   }, [focusTo, uid]);
   const n = status.booked;
   return (
-    <section className={styles.statusRow} data-session-status="">
+    <section ref={section} className={styles.statusRow} data-session-status="">
       <fieldset className={styles.status} aria-busy={status.pending || undefined} aria-describedby={`${uid}-hint${status.line ? ` ${uid}-line` : ""}`}>
         <legend className={styles.legend}>{t.form.status}</legend>
         <div className={styles.pills}>
@@ -668,8 +693,8 @@ function SessionDelete({ id, all }: { id: number; all: number }) {
 /** A new session's fields: the course to choose, and Algus 10:00, Kohti 4, Keel ET filled in (S3-P3-g). */
 const EMPTY: SessionFields = { courseId: null, date: "", time: "10:00", city: "", venue: "", language: "ET", capacity: "4" };
 
-/** The copy, read defensively: each field of the right kind over a new session's. */
-function readCopy(): SessionFields | null {
+/** The copy, read defensively: each field of the right kind over a new session's; the course only while it is one of `courses` (else „—“). */
+function readCopy(courses: SessionCourse[]): SessionFields | null {
   try {
     const raw: unknown = JSON.parse(window.localStorage.getItem(NEW_SESSION_COPY) ?? "null");
     if (!isRecord(raw)) return null;
@@ -677,7 +702,7 @@ function readCopy(): SessionFields | null {
     for (const f of SESSION_FIELDS) {
       const v = raw[f];
       if (f === "courseId") {
-        if (v === null || (typeof v === "number" && Number.isInteger(v) && v > 0)) out.courseId = v;
+        if (typeof v === "number" && courses.some((c) => c.id === v)) out.courseId = v;
       } else if (typeof v === "string") out[f] = v;
     }
     return out;
@@ -724,13 +749,13 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
   useEffect(() => {
     if (!restored.current) {
       restored.current = true;
-      const copy = readCopy();
+      const copy = readCopy(courses);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- the storage is only known in the browser, after hydration
       if (copy && !sameFields(copy, EMPTY)) setFields(copy);
       return;
     }
     if (!created.current) writeCopy(sameFields(fields, EMPTY) ? null : fields);
-  }, [fields]);
+  }, [fields, courses]);
 
   useEffect(() => {
     if (focusTo) focusField(focusTo.name);
@@ -753,7 +778,8 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
     if (first) setFocusTo({ name: first });
   };
   const create = () => {
-    if (pending) return;
+    // (created: the drawer is on its way to the new session; a second press would make another)
+    if (pending || created.current) return;
     const problems = problemsOf(fields, null, { confirmed: 0, booked: 0 });
     if (Object.keys(problems).length > 0) return refuse(problems);
     const sent = { ...fields };
@@ -780,6 +806,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
   const view: FieldView = {
     value: (f) => shownOf(fields[f]),
     set: (f, raw) => {
+      if (pending) return; // (the create is on its way: the fields are read-only, and a select's choice is not taken either)
       setErrors((r) => (r[f] ? { ...r, [f]: undefined } : r));
       setFields((d) => ({ ...d, [f]: parseField(f, raw) }));
     },
@@ -793,6 +820,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
     locked: false,
     courses,
     none: fields.courseId === null,
+    busy: pending,
   };
   const marked = Object.values(errors).some((c) => c !== undefined);
   const general = failed === "server" ? adminEt.common.saveError : failed === "invalid" && marked ? adminEt.courseEditor.invalid : null;

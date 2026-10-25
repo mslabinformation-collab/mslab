@@ -1365,16 +1365,26 @@ test.describe("calendar", () => {
     await expect.poll(async () => (await storedSession(city))?.status).toBe("cancelled");
     await expect(dialog.getByRole("radio", { name: "Tühistatud" })).toBeChecked();
     expect(await registrationsOf(id)).toBe(1);
+    // (the status is busy until the action's answer and the page's read are in: a press meanwhile is not taken)
+    await expect(dialog.locator("[data-session-status] fieldset")).not.toHaveAttribute("aria-busy", "true");
     await dialog.getByRole("radio", { name: "Toimub" }).check();
     await expect(panel).toHaveCount(0);
     await expect.poll(async () => (await storedSession(city))?.status).toBe("scheduled");
     await expect(dialog.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
 
-    // the list does not say „ootab ettemaksu“ any more (Dim 25.10: the seats as drawn), and neither does the drawer (none is drawn): 0 of 4 confirmed
+    // the list does not say „ootab ettemaksu“ any more (Dim 25.10: the seats as drawn): 0 of 4 confirmed
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender$/);
     await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4");
     await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
+    // the drawer's header says the held, unpaid seats (Dim 25.10): her seat is held while her payment's hold is live, not once it has ended
+    await page.goto(`/admin/kalender?id=${id}`);
+    await adminReady(page);
+    await expect(dialog.locator("[data-line='wide']")).toHaveText(new RegExp(` · ${city} · 0/4 kinnitatud$`));
+    await onLocalDb((sql) => sql`update registrations set seat_hold_until = now() + interval '30 minutes' where course_session_id = ${id}`);
+    await page.reload();
+    await adminReady(page);
+    await expect(dialog.locator("[data-line='wide']")).toHaveText(new RegExp(` · ${city} · 0/4 kinnitatud · ootab ettemaksu 1$`));
 
     // two confirmed: „Kohti“ 1 is refused in the field and nothing is stored; a changed date says to tell the two; 2 seats are fine
     await registerOnSession(id, info.project.name);
@@ -1412,6 +1422,8 @@ test.describe("calendar", () => {
     const city = `${EDIT_CITY_PREFIX}${info.project.name} ${unique()}`;
     const id = await insertEditSession(COURSE.slug, city);
     await registerOnSession(id, info.project.name);
+    // her seat held while her payment is on its way (Dim 25.10: the header says it, the phone's short line too)
+    await onLocalDb((sql) => sql`update registrations set seat_hold_until = now() + interval '30 minutes' where course_session_id = ${id}`);
     await page.setViewportSize({ width: 375, height: 812 });
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/kalender?id=${id}`);
@@ -1426,7 +1438,7 @@ test.describe("calendar", () => {
     // the header's short line (Part 4) instead of the long one
     await expect(dialog.locator("[data-line='short']")).toBeVisible();
     await expect(dialog.locator("[data-line='wide']")).toBeHidden();
-    await expect(dialog.locator("[data-line='short']")).toHaveText(new RegExp(` · ${city} · 0/4$`));
+    await expect(dialog.locator("[data-line='short']")).toHaveText(new RegExp(` · ${city} · 0/4 · ootab ettemaksu 1$`));
     const body = (await dialog.locator("[data-session-drawer]").boundingBox())!;
     const protocols = (await dialog.locator("[data-session-protocols]").boundingBox())!;
     expect(protocols.height).toBeGreaterThanOrEqual(48);

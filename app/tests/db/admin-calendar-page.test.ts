@@ -415,14 +415,15 @@ describe("the list's address is carried to the add button and the drawer", () =>
 });
 
 describe("the drawer (B3, piece 3b Task 3): its header and counts are the database's (R-b)", () => {
-  test("a booked session: „05.12.2030 · Pärnu · 2/4 kinnitatud · ootenimekirjas 2“, the notice counts the registrations that are not cancelled, „Koolitus“ is locked, no delete", async () => {
+  test("a booked session: „05.12.2030 · Pärnu · 2/4 kinnitatud · ootab ettemaksu 1 · ootenimekirjas 2“, the notice counts the registrations that are not cancelled, „Koolitus“ is locked, no delete", async () => {
     const doc = await open(`id=${s.booked}`);
     const drawer = doc.querySelector(`[data-drawer-stand-in] [data-session-drawer="${s.booked}"]`)!;
     expect(drawer).not.toBeNull();
     expect(texts(doc, "[data-session-head] h2")).toEqual(["Kulmude LAMI"]);
-    // 2 confirmed of 4 seats; the two open waitlist requests
-    expect(texts(doc, "[data-session-head] [data-line='wide']")).toEqual(["05.12.2030 · Pärnu · 2/4 kinnitatud · ootenimekirjas 2"]);
-    expect(texts(doc, "[data-session-head] [data-line='short']")).toEqual(["05.12.2030 · Pärnu · 2/4 · ootel 2"]);
+    // 2 confirmed of 4 seats; one seat held for an unpaid registration (Dim 25.10: its hold is live — the one whose hold ended holds none, as the
+    // public seats count, db/queries/seats.ts takesSeat); the two open waitlist requests
+    expect(texts(doc, "[data-session-head] [data-line='wide']")).toEqual(["05.12.2030 · Pärnu · 2/4 kinnitatud · ootab ettemaksu 1 · ootenimekirjas 2"]);
+    expect(texts(doc, "[data-session-head] [data-line='short']")).toEqual(["05.12.2030 · Pärnu · 2/4 · ootab ettemaksu 1 · ootel 2"]);
     expect(doc.querySelector("[data-session-protocols]")!.getAttribute("href")).toBe(`/admin/protokollid?sessioon=${s.booked}`);
     // 2 confirmed + 2 awaiting (the held one and the one whose hold ended); the cancelled one is history
     expect(texts(doc, "[data-session-booked]")).toEqual(["4 õpilast on registreerunud. Muudatusest neile kirja ei saadeta."]);

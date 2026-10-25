@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
+import { DEBOUNCE_MS, SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import type { SessionFields } from "@/domain/session-fields";
 import { stubFetch } from "../fakes";
 
@@ -47,6 +47,7 @@ const props = (over: Partial<DrawerProps> = {}): DrawerProps => ({
   fields: FIELDS,
   status: "scheduled",
   counts: { confirmed: 4, booked: 4, all: 4 },
+  held: 0,
   waitlist: 2,
   title: "Kulmumeistri baaskoolitus",
   when: "05.12.2026",
@@ -179,6 +180,18 @@ describe("the header (README B3; P-7)", () => {
     expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Tartu · 0/6 kinnitatud");
     expect(text($("[data-line='short']"))).toBe("05.12.2026 · Tartu · 0/6");
     expect($("[data-session-protocols]")).toBeNull();
+  });
+
+  it("held, unpaid seats (Dim 25.10): „· ootab ettemaksu {n}“ between the confirmed and the waitlist, only when there is one; on the phone's line too", async () => {
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 1 });
+    expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootab ettemaksu 1 · ootenimekirjas 2");
+    expect(text($("[data-line='short']"))).toBe("05.12.2026 · Pärnu · 3/4 · ootab ettemaksu 1 · ootel 2");
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 2, waitlist: 0 });
+    expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootab ettemaksu 2");
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 0 });
+    expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootenimekirjas 2");
+    expect(text($("[data-line='short']"))).toBe("05.12.2026 · Pärnu · 3/4 · ootel 2");
+    expect($("[data-session-head]")!.textContent).not.toContain("ootab ettemaksu");
   });
 
   it("a session just added (?lisatud=) says „Toimumine lisatud.“ at the top of the drawer", async () => {
@@ -486,6 +499,37 @@ describe("„Staatus“: instant; „Tühistatud“ with registrations asks firs
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
   });
 
+  it("an answer that comes after she moved into a field leaves the focus there (review M1); the line still says it", async () => {
+    let answer: (r: unknown) => void = () => {};
+    actions.setSessionStatusAction.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await show({ counts: { confirmed: 0, booked: 0, all: 0 } });
+    await click(radio("cancelled"));
+    await settle();
+    await act(async () => field("venue").focus());
+    await act(async () => answer({ ok: false, error: "server" }));
+    await settle();
+    expect(text($("[data-status-line]"))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(radio("scheduled").checked).toBe(true);
+    expect(document.activeElement).toBe(field("venue"));
+  });
+
+  it("a status answer later than SAVE_TIMEOUT_MS: „Salvestamine ei õnnestunud. …“, and when it comes stored the line goes and the stored status shows (review M2)", async () => {
+    fakeClock();
+    let answer: (r: unknown) => void = () => {};
+    actions.setSessionStatusAction.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await show({ counts: { confirmed: 0, booked: 0, all: 0 } });
+    await click(radio("cancelled"));
+    await wait(SAVE_TIMEOUT_MS + 100);
+    await settle();
+    expect(text($("[data-status-line]"))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(radio("scheduled").checked).toBe(true);
+    await act(async () => answer({ ok: true, version: "s:v1c" }));
+    await settle();
+    expect(text($("[data-status-line]"))).toBe("");
+    expect(radio("cancelled").checked).toBe(true);
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+  });
+
   it("changed in another tab meanwhile: the chip says „Muudeti teises aknas — vaata üle“, the page is read again and the stored status stays chosen", async () => {
     actions.setSessionStatusAction.mockResolvedValue({ ok: false, error: "conflict", version: "s:other", value: { ...FIELDS, status: "scheduled" } });
     await show({ counts: { confirmed: 0, booked: 0, all: 0 } });
@@ -622,6 +666,43 @@ describe("a new session (?id=uus; S3-P3-g): one explicit „Lisa toimumine“", 
     await click(buttonNamed("Lisa toimumine"));
     await settle();
     expect(text($("[data-new-session-error]"))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+  });
+
+  it("while the create is on its way the fields are read-only and nothing typed is taken; a second press makes no second session (review M3, M4)", async () => {
+    let answer: (r: unknown) => void = () => {};
+    actions.createSessionAction.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await showNew();
+    await choose(select("courseId"), "3");
+    await type(field("date"), "2027-03-13");
+    await type(field("city"), "Pärnu");
+    await click(buttonNamed("Lisa toimumine"));
+    expect(actions.createSessionAction).toHaveBeenCalledOnce();
+    expect(field("city").readOnly).toBe(true);
+    expect($("[data-session-form]")!.getAttribute("aria-busy")).toBe("true");
+    expect(select("language").getAttribute("aria-disabled")).toBe("true");
+    await type(field("city"), "Tartu");
+    await choose(select("language"), "RU");
+    expect(field("city").value).toBe("Pärnu");
+    expect(select("language").value).toBe("ET");
+    await click(buttonNamed("Lisa toimumine"));
+    expect(actions.createSessionAction).toHaveBeenCalledOnce();
+    // created: the drawer moves on to it; a press before it has is not another create
+    await act(async () => answer({ ok: true, id: 55, version: "s:new", savedAt: "2026-10-24T11:03:00.000Z" }));
+    await settle();
+    expect(router.replace).toHaveBeenCalledOnce();
+    await click(buttonNamed("Lisa toimumine"));
+    await settle();
+    expect(actions.createSessionAction).toHaveBeenCalledOnce();
+  });
+
+  it("a kept copy whose course is no longer a contact course comes back with „—“ and its other fields (review M5)", async () => {
+    localStorage.setItem("mslab-draft:toimumine:uus", JSON.stringify({ courseId: 99, date: "2027-03-13", time: "10:00", city: "Viljandi", venue: "", language: "ET", capacity: "4" }));
+    await showNew();
+    await settle();
+    expect(field("city").value).toBe("Viljandi");
+    expect(select("courseId").value).toBe("");
+    expect(text(select("courseId").options[0])).toBe("—");
+    expect(text($("[data-new-session-line]"))).toBe("Täida kohustuslikud väljad");
   });
 
   it("leaving with typed text asks with the leave notice and the reason „Toimumist pole veel lisatud.“ (✕ too)", async () => {

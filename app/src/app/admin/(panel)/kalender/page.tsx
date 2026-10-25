@@ -148,6 +148,8 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
             fields={fieldsOf(stored.value)}
             status={stored.value.status}
             counts={regs}
+            // (the seats taken now are the confirmed and the live holds of unpaid ones, db/queries/seats.ts takesSeat: the held are the rest)
+            held={Math.max(0, open.taken - open.confirmed)}
             waitlist={open.waitlist}
             title={name}
             when={formatDate(open.startsAt, "et")}
