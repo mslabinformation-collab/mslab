@@ -348,8 +348,9 @@ test.describe("comment widget in the admin", () => {
       await page.goto("/admin/seaded");
       await adminReady(page);
       await expect(bubble(page)).toBeVisible();
+      // (Seaded's one save bar is the legal texts' since admin UX pass piece 3b, Task 4: sticky at the foot of the screen while their form is on it)
+      await page.locator("[data-legal-form]").evaluate((form) => form.scrollIntoView({ block: "start" }));
       await expect(saveBarButton(page)).toBeVisible();
-      // (the bar is sticky: it is at the foot of the screen on arrival and while the page is scrolled up)
       await expect
         .poll(async () =>
           page.evaluate(() => {

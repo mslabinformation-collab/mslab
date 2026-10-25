@@ -32,7 +32,7 @@ vi.mock("@/components/admin/Drawer", async () => {
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({
   createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(),
-  updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), createInvoicesForUnbilledAction: vi.fn(), saveInvoiceSettingsAction: vi.fn(),
+  updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), createInvoicesForUnbilledAction: vi.fn(),
 }));
 const rows = vi.hoisted(() => ({ seen: [] as { number: string; takeBack: { cents: number; backToAwaiting: boolean } | null }[] }));
 // (the row is the real one; what the page hands it is written down on the way)
@@ -382,13 +382,13 @@ describe("„Arveta maksed“", () => {
     expect(rows).toEqual(["Tasub arve MSL2026-001", "Koostab uue arve"]);
   });
 
-  test("without a seller the rows are listed but cannot be made: the link to Seaded → Arve andmed stands in place of the button, and the rows have none", async () => {
+  test("without a seller the rows are listed but cannot be made: the link to Seaded → Maksmine stands in place of the button, and the rows have none", async () => {
     await paid("mari@example.com", "Mari Kask", OCTOBER);
     const html = await render(InvoicesPage);
     expect(html).toContain("data-uninvoiced-payment");
     expect(html).not.toContain("data-uninvoiced-create");
     expect(html).not.toContain("data-uninvoiced-bulk");
-    expect(html).toMatch(/<a[^>]*href="\/admin\/seaded#arve"[^>]*>Täida Seaded → Arve andmed<\/a>/);
+    expect(html).toMatch(/<a[^>]*href="\/admin\/seaded#maksmine"[^>]*>Täida Seaded → Maksmine<\/a>/);
   });
 
   test("a payment that has its invoice is not listed", async () => {
@@ -455,12 +455,12 @@ describe("the registration drawer's „Arved“", () => {
     expect(block).not.toContain('data-invoice-create=""');
   });
 
-  test("a registration with no invoice and no seller: a link to Seaded → Arve andmed in place of „Koosta arve“", async () => {
+  test("a registration with no invoice and no seller: a link to Seaded → Maksmine in place of „Koosta arve“", async () => {
     const r = await registrationOn(db, fixture);
     const { block } = await drawer(r.id);
     expect(block).toContain("Sellele registreeringule pole arveid koostatud.");
     expect(block).not.toContain('data-invoice-create=""');
-    expect(block).toMatch(/<a[^>]*href="\/admin\/seaded#arve"[^>]*>Täida Seaded → Arve andmed<\/a>/);
+    expect(block).toMatch(/<a[^>]*href="\/admin\/seaded#maksmine"[^>]*>Täida Seaded → Maksmine<\/a>/);
   });
 
   test("with a seller and nothing invoiced yet, „Koosta arve“", async () => {

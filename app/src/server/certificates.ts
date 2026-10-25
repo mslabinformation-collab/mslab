@@ -1,13 +1,17 @@
 import { and, count, desc, eq, getTableColumns, isNull, max, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { Db } from "@/db/client";
 import { paged, setSetting, type Paged } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
 import { certificates, courseAccess, courses, type Certificate } from "@/db/schema";
+import type { SaveAnswer } from "@/domain/autosave";
 import {
-  CERT_LIMITS, certificateSkills, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
+  CERT_LIMITS, certificateForm, certificateSkills, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
 } from "@/domain/certificate";
 import { PAGE_SIZE } from "@/domain/paging";
 import { toStorable } from "@/lib/to-storable";
+import { contentVersion } from "@/lib/version";
+import { fieldCodes } from "./autosave-route";
 import { accessFor, lockAccess } from "./completion";
 
 // The e-course certificate (phase 3d, spec §3–§7), without Next.js: the issue (one per completed access, numbered in Maria's own series), the
@@ -44,8 +48,6 @@ export type RegisterRow = { id: number; number: string; name: string; course: st
  * writes).
  */
 export type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken" | "letters" | "length";
-
-type SaveResult = { ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> };
 
 /** What the pages get of a certificate row (ISO times). */
 export const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView => ({
@@ -193,63 +195,130 @@ export async function getCertificateSettings(db: Db, now: Date): Promise<Certifi
 /** A text of Seaded's card as stored: what Postgres can hold, on one line (each run of white space one space), trimmed. */
 const oneLine = (value: unknown): string => (typeof value === "string" ? toStorable(value).replace(/\s+/g, " ").trim() : "");
 
-/** A whole number from the form: a number, or digits as a string; null for anything else. */
+/** A whole number from the card: a number, or digits as typed; null for anything else. */
 function wholeNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isInteger(value) ? value : null;
   return typeof value === "string" && /^\d{1,9}$/.test(value.trim()) ? Number(value.trim()) : null;
 }
 
 /**
- * Seaded → Tunnistus "Salvesta" (spec §3, §4, §6).
- * - The four texts are kept on one line and trimmed; each is required and within its CERT_LIMITS. A length is measured as
- *   readCertificateSettings measures it, so a value saved here is never dropped by the read: place, registry code and practical line in
- *   UTF-16 units, the trainer's name in code points once it is NFC.
- * - The trainer's name is Maria's signature, written in the script font: it also passes the student's name rules (checkCertificateName:
- *   "letters" or "length" on `trainerName`) and is stored as they clean it, so the PDF never prints a letter the font lacks. No character
- *   outside the BMP is a letter, so none is ever saved in it.
- * - "Järgmine number" is a year and a number 1–99 999. The year is the Tallinn year of `now` or the next one (a preset in December): an issue
- *   never uses a past year's setting (seqToIssue), so Maria's number for one — a typo, a form left open over New Year — would be void.
- * - Under the number series' lock, a number at or below the highest one issued in that year is refused (`nextSeq: "taken"`). Two certificates
- *   must never share a number, and a student's issue between Maria's loading the page and her save moves the series on.
- * Field errors (CertificateFieldError) are keyed place, registryCode, practicalLine, trainerName, nextYear and nextSeq; nothing is stored when
- * there is one.
+ * The card's version (admin UX pass piece 3b, Task 4): "c:" and two hashes (lib/version.ts contentVersion) of the setting as read
+ * (readCertificateSettings): its texts, then its counter („Aasta“, „Number“). An issue moves the counter only, so a text Maria saves while a student's
+ * certificate is issued is no conflict, while a number from before it is; another tab's text or number is.
  */
-export async function saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<SaveResult> {
-  const input = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+async function cardVersion(s: CertificateSettings): Promise<string> {
+  const { nextYear, nextSeq, ...texts } = s;
+  return `c:${await contentVersion(texts)}.${await contentVersion({ nextYear, nextSeq })}`;
+}
+
+/** The two halves of a card's version (cardVersion), or null for one that is not. */
+function versionHalves(version: string): { texts: string; counter: string } | null {
+  const m = /^c:([0-9a-f]{32})\.([0-9a-f]{32})$/.exec(version);
+  return m ? { texts: m[1], counter: m[2] } : null;
+}
+
+/**
+ * „Järgmine number“ as the card shows it (certificateCard): the stored setting run through the issue's own rule (seqToIssue) for this Tallinn year,
+ * except a setting for a LATER year (Maria's preset in December), shown as she saved it.
+ */
+async function shownCounter(q: Db, stored: CertificateSettings, now: Date): Promise<{ nextYear: number; nextSeq: number }> {
+  const year = tallinnYear(now);
+  if (stored.nextYear > year) return { nextYear: stored.nextYear, nextSeq: stored.nextSeq };
+  return { nextYear: year, nextSeq: seqToIssue(stored, year, await highestSeq(q, year)).seq };
+}
+
+const cardText = z.string({ error: "invalid" }).max(2_000, "tooLong");
+const cardNumber = z.union([z.string().max(40), z.number()], { error: "invalid" });
+
+/** The card's autosave patch (the route's schema; server/autosave-route.ts): some of its fields as typed (a number also as a number), no other. */
+export const CERTIFICATE_SETTINGS_PATCH = z
+  .strictObject({ place: cardText, registryCode: cardText, practicalLine: cardText, trainerName: cardText, nextYear: cardNumber, nextSeq: cardNumber }, { error: "invalid" })
+  .partial();
+
+const refused = (fields: Record<string, CertificateFieldError>): SaveAnswer => ({ ok: false, error: "invalid", fields });
+
+/**
+ * Seaded → Tunnistus, autosaved (spec §3, §4, §6; admin UX pass piece 3b, Task 4; README B4, spec D6): `patch` (some of the card's fields) over the
+ * setting at `version` (cardVersion). Each field sent is checked by itself first, before any lock:
+ * - the four texts are kept on one line and trimmed; each is required and within its CERT_LIMITS. A length is measured as readCertificateSettings
+ *   measures it, so a value saved here is never dropped by the read: place, registry code and practical line in UTF-16 units, the trainer's name in
+ *   code points once it is NFC;
+ * - the trainer's name is Maria's signature, written in the script font: it also passes the student's name rules (checkCertificateName: "letters"
+ *   or "length" on `trainerName`) and is stored as they clean it, so the PDF never prints a letter the font lacks. No character outside the BMP is
+ *   a letter, so none is ever saved in it;
+ * - „Aasta“ is the Tallinn year of `now` or the next one (a preset in December): an issue never uses a past year's setting (seqToIssue), so Maria's
+ *   number for one — a typo, a form left open over New Year — would be void ("invalid"); „Number“ is 1–99 999 ("invalid").
+ * Then under the number series' lock, the setting read under it:
+ * - when „Aasta“ or „Number“ is sent: the pair as the card shows it with the sent one(s) over it; a number at or below the highest one issued in
+ *   that year is `taken` (on `nextSeq` when it was sent, else on `nextYear`), whatever version it was sent from — a student's issue took it
+ *   (Review Focus 1, 4);
+ * - the texts' half of `version` not the stored one's, or a number sent from another counter than the stored one (an issue or another tab
+ *   moved it meanwhile): a conflict, with the card as stored (CertificateForm, „Järgmine number“ as the card shows it);
+ * - a number not sent keeps the stored counter as it is.
+ * Answers SaveAnswer (domain/autosave.ts): ok with the card's new version (the one it had when nothing changed: nothing written), the conflict, or
+ * the refused fields (CertificateFieldError); nothing is stored when a field is refused.
+ */
+export async function saveCertificateSettings(db: Db, patch: unknown, version: string, now: Date): Promise<SaveAnswer> {
+  const parsed = CERTIFICATE_SETTINGS_PATCH.safeParse(patch);
+  if (!parsed.success) return { ok: false, error: "invalid", fields: fieldCodes(parsed.error.issues) ?? {} };
+  const p = parsed.data;
   const fields: Record<string, CertificateFieldError> = {};
+  const values: Partial<CertificateSettings> = {};
   // the lengths are measured as readCertificateSettings measures them (a value saved here must never be dropped there): these three in UTF-16
   // units (`.length`), the trainer's name below in code points once it is NFC
-  const text = (key: "place" | "registryCode" | "practicalLine"): string => {
-    const value = oneLine(input[key]);
+  for (const key of ["place", "registryCode", "practicalLine"] as const) {
+    if (p[key] === undefined) continue;
+    const value = oneLine(p[key]);
     if (!value) fields[key] = "required";
     else if (value.length > CERT_LIMITS[key]) fields[key] = "tooLong";
-    return value;
-  };
-  const place = text("place");
-  const registryCode = text("registryCode");
-  const practicalLine = text("practicalLine");
-  let trainerName = oneLine(input.trainerName);
-  if (!trainerName) fields.trainerName = "required";
-  else if (Array.from(trainerName.normalize("NFC")).length > CERT_LIMITS.trainerName) fields.trainerName = "tooLong";
-  else {
-    const signer = checkCertificateName(trainerName);
-    if (signer.ok) trainerName = signer.name;
-    else fields.trainerName = signer.error;
+    else values[key] = value;
   }
-  const nextYear = wholeNumber(input.nextYear);
-  const nextSeq = wholeNumber(input.nextSeq);
+  if (p.trainerName !== undefined) {
+    const trainerName = oneLine(p.trainerName);
+    if (!trainerName) fields.trainerName = "required";
+    else if (Array.from(trainerName.normalize("NFC")).length > CERT_LIMITS.trainerName) fields.trainerName = "tooLong";
+    else {
+      const signer = checkCertificateName(trainerName);
+      if (signer.ok) values.trainerName = signer.name;
+      else fields.trainerName = signer.error;
+    }
+  }
   const year = tallinnYear(now);
-  if (nextYear !== year && nextYear !== year + 1) fields.nextYear = "invalid";
-  if (nextSeq === null || nextSeq < 1 || nextSeq > SEQ_MAX) fields.nextSeq = "invalid";
-  // the null checks again, written out: the transaction's closure below sees both as numbers
-  if (nextYear === null || nextSeq === null || Object.keys(fields).length > 0) return { ok: false, fields };
-  return db.transaction(async (t): Promise<SaveResult> => {
+  let nextYear: number | undefined;
+  if (p.nextYear !== undefined) {
+    const typed = wholeNumber(p.nextYear);
+    if (typed !== year && typed !== year + 1) fields.nextYear = "invalid";
+    else nextYear = typed;
+  }
+  let nextSeq: number | undefined;
+  if (p.nextSeq !== undefined) {
+    const typed = wholeNumber(p.nextSeq);
+    if (typed === null || typed < 1 || typed > SEQ_MAX) fields.nextSeq = "invalid";
+    else nextSeq = typed;
+  }
+  if (Object.keys(fields).length > 0) return refused(fields);
+  const savedAt = now.toISOString();
+  return db.transaction(async (t): Promise<SaveAnswer> => {
     const tx = t as unknown as Db;
     await lockNumbers(tx);
-    if (nextSeq <= (await highestSeq(tx, nextYear))) return { ok: false, fields: { nextSeq: "taken" } };
-    const settings: CertificateSettings = { place, registryCode, practicalLine, trainerName, nextYear, nextSeq };
+    const storedValue = await readSetting(tx, SETTING_KEY);
+    const stored = readCertificateSettings(storedValue, now);
+    const current = await cardVersion(stored);
+    const sent = versionHalves(version);
+    const held = versionHalves(current)!;
+    const conflict = async (): Promise<SaveAnswer> => ({ ok: false, error: "conflict", version: current, value: certificateForm({ ...stored, ...(await shownCounter(tx, stored, now)) }) });
+    const counted = nextYear !== undefined || nextSeq !== undefined;
+    let counter = { nextYear: stored.nextYear, nextSeq: stored.nextSeq };
+    if (counted) {
+      counter = { ...(await shownCounter(tx, stored, now)), ...(nextYear === undefined ? {} : { nextYear }), ...(nextSeq === undefined ? {} : { nextSeq }) };
+      if (counter.nextSeq <= (await highestSeq(tx, counter.nextYear))) return refused(nextSeq !== undefined ? { nextSeq: "taken" } : { nextYear: "taken" });
+    }
+    if (sent?.texts !== held.texts || (counted && sent.counter !== held.counter)) return conflict();
+    const settings: CertificateSettings = { ...stored, ...values, ...counter };
+    const after = await cardVersion(settings);
+    if (after === current && storedValue !== null) return { ok: true, version: current, savedAt };
     await setSetting(tx, SETTING_KEY, settings);
-    return { ok: true, settings };
+    return { ok: true, version: after, savedAt };
   });
 }
 
@@ -291,14 +360,12 @@ export async function lastIssued(db: Db, year: number): Promise<string | null> {
  * another year (still last year's in January, until the year's first issue; a deleted row's default) is not used, so the card runs the stored
  * setting through the issue's own rule (seqToIssue) for this Tallinn year. One exception: a setting for a LATER year (Maria's preset in December)
  * is shown as she saved it. An issue before that year still takes this year's number, but showing that would replace her preset on the card,
- * and an unrelated save of the card would overwrite it.
+ * and an unrelated save of the card would overwrite it. `version`: the card's (cardVersion, of the setting as stored: the one its autosave goes from).
  */
-export async function certificateCard(db: Db, now: Date): Promise<{ settings: CertificateSettings; last: string | null }> {
+export async function certificateCard(db: Db, now: Date): Promise<{ settings: CertificateSettings; last: string | null; version: string }> {
   const stored = await getCertificateSettings(db, now);
-  const year = tallinnYear(now);
-  if (stored.nextYear > year) return { settings: stored, last: await lastIssued(db, stored.nextYear) };
-  const { seq } = seqToIssue(stored, year, await highestSeq(db, year));
-  return { settings: { ...stored, nextYear: year, nextSeq: seq }, last: await lastIssued(db, year) };
+  const counter = await shownCounter(db, stored, now);
+  return { settings: { ...stored, ...counter }, last: await lastIssued(db, counter.nextYear), version: await cardVersion(stored) };
 }
 
 /**

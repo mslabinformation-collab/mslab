@@ -203,7 +203,7 @@ describe("a registration's contract (D1, D3)", () => {
     expect(await registrationContractFields(db, r.id)).toMatchObject({ fields: { session: "", price: `500,00${NBSP}€` }, prepaymentText: `250,00${NBSP}€` });
   });
 
-  test("the school is Seaded → Arve andmed as Maria typed it", async () => {
+  test("the school is Seaded → Maksmine as Maria typed it", async () => {
     await seller();
     const r = await registrationOn(db, await contactCourse(db));
     expect((await registrationContractFields(db, r.id))!.fields.school).toEqual(SCHOOL);

@@ -1,6 +1,6 @@
 // The contracts' pure rules (contracts, Task 1; spec §2 D1–D7, §3, §6): the kinds and shapes a contract freezes, the settings keys of the contact
 // course's text, the placeholders Maria may write in a text and how they are filled, the language a contract is made in, the session and payment
-// texts, the download's file name and headers, and the school block when Seaded → Arve andmed is empty. No database, no React: the server, Maria's
+// texts, the download's file name and headers, and the school block when Seaded → Maksmine is empty. No database, no React: the server, Maria's
 // screens and the student's account share them. It runs in the browser too (the form's and the cart's inline contract, Seaded's sample), on iOS
 // Safari before 16.4 as well: no lookbehind here nor in what it imports (tests/unit/old-safari.test.ts), no builtin newer than Safari 15, no node: module.
 // What a contract is filled with is made by one function on both sides (contractParts, filledContract: Task 4, Review Focus 3).
@@ -17,7 +17,7 @@ export type ContractKind = "contact" | "ecourse";
 export type AcceptedVia = "form" | "purchase" | "account" | "terms";
 
 /**
- * Everything the PDF's header holds besides the text (D3, §5), frozen at the acceptance: the school (Seaded → Arve andmed; schoolOf), the
+ * Everything the PDF's header holds besides the text (D3, §5), frozen at the acceptance: the school (Seaded → Maksmine; schoolOf), the
  * student, the course's name in the contract's language (contractCourseName), the session (sessionText), the price in euros and the payment
  * choice in words (paymentText).
  * `session`, `price` and `payment` are empty when there is none (an e-course has no session or choice; a free grant has no price).
@@ -182,7 +182,7 @@ export function contractDownloadHeaders(id: number): Record<string, string> {
 }
 
 /**
- * The school of a contract from Seaded → Arve andmed (D3): its company, registry code and address. Before Maria names the company (§6) the
+ * The school of a contract from Seaded → Maksmine (D3): its company, registry code and address. Before Maria names the company (§6) the
  * block says "MS LAB", the brand, and prints no more than she has typed: the contract says nothing false.
  */
 export function schoolOf(invoiceSettings: { company: string; registryCode: string; address: string }): ContractFields["school"] {

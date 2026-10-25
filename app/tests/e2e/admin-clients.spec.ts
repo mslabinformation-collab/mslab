@@ -2,7 +2,7 @@ import type { Browser, Locator, Page } from "@playwright/test";
 import { addMonths, defaultExpiryDate, endOfDayTallinn, extendByMonths, tallinnToday } from "../../src/domain/client-access";
 import { formatDate } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
-import { ADMIN, adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { ADMIN, adminReady, seadedStatus, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { accountCourseSlug, holdLocalLock, insertStoredPayment, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
 import { insertLessonCourse, markDone, removeLessonFile } from "./lessons";
 import { LOCAL_URL, TARGET } from "./target";
@@ -924,7 +924,7 @@ test("a change request in Päringud: the registration's name as the heading, the
   expect(await noOverflow(page)).toBe(true);
 });
 
-test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, only 'Maksa' is left on the card (online payments are on, phase 2b)", async ({ page, context, browser, visitorIp }, info) => {
+test("Maksmine's bank fields in Seaded: autosaved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, only 'Maksa' is left on the card (online payments are on, phase 2b)", async ({ page, context, browser, visitorIp }, info) => {
   // The prepayment instructions are one shared setting (the dashboard tests use it too): the runs take turns.
   info.setTimeout(info.timeout + LOCK_WAIT_MS);
   const release = await holdLocalLock("e2e-prepayment-setting");
@@ -944,21 +944,23 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
       page.on("dialog", (dialog) => void dialog.accept());
       await page.goto("/admin/seaded");
       await adminReady(page);
+      // Seaded → „Maksmine“'s bank fields (admin UX pass piece 3b, Task 4): they save as they are left, under the page's one status
       const box = page.locator("[data-prepayment-editor]");
       await expect(box.getByText("Juhised on õpilasele näha ainult siis, kui saaja ja IBAN on täidetud.", { exact: false })).toBeVisible();
       const iban = box.getByRole("textbox", { name: "IBAN", exact: true });
+      const storedPay = async () => (await onLocalDb((sql) => sql<{ value: Record<string, string> }[]>`select value from settings where key = 'prepayment'`, { marksPages: false }))[0]?.value;
       await box.getByRole("textbox", { name: "Saaja", exact: true }).fill("MS LAB OÜ");
       await iban.fill("EE38 12");
-      await seadedSave(page).click();
-      await expect(page.locator("[data-save-status]")).toHaveText("Kontrolli märgitud välju.");
+      await iban.press("Tab");
+      await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "invalid");
       await expect(iban).toHaveAttribute("aria-invalid", "true");
       await expect(box.getByText("Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.")).toBeVisible();
       await iban.fill("ee38 2200 2210 2014 5685");
       await box.getByRole("textbox", { name: "Pank", exact: true }).fill("Swedbank");
       await box.getByRole("textbox", { name: "Selgituse algus", exact: true }).fill("MSLAB-");
-      await seadedSave(page).click();
-      await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
-      await expect(iban).toHaveValue("EE382200221020145685");
+      await box.getByRole("textbox", { name: "Selgituse algus", exact: true }).press("Tab");
+      await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
+      await expect.poll(storedPay).toEqual({ receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" }); // (stored without spaces, in capitals)
 
       await student.page.reload();
       await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
@@ -975,8 +977,9 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
 
       // all four emptied: no instructions, so no "Vaata juhiseid"; "Maksa 175 €" is all that is left to press
       for (const name of ["Saaja", "IBAN", "Pank", "Selgituse algus"]) await box.getByRole("textbox", { name, exact: true }).fill("");
-      await seadedSave(page).click();
-      await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
+      await box.getByRole("textbox", { name: "Selgituse algus", exact: true }).press("Tab");
+      await expect.poll(storedPay).toEqual({ receiver: "", iban: "", bank: "", referencePrefix: "" });
+      await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
       await student.page.reload();
       await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
       await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €"]);

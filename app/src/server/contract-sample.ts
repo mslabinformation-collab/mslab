@@ -5,7 +5,7 @@ import { getInvoiceSettings } from "./invoices";
 
 // Seaded → „Näidisleping (PDF)“ (contracts Task 5, spec §4): a sample contract drawn from the texts the card shows right now, saved or not, so Maria
 // sees what her contract will look like before she saves. Nothing is stored. The student, the course and the session are made up (adminEt.contracts.sample);
-// the school is Seaded → Arve andmed as it is stored, "MS LAB" before she names the company (domain/contract.ts schoolOf), the price and the
+// the school is Seaded → Maksmine as it is stored, "MS LAB" before she names the company (domain/contract.ts schoolOf), the price and the
 // payment choice are a 350 € course paid in halves, so that every placeholder has a value. The text is filled by the very function the registration form
 // fills its inline contract with (domain/contract.ts filledContract), in the language chosen: Russian when asked for and the Russian text is written
 // (domain/contract.ts contractLocale), else Estonian, a language's empty title falling back to the Estonian one as a student's contract does

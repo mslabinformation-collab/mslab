@@ -59,7 +59,7 @@ const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmi
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 /**
- * „Koosta kviitung“ unticked when the „Lisa laekumine“ panel offers it (this database's Seaded → Arve andmed may have a seller): these tests record
+ * „Koosta kviitung“ unticked when the „Lisa laekumine“ panel offers it (this database's Seaded → Maksmine may have a seller): these tests record
  * money only, and make no invoice (the receipt's path is admin-invoices.spec.ts, which holds the invoice settings).
  */
 async function noReceipt(panel: Locator): Promise<void> {

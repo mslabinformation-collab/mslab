@@ -18,7 +18,7 @@ import { FONT, INK, LINE, buttonRow, codeRow, esc, linkRow, mailCard, paragraphR
 /** The test mail's subject starts with this: Maria reads it, whatever the language of the text (spec D6). */
 export const TEST_SUBJECT_PREFIX = "[Proov] ";
 
-/** The school's name when Seaded → „Arve andmed“ has none. */
+/** The school's name when Seaded → „Maksmine“ has none. */
 const SCHOOL_FALLBACK = "MS LAB";
 
 /** The card's inner width: the account mails' card is 480 px wide (account-mail.ts mailCard) with a 1 px border on each side. Outlook reads the picture's width attribute, so it must not be wider. */
@@ -40,7 +40,7 @@ export type CampaignMailInput = {
   buttonHref: string | null;
   /** The site's address, no path (site.ts linkBase): the logo and the site paths of the button hang on it. */
   siteUrl: string;
-  /** From Seaded → „Arve andmed“: the caller passes "MS LAB" and an empty address when there are none. */
+  /** From Seaded → „Maksmine“: the caller passes "MS LAB" and an empty address when there are none. */
   school: { name: string; address: string };
   /** The unsubscribe link's address, as it must appear in href (the subscriber's own link for a send, the site's test page for a test). */
   unsubscribeHref: string;

@@ -6,20 +6,21 @@ import { tallinnYear } from "@/domain/certificate";
 import { createInvoice } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, registrationOn } from "./payments-fixtures";
+import { sectionOf } from "./seaded-page";
 
-// Seaded with its „Arve andmed“ card (invoices Task 5, spec D2, D7), rendered from a real (PGlite) database to HTML: the card is a form of its own
-// after the settings' and the certificate's, it shows the stored setting (or the defaults), the next number as the next issue will take it with the
-// last number issued beside it, and the bank details of „Ettemaksu juhised“ read-only; the anchors „#arve“ (the drawer's link) and „#ettemaks“ (the
-// card's link) are on the page. The server actions are stand-ins.
+// Seaded with its „Maksmine“ card (invoices Task 5, spec D2, D7; admin UX pass piece 3b, Task 4: README B4, B21, ruling R-f, P-9, P-10), rendered from
+// a real (PGlite) database to HTML: one card in the section „Maksmine“ — the bank fields of the prepayment instructions (editable: one source for both)
+// and the invoice settings, no form and no save button (it autosaves) — showing the stored setting (or the defaults), „Arve järgmine number“ as the
+// next issue will take it with its preview and the last number issued beside it; the old anchors #arve, #ettemaks and #jarelmaks lead to the section.
+// The legal texts' actions are stand-ins.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
-vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-financing", () => ({ saveFinancingSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
+// (the card reads the page again once a new prefix is stored: the router is a stand-in here)
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => "/admin/seaded", useSearchParams: () => new URLSearchParams() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
 
@@ -39,39 +40,59 @@ afterEach(() => {
 });
 
 const page = async () => renderToStaticMarkup(await SettingsEditPage());
-/** The value of the card's input `data-invoice-field="<field>"`. */
-const valueOf = (html: string, field: string) => {
-  const tag = new RegExp(`<input[^>]*data-invoice-field="${field}"[^>]*>`).exec(html)?.[0] ?? "";
+/** The value of the input marked `<attribute>="<field>"`. */
+const valueIn = (attribute: string) => (html: string, field: string) => {
+  const tag = new RegExp(`<input[^>]*${attribute}="${field}"[^>]*>`).exec(html)?.[0] ?? "";
   return /\svalue="([^"]*)"/.exec(tag)?.[1] ?? null;
 };
+const valueOf = valueIn("data-invoice-field");
+const bankOf = valueIn("data-bank-field");
+/** The card's HTML: from its section to the section's end. */
+const cardOf = (html: string) => {
+  const at = html.indexOf("data-invoice-settings");
+  return html.slice(html.lastIndexOf("<section", at), html.indexOf("data-financing-settings"));
+};
+const THIS = () => tallinnYear(new Date());
 
-test("without a setting: the defaults (MSL, VAT off at 24, a week), nothing issued; the card is a form of its own after the certificate's; the bank is missing", async () => {
+test("without a setting: the defaults (MSL, VAT off at 24, a week), nothing issued, the preview of 001; one card in „Maksmine“, no form, the bank fields empty and the bank missing", async () => {
   const html = await page();
-  const certificate = html.indexOf("data-certificate-settings");
-  const card = html.indexOf("data-invoice-settings");
-  expect(card).toBeGreaterThan(certificate);
-  expect(html.match(/<form/g)).toHaveLength(6); // (the settings', the certificate's, this card's, then Järelmaks (Inbank)'s: instalments Task 5, and the contracts' two after it: the save and the sample, contracts Task 5)
-  expect(html.slice(html.lastIndexOf("<section", card))).toMatch(/^<section id="arve"/);
+  expect(sectionOf(html, "data-invoice-settings")).toBe("maksmine");
+  const card = cardOf(html);
+  expect(card).not.toMatch(/<form|type="submit"/);
+  expect(card).toContain(">Maksmine</h2>");
   expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextSeq", "termDays", "footer"].map((f) => valueOf(html, f))).toEqual(["", "", "", "", "24", "MSL", "1", "7", ""]);
-  expect(html.slice(card)).toContain("pole veel arveid väljastatud");
-  expect(html.slice(card)).toContain("data-invoice-bank-missing");
+  expect(["receiver", "iban", "bank", "referencePrefix"].map((f) => bankOf(html, f))).toEqual(["", "", "", ""]);
+  expect(card).toContain(`Järgmine arve: MSL${THIS()}-001`);
+  expect(card).toContain("pole veel arveid väljastatud");
+  expect(card).toContain("data-invoice-bank-missing");
+  expect(card).toContain("Saaja ja IBAN on täitmata: pangaülekande arvet ei saa koostada.");
 });
 
-test("a stored setting and the bank details: the values in the fields, the bank read-only with the IBAN in groups; the prepayment card carries the anchor the link goes to", async () => {
+test("the old anchors lead to „Maksmine“: #arve, #ettemaks and #jarelmaks at the section's start, before its first card", async () => {
+  const html = await page();
+  for (const alias of ["arve", "ettemaks", "jarelmaks"]) {
+    const at = html.indexOf(`id="${alias}"`);
+    expect(at, alias).toBeGreaterThan(-1);
+    expect(sectionOf(html, `id="${alias}"`), alias).toBe("maksmine");
+    expect(at, alias).toBeLessThan(html.indexOf("data-invoice-settings"));
+  }
+  expect(sectionOf(html, "data-certificate-settings")).toBe("tunnistus");
+});
+
+test("a stored setting and the bank details: the values in the fields, the bank's in its own fields (one source), VAT ticked, no year; the sample holds the card's values", async () => {
   await setSetting(db, "invoice", CARD);
   await setSetting(db, "prepayment", BANK);
   const html = await page();
-  expect(html).toMatch(/<section id="ettemaks"[^>]*data-prepayment-editor/);
-  const card = html.slice(html.indexOf("data-invoice-settings"));
+  const card = cardOf(html);
   expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextSeq", "termDays", "footer"].map((f) => valueOf(html, f))).toEqual([
     "MS LAB OÜ", "16346048", "Rüütli 1, 80010 Pärnu", "EE100200300", "22", "ABC", "1", "14", "Täname!",
   ]);
+  expect(["receiver", "iban", "bank", "referencePrefix"].map((f) => bankOf(html, f))).toEqual(["MS LAB Koolituskeskus OÜ", "EE382200221020145685", "Swedbank", "MSLAB-"]);
   expect(valueOf(html, "nextYear")).toBeNull(); // (B21: the year is never typed)
   expect(card).toMatch(/data-invoice-field="vatOn"[^>]*checked|checked=""[^>]*data-invoice-field="vatOn"/);
-  const bank = card.slice(card.indexOf("data-invoice-bank"));
-  for (const part of ["MS LAB Koolituskeskus OÜ", "EE38 2200 2210 2014 5685", "Swedbank", 'href="/admin/seaded#ettemaks"']) expect(bank, part).toContain(part);
   expect(card).not.toContain("data-invoice-bank-missing");
   expect(card).toContain('href="/api/admin/naidisarve?');
+  expect(card).not.toContain('href="/admin/seaded'); // (no link to another card: the bank is here)
 });
 
 test("the next number is the one the next issue takes, with the last issued beside it", async () => {
@@ -87,5 +108,6 @@ test("the next number is the one the next issue takes, with the last issued besi
   await setSetting(db, "invoice", { ...CARD, vatOn: false, prefix: "MSL", nextYear: tallinnYear(now), nextSeq: 1 });
   const html = await page();
   expect(valueOf(html, "nextSeq")).toBe("3");
+  expect(html).toContain(`Järgmine arve: MSL${tallinnYear(now)}-003`);
   expect(html).toMatch(/Viimati väljastatud: MSL\d{4}-002/);
 });

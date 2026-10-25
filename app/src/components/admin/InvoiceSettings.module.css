@@ -1,15 +1,22 @@
-/* Seaded → „Arve andmed“ (invoices Task 5, spec D2): a card of its own after the settings' form and the certificate's card; the next number's short
-   field (the year is not typed, B21), the bank details read-only. Every control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → „Maksmine“ (admin UX pass piece 3b, Task 4; README B4, ruling R-f; the Part 3 frame „B4 Seaded“): one card, the bank fields of the
+   prepayment instructions first, then the seller's fields, two to a row (editor.module.css .grid), „Arve järgmine number“ with its preview under it,
+   then the sample. Every control is the admin's 44 px one; colours from tokens.css only. */
 
 .card {
-  margin-top: 25px;
-  scroll-margin-top: 20px;
+  min-width: 0;
+}
+
+/* the seller's fields, after the bank's */
+.seller {
+  margin-top: 22px;
+}
+
+.missing {
+  margin: 10px 0 0;
 }
 
 .number {
-  display: grid;
-  grid-template-columns: minmax(0, 140px);
-  gap: 12px;
+  max-width: 140px;
 }
 
 .vat {
@@ -35,64 +42,16 @@
   accent-color: var(--ink);
 }
 
-.bank {
-  display: grid;
-  gap: 8px;
-  margin-top: 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--canvas);
-}
-
-.bank h3 {
-  margin: 0;
-}
-
-.bank dl {
-  display: grid;
-  gap: 0;
-  margin: 0;
-}
-
-.bank dl > div {
-  display: grid;
-  grid-template-columns: minmax(80px, 25%) minmax(0, 1fr);
-  gap: 12px;
-  padding: 6px 0;
-}
-
-.bank dt {
-  color: var(--muted-2);
-  font-size: 13px;
-}
-
-.bank dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.bank p {
-  margin: 0;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 18px;
-  margin-top: 22px;
-}
-
-.actions p[role="status"] {
-  flex: 1 1 260px;
-  margin: 0;
+/* after a conflict: „Taasta minu tekst“ */
+.restore {
+  margin: 18px 0 0;
 }
 
 .sampleBox {
   display: grid;
   gap: 4px;
   justify-items: start;
+  margin-top: 22px;
 }
 
 .sampleBox p {
@@ -100,11 +59,11 @@
 }
 
 @media (max-width: 640px) {
-  .actions button {
-    flex: 1 1 100%;
-  }
-
   .vat {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .number {
+    max-width: none;
   }
 }

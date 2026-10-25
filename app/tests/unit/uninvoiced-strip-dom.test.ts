@@ -118,8 +118,8 @@ describe("the strip, closed", () => {
     await show({ ready: false });
     expect(bulk()).toBeNull();
     const link = $<HTMLAnchorElement>("[data-uninvoiced-need-seller]")!;
-    expect(text(link)).toBe("Täida Seaded → Arve andmed");
-    expect(link.getAttribute("href")).toBe("/admin/seaded#arve");
+    expect(text(link)).toBe("Täida Seaded → Maksmine");
+    expect(link.getAttribute("href")).toBe("/admin/seaded#maksmine");
   });
 });
 
@@ -280,8 +280,8 @@ describe("what a press made, in words (piece2-texts S3-l)", () => {
   });
 
   test("the seller card empty: the existing line, and what was made before it is still said", () => {
-    expect(resultLines(done({ sellerMissing: true }))).toEqual(["Täida Seaded → Arve andmed"]);
-    expect(resultLines(done({ made: ["MSL2026-004"], sellerMissing: true }))).toEqual(["Arve MSL2026-004 on valmis.", "Täida Seaded → Arve andmed"]);
+    expect(resultLines(done({ sellerMissing: true }))).toEqual(["Täida Seaded → Maksmine"]);
+    expect(resultLines(done({ made: ["MSL2026-004"], sellerMissing: true }))).toEqual(["Arve MSL2026-004 on valmis.", "Täida Seaded → Maksmine"]);
   });
 
   test("the screen shows each in its tone: a failure or an empty card as an error, the rest as done", async () => {

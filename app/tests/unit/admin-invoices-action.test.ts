@@ -16,8 +16,6 @@ const work = vi.hoisted(() => ({
   updateInvoiceBuyer: vi.fn(),
   catchUpInvoice: vi.fn(),
   createInvoicesForUnbilled: vi.fn(),
-  saveInvoiceSettings: vi.fn(),
-  invoiceCard: vi.fn(),
 }));
 const send = vi.hoisted(() => ({ sendInvoice: vi.fn() }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -65,7 +63,7 @@ describe("createInvoiceAction: „Koosta arve“", () => {
   test.each([
     ["notFound", E.notFound],
     ["sellerMissing", E.sellerMissing],
-    ["bankMissing", "Täida enne Seaded → „Ettemaksu juhised“ (saaja ja IBAN)."],
+    ["bankMissing", "Täida enne Seaded → „Maksmine“ (saaja ja IBAN)."],
     ["notOpen", E.notOpen],
     ["invalid", E.invalid],
   ] as const)("%s comes back in words, and the page is not refreshed", async (error, text) => {
@@ -302,33 +300,5 @@ describe("createInvoicesForUnbilledAction: „Arveta maksed“ → „Koosta {n}
     expect(logged()).toContain("[invoices] the batch of unbilled payments failed: TypeError");
     expect(logged()).not.toContain("Kati");
     expect(cache.refresh).not.toHaveBeenCalled();
-  });
-});
-
-describe("saveInvoiceSettingsAction: Seaded → „Arve andmed“", () => {
-  const RAW = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1", vatNumber: "", vatOn: false, vatRate: "24", prefix: "MSL", nextSeq: "1", termDays: "7", footer: "" };
-  const CARD = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "", last: null };
-
-  test("the card's fields go on as typed; saved: the card as the next issue will take it, the page refreshes", async () => {
-    work.saveInvoiceSettings.mockResolvedValue({ ok: true, settings: {} });
-    work.invoiceCard.mockResolvedValue(CARD);
-    expect(await actions.saveInvoiceSettingsAction(RAW)).toEqual({ ok: true, card: CARD });
-    expect(work.saveInvoiceSettings.mock.calls[0][1]).toBe(RAW);
-    expect(work.saveInvoiceSettings.mock.calls[0][2]).toBeInstanceOf(Date);
-    refreshed();
-  });
-
-  test("refused: the field errors as they came, nothing else read", async () => {
-    work.saveInvoiceSettings.mockResolvedValue({ ok: false, fields: { company: "required", nextSeq: "taken" } });
-    expect(await actions.saveInvoiceSettingsAction(RAW)).toEqual({ ok: false, fields: { company: "required", nextSeq: "taken" } });
-    expect(work.invoiceCard).not.toHaveBeenCalled();
-    expect(cache.refresh).not.toHaveBeenCalled();
-  });
-
-  test("a throw is { ok: false, error: 'server' }, logged by its label and the class only", async () => {
-    work.saveInvoiceSettings.mockRejectedValue(new TypeError("boom: MS LAB OÜ"));
-    expect(await actions.saveInvoiceSettingsAction(RAW)).toEqual({ ok: false, error: "server" });
-    expect(logged()).toContain("[invoices] the settings save failed: TypeError");
-    expect(logged()).not.toContain("MS LAB");
   });
 });

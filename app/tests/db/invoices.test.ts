@@ -17,13 +17,13 @@ import { renderInvoice } from "@/server/invoice-pdf";
 import { addManualPayment } from "@/server/registration-money";
 import {
   cancelInvoice, catchUpInvoice, createInvoice, getInvoiceSettings, invoiceCard, invoiceForAdmin, invoiceForPaidPayment, invoiceForStudent, invoicePdf,
-  invoicesCsv, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, markLinkedInvoicePaid, saveInvoiceSettings, uninvoicedPayments,
+  invoicesCsv, invoicesOfClient, invoicesOfRegistration, invoiceSettingsVersion, listInvoices, markInvoicePaid, markLinkedInvoicePaid, saveInvoiceSettings, uninvoicedPayments,
   createInvoicesForUnbilled, invoiceCounts, invoiceMonths, receiptTakeBacks, undoInvoicePaid, unbilledPreview, updateInvoiceBuyer,
 } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
 
-// The invoices' server (invoices, Task 3; spec D2–D9, §6) against a real (PGlite) database: Seaded → Arve andmed (the save under the number
+// The invoices' server (invoices, Task 3; spec D2–D9, §6) against a real (PGlite) database: Seaded → Maksmine's invoice fields (the autosave under the number
 // series' lock, the prefix's own series, R3's reset), Maria's invoice on a registration (a request to pay or a receipt), „Märgi tasutuks" (the
 // amount added once, under the registration's locks), its undo, the cancel, the buyer's editor, a paid payment's invoice (born paid, or the
 // linked unpaid one paid) and the catch-up of one paid without, the student's and Maria's reads, the list, the month's CSV, and the PDF. The lock
@@ -39,9 +39,9 @@ const NOW = new Date("2026-10-16T09:00:00Z");
 const DAY = 86_400_000;
 const PAID_AT = new Date("2026-10-15T08:00:00Z");
 const SELLER = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu" };
-/** A save of Seaded → Arve andmed that passes: the seller, VAT off, MSL from 1 in 2026, a week to pay. */
+/** Seaded → Maksmine's invoice settings as stored, valid: the seller, VAT off, MSL from 1 in 2026, a week to pay. */
 const VALID = { ...SELLER, vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" };
-/** Seaded → Ettemaksu juhised. */
+/** Seaded → Maksmine's bank fields (the prepayment instructions). */
 const BANK = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
 
 let db: Db;
@@ -133,67 +133,100 @@ async function ecoursePurchase(email = "mari@example.com") {
   return { client, payment, courseId };
 }
 
-describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoiceCard (D2, D7)", () => {
+describe("Seaded → Maksmine's invoice fields: getInvoiceSettings, saveInvoiceSettings (the card's autosave), invoiceCard (D2, D7; piece 3b Task 4)", () => {
+  /** The card's fields as it sends them (no year: B21). */
+  const { nextYear: _year, ...CARD } = VALID;
+  void _year;
+  /**
+   * The card's autosave of `patch` from the version stored now (saveInvoiceSettings, the part writer), answered as these rules' tests read it: the
+   * setting as stored after a save, the refused fields, or the other refusal.
+   */
+  const saveCard = async (patch: unknown, now = NOW): Promise<{ ok: true; settings: unknown } | { ok: false; fields: Record<string, string> } | { ok: false; error: string }> => {
+    const answer = await saveInvoiceSettings(db, patch, await invoiceSettingsVersion(db, now), now);
+    if (answer.ok) return { ok: true, settings: await stored() };
+    return answer.error === "invalid" ? { ok: false, fields: answer.fields } : { ok: false, error: answer.error };
+  };
+
   test("nothing stored: the defaults, this Tallinn year and number 1", async () => {
     expect(await getInvoiceSettings(db, NOW)).toEqual({
       company: "", registryCode: "", address: "", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "",
     });
   });
 
-  test("the round trip: texts on one line and trimmed, numbers from the form's text, VAT on with its number; what the save stores the read keeps", async () => {
+  test("the round trip: texts on one line and trimmed, numbers from the card's text, VAT on with its number; what the save stores the read keeps", async () => {
     const raw = { company: "  MS LAB   OÜ ", registryCode: " 16346048", address: "Rüütli 1,\n80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: "22", prefix: " ABC1 ", nextSeq: "5", termDays: "0", footer: " Täname! " };
-    const result = await saveInvoiceSettings(db, raw, NOW);
+    const result = await saveCard(raw);
     const settings = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: 22, prefix: "ABC1", nextYear: 2026, nextSeq: 5, termDays: 0, footer: "Täname!" };
     expect(result).toEqual({ ok: true, settings });
-    expect(await stored()).toEqual(settings);
     expect(await getInvoiceSettings(db, NOW)).toEqual(settings);
-    // the form's checkbox ("on") and VAT off with a number kept
-    expect(await saveInvoiceSettings(db, { ...VALID, vatOn: "on", vatNumber: "EE102345678" }, NOW)).toMatchObject({ ok: true, settings: { vatOn: true } });
-    expect(await saveInvoiceSettings(db, { ...VALID, vatNumber: "EE102345678" }, NOW)).toMatchObject({ ok: true, settings: { vatOn: false, vatNumber: "EE102345678" } });
+    // VAT off with a number kept
+    expect(await saveCard({ vatOn: false })).toMatchObject({ ok: true, settings: { vatOn: false, vatNumber: "EE102345678" } });
     // the limits themselves pass, and the read keeps them
-    const longest = { ...VALID, company: "C".repeat(120), registryCode: "1".repeat(20), address: "A".repeat(200), vatNumber: "V".repeat(20), footer: "F".repeat(300), vatRate: 50, termDays: 90, nextSeq: 2_147_483_647 };
-    const saved = await saveInvoiceSettings(db, longest, NOW);
+    const longest = { company: "C".repeat(120), registryCode: "1".repeat(20), address: "A".repeat(200), vatNumber: "V".repeat(20), footer: "F".repeat(300), vatRate: 50, termDays: 90, nextSeq: 2_147_483_647 };
+    const saved = await saveCard(longest);
     expect(saved).toMatchObject({ ok: true, settings: { nextSeq: 2_147_483_647, vatRate: 50, termDays: 90 } });
     expect(await getInvoiceSettings(db, NOW)).toEqual(saved.ok ? saved.settings : null);
-    const tenLetters = await saveInvoiceSettings(db, { ...VALID, prefix: "ABCDEFGHIJ", vatRate: 1 }, NOW);
+    const tenLetters = await saveCard({ prefix: "ABCDEFGHIJ", vatRate: 1 });
     expect(tenLetters).toMatchObject({ ok: true, settings: { prefix: "ABCDEFGHIJ", vatRate: 1 } });
     expect(await getInvoiceSettings(db, NOW)).toEqual(tenLetters.ok ? tenLetters.settings : null);
   });
 
-  test("the refusals: VAT on without a VAT number, a bad prefix, a missing seller field, over-long texts, numbers out of range — nothing is stored", async () => {
-    const refused = async (over: Record<string, unknown>) => {
-      const result = await saveInvoiceSettings(db, { ...VALID, ...over }, NOW);
-      expect(result.ok, JSON.stringify(over)).toBe(false);
-      return result.ok ? {} : result.fields;
+  test("the refusals, each field by itself: VAT on without a VAT number, a bad prefix, a seller field emptied, over-long texts, numbers out of range — nothing is stored", async () => {
+    const refused = async (patch: Record<string, unknown>) => {
+      const result = await saveCard(patch);
+      expect(result.ok, JSON.stringify(patch)).toBe(false);
+      return "fields" in result ? result.fields : {};
     };
-    expect(await refused({ vatOn: true, vatNumber: "  " })).toEqual({ vatNumber: "required" });
+    expect(await refused({ ...CARD, vatOn: true, vatNumber: "  " })).toEqual({ vatNumber: "required" });
+    expect(await refused({ vatOn: true })).toEqual({ vatOn: "required" }); // (the box sent alone, no number stored: refused on the box)
     expect(await refused({ prefix: "MS-L" })).toEqual({ prefix: "invalid" });
     expect(await refused({ prefix: "MSLÄ" })).toEqual({ prefix: "invalid" });
     expect(await refused({ prefix: "MS L" })).toEqual({ prefix: "invalid" });
     expect(await refused({ prefix: "" })).toEqual({ prefix: "required" });
     expect(await refused({ prefix: "ABCDEFGHIJK" })).toEqual({ prefix: "tooLong" });
-    expect(await refused({ company: " ", registryCode: "", address: undefined })).toEqual({ company: "required", registryCode: "required", address: "required" });
+    expect(await refused({ company: " ", registryCode: "", address: "\n" })).toEqual({ company: "required", registryCode: "required", address: "required" });
     expect(await refused({ company: "C".repeat(121), registryCode: "1".repeat(21), address: "A".repeat(201), vatNumber: "V".repeat(21), footer: "F".repeat(301) })).toEqual({
       company: "tooLong", registryCode: "tooLong", address: "tooLong", vatNumber: "tooLong", footer: "tooLong",
     });
     for (const vatRate of [0, 51, 24.5, "abc", "", null]) expect(await refused({ vatRate }), String(vatRate)).toEqual({ vatRate: "invalid" });
     for (const termDays of [-1, 91, 1.5, "x"]) expect(await refused({ termDays }), String(termDays)).toEqual({ termDays: "invalid" });
     for (const nextSeq of [0, -1, 2_147_483_648, "12345678901", 1.5, null]) expect(await refused({ nextSeq }), String(nextSeq)).toEqual({ nextSeq: "invalid" });
-    expect(await saveInvoiceSettings(db, "nonsense", NOW)).toMatchObject({ ok: false });
+    // not a patch of the card's fields: a field that is none (the year is never typed, B21), or no object at all
+    expect(await refused({ nextYear: "2027" })).toEqual({ nextYear: expect.any(String) });
+    for (const raw of ["nonsense", null, [], 7]) expect((await saveCard(raw)).ok, JSON.stringify(raw)).toBe(false);
     expect(await stored()).toBeNull();
   });
 
-  test("'taken': a next number at or below one already issued in that prefix and year is refused under the lock; above it passes", async () => {
-    const c = await contactCourse(db);
+  test("a stale version: the texts' half another tab moved is a conflict with the card as stored; nothing written", async () => {
     await ready();
-    await request(await registrationOn(db, c, { email: "a@example.com" }));
-    await request(await registrationOn(db, c, { email: "b@example.com" }));
-    expect(await saveInvoiceSettings(db, { ...VALID, nextSeq: 2 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
-    expect(await stored()).toMatchObject({ nextSeq: 3 });
-    expect(await saveInvoiceSettings(db, { ...VALID, nextSeq: 10 }, NOW)).toMatchObject({ ok: true, settings: { nextSeq: 10 } });
+    const before = await invoiceSettingsVersion(db, NOW);
+    expect((await saveCard({ footer: "Esimene." })).ok).toBe(true);
+    expect(await saveInvoiceSettings(db, { footer: "Teine." }, before, NOW)).toEqual({
+      ok: false, error: "conflict", version: await invoiceSettingsVersion(db, NOW), value: { ...SELLER, vatNumber: "", vatOn: false, vatRate: "24", prefix: "MSL", nextSeq: "1", termDays: "7", footer: "Esimene." },
+    });
+    expect(await stored()).toMatchObject({ footer: "Esimene." });
   });
 
-  test("invoiceCard: the next number as the next issue takes it (never at or below the series' highest), and the last one issued", async () => {
+  test("'taken': a next number at or below one already issued in that prefix and year is refused under the lock, whatever version it came from; above it passes", async () => {
+    const c = await contactCourse(db);
+    await ready();
+    const before = await invoiceSettingsVersion(db, NOW);
+    await request(await registrationOn(db, c, { email: "a@example.com" }));
+    await request(await registrationOn(db, c, { email: "b@example.com" }));
+    expect(await saveCard({ nextSeq: 2 })).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveInvoiceSettings(db, { nextSeq: "2" }, before, NOW)).toEqual({ ok: false, error: "invalid", fields: { nextSeq: "taken" } });
+    expect(await stored()).toMatchObject({ nextSeq: 3 });
+    // a free number from before the issues moved the counter: a conflict, not stored over them
+    expect(await saveInvoiceSettings(db, { nextSeq: "10" }, before, NOW)).toMatchObject({ ok: false, error: "conflict", value: { nextSeq: "3" } });
+    expect(await saveCard({ nextSeq: 10 })).toMatchObject({ ok: true, settings: { nextSeq: 10 } });
+    // and a text from before the issues is no conflict: the counter they moved stays
+    const textBefore = await invoiceSettingsVersion(db, NOW);
+    await request(await registrationOn(db, c, { email: "c@example.com" }));
+    expect(await saveInvoiceSettings(db, { footer: "Täname!" }, textBefore, NOW)).toMatchObject({ ok: true });
+    expect(await stored()).toMatchObject({ footer: "Täname!", nextSeq: 11 });
+  });
+
+  test("invoiceCard: the next number as the next issue takes it (never at or below the series' highest), the last one issued, and the card's version", async () => {
     const c = await contactCourse(db);
     expect(await invoiceCard(db, NOW)).toMatchObject({ prefix: "MSL", nextYear: 2026, nextSeq: 1, last: null });
     await ready();
@@ -201,28 +234,26 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     await request(await registrationOn(db, c, { email: "b@example.com" }));
     // the stored number pushed back below the series' highest: the card shows what an issue would take
     await setSetting(db, "invoice", { ...VALID, nextSeq: 1 });
-    expect(await invoiceCard(db, NOW)).toEqual({ ...VALID, nextSeq: 3, last: "MSL2026-002" });
+    expect(await invoiceCard(db, NOW)).toEqual({ ...VALID, nextSeq: 3, last: "MSL2026-002", version: await invoiceSettingsVersion(db, NOW) });
+    expect((await invoiceCard(db, NOW)).version).toMatch(/^i:[0-9a-f]{32}\.[0-9a-f]{32}$/);
   });
 
-  test("B21: the year is never typed — a sent nextYear is ignored and this Tallinn year is stored", async () => {
+  test("B21: the year is never typed — this Tallinn year is stored with the number", async () => {
     const now = new Date("2026-11-30T12:00:00Z");
-    const r = await saveInvoiceSettings(db, { ...VALID, nextYear: "2027", nextSeq: "5" }, now);
-    expect(r.ok).toBe(true);
+    expect((await saveCard({ ...CARD, nextSeq: "5" }, now)).ok).toBe(true);
     expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 5 });
-    // the year edge is Tallinn's: at 23:30 UTC on 31.12 it is already 1.1.2027 there
-    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: "2026", nextSeq: "1" }, new Date("2026-12-31T22:30:00Z"))).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
-    // no year at all is no refusal either (the field is gone from the card)
-    const withoutYear: Record<string, unknown> = { ...VALID };
-    delete withoutYear.nextYear;
-    expect(await saveInvoiceSettings(db, { ...withoutYear, nextSeq: "9" }, now)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 9 } });
+    // the year edge is Tallinn's: at 22:30 UTC on 31.12 it is already 1.1.2027 there
+    expect(await saveCard({ nextSeq: "1" }, new Date("2026-12-31T22:30:00Z"))).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
+    // a text alone keeps the stored counter as it is
+    expect(await saveCard({ footer: "x" }, new Date("2027-01-02T12:00:00Z"))).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
   });
 
-  test("B21: 'taken' is checked against this Tallinn year's series, whatever year was sent", async () => {
+  test("B21: 'taken' is checked against this Tallinn year's series", async () => {
     const c = await contactCourse(db);
-    await ready();
+    await ready({ nextYear: 2027, nextSeq: 1 });
     await request(await registrationOn(db, c, { email: "a@example.com" }));
-    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: 2027, nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
-    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: 2027, nextSeq: 2 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 2 } });
+    expect(await saveCard({ nextSeq: 1 })).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveCard({ nextSeq: 2 })).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 2 } });
   });
 
   test("B21: the card always shows this year's counter, even over an old next-year preset", async () => {
@@ -236,46 +267,50 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     await ready();
     expect((await request(await registrationOn(db, c, { email: "a@example.com" }))).number).toBe("MSL2026-001");
     expect((await request(await registrationOn(db, c, { email: "b@example.com" }))).number).toBe("MSL2026-002");
-    // Maria types the new prefix and keeps the number the card shows (3): the new prefix's series starts at 1
+    // Maria types the new prefix (the number the card shows, 3, sent with it or not): the new prefix's series starts at 1
     const card = await invoiceCard(db, NOW);
     expect(card.nextSeq).toBe(3);
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "ABC", nextSeq: card.nextSeq }, NOW)).toMatchObject({ ok: true, settings: { prefix: "ABC", nextSeq: 1 } });
+    expect(await saveCard({ prefix: "ABC", nextSeq: card.nextSeq })).toMatchObject({ ok: true, settings: { prefix: "ABC", nextSeq: 1 } });
     expect((await request(await registrationOn(db, c, { email: "c@example.com" }))).number).toBe("ABC2026-001");
-    // and back: MSL's own series goes on from its highest (2), not from ABC's count
+    // and back (the prefix alone, as the card sends it when the field is left): MSL's own series goes on from its highest (2), not from ABC's count
     expect((await invoiceCard(db, NOW)).nextSeq).toBe(2);
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "MSL", nextSeq: 2 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 1 } });
+    expect(await saveCard({ prefix: "MSL" })).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 1 } });
     expect((await invoiceCard(db, NOW)).nextSeq).toBe(3);
+    // the card's field takes the number of the page's new read and sends it: stored as it is, never `taken`
+    expect(await saveCard({ nextSeq: "3" })).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 3 } });
     expect((await request(await registrationOn(db, c, { email: "d@example.com" }))).number).toBe("MSL2026-003");
     const numbers = (await allInvoices()).map((i) => i.number);
     expect(numbers).toEqual(["MSL2026-001", "MSL2026-002", "ABC2026-001", "MSL2026-003"]);
     expect(new Set(numbers).size).toBe(4);
     // the very first save has no stored prefix to change: its number is kept
     db = await makeTestDb();
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "XYZ", nextSeq: 50 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "XYZ", nextSeq: 50 } });
+    expect(await saveCard({ ...CARD, prefix: "XYZ", nextSeq: 50 })).toMatchObject({ ok: true, settings: { prefix: "XYZ", nextSeq: 50 } });
   });
 
   test("the prefix is stored in capitals: „msl“ is MSL's own series (no reset, no second MSL2026-001 as msl2026-001), „abc“ a new one", async () => {
     const c = await contactCourse(db);
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: " msl " }, NOW)).toMatchObject({ ok: true, settings: { prefix: "MSL" } });
+    expect(await saveCard({ ...CARD, prefix: " msl " })).toMatchObject({ ok: true, settings: { prefix: "MSL" } });
     await setSetting(db, "prepayment", BANK);
     expect((await request(await registrationOn(db, c, { email: "a@example.com" }))).number).toBe("MSL2026-001");
     // the same series whatever its case: the number is checked against it (taken) and kept, not reset
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "msl", nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "Msl", nextSeq: 7 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 7 } });
+    expect(await saveCard({ prefix: "msl", nextSeq: 1 })).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveCard({ prefix: "Msl", nextSeq: 7 })).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 7 } });
     expect((await request(await registrationOn(db, c, { email: "b@example.com" }))).number).toBe("MSL2026-007");
-    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "abc1", nextSeq: 8 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "ABC1", nextSeq: 1 } });
+    expect(await saveCard({ prefix: "abc1", nextSeq: 8 })).toMatchObject({ ok: true, settings: { prefix: "ABC1", nextSeq: 1 } });
     expect((await request(await registrationOn(db, c, { email: "d@example.com" }))).number).toBe("ABC12026-001");
     expect((await allInvoices()).map((i) => i.prefix)).toEqual(["MSL", "MSL", "ABC1"]);
   });
 
   test("Review Focus 1: the save takes the number lock before it reads the setting and the series' highest, and before it writes; a refused field touches nothing", async () => {
     const log = await useLoggedDb();
-    expect((await saveInvoiceSettings(db, VALID, NOW)).ok).toBe(true);
+    const version = await invoiceSettingsVersion(db, NOW);
+    log.length = 0;
+    expect((await saveInvoiceSettings(db, CARD, version, NOW)).ok).toBe(true);
     const p = at(log);
     expect(p.numberLock).toBeGreaterThanOrEqual(0);
     expect([p.numberLock < p.settingRead, p.numberLock < p.maxSeq, p.maxSeq < p.settingWrite]).toEqual([true, true, true]);
     log.length = 0;
-    expect((await saveInvoiceSettings(db, { ...VALID, prefix: "" }, NOW)).ok).toBe(false);
+    expect((await saveInvoiceSettings(db, { prefix: "" }, version, NOW)).ok).toBe(false);
     expect(log).toEqual([]);
   });
 });

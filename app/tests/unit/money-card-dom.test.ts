@@ -278,15 +278,15 @@ describe("the receipt", () => {
     expect($("[data-receipt-need-seller]")).toBeNull();
   });
 
-  test("seller missing: „Kviitungit ei saa koostada: täida Seaded → Arve andmed.“ (the link to Seaded) in place of the checkbox, and no receipt is asked", async () => {
+  test("seller missing: „Kviitungit ei saa koostada: täida Seaded → Maksmine.“ (the link to Seaded) in place of the checkbox, and no receipt is asked", async () => {
     actions.addManualPaymentAction.mockResolvedValue({ ok: true, addedCents: 14500, paidCents: 14500, status: "confirmed", confirmedNow: true, full: false, receiptNumber: null });
     await show({ sellerReady: false });
     await open();
     expect($("[data-receipt]")).toBeNull();
     const line = $("[data-receipt-need-seller]")!;
-    expect(text(line)).toBe("Kviitungit ei saa koostada: täida Seaded → Arve andmed.");
-    expect($<HTMLAnchorElement>("a", line)!.getAttribute("href")).toBe("/admin/seaded#arve");
-    expect(text($("a", line))).toBe("Seaded → Arve andmed");
+    expect(text(line)).toBe("Kviitungit ei saa koostada: täida Seaded → Maksmine.");
+    expect($<HTMLAnchorElement>("a", line)!.getAttribute("href")).toBe("/admin/seaded#maksmine");
+    expect(text($("a", line))).toBe("Seaded → Maksmine");
     await click(submit());
     expect(sent().receipt).toBeUndefined();
     expect(text($("[data-add-payment-result]"))).toBe("145 € lisatud · koht kinnitatud.");
@@ -355,7 +355,7 @@ describe("a press: the form it sends, the result lines and the refusals", () => 
     await open();
     expect(await refuse("stale")).toBe("Laekunud summa muutus vahepeal. Vaata summa üle ja lisa uuesti.");
     expect(await refuse("overRemainder")).toBe("Summa on suurem kui tasumata osa (290 €).");
-    expect(await refuse("sellerMissing")).toBe("Täida enne Seaded → „Arve andmed“.");
+    expect(await refuse("sellerMissing")).toBe("Täida enne Seaded → „Maksmine“.");
     expect(await refuse("future")).toBe("Kontrolli andmeid. Kuupäev ei tohi olla tulevikus.");
     expect(await refuse("invalid")).toBe("Kontrolli andmeid. Kuupäev ei tohi olla tulevikus.");
     expect(await refuse("cancelled")).toBe("Registreerimine on tühistatud.");

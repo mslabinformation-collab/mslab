@@ -8,7 +8,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { sendInvoice } from "../invoice-send";
-import { cancelInvoice, catchUpInvoice, createInvoice, createInvoicesForUnbilled, invoiceCard, markInvoicePaid, saveInvoiceSettings, undoInvoicePaid, updateInvoiceBuyer } from "../invoices";
+import { cancelInvoice, catchUpInvoice, createInvoice, createInvoicesForUnbilled, markInvoicePaid, undoInvoicePaid, updateInvoiceBuyer } from "../invoices";
 import { logFailure } from "../log";
 import { revalidatePublic } from "../public-cache";
 import { adminSendDeps } from "../send-deps";
@@ -196,7 +196,7 @@ const batchInput = z.object({ ids: z.array(rowId).min(1).max(BATCH_MAX) });
  * already, failed, sellerMissing, linked }` (the numbers made, how many were billed meanwhile, the payers whose invoice failed, Seaded's seller card
  * empty, how many of the numbers made are of invoices that were already made); the screen puts these in words. The page is refreshed when anything was
  * made or was billed already, so „Arveta maksed“ and the list show the new state, and when the seller card turns out to be empty, so that the link
- * „Täida Seaded → Arve andmed“ takes the place of the button the screen still had.
+ * „Täida Seaded → Maksmine“ takes the place of the button the screen still had.
  * A list that is none, too long or not ids is `notFound` in the payment's words; a throw is `server`, logged by the error's class only.
  */
 export const createInvoicesForUnbilledAction = adminAction(async (_admin, input: { ids: number[] }) => {
@@ -209,26 +209,5 @@ export const createInvoicesForUnbilledAction = adminAction(async (_admin, input:
   } catch (e) {
     logFailure("[invoices] the batch of unbilled payments failed", e);
     return fail("server");
-  }
-});
-
-/**
- * Seaded → „Arve andmed“ → „Salvesta arve andmed“: the card's fields as typed (`{ company, registryCode, address, vatNumber, vatOn, vatRate,
- * prefix, nextYear, nextSeq, termDays, footer }`, the numbers as text), checked by saveInvoiceSettings. Saved: the card as the next issue
- * will take it (settings and the last number issued in the prefix's year). A refused field comes back by name in `fields`. A throw is
- * { ok: false, error: "server" }, logged by its label and the error's class only.
- */
-export const saveInvoiceSettingsAction = adminAction(async (_admin, raw: unknown) => {
-  try {
-    const db = getDb();
-    const now = new Date();
-    const result = await saveInvoiceSettings(db, raw, now);
-    if (!result.ok) return { ok: false as const, fields: result.fields };
-    const card = await invoiceCard(db, now);
-    refresh();
-    return { ok: true as const, card };
-  } catch (e) {
-    logFailure("[invoices] the settings save failed", e);
-    return { ok: false as const, error: "server" as const };
   }
 });

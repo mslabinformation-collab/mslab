@@ -1,6 +1,6 @@
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { adminReady, signInAsAdmin } from "./admin-login";
+import { adminReady, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
 import {
   insertAdminFixtures,
   insertStoredPayment,
@@ -15,7 +15,7 @@ import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, INVOICE_NUMBER, noOve
 // Invoices, Maria's side (invoices Task 5, spec §5): the registration drawer's „Arved“ — „Koosta arve“ as a request to pay, a receipt made with the
 // money by the Raha card's „Lisa laekumine“ (admin UX pass B4, Task 5: „Koosta arve“ offers a receipt only for money recorded without one),
 // „Märgi tasutuks“ (which confirms the registration at 50 %), „Võta tasumine tagasi“ for a request and for a receipt, „Tühista arve“ (these under
-// each row's „Veel ▾“, the last two as ConfirmPanels: S3-f and P-11, admin UX pass piece 2 Task 6), „Saada õpilasele“ — the „Arved“ page with its „Arveta maksed“ and the month's CSV, and Seaded → „Arve andmed“ with the sample. The signed-in tests
+// each row's „Veel ▾“, the last two as ConfirmPanels: S3-f and P-11, admin UX pass piece 2 Task 6), „Saada õpilasele“ — the „Arved“ page with its „Arveta maksed“ and the month's CSV, and Seaded → „Maksmine“ with the sample. The signed-in tests
 // run against the local dev server only: they sign in as Dim through the devLink and look at rows each test inserts for itself and deletes again
 // (tests/e2e/fixtures.ts, an unpublished fixture course; its invoices have no cascade, so they are deleted by the buyer's address). The
 // seller card and the bank details are shared settings other tests read: a test holds the prepayment setting's lock, writes its own and puts the
@@ -489,7 +489,7 @@ test("B11: „Koosta {n} arvet“ — the panel names the numbers, nothing is ma
   await expect(page.locator(`[data-invoice="${last}"]`)).toBeVisible();
 });
 
-test("without a seller the strip offers no button: the link „Täida Seaded → Arve andmed“ stands in its place", async ({ page, context, visitorIp }, info) => {
+test("without a seller the strip offers no button: the link „Täida Seaded → Maksmine“ stands in its place", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info, null);
   const f = await fixtures(info.project.name);
   await insertStoredPayment({ email: f.registration.email, name: f.registration.name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: f.registration.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 5 });
@@ -498,8 +498,8 @@ test("without a seller the strip offers no button: the link „Täida Seaded →
   const strip = page.locator("section#arveta");
   await expect(strip.getByRole("heading", { level: 2 })).toContainText("Arveta maksed: ");
   await expect(strip.getByRole("button", { name: /^Koosta / })).toHaveCount(0);
-  const link = strip.getByRole("link", { name: "Täida Seaded → Arve andmed" });
-  await expect(link).toHaveAttribute("href", "/admin/seaded#arve");
+  const link = strip.getByRole("link", { name: "Täida Seaded → Maksmine" });
+  await expect(link).toHaveAttribute("href", "/admin/seaded#maksmine");
   await strip.getByRole("button", { name: "Näita ▸" }).click();
   await expect(strip.locator("[data-uninvoiced-create]")).toHaveCount(0); // (nor on the rows)
   expect(await madeInvoices()).toEqual([]);
@@ -604,29 +604,37 @@ test("the Arved page at 375 × 812: the strip folded, opened and asking, the too
   expect(stripTop, "the strip is under the phone bar, not behind it").toBeGreaterThanOrEqual(64);
 });
 
-test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new prefix starts at 001, and the sample shows what is typed — and stores nothing", async ({ page, context, visitorIp }, info) => {
+test("„Maksmine“ in Seaded: the bank fields and the seller in one card, autosaved; VAT on waits for its KMKR number; a new prefix previews and starts at 001; the sample shows what is typed — and stores nothing", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info, null);
   await signIn(page, context, visitorIp);
   await page.goto("/admin/seaded");
+  await adminReady(page);
   const cardBox = page.locator("[data-invoice-settings]");
-  await expect(cardBox.getByRole("heading", { level: 2 })).toHaveText("Arve andmed");
-  await expect(cardBox.locator('[data-invoice-field="prefix"]')).toHaveValue("MSL");
-  await expect(cardBox.locator('[data-invoice-field="nextYear"]')).toHaveCount(0); // (B21: the year is never typed)
-  await expect(cardBox).toContainText("Uus eesliide alustab oma numbrit 001-st.");
-  // the bank details of Ettemaksu juhised, read-only
-  await expect(cardBox.locator("[data-invoice-bank]")).toContainText("EE38 2200 2210 2014 5685");
-  await expect(cardBox.locator("[data-invoice-bank] input")).toHaveCount(0);
-
   const field = (name: string) => cardBox.locator(`[data-invoice-field="${name}"]`);
+  const stored = async () => (await onLocalDb((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'invoice'`, { marksPages: false }))[0]?.value;
+  await expect(cardBox.getByRole("heading", { level: 2 })).toHaveText("Maksmine");
+  await expect(cardBox.getByRole("button")).toHaveCount(0); // (no „Salvesta“: every field autosaves)
+  await expect(field("prefix")).toHaveValue("MSL");
+  await expect(field("nextYear")).toHaveCount(0); // (B21: the year is never typed)
+  await expect(cardBox).toContainText("Uus eesliide alustab oma numbrit 001-st.");
+  await expect(cardBox.locator("[data-invoice-preview]")).toHaveText(/^Järgmine arve: MSL\d{4}-001$/);
+  // the bank details of the prepayment instructions are this card's own fields (one source for both)
+  await expect(cardBox.locator('[data-bank-field="iban"]')).toHaveValue("EE382200221020145685");
+  await expect(cardBox.locator("[data-invoice-bank-missing]")).toHaveCount(0);
+
+  // the seller's fields save as they are left
   await field("company").fill("Näidis Akadeemia OÜ");
   await field("registryCode").fill("87654321");
   await field("address").fill("Pärnu mnt 1, Tallinn");
+  await field("address").press("Tab");
+  await expect.poll(stored).toMatchObject({ company: "Näidis Akadeemia OÜ", registryCode: "87654321", address: "Pärnu mnt 1, Tallinn", vatOn: false });
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
+  // VAT on without a KMKR number waits, said on the box; nothing of it is stored
   await field("vatOn").check();
-  await cardBox.locator("[data-invoice-save]").click();
-  await expect(cardBox.locator("[data-invoice-status]")).toHaveText("Kontrolli märgitud välju.");
   await expect(cardBox).toContainText("Käibemaksuga arve vajab KMKR numbrit.");
-  await expect(field("vatNumber")).toHaveAttribute("aria-invalid", "true");
-  expect(await onLocalDb((sql) => sql`select 1 from settings where key = 'invoice'`, { marksPages: false })).toHaveLength(0);
+  await expect(field("vatOn")).toHaveAttribute("aria-invalid", "true");
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "invalid");
+  expect(await stored()).toMatchObject({ vatOn: false });
 
   // the sample: the values on the screen, saved or not, in a new tab's address
   const sample = cardBox.locator("[data-invoice-sample]");
@@ -634,30 +642,32 @@ test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new p
   await expect(sample).toHaveAttribute("target", "_blank");
   await field("vatNumber").fill("EE100200300");
   const href = (await sample.getAttribute("href"))!;
+  expect(new URL(href, "https://mslab.example").searchParams.get("vatNumber")).toBe("EE100200300");
   const pdf = await page.request.get(href);
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()["content-type"]).toBe("application/pdf");
   expect(pdf.headers()["content-disposition"]).toBe('inline; filename="MS-LAB-naidisarve.pdf"');
   expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
-  expect(await onLocalDb((sql) => sql`select 1 from settings where key = 'invoice'`, { marksPages: false })).toHaveLength(0); // (nothing stored to draw it)
+  expect(await stored()).toMatchObject({ vatOn: false, vatNumber: "" }); // (the sample stores nothing)
 
-  // saved
-  await cardBox.locator("[data-invoice-save]").click();
-  await expect(cardBox.locator("[data-invoice-status]")).toHaveText("Arve andmed on salvestatud.");
-  const stored = async () => (await onLocalDb((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'invoice'`, { marksPages: false }))[0]?.value;
+  // the number left: VAT on goes with it
+  const vat = await seadedAutosave(page, "invoice", () => field("vatNumber").press("Tab"));
+  expect(vat.status()).toBe(200);
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
   expect(await stored()).toMatchObject({ company: "Näidis Akadeemia OÜ", registryCode: "87654321", vatOn: true, vatNumber: "EE100200300", prefix: "MSL" });
-  // a new prefix resets the next number to 1 (ruling R3), whatever number was typed with it
+  // a new prefix previews 001 while it is typed, is saved when left (not before), and resets the next number to 1 (ruling R3)
   await field("prefix").fill("abc");
-  await field("nextSeq").fill("40");
-  await cardBox.locator("[data-invoice-save]").click();
-  await expect(cardBox.locator("[data-invoice-status]")).toHaveText("Arve andmed on salvestatud.");
-  await expect(field("prefix")).toHaveValue("ABC");
+  await expect(cardBox.locator("[data-invoice-preview]")).toHaveText(/^Järgmine arve: ABC\d{4}-001$/);
+  expect(await stored()).toMatchObject({ prefix: "MSL" });
+  const prefix = await seadedAutosave(page, "invoice", () => field("prefix").press("Tab"));
+  expect(prefix.status()).toBe(200);
+  await expect.poll(stored).toMatchObject({ prefix: "ABC", nextSeq: 1 });
   await expect(field("nextSeq")).toHaveValue("1");
-  expect(await stored()).toMatchObject({ prefix: "ABC", nextSeq: 1 });
+  await expect(cardBox.locator("[data-invoice-preview]")).toHaveText(/^Järgmine arve: ABC\d{4}-001$/);
   expect(await noOverflow(page)).toBe(true);
 });
 
-test("without a seller „Koosta arve“ is a link to Seaded → Arve andmed", async ({ page, context, visitorIp }, info) => {
+test("without a seller „Koosta arve“ is a link to Seaded → Maksmine", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info, null);
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
@@ -668,12 +678,12 @@ test("without a seller „Koosta arve“ is a link to Seaded → Arve andmed", a
   const card = drawer.locator("[data-money-card]");
   await card.locator("[data-add-payment]").click();
   await expect(card.locator("[data-receipt]")).toHaveCount(0);
-  await expect(card.locator("[data-receipt-need-seller]")).toHaveText("Kviitungit ei saa koostada: täida Seaded → Arve andmed.");
-  await expect(card.locator("[data-receipt-need-seller] a")).toHaveAttribute("href", "/admin/seaded#arve");
+  await expect(card.locator("[data-receipt-need-seller]")).toHaveText("Kviitungit ei saa koostada: täida Seaded → Maksmine.");
+  await expect(card.locator("[data-receipt-need-seller] a")).toHaveAttribute("href", "/admin/seaded#maksmine");
   await card.getByRole("button", { name: "Katkesta" }).click();
-  const link = block.getByRole("link", { name: "Täida Seaded → Arve andmed" });
-  await expect(link).toHaveAttribute("href", "/admin/seaded#arve");
+  const link = block.getByRole("link", { name: "Täida Seaded → Maksmine" });
+  await expect(link).toHaveAttribute("href", "/admin/seaded#maksmine");
   await link.click();
-  await expect(page).toHaveURL(/\/admin\/seaded#arve$/);
-  await expect(page.locator("#arve")).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/seaded#maksmine$/);
+  await expect(page.locator("#maksmine [data-invoice-settings]")).toBeInViewport();
 });

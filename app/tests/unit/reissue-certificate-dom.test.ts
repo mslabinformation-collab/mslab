@@ -14,7 +14,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const action = vi.hoisted(() => vi.fn());
-vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: action }));
+vi.mock("@/server/actions/admin-certificates", () => ({ reissueCertificateAction: action }));
 
 import { ReissueCertificate } from "@/components/admin/ReissueCertificate";
 

@@ -20,7 +20,7 @@ import styles from "./InvoiceBlock.module.css";
 // openAmounts, read by the page: not yet covered by an unpaid or paid invoice of the registration, nor by such a payment; a request never for
 // money typed by hand into „Laekunud summa“, a receipt for exactly that money: m4) as radio choices, and one of two kinds: „Maksmiseks“ (a
 // request to pay, unpaid) and „Juba tasutud“ (a receipt for money already received; it asks the day and the way, and does not touch „Laekunud
-// summa“); a kind with nothing to offer cannot be chosen. Without a seller (D3) „Koosta arve“ is a link to Seaded → Arve andmed instead, and the
+// summa“); a kind with nothing to offer cannot be chosen. Without a seller (D3) „Koosta arve“ is a link to Seaded → Maksmine instead, and the
 // payments have no button. Only one „Koosta arve“ is ever in view (README A2 drawer 4): while a paid online payment waits for its invoice, its row's
 // button is the one and the generic one is not drawn; with none waiting, the generic one is. On a phone the whole block is a folded row (PhoneFold:
 // „Arved … 1 tasumata ▸“, README A2 phone drawer; P-3's summaries). The page is refreshed by the action, so the list then shows the new invoice. This
@@ -55,7 +55,7 @@ export function InvoiceBlock({
   uninvoiced: UninvoicedView[];
   /** The amounts still to invoice by kind (openAmounts), in the order the choices come. */
   open: OpenAmounts;
-  /** Seaded → Arve andmed has a company, a registry code and an address (D3). */
+  /** Seaded → Maksmine has a company, a registry code and an address (D3). */
   sellerReady: boolean;
   /** The registration has a price to invoice against (a course without one has no open amounts). */
   canCreate: boolean;
@@ -136,7 +136,7 @@ export function InvoiceBlock({
       {canCreate &&
         (!sellerReady ? (
           <p className={styles.seller} data-invoice-need-seller="">
-            <Link className={ui.link} href="/admin/seaded#arve">
+            <Link className={ui.link} href="/admin/seaded#maksmine">
               {t.needSeller}
             </Link>
           </p>

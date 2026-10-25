@@ -719,14 +719,19 @@ describe("the instalments checks (instalments, Task 8)", () => {
   // the two that say what a student sees when the toggle is switched off meanwhile: reworded in the follow-up (financing texts, 22.10) after the first
   // deploy, from the range sentence to the switched-off one. What they expect changed, so they are redo since that deploy.
   const REDONE = ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"];
+  // admin UX pass piece 3b, Task 4: the toggle autosaves (no „Salvesta“): its own check is to be run again, and two that switched it and saved it are
+  // reworded (they no longer say „salvesta“)
+  const REDONE_BY_SEADED = new Set(["haldus-seaded-jarelmaks"]);
+  const REWORDED_BY_SEADED = new Set(["avalik-kursus-jarelmaks-rida", "ekursus-jarelmaks"]);
 
   test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
     for (const [id, want] of Object.entries(NEW)) {
       if (REDONE.includes(id)) continue;
-      expect(item(id), id).toMatchObject({ ...want, mark: REDONE_BY_B22.has(id) ? "redo" : "new" });
+      const redo = REDONE_BY_B22.has(id) || REDONE_BY_SEADED.has(id);
+      expect(item(id), id).toMatchObject({ ...want, mark: redo ? "redo" : REWORDED_BY_SEADED.has(id) ? "reworded" : "new" });
       expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
-      // a new check never reopens an answer
-      if (!REDONE_BY_B22.has(id)) expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
+      // a new or reworded check never reopens an answer
+      if (!redo) expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
     }
   });
 
@@ -755,7 +760,9 @@ describe("the instalments checks (instalments, Task 8)", () => {
     const needs = Object.keys(NEW).filter((id) => !["haldus-seaded-jarelmaks", "avalik-kursus-jarelmaks-rida"].includes(id));
     for (const id of needs) expect(at("haldus-seaded-jarelmaks"), id).toBeLessThan(at(id));
     expect(at("avalik-kursus-jarelmaks-rida")).toBeLessThan(at("haldus-seaded-jarelmaks"));
-    expect(item("avalik-kursus-jarelmaks-rida").steps[0]).toMatch(/Seaded → „Järelmaks \(Inbank\)“ sisse ja salvesta/);
+    expect(item("avalik-kursus-jarelmaks-rida").steps[0]).toMatch(/Seaded → „Järelmaks \(Inbank\)“ sisse;/);
+    // (the switch saves itself since piece 3b, Task 4: no check tells to „salvesta“ it)
+    expect(plan.items.flatMap((c) => [...c.steps, ...c.expect]).filter((l) => /Järelmaks \(Inbank\)“[^.]*salvest/.test(l))).toEqual([]);
     // the Maksed check reads the payments of Proov 9 and Proov 10 and the cancelled bank payment of Proov 2 or Proov 13 (the registration's cancelled
     // payment, or the e-course cart's after Seaded was switched off): all are made before it. Proov 11 is the e-course's, made after it (area ekursus)
     expect(at("registreerimine-jarelmaks-kinnitatud")).toBeLessThan(at("haldus-maksed-jarelmaks"));
@@ -813,7 +820,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
 
   test("the words the checks quote are the site's own", () => {
     const s = adminEt.financing.settings;
-    for (const word of [s.title, s.enabled, s.lead, s.save, s.saving, s.saved, s.error]) expect(text("haldus-seaded-jarelmaks"), word).toContain(`„${word}“`);
+    for (const word of [s.title, s.enabled, s.lead]) expect(text("haldus-seaded-jarelmaks"), word).toContain(`„${word}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.financingLine}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${ru.course.financingLine.replace(/ /g, " ")}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${ru.forms.payFinancing}“`);

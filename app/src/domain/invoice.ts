@@ -1,4 +1,4 @@
-// The invoices' pure rules (invoices, Task 1; spec §2 D2–D8, §6): the kinds, states and shapes an invoice freezes, Seaded → Arve andmed's limits
+// The invoices' pure rules (invoices, Task 1; spec §2 D2–D8, §6): the kinds, states and shapes an invoice freezes, Seaded → Maksmine's limits
 // and defaults with their defensive read, the number and its series, the VAT split, the euro text, the amounts still open on a registration,
 // the kind of an online payment's invoice, the download's file name and headers, and the accountant's CSV. No database, no React: the server,
 // Maria's screens and the student's account share them. It may run in the browser (Seaded's card): no lookbehind here nor in what it imports
@@ -20,12 +20,12 @@ export type ManualPaidMethod = Exclude<PaidMethod, "montonio" | "financing">;
 
 /** The one line of an invoice, frozen at its creation (D4): the course's Estonian title, its session ("14.11.2026 Tallinn"; empty for an e-course) and the part ("Ettemaks 50%"). */
 export type InvoiceLine = { course: string; session: string; part: string };
-/** The seller as Seaded → Arve andmed and Ettemaksu juhised held it at the creation, frozen (D2). */
+/** The seller as Seaded → Maksmine and Ettemaksu juhised held it at the creation, frozen (D2). */
 export type InvoiceSeller = { company: string; registryCode: string; address: string; vatNumber: string; receiver: string; iban: string; bank: string };
 /** The buyer (D9): the registration's or the payment's name and e-mail, and what Maria added; a company only when it pays. */
 export type InvoiceBuyer = { name: string; email: string; address: string; company: string; companyCode: string; companyAddress: string };
 
-/** The `settings` key "invoice" as read (readInvoiceSettings): Seaded → Arve andmed and the series' next number. */
+/** The `settings` key "invoice" as read (readInvoiceSettings): Seaded → Maksmine and the series' next number. */
 export type InvoiceSettings = {
   company: string;
   registryCode: string;
@@ -49,7 +49,7 @@ export type InvoiceSettings = {
 
 export const INVOICE_KEY = "invoice";
 
-/** Before Maria saves Seaded → Arve andmed (D2, spec §3): nothing but the prefix, VAT off at the rate Estonia has used since 1.7.2025, a week to pay. */
+/** Before Maria saves Seaded → Maksmine (D2, spec §3): nothing but the prefix, VAT off at the rate Estonia has used since 1.7.2025, a week to pay. */
 export const INVOICE_DEFAULTS: Omit<InvoiceSettings, "nextYear" | "nextSeq"> = {
   company: "",
   registryCode: "",
@@ -99,6 +99,44 @@ export function readInvoiceSettings(value: unknown, now: Date): InvoiceSettings 
     footer: text("footer"),
   };
 }
+
+/**
+ * Seaded → „Maksmine“'s invoice fields as the card holds them (admin UX pass piece 3b, Task 4): the texts, the VAT box, and the numbers as the text
+ * typed in their fields („Arve järgmine number“ the one the next issue takes; the year is never typed, B21). The card starts from these, and its
+ * route's conflict answers them, so the browser compares like with like.
+ */
+export type InvoiceForm = {
+  company: string;
+  registryCode: string;
+  address: string;
+  vatNumber: string;
+  vatOn: boolean;
+  vatRate: string;
+  prefix: string;
+  nextSeq: string;
+  termDays: string;
+  footer: string;
+};
+
+/** The card's fields of `s` (InvoiceForm). */
+export const invoiceForm = (s: Omit<InvoiceSettings, "nextYear">): InvoiceForm => ({
+  company: s.company,
+  registryCode: s.registryCode,
+  address: s.address,
+  vatNumber: s.vatNumber,
+  vatOn: s.vatOn,
+  vatRate: String(s.vatRate),
+  prefix: s.prefix,
+  nextSeq: String(s.nextSeq),
+  termDays: String(s.termDays),
+  footer: s.footer,
+});
+
+/**
+ * VAT on without a VAT number (D8): the card's rule, the server's (server/invoices.ts saveInvoiceSettings) and the browser's (the card holds the box
+ * back until the number is typed) alike. The number counts as typed once it holds more than white space.
+ */
+export const vatNeedsNumber = (s: { vatOn: boolean; vatNumber: string }): boolean => s.vatOn && s.vatNumber.trim() === "";
 
 /** No invoice is made before the seller is named (D3): the company, its registry code and its address. */
 export function sellerReady(s: InvoiceSettings): boolean {

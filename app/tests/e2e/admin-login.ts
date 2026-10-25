@@ -122,11 +122,24 @@ export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
 }
 
 /**
- * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is. Never
- * asked for by name alone: Seaded has more than one „Salvesta“ (the Järelmaks (Inbank) card has its own, `data-financing-save`, and so have the other
- * cards' forms), and a bare `getByRole("button", { name: "Salvesta" })` is a strict-mode violation there or, with `.first()`, depends on the order of the cards.
+ * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is. On
+ * Seaded (admin UX pass piece 3b, Task 4) only the legal texts have one, at the foot of their form in „Lepingud ja tingimused“ (the contact
+ * contract's card keeps its own „Salvesta lepingud“); every other card autosaves (seadedAutosave).
  */
 export const saveBarButton = (page: Page): Locator => page.locator("[data-save-bar]").getByRole("button", { name: "Salvesta", exact: true });
 
-/** Seaded's page-wide „Salvesta“: the one inside the page's own settings form (SettingsEditor.tsx, `data-settings-editor`), not any card's. */
-export const seadedSave = (page: Page): Locator => page.locator("form[data-settings-editor]").getByRole("button", { name: "Salvesta", exact: true });
+/** The save bar's status line (SaveBar.tsx): on a page that also has a SaveStatus chip (Seaded), the bar's own, not the chip. */
+export const saveBarStatus = (page: Page): Locator => page.locator("[data-save-bar] [data-save-status]");
+
+/** Seaded's one SaveStatus (the header's chip, piece 3b Task 4): `data-save-kind` says its state (saved, dirty, saving, invalid, …). */
+export const seadedStatus = (page: Page): Locator => page.locator("[data-seaded-head] [data-save-status]");
+
+/**
+ * A Seaded card's autosave (piece 3b, Task 4): runs `act` (fields typed and left, a box ticked) and waits for the save of `part` it makes on
+ * api/admin/seaded/<part> — its answer, whose status the caller checks. A field left saves at once; a number commits only when it is left.
+ */
+export async function seadedAutosave(page: Page, part: string, act: () => Promise<unknown>) {
+  const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === `/api/admin/seaded/${part}`, { timeout: 30_000 });
+  await act();
+  return answer;
+}

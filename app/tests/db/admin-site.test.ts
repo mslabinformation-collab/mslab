@@ -20,7 +20,10 @@ import {
   savePracticeForm,
   saveSettingsForm,
   saveTrainerForm,
+  writeSettingsPart,
+  type SettingsPart,
 } from "@/server/admin-site";
+import type { SaveAnswer } from "@/domain/autosave";
 import type { EditResult } from "@/server/edit-check";
 import { newPostDraft, type PostDraft } from "@/domain/site-editor";
 import { parsePrepayment } from "@/domain/account-cards";
@@ -454,50 +457,44 @@ describe("campaign (D adminCamp + image upload, M3–M5)", () => {
 });
 
 describe("settings", () => {
-  test("contact details and social links (https only); other keys are kept", async () => {
+  /** An autosaved part's save (writeSettingsPart, the route's write: admin UX pass piece 3b, Task 4) from the version the page reads now. */
+  const savePart = async (part: SettingsPart, patch: unknown) => writeSettingsPart(db, part, patch, (await loadSettings(db)).versions[part], new Date());
+  const refusedOf = (a: SaveAnswer) => (a.ok || a.error !== "invalid" ? {} : a.fields);
+
+  test("contact details and social links (https only), field by field; other keys are kept; the legal form takes none of them", async () => {
     const s = await loadSettings(db);
     expect(s.values.contact).toEqual({ email: "info@mslab.ee", phone: "", address: "Pärnu", instagram: "", facebook: "" });
     const bad = { email: "info@", phone: "helista mulle", address: "Rüütli 12, Pärnu", instagram: "http://instagram.com/mslab", facebook: "javascript:alert(1)" };
-    expect(fieldsOf(await saveSettingsForm(db, form({ contact: { version: s.versions.contact, value: bad } })))).toEqual({
-      "contact.email": "email",
-      "contact.phone": "phone",
-      "contact.instagram": "url",
-      "contact.facebook": "url",
-    });
-    for (const facebook of ["data:text/html,x", "https://", "//facebook.com/x", "https://user:pw@facebook.com/x"])
-      expect(fieldsOf(await saveSettingsForm(db, form({ contact: { version: s.versions.contact, value: { ...s.values.contact, facebook } } }))), facebook).toEqual({ "contact.facebook": "url" });
+    expect(refusedOf(await savePart("contact", bad))).toEqual({ email: "email", phone: "phone", instagram: "url", facebook: "url" });
+    for (const facebook of ["data:text/html,x", "https://", "//facebook.com/x", "https://user:pw@facebook.com/x"]) expect(refusedOf(await savePart("contact", { facebook })), facebook).toEqual({ facebook: "url" });
+    expect((await getSettings(db)).contact).toEqual(s.values.contact);
     const good = { email: " maria@example.ee ", phone: "+372 5555  0101", address: "Rüütli 12, Pärnu", instagram: "https://www.instagram.com/mslab", facebook: "https://facebook.com/mslab" };
     await db.update(settings).set({ value: { ...s.values.contact, extra: "kept" } }).where(eq(settings.key, "contact"));
-    const fresh = await loadSettings(db);
-    expect(await saveSettingsForm(db, form({ contact: { version: fresh.versions.contact, value: good } }))).toMatchObject({ ok: true });
+    expect(await savePart("contact", good)).toMatchObject({ ok: true, changed: true });
     expect((await getSettings(db)).contact).toEqual({ email: "maria@example.ee", phone: "+372 5555 0101", address: "Rüütli 12, Pärnu", instagram: "https://www.instagram.com/mslab", facebook: "https://facebook.com/mslab", extra: "kept" });
+    // the version the page reads is the route's: from the one before the last save, a conflict with the stored text
+    expect(await writeSettingsPart(db, "contact", { phone: "" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict", value: { phone: "+372 5555 0101" } });
+    // the legal texts' form takes only theirs
+    expect(await saveSettingsForm(db, form({ contact: { version: (await loadSettings(db)).versions.contact, value: good } }))).toEqual({ ok: false, error: "invalid" });
   });
 
-  test("newsletter discount label and the legal pages", async () => {
+  test("newsletter discount label (required) and the legal pages (their own form)", async () => {
     const s = await loadSettings(db);
-    expect(fieldsOf(await saveSettingsForm(db, form({ newsletter: { version: s.versions.newsletter, value: { discountLabel: " " } } })))).toEqual({ "newsletter.discountLabel": "required" });
+    expect(refusedOf(await savePart("newsletter", { discountLabel: " " }))).toEqual({ discountLabel: "required" });
     expect(fieldsOf(await saveSettingsForm(db, form({ terms: { version: s.versions.terms, value: { title: { et: "" }, body: { et: "" } } } })))).toEqual({ "terms.title": "required", "terms.body": "required" });
-    const r = await saveSettingsForm(
-      db,
-      form({
-        newsletter: { version: s.versions.newsletter, value: { discountLabel: "15%" } },
-        privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } },
-      }),
-    );
+    expect(await savePart("newsletter", { discountLabel: "15%" })).toMatchObject({ ok: true });
+    const r = await saveSettingsForm(db, form({ privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } } }));
     expect(r).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "15%", welcomeCode: "" });
     expect(await getPage(db, "privacy")).toMatchObject({ title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } });
   });
 
   test("Tervituskood: stored in capitals next to the discount; another shape or over 30 is refused; a save without it keeps it", async () => {
-    const s = await loadSettings(db);
-    const save = (value: object) => saveSettingsForm(db, form({ newsletter: { version: s.versions.newsletter, value } }));
-    expect(fieldsOf(await save({ discountLabel: "10%", welcomeCode: "tere 10" }))).toEqual({ "newsletter.welcomeCode": "codeFormat" });
-    expect(fieldsOf(await save({ discountLabel: "10%", welcomeCode: "A".repeat(31) }))).toEqual({ "newsletter.welcomeCode": "tooLong" });
-    expect(await save({ discountLabel: "10%", welcomeCode: " tere-10 " })).toMatchObject({ ok: true });
+    expect(refusedOf(await savePart("newsletter", { welcomeCode: "tere 10" }))).toEqual({ welcomeCode: "codeFormat" });
+    expect(refusedOf(await savePart("newsletter", { welcomeCode: "A".repeat(31) }))).toEqual({ welcomeCode: "tooLong" });
+    expect(await savePart("newsletter", { discountLabel: "10%", welcomeCode: " tere-10 " })).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%", welcomeCode: "TERE-10" });
-    const t = await loadSettings(db);
-    expect(await saveSettingsForm(db, form({ newsletter: { version: t.versions.newsletter, value: { discountLabel: "15%" } } }))).toMatchObject({ ok: true });
+    expect(await savePart("newsletter", { discountLabel: "15%" })).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "15%", welcomeCode: "TERE-10" });
   });
 
@@ -605,7 +602,7 @@ describe("settings", () => {
         db,
         form({
           course_terms: { version: fresh.versions.course_terms, value: { body: { et: "Kolmas." } } },
-          newsletter: { version: fresh.versions.newsletter, value: { discountLabel: " " } },
+          terms: { version: fresh.versions.terms, value: { title: { et: " " }, body: { et: "Tekst." } } },
         }),
       );
       expect(mixed.ok).toBe(false);
@@ -622,10 +619,7 @@ describe("settings", () => {
   });
 
   describe("Ettemaksu juhised (prepayment, phase 2a Task 9)", () => {
-    const savePay = async (value: Record<string, string>) => {
-      const s = await loadSettings(db);
-      return saveSettingsForm(db, form({ prepayment: { version: s.versions.prepayment, value } }));
-    };
+    const savePay = (value: Record<string, string>) => savePart("prepayment", value);
     const empty = { receiver: "", iban: "", bank: "", referencePrefix: "" };
 
     test("loads empty when nothing is stored; saved trimmed, the IBAN without spaces in capitals; the cards read it", async () => {
@@ -633,11 +627,9 @@ describe("settings", () => {
       expect(s.values.prepayment).toEqual(empty);
       expect(s.versions.prepayment).toMatch(/^[0-9a-f]{32}$/);
       const r = await savePay({ receiver: " MS LAB OÜ ", iban: " ee38 2200 2210 2014 5685 ", bank: "Swedbank", referencePrefix: " MSLAB- " });
-      expect(r).toMatchObject({ ok: true });
-      const saved = (r as unknown as { saved: { values: { prepayment: unknown }; versions: Record<string, string> } }).saved;
-      expect(Object.keys(saved.versions)).toEqual(["prepayment"]);
+      expect(r).toMatchObject({ ok: true, version: expect.stringMatching(/^[0-9a-f]{32}$/) });
       const value = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
-      expect(saved.values.prepayment).toEqual(value);
+      expect((await loadSettings(db)).versions.prepayment).toBe(r.ok ? r.version : null);
       expect((await getSettings(db)).prepayment).toEqual(value);
       expect(parsePrepayment((await getSettings(db)).prepayment)).toEqual(value);
     });
@@ -651,23 +643,23 @@ describe("settings", () => {
 
     test("an IBAN that is not one is refused with its own message; too long fields too; nothing is stored", async () => {
       for (const iban of ["EE38", "38EE2200221020145685", "EE3822002210201456850000000000000000", "EE38 2200-2210", "ЕЕ382200221020145685"])
-        expect(fieldsOf(await savePay({ ...empty, receiver: "MS LAB OÜ", iban })), iban).toEqual({ "prepayment.iban": "iban" });
-      expect(fieldsOf(await savePay({ ...empty, iban: "E".repeat(61) }))).toEqual({ "prepayment.iban": "tooLong" });
-      expect(fieldsOf(await savePay({ ...empty, receiver: "x".repeat(121), bank: "x".repeat(81), referencePrefix: "x".repeat(31) }))).toEqual({
-        "prepayment.receiver": "tooLong",
-        "prepayment.bank": "tooLong",
-        "prepayment.referencePrefix": "tooLong",
+        expect(refusedOf(await savePay({ ...empty, receiver: "MS LAB OÜ", iban })), iban).toEqual({ iban: "iban" });
+      expect(refusedOf(await savePay({ ...empty, iban: "E".repeat(61) }))).toEqual({ iban: "tooLong" });
+      expect(refusedOf(await savePay({ ...empty, receiver: "x".repeat(121), bank: "x".repeat(81), referencePrefix: "x".repeat(31) }))).toEqual({
+        receiver: "tooLong",
+        bank: "tooLong",
+        referencePrefix: "tooLong",
       });
       expect((await getSettings(db)).prepayment).toBeUndefined();
       expect(await savePay({ ...empty, iban: "LT12 1000 0111 0100 1000" })).toMatchObject({ ok: true }); // another country
       expect(((await getSettings(db)).prepayment as { iban: string }).iban).toBe("LT121000011101001000");
     });
 
-    test("stale: saved elsewhere since the page was loaded is refused, the other save is kept", async () => {
+    test("two tabs: saved elsewhere since the page was loaded is a conflict with the stored text, the other save is kept", async () => {
       const s = await loadSettings(db);
       expect(await savePay({ ...empty, receiver: "Esimene" })).toMatchObject({ ok: true });
-      const late = await saveSettingsForm(db, form({ prepayment: { version: s.versions.prepayment, value: { ...empty, receiver: "Teine" } } }));
-      expect(late).toEqual({ ok: false, error: "stale" });
+      const late = await writeSettingsPart(db, "prepayment", { receiver: "Teine" }, s.versions.prepayment, new Date());
+      expect(late).toMatchObject({ ok: false, error: "conflict", value: { ...empty, receiver: "Esimene" } });
       expect(((await getSettings(db)).prepayment as { receiver: string }).receiver).toBe("Esimene");
     });
   });
@@ -752,11 +744,9 @@ describe("missing rows", () => {
     const s = await loadSettings(db);
     expect(s.values.terms).toEqual({ title: { et: "" }, body: { et: "" } });
     expect(s.values.newsletter).toEqual({ discountLabel: "", welcomeCode: "" });
-    const r = await saveSettingsForm(
-      db,
-      form({ terms: { version: s.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } }, newsletter: { version: s.versions.newsletter, value: { discountLabel: "10%" } } }),
-    );
+    const r = await saveSettingsForm(db, form({ terms: { version: s.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } } }));
     expect(r).toMatchObject({ ok: true });
+    expect(await writeSettingsPart(db, "newsletter", { discountLabel: "10%" }, s.versions.newsletter, new Date())).toMatchObject({ ok: true });
     expect(await getPage(db, "terms")).toMatchObject({ title: { et: "Tingimused" }, body: { et: "Tekst." } });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%" });
   });

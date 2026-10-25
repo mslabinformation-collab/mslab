@@ -61,7 +61,9 @@ import {
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
+import type { SaveAnswer } from "@/domain/autosave";
 import { contentVersion } from "@/lib/version";
+import { fieldCodes } from "./autosave-route";
 import { Check, field, invalid, type EditResult, type SavedParts } from "./edit-check";
 
 // The site content editors' form handling (Task 13B): home page, practice packages, trainer page, campaign, settings
@@ -102,7 +104,7 @@ type Parts = Record<string, Part<any>>;
 const part = <V>(p: Part<V>): Part<V> => p;
 
 /** Every part of a page as stored: the drafts and their versions. */
-export async function loadParts(q: Q, parts: Parts, only?: string[]): Promise<SavedParts> {
+export async function loadParts(q: Q, parts: Record<string, Pick<Part<unknown>, "read" | "draft">>, only?: string[]): Promise<SavedParts> {
   const names = only ?? Object.keys(parts);
   const stored = await Promise.all(names.map((n) => parts[n].read(q)));
   const versions = await Promise.all(stored.map((s) => contentVersion(s)));
@@ -409,7 +411,7 @@ const campaignParts: Parts = {
 export const loadCampaign = async (q: Q) => (await loadParts(q, campaignParts)) as SavedParts & { values: { campaign: CampaignDraft; newsletter: NewsletterPopupDraft } };
 export const saveCampaignForm = (db: Db, formData: FormData) => saveParts(db, campaignParts, formData);
 
-// ---------- Seaded: contact details, newsletter discount and welcome code, prepayment instructions, legal pages, the e-course terms ----------
+// ---------- Seaded: contact details, newsletter discount and welcome code, prepayment instructions (autosaved), legal pages, the e-course terms ----------
 
 export type SettingsValues = {
   contact: ContactDraft;
@@ -420,59 +422,100 @@ export type SettingsValues = {
   course_terms: { title: I18n; body: I18n };
 };
 
-const settingsParts: Parts = {
-  contact: part<ContactDraft>({
-    tables: ["settings"],
-    schema: z.object({ email: text(400), phone: text(400), address: text(1000), instagram: text(1000), facebook: text(1000) }),
-    read: (q) => readSetting(q, "contact"),
-    draft: contactDraft,
-    check: (c, v, name) => {
-      const p = `${name}.`;
-      const values = {
-        email: c.email(`${p}email`, v.email, L.email),
-        phone: c.phone(`${p}phone`, v.phone),
-        address: c.plain(`${p}address`, v.address, L.address),
-        // the site opens these in a new tab: https only, never javascript: or the like
-        instagram: c.httpsUrl(`${p}instagram`, v.instagram),
-        facebook: c.httpsUrl(`${p}facebook`, v.facebook),
-      };
-      return (tx, stored) => setSetting(tx, "contact", { ...obj(stored), ...values });
+/**
+ * Seaded's autosaved settings parts (admin UX pass piece 3b, Task 4; README B4): the contact details, „Uudiskiri“ and the prepayment instructions
+ * („Ettemaksu juhised“, the bank fields of the „Maksmine“ card: ruling R-f, one source — the invoice reads them too), saved field by field on
+ * api/admin/seaded/<part> (server/seaded.ts). Each is one `settings` row; its version is the hash of the stored value, as every site part's.
+ */
+export const SETTINGS_PARTS = ["contact", "newsletter", "prepayment"] as const;
+export type SettingsPart = (typeof SETTINGS_PARTS)[number];
+
+const SETTING_KEYS: Record<SettingsPart, string> = { contact: "contact", newsletter: "newsletter", prepayment: PREPAYMENT_KEY };
+const DRAFTS: Record<SettingsPart, (stored: unknown) => Record<string, string>> = { contact: contactDraft, newsletter: newsletterDraft, prepayment: prepaymentDraft };
+
+/** A field's text as the card sends it: a string (else "invalid") of the old form's length at most (else "tooLong"); the rule (FIELD_RULES) decides the rest. */
+const sent = (max: number) => z.string({ error: "invalid" }).max(max, "tooLong");
+
+/** Each part's autosave patch (the route's schema): some of its fields, no other. */
+const PATCHES: Record<SettingsPart, z.ZodType<Record<string, string | undefined>>> = {
+  contact: z.strictObject({ email: sent(400), phone: sent(400), address: sent(1000), instagram: sent(1000), facebook: sent(1000) }, { error: "invalid" }).partial(),
+  newsletter: z.strictObject({ discountLabel: sent(400), welcomeCode: sent(400) }, { error: "invalid" }).partial(),
+  prepayment: z.strictObject({ receiver: sent(400), iban: sent(400), bank: sent(400), referencePrefix: sent(400) }, { error: "invalid" }).partial(),
+};
+
+export const settingsPartPatch = (part: SettingsPart) => PATCHES[part];
+
+/** A field's rule: its value as stored, its refusal into `c` under `name`. */
+type FieldRule = (c: Check, name: string, value: string) => unknown;
+
+/**
+ * The fields' rules, one by one (a save checks only the fields it sends):
+ * - contact: an e-mail and a phone as people write them; the social links https only (the site opens them in a new tab: never javascript: or the like);
+ * - newsletter: the discount label is required; "Tervituskood" (phase 2c) is A–Z, 0–9 and "-", at most 30, stored in capitals; empty = no welcome code;
+ * - prepayment: every field may be empty; all empty means no instructions (the cards say Maria sends an invoice), and so does one without the
+ *   receiver or the IBAN (domain/account-cards.ts hasPrepayment). The IBAN is stored without spaces, in capitals.
+ */
+const FIELD_RULES: Record<SettingsPart, Record<string, FieldRule>> = {
+  contact: {
+    email: (c, n, v) => c.email(n, v, L.email),
+    phone: (c, n, v) => c.phone(n, v),
+    address: (c, n, v) => c.plain(n, v, L.address),
+    instagram: (c, n, v) => c.httpsUrl(n, v),
+    facebook: (c, n, v) => c.httpsUrl(n, v),
+  },
+  newsletter: {
+    discountLabel: (c, n, v) => c.plain(n, v, L.discount, { required: true }),
+    welcomeCode: (c, n, v) => {
+      const code = normalizeWelcomeCode(v);
+      if (code.length > WELCOME_CODE_MAX) return c.fail(n, "tooLong");
+      return isWelcomeCode(code) ? code : c.fail(n, "codeFormat");
     },
-  }),
-  // the editor always sends welcomeCode; a body without it (an older page) keeps the stored one
-  newsletter: part<{ discountLabel: string; welcomeCode?: string }>({
-    tables: ["settings"],
-    schema: z.object({ discountLabel: text(400), welcomeCode: text(400).optional() }),
-    read: (q) => readSetting(q, "newsletter"),
-    draft: newsletterDraft,
-    check: (c, v, name) => {
-      const discountLabel = c.plain(`${name}.discountLabel`, v.discountLabel, L.discount, { required: true });
-      // "Tervituskood" (phase 2c): A–Z, 0–9 and "-", at most 30, stored in capitals; empty = no welcome code
-      const welcomeCode = v.welcomeCode === undefined ? undefined : normalizeWelcomeCode(v.welcomeCode);
-      if (welcomeCode !== undefined && welcomeCode.length > WELCOME_CODE_MAX) c.fail(`${name}.welcomeCode`, "tooLong");
-      else if (welcomeCode !== undefined && !isWelcomeCode(welcomeCode)) c.fail(`${name}.welcomeCode`, "codeFormat");
-      return (tx, stored) => setSetting(tx, "newsletter", { ...obj(stored), discountLabel, ...(welcomeCode === undefined ? {} : { welcomeCode }) });
+  },
+  prepayment: {
+    receiver: (c, n, v) => c.plain(n, v, L.receiver),
+    iban: (c, n, v) => {
+      if (v.length > L.iban) return c.fail(n, "tooLong");
+      const iban = normalizeIban(v);
+      return iban && !isIban(iban) ? c.fail(n, "iban") : iban;
     },
-  }),
-  // "Ettemaksu juhised": where students pay the prepayment (account-only: the unpaid contact-course cards). Every field may
-  // be empty; all empty means no instructions (the cards say Maria sends an invoice), and so does one without the receiver
-  // or the IBAN (domain/account-cards.ts hasPrepayment). The IBAN is stored without spaces, in capitals.
-  prepayment: part<PrepaymentDraft>({
-    tables: ["settings"],
-    schema: z.object({ receiver: text(400), iban: text(400), bank: text(400), referencePrefix: text(400) }),
-    read: (q) => readSetting(q, PREPAYMENT_KEY),
-    draft: prepaymentDraft,
-    check: (c, v, name) => {
-      const p = `${name}.`;
-      const receiver = c.plain(`${p}receiver`, v.receiver, L.receiver);
-      const iban = normalizeIban(v.iban);
-      if (v.iban.length > L.iban) c.fail(`${p}iban`, "tooLong");
-      else if (iban && !isIban(iban)) c.fail(`${p}iban`, "iban");
-      const bank = c.plain(`${p}bank`, v.bank, L.bank);
-      const referencePrefix = c.plain(`${p}referencePrefix`, v.referencePrefix, L.referencePrefix);
-      return (tx) => setSetting(tx, PREPAYMENT_KEY, { receiver, iban, bank, referencePrefix });
-    },
-  }),
+    bank: (c, n, v) => c.plain(n, v, L.bank),
+    referencePrefix: (c, n, v) => c.plain(n, v, L.referencePrefix),
+  },
+};
+
+/** An autosaved part as the page reads it: the stored setting's hash and its draft. */
+const settingsRead = (part: SettingsPart): Pick<Part<unknown>, "read" | "draft"> => ({ read: (q) => readSetting(q, SETTING_KEYS[part]), draft: DRAFTS[part] });
+
+/**
+ * One autosaved settings part (the route's `write`; server/autosave-route.ts' contract): `patch` (some of its fields) over the stored setting at
+ * `version`. The fields sent are checked first, each by its rule (FIELD_RULES: refused by field, nothing written); then, with the settings table
+ * locked as every site save locks it, a version that is not the stored one's is a conflict with the part as stored; else the fields are written
+ * over the stored value, its other keys kept (the prepayment's four always written). The same text again writes nothing and keeps the version.
+ * `changed`: whether anything was written (the caller revalidates the pages that show the part).
+ */
+export async function writeSettingsPart(db: Db, part: SettingsPart, patch: unknown, version: string, now: Date): Promise<SaveAnswer & { changed?: boolean }> {
+  const parsed = PATCHES[part].safeParse(patch);
+  if (!parsed.success) return { ok: false, error: "invalid", fields: fieldCodes(parsed.error.issues) ?? {} };
+  const c = new Check();
+  const values: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(parsed.data)) if (value !== undefined) values[name] = FIELD_RULES[part][name](c, name, value);
+  if (!c.ok) return { ok: false, error: "invalid", fields: c.errors };
+  const key = SETTING_KEYS[part];
+  const savedAt = now.toISOString();
+  return db.transaction(async (tx) => {
+    await lockTables(tx, ["settings"]);
+    const stored = await readSetting(tx, key);
+    const current = await contentVersion(stored);
+    if (current !== version) return { ok: false, error: "conflict", version: current, value: DRAFTS[part](stored) };
+    const next = { ...(part === "prepayment" ? prepaymentDraft(stored) : obj(stored)), ...values };
+    if ((await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
+    await setSetting(tx, key, next);
+    return { ok: true, version: await contentVersion(await readSetting(tx, key)), savedAt, changed: true };
+  });
+}
+
+// The legal pages and the e-course contract keep their own „Salvesta“ (the SaveBar of their section) until their drafts (piece 3b, Task 5).
+const legalParts: Parts = {
   privacy: pagePart("privacy", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
   terms: pagePart("terms", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
   // "E-koolituse leping (tingimused)": what a student accepts in the cart before buying and at the terms gate of a course opened without a purchase
@@ -502,8 +545,11 @@ const settingsParts: Parts = {
   }),
 };
 
-export const loadSettings = async (q: Q) => (await loadParts(q, settingsParts)) as SavedParts & { values: SettingsValues };
-export const saveSettingsForm = (db: Db, formData: FormData) => saveParts(db, settingsParts, formData);
+/** The page's read: every part of Seaded with its version (the autosaved ones' are their routes' versions). */
+export const loadSettings = async (q: Q) =>
+  (await loadParts(q, { ...Object.fromEntries(SETTINGS_PARTS.map((p) => [p, settingsRead(p)])), ...legalParts })) as SavedParts & { values: SettingsValues };
+/** The legal texts' „Salvesta“: field data ({ parts: privacy | terms | course_terms }); any other part is refused (it autosaves on its route). */
+export const saveSettingsForm = (db: Db, formData: FormData) => saveParts(db, legalParts, formData);
 
 // ---------- Uudised: posts ----------
 

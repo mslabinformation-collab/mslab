@@ -28,7 +28,7 @@ const actions = await import("@/server/actions/admin");
 /** 16.10.2026 12:00 in Tallinn (summer time, UTC+3). */
 const NOW = new Date("2026-10-16T09:00:00Z");
 const TODAY = "2026-10-16";
-/** Seaded → Arve andmed filled in: the seller, VAT off, MSL from 1 in 2026. */
+/** Seaded → Maksmine filled in: the seller, VAT off, MSL from 1 in 2026. */
 const CARD = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" };
 const BANK = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
 
@@ -241,7 +241,7 @@ describe("addManualPayment: „Koosta kviitung“", () => {
     expect((await allInvoices())[0]).toMatchObject({ amountCents: 8000, line: { part: "Osamakse" } });
   });
 
-  test("all or nothing: a receipt asked with no seller (Seaded → Arve andmed empty at the press) is `sellerMissing` — the money is not added, the seat not confirmed, no number taken", async () => {
+  test("all or nothing: a receipt asked with no seller (Seaded → Maksmine empty at the press) is `sellerMissing` — the money is not added, the seat not confirmed, no number taken", async () => {
     const c = await course290();
     const r = await registrationOn(db, c, { seatHoldUntil: new Date(NOW.getTime() + 60_000) });
     expect(await add(r, 14500, { receipt: true })).toEqual({ ok: false, error: "sellerMissing" });

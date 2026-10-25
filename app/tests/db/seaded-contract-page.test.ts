@@ -4,21 +4,21 @@ import type { Db } from "@/db/client";
 import { pages } from "@/db/schema";
 import { saveContractTexts } from "@/server/contracts";
 import { makeTestDb } from "./helpers";
+import { sectionOf } from "./seaded-page";
 
-// Seaded with its „Lepingud“ card (contracts Task 5, spec D2, §4), rendered from a real (PGlite) database to HTML: the card is the last, a form of its own
-// (and the sample's second form) after the settings', the certificate's and the invoice's; it shows Maria's own contact text as stored (empty before her first
-// save, never the public „Õppetingimused“ text that stands in for it); the e-course's contract keeps its card in the settings' form, retitled
-// „E-koolituse leping (tingimused)“, with the stored page title in its own field; the anchor „#lepingud“ is on the page. The server actions are
-// stand-ins.
+// Seaded with its „Lepingud“ card (contracts Task 5, spec D2, §4; admin UX pass piece 3b, Task 4: the section „Lepingud ja tingimused“, #lepingud),
+// rendered from a real (PGlite) database to HTML: the card is the section's last, a form of its own (and the sample's second form) after the legal texts'
+// form; it shows Maria's own contact text as stored (empty before her first save, never the public „Õppetingimused“ text that stands in for it); the
+// e-course's contract keeps its card in the legal texts' form, retitled „E-koolituse leping (tingimused)“, with the stored page title in its own field.
+// The server actions are stand-ins.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
-vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-financing", () => ({ saveFinancingSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
+// (the Maksmine card reads the page again once a new prefix is stored: the router is a stand-in here)
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => "/admin/seaded", useSearchParams: () => new URLSearchParams() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
 
@@ -44,14 +44,15 @@ const fieldValue = (html: string, name: string): string | null => {
   return area ? decode(area[1]) : null;
 };
 
-test("before Maria writes anything: the card is the last on the page, a form of its own after the invoice's, its fields empty; the anchor and the sample are there", async () => {
+test("before Maria writes anything: the card is the last of „Lepingud ja tingimused“, a form of its own after the legal texts', its fields empty; the sample is there", async () => {
   const html = await page();
   const invoice = html.indexOf("data-invoice-settings");
   const card = html.indexOf("data-contract-texts");
   expect(invoice).toBeGreaterThan(-1);
   expect(card).toBeGreaterThan(invoice);
-  expect(html.slice(html.lastIndexOf("<section", card))).toMatch(/^<section id="lepingud"/);
-  expect(html.slice(card)).not.toContain("<section"); // the last card
+  expect(sectionOf(html, "data-contract-texts")).toBe("lepingud");
+  expect(html.slice(card, html.indexOf('id="ligipaas"'))).not.toMatch(/data-legal-editor|data-invoice-settings|data-certificate-settings/); // (no other card of the section after it)
+  expect(sectionOf(html, "data-admin-emails")).toBe("ligipaas");
   expect(html.slice(card)).toContain("Kontaktkoolituse leping");
   expect([fieldValue(html, "contract.title"), fieldValue(html, "contract.body")]).toEqual(["", ""]);
   expect(html.slice(card)).toContain('action="/api/admin/naidisleping"');
@@ -71,7 +72,7 @@ test("after her first save: her title and text in the fields, as stored", async 
   expect(html.slice(html.indexOf("data-contract-texts"))).toContain("Näidisleping vene keeles (PDF)");
 });
 
-test("the e-course's contract keeps its card in the settings' form, retitled, with its stored page title in a field of its own (ruling R3)", async () => {
+test("the e-course's contract keeps its card in the legal texts' form, retitled, with its stored page title in a field of its own (ruling R3)", async () => {
   await db.insert(pages).values({ key: "course_terms", title: { et: "E-koolituse leping", ru: "Договор онлайн-обучения" }, body: { et: "Tere {nimi}." } });
   const html = await page();
   const editor = html.slice(html.indexOf('data-legal-editor="course_terms"'));
@@ -79,9 +80,11 @@ test("the e-course's contract keeps its card in the settings' form, retitled, wi
   expect(fieldValue(html, "course_terms.title")).toBe("E-koolituse leping");
   expect(fieldValue(html, "course_terms.body")).toBe("Tere {nimi}.");
   expect(html).toContain("Soovitus: „E-koolituse leping“.");
-  // the settings' form ends before the contracts' card begins, and the e-course card is inside it
+  // the legal texts' form ends before the contracts' card begins, and the e-course card is inside it, with the save bar at the form's foot
   expect(html.indexOf("</form>")).toBeGreaterThan(html.indexOf('data-legal-editor="course_terms"'));
   expect(html.indexOf("</form>")).toBeLessThan(html.indexOf("data-contract-texts"));
+  expect(html.indexOf("data-save-bar")).toBeLessThan(html.indexOf("</form>"));
+  expect(html.match(/data-save-bar/g)).toHaveLength(1);
 });
 
 test("ruling R18: the e-course's card has the contact card's placeholders hint (the cart and the terms gate fill them), the same words and list", async () => {

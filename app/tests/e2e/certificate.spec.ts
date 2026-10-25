@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { certificateFileName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings } from "../../src/domain/certificate";
 import { clientEmail, takeTerms } from "./account";
-import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, seadedAutosave, seadedStatus, signInAsAdmin, type CreatedRows } from "./admin-login";
 import {
   completedCourse, highestIssuedSeq, insertCertificate, NUMBER_LOCK, storedCertificate, storedCertificateSetting, storedCourseCertificate, type StoredCertificate,
 } from "./certificate";
@@ -17,7 +17,7 @@ import { expect, submitsForms, test } from "./test";
 // downloads the PDF (`%PDF`, its file name); Maria's drawer shows it with her download, "Paranda nimi" re-issues it under the same number, the
 // register lists it; the ended access's dashboard card links it, and once the access is revoked her link goes and her download is 404 while
 // Maria's drawer keeps it, marked (Review Focus 5). A student whose access ended before she confirmed her name gets it from her dashboard
-// card's own form (final review I-1). Seaded → "Tunnistus": the trainer's name is the signature (no picture to upload), and one
+// card's own form (final review I-1). Seaded → "Tunnistus" (autosaved since admin UX pass piece 3b): the trainer's name is the signature (no picture to upload), and one
 // in Cyrillic is refused on its field with nothing stored. And the screens at 390, 834, 1194 and 1440 px. Every student is a sample address
 // (`e2e-client-cert-…@example.test`, never mailed) on an e-course of the test's own; all of it is removed after each test. Under `next dev`
 // and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim (admin-login.ts). The number series and Seaded's setting are the whole
@@ -255,16 +255,20 @@ test("§6 Seaded → Tunnistus: the trainer's name is the signature (no picture 
   await page.goto("/admin/seaded");
   await adminReady(page);
   const card = page.locator("[data-certificate-settings]");
-  await expect(card.locator("[data-cert-save]")).toHaveText("Salvesta tunnistuse andmed");
+  await expect(card.getByRole("button")).toHaveCount(0); // (no „Salvesta tunnistuse andmed“: the card autosaves, admin UX pass piece 3b Task 4)
   await expect(card.locator('img, input[type="file"]')).toHaveCount(0);
+  await expect(card.locator("[data-cert-preview]")).toHaveText(/^Järgmine tunnistus: MS LAB \d{4}-\d{2,}$/);
   const trainer = card.locator("[data-cert-trainer]");
   await expect(trainer).toHaveValue(readCertificateSettings(before, new Date()).trainerName);
   // the server refuses it before its lock and stores nothing, so no other test's number is touched
-  await trainer.fill("Мария Соснина");
-  await card.locator("[data-cert-save]").click();
+  const refused = await seadedAutosave(page, "certificate", async () => {
+    await trainer.fill("Мария Соснина");
+    await trainer.press("Tab");
+  });
+  expect(refused.status()).toBe(400);
   await expect(trainer).toHaveAttribute("aria-invalid", "true", { timeout: 30_000 });
   await expect(card).toContainText(LETTERS_ET);
-  await expect(card.locator("[data-cert-status]")).toHaveText("Kontrolli märgitud välju.");
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "invalid");
   expect((await storedCertificateSetting())?.trainerName ?? null).toBe(before?.trainerName ?? null);
 });
 
@@ -281,7 +285,7 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
   const screens: { page: Page; url: string; scope: string; admin: boolean; shows: string[] }[] = [
     { page: herA.page, url: coursePage(a), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-name]", "[data-certificate-issue]"] },
     { page: herB.page, url: coursePage(b), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-number]", "[data-certificate-download]"] },
-    { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-save]", "[data-cert-trainer]"] },
+    { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-next-seq]", "[data-cert-trainer]"] },
     { page, url: `/admin/opilased?id=${b.clientId}`, scope: `[data-access="${b.courseId}"]`, admin: true, shows: ["[data-access-certificate]", "[data-reissue]"] },
     { page, url: "/admin/tunnistused", scope: "[data-certificate-register]", admin: true, shows: ["[data-tab-pills]", `[data-register-row="${cert.id}"]`] },
   ];

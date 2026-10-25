@@ -73,10 +73,10 @@ afterEach(async () => {
 });
 
 describe("ContractTexts: the card", () => {
-  test("the card is called „Lepingud“, with the anchor; the contact contract's title and text in their fields, Estonian first", async () => {
+  test("the card is called „Lepingud“; the contact contract's title and text in their fields, Estonian first", async () => {
     await show();
     expect($("h2")!.textContent).toBe("Lepingud");
-    expect($("section")!.id).toBe("lepingud");
+    expect($("section")!.id).toBe(""); // (the anchor #lepingud is its section's, „Lepingud ja tingimused“: piece 3b Task 4)
     expect($("h3")!.textContent).toBe("Kontaktkoolituse leping");
     expect(field("title").value).toBe("Kontaktkoolituse leping");
     expect(field("body").value).toBe("Õpilane {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.");

@@ -220,11 +220,11 @@ describe("„Koosta arve“", () => {
   });
 
   test("a refusal is shown in its words and the form stays open (here the bank details are missing)", async () => {
-    actions.createInvoiceAction.mockResolvedValue({ ok: false, error: "bankMissing", text: "Täida enne Seaded → „Ettemaksu juhised“ (saaja ja IBAN)." });
+    actions.createInvoiceAction.mockResolvedValue({ ok: false, error: "bankMissing", text: "Täida enne Seaded → „Maksmine“ (saaja ja IBAN)." });
     await show({ invoices: [] });
     await open();
     await submitForm($("[data-invoice-create-form]"));
-    expect(line(container)).toBe("Täida enne Seaded → „Ettemaksu juhised“ (saaja ja IBAN).");
+    expect(line(container)).toBe("Täida enne Seaded → „Maksmine“ (saaja ja IBAN).");
     expect($("[data-invoice-create-form]")).not.toBeNull();
   });
 
@@ -236,11 +236,11 @@ describe("„Koosta arve“", () => {
     expect(actions.createInvoiceAction).not.toHaveBeenCalled();
   });
 
-  test("without a seller there is no „Koosta arve“, but a link „Täida Seaded → Arve andmed“ to the card", async () => {
+  test("without a seller there is no „Koosta arve“, but a link „Täida Seaded → Maksmine“ to the card", async () => {
     await show({ sellerReady: false });
     expect($("[data-invoice-create]")).toBeNull();
     const link = $<HTMLAnchorElement>("[data-invoice-need-seller] a")!;
-    expect([link.textContent, link.getAttribute("href")]).toEqual(["Täida Seaded → Arve andmed", "/admin/seaded#arve"]);
+    expect([link.textContent, link.getAttribute("href")]).toEqual(["Täida Seaded → Maksmine", "/admin/seaded#maksmine"]);
   });
 
   test("everything already invoiced: a line says so; a registration without a price offers nothing", async () => {

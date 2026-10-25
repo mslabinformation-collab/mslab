@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { CERT_LIMITS } from "@/domain/certificate";
+import { useRouter } from "next/navigation";
+import { startTransition, useCallback, useId, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { CERT_LIMITS, certificateForm, formatCertificateNumber, type CertificateForm } from "@/domain/certificate";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { saveCertificateSettingsAction } from "@/server/actions/admin-certificates";
 import type { CertificateFieldError } from "@/server/certificates";
+import { useSeadedPart, type StatusReport } from "./useSeadedPart";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
 import styles from "./CertificateSettings.module.css";
 
-/** What the Seaded page reads for the card (server/certificates.ts certificateCard: the settings, "Järgmine number" as the next issue takes it, and the last issued number). */
+/**
+ * What the Seaded page reads for the card (server/certificates.ts certificateCard: the settings, "Järgmine number" as the next issue takes it, the
+ * last issued number, and the card's version: its autosave goes from it).
+ */
 export type CertificateSettingsInitial = {
   place: string;
   registryCode: string;
@@ -22,56 +26,55 @@ export type CertificateSettingsInitial = {
   nextSeq: number;
   /** The number last issued in `nextYear` ("MS LAB 2026-14"), or null. */
   last: string | null;
+  version: string;
 };
 
-/** The fields as typed: the two numbers too (the server parses them, as the course editor's). */
-type Draft = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: string; nextSeq: string };
-type Field = keyof Draft;
-type Stored = Omit<CertificateSettingsInitial, "last">;
+type Field = keyof CertificateForm;
 
-const draftOf = (s: Stored): Draft => ({
-  place: s.place,
-  registryCode: s.registryCode,
-  practicalLine: s.practicalLine,
-  trainerName: s.trainerName,
-  nextYear: String(s.nextYear),
-  nextSeq: String(s.nextSeq),
-});
+/** „Aasta“ and „Number“ commit on blur (behaviours conflict 13). */
+const ON_BLUR = ["nextYear", "nextSeq"] as const;
 
-/** The status line: empty, on its way, done or refused. */
-type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
-const IDLE: Line = { tone: "idle", text: "" };
-const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
+/** A whole number as typed, or null. */
+const whole = (typed: string): number | null => (/^\d{1,9}$/.test(typed.trim()) ? Number(typed.trim()) : null);
 
 /**
- * Seaded → "Tunnistus" (phase 3d, spec §6, §4): what every new e-course certificate prints besides the student's name and her course — the
- * place, the registry code, the practical work's line and the trainer's name, which the PDF writes in the script font as Maria's signature
- * (owner, 15.10: no picture) — and "Järgmine number" (year and number), with the number last issued in that year beside it. A form
- * of its own after the settings' form, with its own "Salvesta tunnistuse andmed" (a secondary button: the page's primary one is the
- * settings' save bar); a refused field is marked in words and the first one takes the focus (Review Focus 4: a next number at or below one
- * already issued is "taken"; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is
- * "invalid" on the year, in its own words). The card keeps its own state; the page is not refreshed.
+ * Seaded → "Tunnistus" (phase 3d, spec §6, §4; admin UX pass piece 3b, Task 4: README B4, P-10, spec D6): what every new e-course certificate prints
+ * besides the student's name and her course — the place, the registry code, the practical work's line and the trainer's name, which the PDF writes in
+ * the script font as Maria's signature (owner, 15.10: no picture) — and "Järgmine number" (its „Aasta“ and „Number“, D6: certificates unchanged) with
+ * the preview „Järgmine tunnistus: MS LAB {year}-{nn}“ under it and the number last issued in the card's year. Every field autosaves on
+ * api/admin/seaded/certificate under the page's one SaveStatus (`onStatus`): a text 1.5 s after typing and at once when left, the two numbers when
+ * left (they commit on blur); a year stored, the page is read again for the year's last issued number. A refused field says why in its own words, in the field (Review Focus 4: a number at or below one already issued is
+ * `taken`; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is "invalid" on the year).
  */
-export function CertificateSettings({ initial }: { initial: CertificateSettingsInitial }) {
+export function CertificateSettings({ initial, onStatus }: { initial: CertificateSettingsInitial; onStatus?: StatusReport }) {
   const t = adminEt.certificates.settings;
   const uid = useId();
-  const form = useRef<HTMLFormElement>(null);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
-  // the last issued number belongs to the year it was read for (the loaded one, then the saved one), not to what is typed in the year field
-  const [last, setLast] = useState({ number: initial.last, year: initial.nextYear });
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<Line>(IDLE);
-  const [pending, start] = useTransition();
-
-  // a refused save: the first marked field takes the focus
-  useEffect(() => {
-    if (Object.keys(fields).length > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-  }, [fields]);
-
+  const labels: Record<Field, string> = {
+    place: t.place,
+    registryCode: t.registryCode,
+    practicalLine: t.practicalLine,
+    trainerName: t.trainerName,
+    nextYear: t.nextYear,
+    nextSeq: t.nextSeq,
+  };
+  const label = (f: string) => labels[f as Field] ?? f;
   const id = (name: Field) => `${uid}-${name}`;
-  const change = (name: Field) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [name]: e.target.value }));
+  const focusById = useCallback((name: string) => document.getElementById(`${uid}-${name}`)?.focus(), [uid]);
+  const router = useRouter();
+  const nav = useRef(router);
+  useLayoutEffect(() => {
+    nav.current = router;
+  });
+  // a year stored: the page is read again, for the number last issued in that year (the line under the numbers)
+  const onSaved = useCallback((patch: Record<string, unknown>) => {
+    if ("nextYear" in patch) startTransition(() => nav.current.refresh());
+  }, []);
+  const fields = useMemo(() => certificateForm(initial), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
+  const part = useSeadedPart({ part: "certificate", version: initial.version, fields, label, focusField: focusById, onStatus, onBlur: ON_BLUR, onSaved });
+  const value = (name: Field): string => String(part.text(name) ?? "");
+
   const errorOf = (name: Field): string | undefined => {
-    const code = fields[name];
+    const code = part.codeOf(name);
     if (code === undefined) return undefined;
     // a year that is not this one or the next (M-5) has its own words; the number's "invalid" is about the number
     if (name === "nextYear" && code === "invalid") return t.errors.year;
@@ -79,15 +82,15 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
     const known: Record<CertificateFieldError, string> & Record<string, string | undefined> = t.errors;
     return known[code] ?? t.errors.other;
   };
-  /** A field's marks: invalid when refused, described by its hint and its error. */
-  const aria = (name: Field, hint?: string) => ({
+  /** A field's marks: invalid when refused, described by its hints and its error. */
+  const aria = (name: Field, hints: string[] = []) => ({
     "aria-invalid": errorOf(name) ? (true as const) : undefined,
-    "aria-describedby": [hint ? `${id(name)}-hint` : "", errorOf(name) ? `${id(name)}-error` : ""].filter(Boolean).join(" ") || undefined,
+    "aria-describedby": [...hints, errorOf(name) ? `${id(name)}-error` : ""].filter(Boolean).join(" ") || undefined,
   });
   /** A field's label, its input, its hint and its error. */
-  const box = (name: Field, label: string, input: ReactNode, hint?: string, className = "") => (
+  const box = (name: Field, input: ReactNode, hint?: string, className = "") => (
     <div className={`${ui.field} ${className}`}>
-      <label htmlFor={id(name)}>{label}</label>
+      <label htmlFor={id(name)}>{labels[name]}</label>
       {input}
       {hint && (
         <p id={`${id(name)}-hint`} className={ui.hint}>
@@ -101,141 +104,90 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
       )}
     </div>
   );
+  const text = (name: "place" | "registryCode" | "practicalLine" | "trainerName", hook: string, limit: number, hint?: string, className = "") =>
+    box(
+      name,
+      <input
+        id={id(name)}
+        className={ui.input}
+        type="text"
+        autoComplete="off"
+        maxLength={limit}
+        value={value(name)}
+        onChange={(e) => part.type(name, e.target.value)}
+        {...aria(name, hint ? [`${id(name)}-hint`] : [])}
+        {...{ [`data-cert-${hook}`]: "" }}
+      />,
+      hint,
+      className,
+    );
+  const number = (name: "nextYear" | "nextSeq", hook: string, maxLength: number) =>
+    box(
+      name,
+      <input
+        id={id(name)}
+        className={ui.input}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        maxLength={maxLength}
+        value={value(name)}
+        onChange={(e) => part.type(name, e.target.value)}
+        {...aria(name)}
+        {...{ [`data-cert-${hook}`]: "" }}
+      />,
+    );
 
-  const save = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending) return;
-    setStatus({ tone: "busy", text: t.saving });
-    start(async () => {
-      const result = await saveCertificateSettingsAction(draft);
-      if (result.ok) {
-        setDraft(draftOf(result.settings));
-        setLast({ number: result.last, year: result.settings.nextYear });
-        setFields({});
-        setStatus({ tone: "done", text: t.saved });
-      } else if (result.fields) {
-        // (the action's literal result types are normalised to one another's optional members, so `"fields" in result` would not narrow)
-        setFields(result.fields);
-        setStatus({ tone: "error", text: t.invalid });
-      } else setStatus({ tone: "error", text: t.error });
-    });
+  // P-10: the next number as it will be printed, from the two fields as typed
+  const year = whole(value("nextYear"));
+  const seq = whole(value("nextSeq"));
+  const preview = year !== null && year >= 2000 && seq !== null && seq >= 1 ? fill(t.preview, { number: formatCertificateNumber(year, seq) }) : null;
+  // the last issued number belongs to the year the page read it for (the card's year, as stored or as the page read it again)
+  const lastLine = initial.last ? fill(t.last, { number: initial.last }) : fill(t.lastNone, { year: initial.nextYear });
+
+  /** Leaving a field: the numbers waiting to be left are committed, and what is typed goes at once. */
+  const leave = () => {
+    part.commit();
+    void part.flush();
   };
 
   return (
-    <section id="tunnistus" className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} data-certificate-settings="">
+    <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} onBlur={leave} data-certificate-settings="">
       <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
         {t.title}
       </h2>
       <p className={`${ui.muted} ${site.cardLead}`}>{t.lead}</p>
-      <form ref={form} onSubmit={save} noValidate data-cert-form="">
-        <div className={ed.grid}>
-          {box(
-            "place",
-            t.place,
-            <input id={id("place")} className={ui.input} type="text" autoComplete="off" maxLength={CERT_LIMITS.place} value={draft.place} onChange={change("place")} {...aria("place", t.placeHint)} data-cert-place="" />,
-            t.placeHint,
-          )}
-          {box(
-            "registryCode",
-            t.registryCode,
-            <input
-              id={id("registryCode")}
-              className={ui.input}
-              type="text"
-              autoComplete="off"
-              maxLength={CERT_LIMITS.registryCode}
-              value={draft.registryCode}
-              onChange={change("registryCode")}
-              {...aria("registryCode")}
-              data-cert-registry=""
-            />,
-          )}
-          {box(
-            "practicalLine",
-            t.practicalLine,
-            <input
-              id={id("practicalLine")}
-              className={ui.input}
-              type="text"
-              autoComplete="off"
-              maxLength={CERT_LIMITS.practicalLine}
-              value={draft.practicalLine}
-              onChange={change("practicalLine")}
-              {...aria("practicalLine", t.practicalLineHint)}
-              data-cert-practical=""
-            />,
-            t.practicalLineHint,
-            ed.wide,
-          )}
-          {box(
-            "trainerName",
-            t.trainerName,
-            <input
-              id={id("trainerName")}
-              className={ui.input}
-              type="text"
-              autoComplete="off"
-              maxLength={CERT_LIMITS.trainerName}
-              value={draft.trainerName}
-              onChange={change("trainerName")}
-              {...aria("trainerName", t.trainerNameHint)}
-              data-cert-trainer=""
-            />,
-            t.trainerNameHint,
-          )}
-          <fieldset className={ed.fieldset} aria-describedby={`${uid}-next-hint ${uid}-last`}>
-            <legend className={ui.legend}>{t.nextNumber}</legend>
-            <div className={styles.number}>
-              {box(
-                "nextYear",
-                t.nextYear,
-                <input
-                  id={id("nextYear")}
-                  className={ui.input}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={4}
-                  value={draft.nextYear}
-                  onChange={change("nextYear")}
-                  {...aria("nextYear")}
-                  data-cert-next-year=""
-                />,
-              )}
-              {box(
-                "nextSeq",
-                t.nextSeq,
-                <input
-                  id={id("nextSeq")}
-                  className={ui.input}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={5}
-                  value={draft.nextSeq}
-                  onChange={change("nextSeq")}
-                  {...aria("nextSeq")}
-                  data-cert-next-seq=""
-                />,
-              )}
-            </div>
-            <p id={`${uid}-next-hint`} className={ui.hint}>
-              {t.nextHint}
+      <div className={ed.grid}>
+        {text("place", "place", CERT_LIMITS.place, t.placeHint)}
+        {text("registryCode", "registry", CERT_LIMITS.registryCode)}
+        {text("practicalLine", "practical", CERT_LIMITS.practicalLine, t.practicalLineHint, ed.wide)}
+        {text("trainerName", "trainer", CERT_LIMITS.trainerName, t.trainerNameHint)}
+        <fieldset className={ed.fieldset} aria-describedby={[preview ? `${uid}-preview` : "", `${uid}-next-hint`, `${uid}-last`].filter(Boolean).join(" ")}>
+          <legend className={ui.legend}>{t.nextNumber}</legend>
+          <div className={styles.number}>
+            {number("nextYear", "next-year", 4)}
+            {number("nextSeq", "next-seq", 5)}
+          </div>
+          {preview && (
+            <p id={`${uid}-preview`} className={ui.hint} data-cert-preview="">
+              {preview}
             </p>
-            <p id={`${uid}-last`} className={ui.hint} data-cert-last="">
-              {last.number ? fill(t.last, { number: last.number }) : fill(t.lastNone, { year: last.year })}
-            </p>
-          </fieldset>
-        </div>
-        <div className={styles.actions}>
-          <p role="status" className={toneClass(status.tone)} data-cert-status="">
-            {status.text}
+          )}
+          <p id={`${uid}-next-hint`} className={ui.hint}>
+            {t.nextHint}
           </p>
-          <button type="submit" className={`${ui.btn} ${ui.secondary}`} aria-disabled={pending || undefined} data-cert-save="">
-            {pending ? t.saving : t.save}
+          <p id={`${uid}-last`} className={ui.hint} data-cert-last="">
+            {lastLine}
+          </p>
+        </fieldset>
+      </div>
+      {part.conflict && (
+        <p className={styles.restore}>
+          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void part.restore()} data-cert-restore="">
+            {adminEt.courseEditor.restore}
           </button>
-        </div>
-      </form>
+        </p>
+      )}
     </section>
   );
 }

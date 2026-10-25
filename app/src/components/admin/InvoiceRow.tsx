@@ -137,7 +137,7 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
     if (r.ok) return finish(t.buyerPanel.done);
     if ("fields" in r && r.fields) {
       setFields(r.fields);
-      return refuse(adminEt.invoices.settings.invalid, r.error);
+      return refuse(adminEt.editor.invalid, r.error);
     }
     refuse(r.text, r.error);
   });

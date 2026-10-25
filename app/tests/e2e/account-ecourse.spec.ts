@@ -3,7 +3,7 @@ import { formatDate } from "../../src/i18n/format";
 import {
   clientEmail, currentTermsVersion, E2E_TERMS, insertEcourseAccess, removeTermsPage, SEED_ECOURSE_SLUG, setTerms, signInAsClient, storedAcceptances, takeTerms,
 } from "./account";
-import { adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, saveBarButton, saveBarStatus, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { LOCAL_FIXTURES, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { submitsForms, test, expect } from "./test";
@@ -282,8 +282,8 @@ test("accept, then the admin saves new terms in Seaded: the next open shows the 
     const body = editor.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     await expect(body).toHaveValue(E2E_TERMS.et);
     await body.fill("E2E uued tingimused.\n\nTeine lõik muutus.");
-    await seadedSave(page).click();
-    await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
+    await saveBarButton(page).click(); // (the legal texts keep their own save until their drafts: admin UX pass piece 3b)
+    await expect(saveBarStatus(page)).toHaveText("Salvestatud.");
   } finally {
     await removeAdminRows(created);
   }

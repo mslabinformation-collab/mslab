@@ -742,7 +742,7 @@ export const certificates = pgTable("certificates", {
  * paid (`paymentId`, one per payment), or made by Maria on a registration: unpaid (a request to pay, which a Montonio payment started for it
  * then pays: it takes that payment's `paymentId`) or paid (a receipt). It holds a frozen
  * copy of everything the PDF prints (`line`, `seller`, `buyer`, `vatRate`, `amountCents`), so a later change of the course, of the price, of
- * Seaded → Arve andmed or of the account never alters it; an unpaid invoice's buyer is the one thing Maria may still edit. The PDF is drawn
+ * Seaded → Maksmine or of the account never alters it; an unpaid invoice's buyer is the one thing Maria may still edit. The PDF is drawn
  * from this row on every download. The number is {prefix}{year}-{nnn} (domain/invoice.ts formatInvoiceNumber), given under the invoice-number
  * lock, unique with (prefix, year, seq) as the backstop; it is never given again, so a cancelled invoice keeps its own. The links are set null
  * when the registration, the payment, the course or the account is deleted: an accounting record outlives them.
@@ -786,7 +786,7 @@ export const invoices = pgTable("invoices", {
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   /**
-   * Maria's footer line of Seaded → Arve andmed as it was at the issue, frozen (D2; migration 0012): the PDF prints this, never the setting of
+   * Maria's footer line of Seaded → Maksmine as it was at the issue, frozen (D2; migration 0012): the PDF prints this, never the setting of
    * the day it is downloaded. Empty for none, and for the invoices issued before 0012.
    */
   footer: text("footer").notNull().default(""),

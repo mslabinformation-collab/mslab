@@ -23,7 +23,7 @@ vi.mock("@/server/actions/admin-clients", () => ({
   extendAccessAction: vi.fn(),
 }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
-vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
+vi.mock("@/server/actions/admin-certificates", () => ({ reissueCertificateAction: vi.fn() }));
 
 import { ClientDetailView } from "@/components/admin/ClientDrawer";
 

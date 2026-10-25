@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 import { formatDate } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures } from "./account";
-import { adminReady, signInAsAdmin } from "./admin-login";
+import { adminReady, seadedStatus, signInAsAdmin } from "./admin-login";
 import { onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, openDrawer, openFold, today, viaMenu, WIDTHS } from "./invoices";
 import { runName, studentPage } from "./protocols";
 import { expect, submitsForms, test } from "./test";
 
-// Invoices, the whole path in a row (invoices Task 7, spec §1's success): Maria fills „Arve andmed“ and opens the sample, makes a request to pay
+// Invoices, the whole path in a row (invoices Task 7, spec §1's success): Maria fills the seller in Seaded → „Maksmine“ and opens the sample, makes a request to pay
 // for the 50 % of a registration, the student finds it in her account, Maria sends it and marks it paid (the registration confirms), the student
 // downloads the PDF, Maria takes the payment back, cancels the invoice (the student no longer sees it) and finds it in the month's CSV. Maria's
 // browser and the student's are two contexts, as they are in life. The three screens an invoice lives on — the registration's „Arved“, the
@@ -57,9 +57,9 @@ async function storedInvoice(email: string): Promise<StoredInvoice> {
   return rows[0];
 }
 
-test("the whole path: „Arve andmed“, a request to pay, the student's account, the mail, „Märgi tasutuks“, the PDF, „Võta tasumine tagasi“, „Tühista arve“, the month's CSV", async ({ page, context, browser, visitorIp, isMobile }, info) => {
+test("the whole path: the seller in „Maksmine“, a request to pay, the student's account, the mail, „Märgi tasutuks“, the PDF, „Võta tasumine tagasi“, „Tühista arve“, the month's CSV", async ({ page, context, browser, visitorIp, isMobile }, info) => {
   test.setTimeout(240_000); // (the first view of each page under `next dev` compiles it)
-  giveBack = await holdInvoiceSettings(info, null); // Ettemaksu juhised are filled, Arve andmed are not: Maria has not got to them yet
+  giveBack = await holdInvoiceSettings(info, null); // the bank fields of „Maksmine“ are filled, the seller is not: Maria has not got to it yet
   // the student: a registration at 50 % (group price 350 €), nothing paid, on a course of the test's own
   const email = clientEmail("inv-path", runName(info));
   made.add(email);
@@ -67,8 +67,8 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
   const f = await insertAccountFixtures(email, { name: "Kati Tamm", cards: ["awaiting"] });
   const registration = { id: f.registrations.awaiting!, name: "Kati Tamm" };
 
-  // 1. Maria fills „Arve andmed“ in Seaded and opens „Näidisarve (PDF)“
-  await test.step("Maria fills „Arve andmed“ and opens the sample", async () => {
+  // 1. Maria fills the seller in Seaded → „Maksmine“ and opens „Näidisarve (PDF)“
+  await test.step("Maria fills the seller in „Maksmine“ and opens the sample", async () => {
     await signInAsAdmin(page, context, visitorIp, created);
     await page.goto("/admin/seaded");
     await adminReady(page);
@@ -78,10 +78,10 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
     await field("registryCode").fill("12345678");
     await field("address").fill("Testi 1, Pärnu");
     await field("prefix").fill(PREFIX); // (this test's own series: no other test writes invoices under it, so its first number is 001)
-    await box.locator("[data-invoice-save]").click();
-    await expect(box.locator("[data-invoice-status]")).toHaveText("Arve andmed on salvestatud.");
-    const stored = await onLocalDb((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'invoice'`, { marksPages: false });
-    expect(stored[0]?.value).toMatchObject({ company: INVOICE_COMPANY, registryCode: "12345678", prefix: PREFIX, vatOn: false });
+    await field("prefix").press("Tab"); // (every field autosaves as it is left: Seaded → „Maksmine“, piece 3b Task 4)
+    const stored = async () => (await onLocalDb((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'invoice'`, { marksPages: false }))[0]?.value;
+    await expect.poll(stored).toMatchObject({ company: INVOICE_COMPANY, registryCode: "12345678", address: "Testi 1, Pärnu", prefix: PREFIX, vatOn: false });
+    await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
     const sample = await page.request.get((await box.locator("[data-invoice-sample]").getAttribute("href"))!);
     expect(sample.status()).toBe(200);
     expect(sample.headers()["content-type"]).toBe("application/pdf");

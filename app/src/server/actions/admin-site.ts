@@ -45,7 +45,7 @@ export const saveTrainer = adminAction(async (_admin, _prev: EditResult | null, 
 /** Hüpikaken "Salvesta": field data ({ parts: campaign and/or newsletter }). */
 export const saveCampaign = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("campaign save", () => ({ kind: "campaign" }), (db) => saveCampaignForm(db, formData)));
 
-/** Seaded "Salvesta": field data ({ parts: contact | newsletter | prepayment | privacy | terms | course_terms }). */
+/** Seaded → „Lepingud ja tingimused“ „Salvesta“: field data ({ parts: privacy | terms | course_terms }); the other cards autosave (api/admin/seaded/<part>). */
 export const saveSettings = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("settings save", (r) => ({ kind: "settings", parts: savedParts(r) }), (db) => saveSettingsForm(db, formData)));
 
 /** Post editor "Salvesta": field data ({ parts: post }). A new post continues at its own address. */

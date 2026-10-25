@@ -4,13 +4,14 @@ import type { Db } from "@/db/client";
 import { certificates, settings } from "@/db/schema";
 import { CERT_DEFAULTS, formatCertificateNumber, tallinnYear } from "@/domain/certificate";
 import { certificateCard, issueCertificate, saveCertificateSettings } from "@/server/certificates";
+import { sectionOf } from "./seaded-page";
 import { at, ecourse, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
-// Seaded with its "Tunnistus" card (phase 3d, spec §6, §4), rendered from a real (PGlite) database to HTML: the card is a form of its own
-// after the settings' form (never a form inside a form), it shows the stored setting (or the defaults) and the number last issued in the next
-// number's year. The trainer's name is the signature (owner, 15.10): the card has no picture and no file field. The server
-// actions are stand-ins (they need a browser or a request). The page reads the clock (`new Date()`): its tests count their years from it, so
+// Seaded with its "Tunnistus" card (phase 3d, spec §6, §4; admin UX pass piece 3b, Task 4: the section „Tunnistus“, autosaved, no form), rendered
+// from a real (PGlite) database to HTML: it shows the stored setting (or the defaults), the next number as the next issue takes it with its preview, and
+// the number last issued in the next number's year. The trainer's name is the signature (owner, 15.10): the card has no picture and no file field. The
+// legal texts' actions are stand-ins (they need a browser or a request). The page reads the clock (`new Date()`): its tests count their years from it, so
 // none depends on the year the suite runs in; the cases of one moment or another go to certificateCard with that moment given. The clock is
 // never faked here: a PGlite that lives through a jump of Date.now() makes its Postgres timers overflow Node's setTimeout (a warning each).
 
@@ -18,10 +19,9 @@ const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
-vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
-vi.mock("@/server/actions/admin-financing", () => ({ saveFinancingSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
+// (the Maksmine card reads the page again once a new prefix is stored: the router is a stand-in here)
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => "/admin/seaded", useSearchParams: () => new URLSearchParams() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
 
@@ -73,13 +73,13 @@ async function seed(setting: { nextYear: number; nextSeq: number } | null, issue
   return course;
 }
 
-test("without a setting: the defaults (Maria Sosnina signs), this year's number 1, nothing issued yet; the card is a form of its own after the settings' form, with no picture or file field", async () => {
+test("without a setting: the defaults (Maria Sosnina signs), this year's number 1 with its preview, nothing issued yet; the card is in the section #tunnistus, not a form, with no picture or file field", async () => {
   const html = await page();
   const card = html.indexOf("data-certificate-settings");
   expect(card).toBeGreaterThan(-1);
-  expect(html.indexOf("</form>")).toBeLessThan(card); // the settings' form ends before the card begins
-  expect(html.match(/<form/g)).toHaveLength(6); // (the settings', the certificate's and, after it, the invoices' card: invoices Task 5; then Järelmaks (Inbank)'s: instalments Task 5; then the contracts' save and sample: contracts Task 5)
-  expect(html.slice(html.lastIndexOf("<section", card))).toMatch(/^<section id="tunnistus"/); // the card's anchor, for "Seaded → Tunnistus"
+  expect(sectionOf(html, "data-certificate-settings")).toBe("tunnistus"); // the anchor of "Seaded → Tunnistus"
+  expect(html.slice(html.lastIndexOf("<section", card), html.indexOf("</section>", card))).not.toMatch(/<form|type="submit"/);
+  expect(html.slice(card)).toContain(`Järgmine tunnistus: ${formatCertificateNumber(THIS(), 1)}`);
   expect(valueOf(html, "place")).toBe(CERT_DEFAULTS.place);
   expect(valueOf(html, "registry")).toBe(CERT_DEFAULTS.registryCode);
   expect(valueOf(html, "practical")).toBe(CERT_DEFAULTS.practicalLine);
@@ -175,5 +175,5 @@ test.each(CASES)("what the card shows is accepted by its own save: $name", async
   await seed(setting, issued);
   const read = await certificateCard(db, new Date(now));
   expect([read.settings.nextYear, read.settings.nextSeq]).toEqual(card);
-  expect(await saveCertificateSettings(db, { ...CERT_DEFAULTS, nextYear: card[0], nextSeq: card[1] }, new Date(now))).toMatchObject({ ok: true });
+  expect(await saveCertificateSettings(db, { ...CERT_DEFAULTS, nextYear: card[0], nextSeq: card[1] }, read.version, new Date(now))).toMatchObject({ ok: true });
 });

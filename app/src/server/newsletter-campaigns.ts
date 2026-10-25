@@ -144,7 +144,7 @@ function imageUrlOf(siteUrl: string, key: string | null): string | null {
   return /^https?:\/\//i.test(path) ? path : `${siteUrl.replace(/\/+$/, "")}${path}`;
 }
 
-/** The school under the mail: Seaded → „Arve andmed“, "MS LAB" and no address when it has none (campaign-mail.ts says the same). */
+/** The school under the mail: Seaded → „Maksmine“, "MS LAB" and no address when it has none (campaign-mail.ts says the same). */
 async function schoolOf(q: Q, now: Date): Promise<{ name: string; address: string }> {
   const s = await getInvoiceSettings(q, now);
   return { name: s.company.trim() || "MS LAB", address: s.address.trim() };

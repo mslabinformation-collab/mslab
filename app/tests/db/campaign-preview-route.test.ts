@@ -111,7 +111,7 @@ describe("the preview of the fields as they stand", () => {
     expect(body.et.html).not.toContain("{{{");
   });
 
-  test("the school's name and address from Seaded → „Arve andmed“, else „MS LAB“", async () => {
+  test("the school's name and address from Seaded → „Maksmine“, else „MS LAB“", async () => {
     await signIn();
     expect(((await (await preview(DRAFT)).json()) as Preview).et.html).toContain(">MS LAB<");
     await setSetting(db, INVOICE_KEY, { company: "MS LAB Koolituskeskus OÜ", registryCode: "1", address: "Rüütli 1, Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" });

@@ -70,6 +70,22 @@ export function readCertificateSettings(value: unknown, now: Date): CertificateS
 }
 
 /**
+ * Seaded → "Tunnistus"'s fields as the card holds them (admin UX pass piece 3b, Task 4): the texts, and „Aasta“ and „Number“ as the text typed in their
+ * fields (the next number as the next issue takes it). The card starts from these, and its route's conflict answers them.
+ */
+export type CertificateForm = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: string; nextSeq: string };
+
+/** The card's fields of `s` (CertificateForm). */
+export const certificateForm = (s: CertificateSettings): CertificateForm => ({
+  place: s.place,
+  registryCode: s.registryCode,
+  practicalLine: s.practicalLine,
+  trainerName: s.trainerName,
+  nextYear: String(s.nextYear),
+  nextSeq: String(s.nextSeq),
+});
+
+/**
  * The letters a name may hold: the Latin letters that the certificate's script font, Revive 80 Signature, draws, and no others (a letter it
  * lacks would print as an empty box): A–Z a–z, the Latin-1 letters À–Ö Ø–ï ñ–ö ø–ý ÿ (so not × ÷, the signs ª º, nor ð and þ, which the font
  * lacks; Ð and Þ it has), ı, Œ œ, Š š, Ÿ and Ž ž. That is the Estonian õ ä ö ü š ž and the names of Finland, Germany, France, Scandinavia,

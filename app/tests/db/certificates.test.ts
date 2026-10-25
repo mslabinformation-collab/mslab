@@ -11,7 +11,7 @@ import { certificates, clients, courseAccess, courses, settings } from "@/db/sch
 import { CERT_DEFAULTS } from "@/domain/certificate";
 import { renderCertificate } from "@/server/certificate-pdf";
 import {
-  certificateForAdmin, certificateForStudent, certificateOfAccess, certificatePdf, getCertificateSettings, issueCertificate, lastIssued, listCertificates,
+  certificateCard, certificateForAdmin, certificateForStudent, certificateOfAccess, certificatePdf, getCertificateSettings, issueCertificate, lastIssued, listCertificates,
   reissueCertificate, saveCertificateSettings, type IssueResult,
 } from "@/server/certificates";
 import { makeTestDb } from "./helpers";
@@ -63,6 +63,17 @@ const at = (log: { query: string; params: unknown[] }[]) => ({
 
 const infoLog = () => vi.mocked(console.info).mock.calls.flat().join("\n");
 const stored = () => readSetting(db, "certificate");
+/** The card's version as stored now (certificateCard: its autosave goes from it). */
+const versionNow = async (now = NOW) => (await certificateCard(db, now)).version;
+/**
+ * Seaded → Tunnistus's autosave of `patch` from the version stored now (saveCertificateSettings, the part writer, admin UX pass piece 3b Task 4),
+ * answered as these rules' tests read it: the setting as stored after a save, the refused fields, or the other refusal.
+ */
+async function saveCard(patch: unknown, now = NOW): Promise<{ ok: true; settings: unknown } | { ok: false; fields: Record<string, string> } | { ok: false; error: string }> {
+  const answer = await saveCertificateSettings(db, patch, await versionNow(now), now);
+  if (answer.ok) return { ok: true, settings: await stored() };
+  return answer.error === "invalid" ? { ok: false, fields: answer.fields } : { ok: false, error: answer.error };
+}
 const rows = () => db.select().from(certificates).orderBy(certificates.id);
 
 /** The e-course "kulmud-e": two "Mida õpid" lines (the second with spaces around it) and 10 hours; `over` changes it. */
@@ -239,12 +250,12 @@ describe("the number series never stalls (an issue takes past the year's highest
   test("Seaded says another year (next year preset in December, a typo, a form left open over New Year) while the certificates are of this one: the issue takes the next free number of its own year, and Seaded follows", async () => {
     const c = await threeIssued();
     // Maria presets 2027 from number 1: the save is accepted (nothing issued in 2027) ...
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true });
+    expect(await saveCard({ ...VALID, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true });
     // ... and a student completes in 2026 all the same: 2026-04, not a second 2026-01
     expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas")).number).toBe("MS LAB 2026-04");
     expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 5 });
     // a typo, 2025 from number 3: refused since M-5 (only this year or the next), the setting stays as the issue left it
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2025, nextSeq: 3 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: 2025, nextSeq: 3 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
     expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 5 });
     expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer")).number).toBe("MS LAB 2026-05");
     expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 6 });
@@ -257,7 +268,7 @@ describe("the number series never stalls (an issue takes past the year's highest
     const turned = new Date("2026-12-31T22:30:00Z"); // already 2027 in Tallinn
     expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas", turned)).number).toBe("MS LAB 2027-01");
     // her form was loaded on 31.12 (2026, number 8) and saved after midnight: 2026 is last year now
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 8 }, new Date("2026-12-31T22:45:00Z"))).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: 2026, nextSeq: 8 }, new Date("2026-12-31T22:45:00Z"))).toEqual({ ok: false, fields: { nextYear: "invalid" } });
     expect(await stored()).toMatchObject({ nextYear: 2027, nextSeq: 2 });
     expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer", new Date("2027-01-02T08:00:00Z"))).number).toBe("MS LAB 2027-02");
     expect(await stored()).toMatchObject({ nextYear: 2027, nextSeq: 3 });
@@ -275,7 +286,7 @@ describe("the number series never stalls (an issue takes past the year's highest
 
   test("a number ahead of the highest issued — Maria's deliberate jump, or a gap left by a deleted account — is honoured, and the series goes on from it", async () => {
     const c = await threeIssued();
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 10 }, NOW)).toMatchObject({ ok: true });
+    expect(await saveCard({ ...VALID, nextYear: 2026, nextSeq: 10 }, NOW)).toMatchObject({ ok: true });
     expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas")).number).toBe("MS LAB 2026-10");
     expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 11 });
     expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer")).number).toBe("MS LAB 2026-11");
@@ -426,42 +437,44 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
   test("saveCertificateSettings: the texts on one line and trimmed, the trainer's name cleaned as the name rules clean it (NFC), the numbers as numbers (a form's digit strings too)", async () => {
     // "Mari" + U+0301 (a combining acute) + "a" is "María" once it is NFC
     const raw = { place: "  Tallinn ", registryCode: " 16346048 ", practicalLine: "Praktiline töö\n fotodel ", trainerName: " Mari\u0301a  Sosnina ", nextYear: "2026", nextSeq: "12" };
-    const saved = await saveCertificateSettings(db, raw, NOW);
+    const saved = await saveCard(raw, NOW);
     const settings = { place: "Tallinn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel", trainerName: "María Sosnina", nextYear: 2026, nextSeq: 12 };
     expect(saved).toEqual({ ok: true, settings });
     expect(await stored()).toEqual(settings);
   });
 
   test("its refusals, each by its field: empty or too long, a year or a number that is none; nothing is stored", async () => {
-    expect(await saveCertificateSettings(db, { place: " ", registryCode: "1".repeat(21), practicalLine: "x".repeat(201), trainerName: "", nextYear: 2026, nextSeq: 0 }, NOW)).toEqual({
+    expect(await saveCard({ place: " ", registryCode: "1".repeat(21), practicalLine: "x".repeat(201), trainerName: "", nextYear: 2026, nextSeq: 0 }, NOW)).toEqual({
       ok: false,
       fields: { place: "required", registryCode: "tooLong", practicalLine: "tooLong", trainerName: "required", nextSeq: "invalid" },
     });
     const numbers: [unknown, unknown][] = [[2026, 1.5], [2026, -1], [2026, "-1"], [2026, 100_000], [2026, null], [2026, 0]];
     for (const [nextYear, nextSeq] of numbers)
-      expect(await saveCertificateSettings(db, { ...VALID, nextYear, nextSeq }, NOW), `${String(nextYear)} ${String(nextSeq)}`).toEqual({ ok: false, fields: { nextSeq: "invalid" } });
+      expect(await saveCard({ ...VALID, nextYear, nextSeq }, NOW), `${String(nextYear)} ${String(nextSeq)}`).toEqual({ ok: false, fields: { nextSeq: "invalid" } });
     // a year that is none is on its own field (M-5)
     for (const nextYear of [1999, 2100, "20x6", 2026.5, null])
-      expect(await saveCertificateSettings(db, { ...VALID, nextYear, nextSeq: 1 }, NOW), String(nextYear)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: null, nextSeq: null }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid", nextSeq: "invalid" } });
-    for (const raw of [null, "x", [], 7]) expect((await saveCertificateSettings(db, raw, NOW)).ok, JSON.stringify(raw)).toBe(false);
+      expect(await saveCard({ ...VALID, nextYear, nextSeq: 1 }, NOW), String(nextYear)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: null, nextSeq: null }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid", nextSeq: "invalid" } });
+    for (const raw of [null, "x", [], 7]) expect((await saveCard(raw, NOW)).ok, JSON.stringify(raw)).toBe(false);
     expect(await stored()).toBeNull();
-    expect(await saveCertificateSettings(db, VALID, NOW)).toEqual({ ok: true, settings: VALID });
+    expect(await saveCard(VALID, NOW)).toEqual({ ok: true, settings: VALID });
   });
 
   test("M-5: the year is this Tallinn year or the next, else 'invalid' on nextYear (an issue would ignore a past year, and Maria's number with it): last year refused, this and next accepted, the year after refused; at Tallinn's midnight the new year counts", async () => {
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2025, nextSeq: 50 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2028, nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: 2025, nextSeq: 50 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: 2028, nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
     expect(await stored()).toBeNull(); // nothing stored
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 50 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 50 } });
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: "2027", nextSeq: 1 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
+    expect(await saveCard({ ...VALID, nextYear: 2026, nextSeq: 50 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 50 } });
+    expect(await saveCard({ ...VALID, nextYear: "2027", nextSeq: 1 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
     // 31.12 at 22:30 UTC is already 2027 in Tallinn: 2026 is last year, 2028 the next
     const turned = new Date("2026-12-31T22:30:00Z");
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 60 }, turned)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
-    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2028, nextSeq: 1 }, turned)).toMatchObject({ ok: true });
+    expect(await saveCard({ ...VALID, nextYear: 2026, nextSeq: 60 }, turned)).toEqual({ ok: false, fields: { nextYear: "invalid" } });
+    expect(await saveCard({ ...VALID, nextYear: 2028, nextSeq: 1 }, turned)).toMatchObject({ ok: true });
     // the year's refusal comes with the others, before any query
     const log = await useLoggedDb();
-    expect(await saveCertificateSettings(db, { ...VALID, place: "", nextYear: 2025 }, NOW)).toEqual({ ok: false, fields: { place: "required", nextYear: "invalid" } });
+    const version = await versionNow();
+    log.length = 0;
+    expect(await saveCertificateSettings(db, { ...VALID, place: "", nextYear: 2025 }, version, NOW)).toEqual({ ok: false, error: "invalid", fields: { place: "required", nextYear: "invalid" } });
     expect(log).toEqual([]);
   });
 
@@ -474,14 +487,16 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
       ["M".repeat(61), "tooLong"],
     ] as const;
     for (const [trainerName, error] of refused)
-      expect(await saveCertificateSettings(db, { ...VALID, trainerName }, NOW), trainerName).toEqual({ ok: false, fields: { trainerName: error } });
+      expect(await saveCard({ ...VALID, trainerName }, NOW), trainerName).toEqual({ ok: false, fields: { trainerName: error } });
     expect(await stored()).toBeNull();
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "Õie-Mai Šõrmus" }, NOW)).toMatchObject({ ok: true, settings: { trainerName: "Õie-Mai Šõrmus" } });
+    expect(await saveCard({ ...VALID, trainerName: "Õie-Mai Šõrmus" }, NOW)).toMatchObject({ ok: true, settings: { trainerName: "Õie-Mai Šõrmus" } });
   });
 
   test("Review Focus 1: the save takes the number series' lock before it reads the year's highest number and before it writes the setting (so an issue that commits first is seen, and none can slip in between); a refusal for a field touches nothing", async () => {
     const log = await useLoggedDb();
-    expect(await saveCertificateSettings(db, VALID, NOW)).toMatchObject({ ok: true });
+    const version = await versionNow();
+    log.length = 0;
+    expect(await saveCertificateSettings(db, VALID, version, NOW)).toMatchObject({ ok: true });
     let p = at(log);
     expect(p.numberLock).toBeGreaterThanOrEqual(0);
     expect([p.numberLock < p.maxSeq, p.maxSeq < p.settingWrite]).toEqual([true, true]);
@@ -489,14 +504,15 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     // 'taken': under the lock as well, and nothing is written
     const c = await ecourse();
     await issued((await student("kati@example.test", c.id)).client.id, "Kati Kask");
+    const after = await versionNow();
     log.length = 0;
-    expect(await saveCertificateSettings(db, { ...VALID, nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveCertificateSettings(db, { ...VALID, nextSeq: 1 }, after, NOW)).toEqual({ ok: false, error: "invalid", fields: { nextSeq: "taken" } });
     p = at(log);
     expect(p.numberLock).toBeGreaterThanOrEqual(0);
     expect([p.numberLock < p.maxSeq, p.settingWrite]).toEqual([true, -1]);
     // a field error is answered before any query
     log.length = 0;
-    expect(await saveCertificateSettings(db, { ...VALID, place: "" }, NOW)).toEqual({ ok: false, fields: { place: "required" } });
+    expect(await saveCertificateSettings(db, { ...VALID, place: "" }, after, NOW)).toEqual({ ok: false, error: "invalid", fields: { place: "required" } });
     expect(log).toEqual([]);
   });
 
@@ -507,11 +523,11 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
       const limit = limits[key];
       // limit - 2 letters and one emoji: exactly `limit` units (limit - 1 code points) — kept
       const atLimit = "a".repeat(limit - 2) + emoji;
-      expect(await saveCertificateSettings(db, { ...VALID, [key]: atLimit }, NOW), key).toMatchObject({ ok: true, settings: { [key]: atLimit } });
+      expect(await saveCard({ ...VALID, [key]: atLimit }, NOW), key).toMatchObject({ ok: true, settings: { [key]: atLimit } });
       expect(await getCertificateSettings(db, NOW), key).toMatchObject({ [key]: atLimit });
       // limit - 1 letters and one emoji: limit + 1 units (exactly `limit` code points) — refused, as the read would drop it
       const over = "a".repeat(limit - 1) + emoji;
-      expect(await saveCertificateSettings(db, { ...VALID, [key]: over }, NOW), key).toEqual({ ok: false, fields: { [key]: "tooLong" } });
+      expect(await saveCard({ ...VALID, [key]: over }, NOW), key).toEqual({ ok: false, fields: { [key]: "tooLong" } });
       await setSetting(db, "certificate", { ...SETTING, [key]: over });
       expect((await getCertificateSettings(db, NOW))[key], key).toBe(CERT_DEFAULTS[key]);
     }
@@ -521,15 +537,15 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     // "M" + 30 × (o + U+0308, a combining diaeresis) is 61 UTF-16 units, "Mö…ö" of 31 characters once it is NFC
     const decomposed = "M" + "o\u0308".repeat(30);
     const composed = "M" + "\u00F6".repeat(30);
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: decomposed }, NOW)).toMatchObject({ ok: true, settings: { trainerName: composed } });
+    expect(await saveCard({ ...VALID, trainerName: decomposed }, NOW)).toMatchObject({ ok: true, settings: { trainerName: composed } });
     expect((await getCertificateSettings(db, NOW)).trainerName).toBe(composed);
     // 61 letters, composed: over the limit
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "M" + "\u00F6".repeat(60) }, NOW)).toEqual({ ok: false, fields: { trainerName: "tooLong" } });
+    expect(await saveCard({ ...VALID, trainerName: "M" + "\u00F6".repeat(60) }, NOW)).toEqual({ ok: false, fields: { trainerName: "tooLong" } });
     // 60 code points (61 units) with an emoji: within the limit, so the name rules decide: not a letter
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "M".repeat(59) + "\u{1F600}" }, NOW)).toEqual({ ok: false, fields: { trainerName: "letters" } });
+    expect(await saveCard({ ...VALID, trainerName: "M".repeat(59) + "\u{1F600}" }, NOW)).toEqual({ ok: false, fields: { trainerName: "letters" } });
     // 60 letters: kept, and the read keeps it
     const sixty = "M".repeat(60);
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: sixty }, NOW)).toMatchObject({ ok: true, settings: { trainerName: sixty } });
+    expect(await saveCard({ ...VALID, trainerName: sixty }, NOW)).toMatchObject({ ok: true, settings: { trainerName: sixty } });
     expect((await getCertificateSettings(db, NOW)).trainerName).toBe(sixty);
   });
 
@@ -541,10 +557,10 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     await issued(kati.client.id, "Kati Kask"); // MS LAB 2026-01
     await issued(mari.client.id, "Mari Maasikas"); // MS LAB 2026-02
     const changed = { place: "Tallinn", registryCode: "12345678", practicalLine: "Uus rida", trainerName: "Maria S.", nextYear: 2026 };
-    for (const nextSeq of [1, 2]) expect(await saveCertificateSettings(db, { ...changed, nextSeq }, NOW), String(nextSeq)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    for (const nextSeq of [1, 2]) expect(await saveCard({ ...changed, nextSeq }, NOW), String(nextSeq)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
     expect(await stored()).toMatchObject({ place: "Pärnu linn", nextSeq: 3 }); // nothing stored
-    expect(await saveCertificateSettings(db, { ...changed, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true }); // nothing issued in 2027 yet
-    expect(await saveCertificateSettings(db, { ...changed, nextSeq: 3 }, NOW)).toMatchObject({ ok: true });
+    expect(await saveCard({ ...changed, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true }); // nothing issued in 2027 yet
+    expect(await saveCard({ ...changed, nextSeq: 3 }, NOW)).toMatchObject({ ok: true });
     await db.update(courses).set({ title: { et: "Kulmud 2.0" }, certificateSkills: ["Uus oskus"], certificateVolume: "12 tundi" }).where(eq(courses.id, c.id));
     await issued(liis.client.id, "Liis Lill"); // MS LAB 2026-03
     const [k, m, l] = await rows();
@@ -562,7 +578,7 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     // the trainer's name (her signature, typed in the script font) is not in the row: each download reads Seaded's, an old certificate's too
     const render = vi.mocked(renderCertificate);
     await certificatePdf(db, k, NOW);
-    expect(await saveCertificateSettings(db, { ...changed, trainerName: "Maria Sosnina", nextSeq: 4 }, NOW)).toMatchObject({ ok: true });
+    expect(await saveCard({ ...changed, trainerName: "Maria Sosnina", nextSeq: 4 }, NOW)).toMatchObject({ ok: true });
     const pdf = await certificatePdf(db, k, NOW);
     expect(render.mock.calls.map(([content]) => content.trainerName)).toEqual(["Maria S.", "Maria Sosnina"]);
     expect(render.mock.calls[1][0]).toEqual({

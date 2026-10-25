@@ -164,7 +164,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
     openId ? getRegistration(db, openId) : null,
     openId ? listPaymentsOf(db, { registrationId: openId }) : [],
     openId ? feedbackOf(db, { registrationId: openId }) : [],
-    // the drawer's „Arved“ (invoices Task 5): the registration's invoices, and whether Seaded → Arve andmed has a seller to make one
+    // the drawer's „Arved“ (invoices Task 5): the registration's invoices, and whether Seaded → Maksmine has a seller to make one
     openId ? invoicesOfRegistration(db, openId) : [],
     openId ? getInvoiceSettings(db, now) : null,
     // the drawer's „Leping“ (contracts Task 5): the registration's contracts, the current one first

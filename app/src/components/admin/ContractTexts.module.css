@@ -1,9 +1,8 @@
-/* Seaded → „Lepingud“ (contracts Task 5, spec D2): a card of its own after the invoice's, the contact contract's two texts and the sample under them.
-   Every control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → „Lepingud“ (contracts Task 5, spec D2): a card in the section „Lepingud ja tingimused“ (admin UX pass piece 3b, Task 4), the contact
+   contract's two texts and the sample under them. Every control is the admin's 44 px one; colours from tokens.css only. */
 
 .card {
-  margin-top: 25px;
-  scroll-margin-top: 20px;
+  min-width: 0;
 }
 
 .group {

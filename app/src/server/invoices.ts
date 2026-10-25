@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, lt, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
 import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/queries/admin";
 import { UNINVOICED_PAID } from "@/db/queries/payment-checks";
@@ -6,12 +7,13 @@ import { readSetting } from "@/db/queries/public";
 import { lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, invoices, payments, registrations, type Course, type CourseSession, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY } from "@/domain/account-cards";
+import type { SaveAnswer } from "@/domain/autosave";
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import { isHirePurchase } from "@/domain/financing";
 import {
-  coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, ODD_PART, openAmounts, partOf, readInvoiceSettings,
-  receiptKind, receiptTakeBack, registrationStatusAfterTakeBack, sellerReady, takeBackCents, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type UninvoicedPayment,
+  coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceForm, invoiceKindOfPayment, invoiceSeq, ODD_PART, openAmounts, partOf, readInvoiceSettings,
+  receiptKind, receiptTakeBack, registrationStatusAfterTakeBack, sellerReady, takeBackCents, vatNeedsNumber, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type UninvoicedPayment,
   type PaidMethod,
 } from "@/domain/invoice";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
@@ -19,12 +21,14 @@ import { registrationPrice } from "@/domain/registration";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
+import { contentVersion } from "@/lib/version";
+import { fieldCodes } from "./autosave-route";
 import { logFailure } from "./log";
 
 // The invoices (invoices, Task 3; spec D2–D9, §6), without Next.js: the issue of a number in the setting's series, Maria's invoice on a
 // registration (a request to pay or a receipt), „Märgi tasutuks" and its undo, the cancel, the buyer's editor, a paid payment's invoice (born
 // paid, or the unpaid one it was started for paid) and the catch-up of a payment paid without one (one by one, or all at once: B11), the student's and Maria's reads, the list,
-// the month's CSV, Seaded → Arve andmed (the settings key `invoice`) and the PDF.
+// the month's CSV, Seaded → Maksmine's invoice settings (the settings key `invoice`) and the PDF.
 //
 // The locks, always in this order (the plan's Global Constraints), so no two writes ever wait for each other the other way round:
 // 1. lockForPayment (db/queries/seats.ts: the registration's session, then the registration) when a registration is involved;
@@ -43,18 +47,20 @@ import { logFailure } from "./log";
 const NUMBER_LOCK = "invoice-number";
 /** The largest value of the integer column invoices.seq (domain/invoice.ts readInvoiceSettings keeps a next number up to it). */
 const INT4_MAX = 2_147_483_647;
-/** What a prefix may be typed as (Seaded → Arve andmed): letters A–Z a–z and digits, 1–10 of them; it is stored in capitals. */
+/** What a prefix may be typed as (Seaded → Maksmine): letters A–Z a–z and digits, 1–10 of them; it is stored in capitals. */
 const PREFIX = /^[A-Za-z0-9]{1,10}$/;
 const KINDS: readonly InvoiceKind[] = ["prepayment", "full", "balance", "ecourse"];
 /** The ways Maria marks or records a payment (D6); Montonio's and Järelmaks (Inbank) are the site's own. */
 const MANUAL_METHODS: readonly ManualPaidMethod[] = ["bank", "cash", "card"];
 
-/** Seaded's refusal of one field: "required" empty, "tooLong" over its INVOICE_LIMITS, "invalid" not a value the field takes, "taken" a next number already issued. */
+/**
+ * Seaded → Maksmine's refusal of one invoice field: "required" empty (on the VAT box: VAT on without a VAT number), "tooLong" over its INVOICE_LIMITS,
+ * "invalid" not a value the field takes, "taken" a next number already issued.
+ */
 export type InvoiceFieldError = "required" | "tooLong" | "invalid" | "taken";
 /** The buyer editor's refusal of one field (D9). */
 export type BuyerFieldError = "required" | "tooLong";
 
-export type SaveInvoiceSettingsResult = { ok: true; settings: InvoiceSettings } | { ok: false; fields: Record<string, InvoiceFieldError> };
 export type CreateInvoiceResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "sellerMissing" | "bankMissing" | "notOpen" | "invalid" };
 export type MarkPaidResult = { ok: true; invoice: Invoice; full?: true } | { ok: false; error: "notFound" | "notUnpaid" | "paidOnline" | "invalid" };
 export type UndoPaidResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "notPaid" | "notManual" };
@@ -73,7 +79,7 @@ async function highestSeq(q: Q, prefix: string, year: number): Promise<number> {
   return top ?? 0;
 }
 
-/** Seaded → Arve andmed as stored, or its defaults (domain/invoice.ts readInvoiceSettings); inside a write, after lockNumbers. */
+/** Seaded → Maksmine's invoice settings as stored, or their defaults (domain/invoice.ts readInvoiceSettings); inside a write, after lockNumbers. */
 const readSettings = async (q: Q, now: Date): Promise<InvoiceSettings> => readInvoiceSettings(await readSetting(q, INVOICE_KEY), now);
 
 /**
@@ -979,9 +985,9 @@ export async function invoicesCsv(db: Db, month: string): Promise<string> {
   return invoiceCsv(rows.map(toAdmin));
 }
 
-// ---------- Seaded → Arve andmed ----------
+// ---------- Seaded → Maksmine: the invoice settings ----------
 
-/** Seaded → Arve andmed as stored, or its defaults (inside a caller's transaction too: the contract's school is read in the registration's). */
+/** Seaded → Maksmine's invoice settings as stored, or their defaults (inside a caller's transaction too: the contract's school is read in the registration's). */
 export async function getInvoiceSettings(q: Q, now: Date): Promise<InvoiceSettings> {
   return readSettings(q, now);
 }
@@ -998,80 +1004,149 @@ async function lastIssued(db: Db, prefix: string, year: number): Promise<string 
 }
 
 /**
- * Seaded's „Arve andmed" card: the stored setting with „Järgmine number" as the next issue will take it (invoiceSeq for this Tallinn year
- * and the prefix's highest: never at or below it), and the last number issued in the prefix-year the card shows. The year is never typed
- * (admin UX pass B21): it is always this Tallinn year, so a next-year preset stored before B21 is ignored (the next save overwrites it).
+ * The card's version (admin UX pass piece 3b, Task 4): "i:" and two hashes (lib/version.ts contentVersion) of the setting as read
+ * (readInvoiceSettings): its texts and VAT (everything but the counter), then its counter (`nextYear`, `nextSeq`). An issue moves the counter only,
+ * so a text Maria saves while an invoice is issued is no conflict, while a number from before it is; another tab's text or number is.
  */
-export async function invoiceCard(db: Db, now: Date): Promise<InvoiceSettings & { last: string | null }> {
+async function cardVersion(s: InvoiceSettings): Promise<string> {
+  const { nextYear, nextSeq, ...texts } = s;
+  return `i:${await contentVersion(texts)}.${await contentVersion({ nextYear, nextSeq })}`;
+}
+
+/** The two halves of a card's version (cardVersion), or null for one that is not. */
+function versionHalves(version: string): { texts: string; counter: string } | null {
+  const m = /^i:([0-9a-f]{32})\.([0-9a-f]{32})$/.exec(version);
+  return m ? { texts: m[1], counter: m[2] } : null;
+}
+
+/** The card's version as stored now (its autosave starts from it). */
+export async function invoiceSettingsVersion(q: Q, now: Date): Promise<string> {
+  return cardVersion(await readSettings(q, now));
+}
+
+/**
+ * Seaded → Maksmine's invoice card: the stored setting with „Arve järgmine number" as the next issue will take it (invoiceSeq for this Tallinn year
+ * and the prefix's highest: never at or below it), the last number issued in the prefix-year the card shows, and the card's version (cardVersion,
+ * of the setting as stored: the one its autosave goes from). The year is never typed (admin UX pass B21): it is always this Tallinn year, so a
+ * next-year preset stored before B21 is ignored (the next number saved overwrites it).
+ */
+export async function invoiceCard(db: Db, now: Date): Promise<InvoiceSettings & { last: string | null; version: string }> {
   const stored = await getInvoiceSettings(db, now);
   const year = tallinnYear(now);
   const { seq } = invoiceSeq(stored, year, await highestSeq(db, stored.prefix, year));
-  return { ...stored, nextYear: year, nextSeq: seq, last: await lastIssued(db, stored.prefix, year) };
+  return { ...stored, nextYear: year, nextSeq: seq, last: await lastIssued(db, stored.prefix, year), version: await cardVersion(stored) };
 }
 
-/** A whole number from the form: a number, or up to 10 digits as a string; null for anything else. */
+/** A whole number from the card: a number, or up to 10 digits as typed; null for anything else. */
 function wholeNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isInteger(value) ? value : null;
   return typeof value === "string" && /^\d{1,10}$/.test(value.trim()) ? Number(value.trim()) : null;
 }
 
+const cardText = z.string({ error: "invalid" }).max(2_000, "tooLong");
+const cardNumber = z.union([z.string().max(40), z.number()], { error: "invalid" });
+
 /**
- * Seaded → „Arve andmed" „Salvesta" (D2, D7, D8).
- * - The texts are kept on one line and trimmed, each within INVOICE_LIMITS (UTF-16 units, as readInvoiceSettings measures them, so what is
- *   saved here is never dropped by the read). The company, its registry code and its address are required (D3: no invoice without them);
- *   the VAT number and the footer are optional, but VAT on requires the VAT number ("required" on `vatNumber`).
- * - The prefix is letters A–Z a–z and digits, 1–10 ("required", "tooLong", "invalid"), stored in capitals: „msl" is MSL's series, so no
- *   number reads twice as MSL2026-001 and msl2026-001.
- * - The VAT rate a whole 1–50 and the term a whole 0–90 days ("invalid"); "Järgmine number" a number 1–2 147 483 647 (the seq column's
- *   largest) ("invalid") of THIS Tallinn year: the year is not typed (admin UX pass B21, spec D7), so a `nextYear` sent is ignored and
- *   `tallinnYear(now)` is stored (no next-year preset for a December invoice to erase; the new year starts at 1 by itself, invoiceSeq).
- * Then under the number series' lock (the setting read under it):
- * - Ruling R3: a prefix different from the stored one resets the next number to 1 (the setting holds one counter; the max rule of every
- *   issue then continues each prefix's own series: a new prefix from 001, an old one from its highest + 1). The very first save has no stored
- *   prefix to differ from, so its number is kept.
- * - The same prefix: a number at or below that prefix-year's highest is refused (`nextSeq: "taken"`): two invoices must never share a
- *   number, and an issue between Maria's loading the card and her save moves the series on.
- * Nothing is stored when a field is refused.
+ * The card's autosave patch (the route's schema; server/autosave-route.ts): some of the card's fields as typed (domain/invoice.ts InvoiceForm, a
+ * number also as a number), no other — the year is never typed (B21), so a `nextYear` is refused. Each refusal of the shape is the field's code.
  */
-export async function saveInvoiceSettings(db: Db, raw: unknown, now: Date): Promise<SaveInvoiceSettingsResult> {
-  const input = isObject(raw) ? raw : {};
+export const INVOICE_SETTINGS_PATCH = z
+  .strictObject(
+    { company: cardText, registryCode: cardText, address: cardText, vatNumber: cardText, vatOn: z.boolean({ error: "invalid" }), vatRate: cardNumber, prefix: cardText, nextSeq: cardNumber, termDays: cardNumber, footer: cardText },
+    { error: "invalid" },
+  )
+  .partial();
+
+const refused = (fields: Record<string, InvoiceFieldError>): SaveAnswer => ({ ok: false, error: "invalid", fields });
+
+/**
+ * Seaded → Maksmine's invoice fields, autosaved (admin UX pass piece 3b, Task 4; spec D2, D7, D8; README B21; ruling R3): `patch` (some of the card's
+ * fields) over the setting at `version` (cardVersion). Each field sent is checked by itself first, before any lock:
+ * - the texts are kept on one line and trimmed, each within INVOICE_LIMITS (UTF-16 units, as readInvoiceSettings measures them, so what is saved
+ *   here is never dropped by the read); the company, its registry code and its address may not be emptied (D3: no invoice without them);
+ * - the prefix is letters A–Z a–z and digits, 1–10 ("required", "tooLong", "invalid"), stored in capitals: „msl" is MSL's series, so no number
+ *   reads twice as MSL2026-001 and msl2026-001;
+ * - the VAT rate a whole 1–50 and the term a whole 0–90 days ("invalid"); „Arve järgmine number" a number 1–2 147 483 647 (the seq column's
+ *   largest) ("invalid") of THIS Tallinn year: the year is not typed (B21, spec D7), `tallinnYear(now)` is stored with it.
+ * Then under the number series' lock, the setting read under it:
+ * - ruling R3: a prefix different from the stored one resets the next number to 1 (the setting holds one counter; the max rule of every issue
+ *   then continues each prefix's own series: a new prefix from 001, an old one from its highest + 1). The very first save has no stored prefix to
+ *   differ from, so its number is kept;
+ * - the same prefix: a number at or below that prefix-year's highest is `taken` (two invoices must never share a number), whatever version it
+ *   was sent from — another tab's issue took it (Review Focus 1);
+ * - the texts' half of `version` not the stored one's: a conflict, with the card as stored (InvoiceForm, the number as the next issue takes it);
+ * - VAT on without a VAT number is refused on the field sent: `vatNumber` when it was, else the box (`vatOn`), both "required";
+ * - a number sent from another counter than the stored one (an issue or another tab moved it meanwhile) is a conflict, so a number is never stored
+ *   over a counter its sender did not see;
+ * - a number not sent keeps the stored counter as it is.
+ * Answers SaveAnswer (domain/autosave.ts): ok with the card's new version (the one it had when nothing changed: nothing written), the conflict, or
+ * the refused fields (InvoiceFieldError); nothing is stored when a field is refused. Nothing on the public site shows these, so nothing is
+ * revalidated.
+ */
+export async function saveInvoiceSettings(db: Db, patch: unknown, version: string, now: Date): Promise<SaveAnswer> {
+  const parsed = INVOICE_SETTINGS_PATCH.safeParse(patch);
+  if (!parsed.success) return { ok: false, error: "invalid", fields: fieldCodes(parsed.error.issues) ?? {} };
+  const p = parsed.data;
   const fields: Record<string, InvoiceFieldError> = {};
-  const text = (key: "company" | "registryCode" | "address" | "vatNumber" | "footer", required: boolean): string => {
-    const value = oneLine(input[key]);
-    if (!value && required) fields[key] = "required";
+  const values: Partial<InvoiceSettings> = {};
+  for (const key of ["company", "registryCode", "address", "vatNumber", "footer"] as const) {
+    if (p[key] === undefined) continue;
+    const value = oneLine(p[key]);
+    if (!value && key !== "vatNumber" && key !== "footer") fields[key] = "required";
     else if (value.length > INVOICE_LIMITS[key]) fields[key] = "tooLong";
-    return value;
-  };
-  const company = text("company", true);
-  const registryCode = text("registryCode", true);
-  const address = text("address", true);
-  const vatNumber = text("vatNumber", false);
-  const footer = text("footer", false);
-  const vatOn = input.vatOn === true || input.vatOn === "on" || input.vatOn === "true";
-  if (vatOn && !vatNumber && !fields.vatNumber) fields.vatNumber = "required";
-  const typedPrefix = oneLine(input.prefix);
-  if (!typedPrefix) fields.prefix = "required";
-  else if (typedPrefix.length > INVOICE_LIMITS.prefix) fields.prefix = "tooLong";
-  else if (!PREFIX.test(typedPrefix)) fields.prefix = "invalid";
-  // in capitals, once it is known to be A–Z a–z 0–9 (so no other letter can become one by its case): msl and MSL are one series
-  const prefix = typedPrefix.toUpperCase();
-  const vatRate = wholeNumber(input.vatRate);
-  if (vatRate === null || vatRate < 1 || vatRate > INVOICE_LIMITS.vatRate) fields.vatRate = "invalid";
-  const termDays = wholeNumber(input.termDays);
-  if (termDays === null || termDays < 0 || termDays > INVOICE_LIMITS.termDays) fields.termDays = "invalid";
-  const nextYear = tallinnYear(now);
-  const nextSeq = wholeNumber(input.nextSeq);
-  if (nextSeq === null || nextSeq < 1 || nextSeq > INT4_MAX) fields.nextSeq = "invalid";
-  // the null checks again, written out: the transaction's closure below sees the numbers as numbers
-  if (vatRate === null || termDays === null || nextSeq === null || Object.keys(fields).length > 0) return { ok: false, fields };
-  return db.transaction(async (tx): Promise<SaveInvoiceSettingsResult> => {
+    else values[key] = value;
+  }
+  if (p.prefix !== undefined) {
+    const typed = oneLine(p.prefix);
+    if (!typed) fields.prefix = "required";
+    else if (typed.length > INVOICE_LIMITS.prefix) fields.prefix = "tooLong";
+    else if (!PREFIX.test(typed)) fields.prefix = "invalid";
+    // in capitals, once it is known to be A–Z a–z 0–9 (so no other letter can become one by its case): msl and MSL are one series
+    else values.prefix = typed.toUpperCase();
+  }
+  if (p.vatOn !== undefined) values.vatOn = p.vatOn;
+  if (p.vatRate !== undefined) {
+    const vatRate = wholeNumber(p.vatRate);
+    if (vatRate === null || vatRate < 1 || vatRate > INVOICE_LIMITS.vatRate) fields.vatRate = "invalid";
+    else values.vatRate = vatRate;
+  }
+  if (p.termDays !== undefined) {
+    const termDays = wholeNumber(p.termDays);
+    if (termDays === null || termDays < 0 || termDays > INVOICE_LIMITS.termDays) fields.termDays = "invalid";
+    else values.termDays = termDays;
+  }
+  let nextSeq: number | undefined;
+  if (p.nextSeq !== undefined) {
+    const typed = wholeNumber(p.nextSeq);
+    if (typed === null || typed < 1 || typed > INT4_MAX) fields.nextSeq = "invalid";
+    else nextSeq = typed;
+  }
+  if (Object.keys(fields).length > 0) return refused(fields);
+  const savedAt = now.toISOString();
+  return db.transaction(async (tx): Promise<SaveAnswer> => {
     await lockNumbers(tx);
     const storedValue = await readSetting(tx, INVOICE_KEY);
-    const prefixChanged = storedValue !== null && readInvoiceSettings(storedValue, now).prefix !== prefix;
-    if (!prefixChanged && nextSeq <= (await highestSeq(tx, prefix, nextYear))) return { ok: false, fields: { nextSeq: "taken" } };
-    const settings: InvoiceSettings = { company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq: prefixChanged ? 1 : nextSeq, termDays, footer };
+    const stored = readInvoiceSettings(storedValue, now);
+    const year = tallinnYear(now);
+    const current = await cardVersion(stored);
+    const sent = versionHalves(version);
+    const held = versionHalves(current)!;
+    const conflict = async (): Promise<SaveAnswer> => {
+      const { seq } = invoiceSeq(stored, year, await highestSeq(tx, stored.prefix, year));
+      return { ok: false, error: "conflict", version: current, value: invoiceForm({ ...stored, nextSeq: seq }) };
+    };
+    const merged: InvoiceSettings = { ...stored, ...values };
+    const prefixChanged = storedValue !== null && merged.prefix !== stored.prefix;
+    if (nextSeq !== undefined && !prefixChanged && nextSeq <= (await highestSeq(tx, merged.prefix, year))) return refused({ nextSeq: "taken" });
+    if (sent?.texts !== held.texts) return conflict();
+    if (vatNeedsNumber(merged)) return refused(p.vatNumber !== undefined ? { vatNumber: "required" } : { vatOn: "required" });
+    if (nextSeq !== undefined && sent.counter !== held.counter) return conflict();
+    const counter = prefixChanged ? { nextYear: year, nextSeq: 1 } : nextSeq !== undefined ? { nextYear: year, nextSeq } : { nextYear: stored.nextYear, nextSeq: stored.nextSeq };
+    const settings: InvoiceSettings = { ...merged, ...counter };
+    const after = await cardVersion(settings);
+    if (after === current && storedValue !== null) return { ok: true, version: current, savedAt };
     await setSetting(tx, INVOICE_KEY, settings);
-    return { ok: true, settings };
+    return { ok: true, version: after, savedAt };
   });
 }
 

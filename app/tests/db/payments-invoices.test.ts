@@ -39,7 +39,7 @@ const NOW = new Date("2026-10-16T09:00:00Z");
 const MIN = 60_000;
 /** When Montonio's answer comes: five minutes after the start. */
 const LATER = new Date(NOW.getTime() + 5 * MIN);
-/** Seaded → Arve andmed: the seller, VAT off, MSL from 1 in 2026, a week to pay. */
+/** Seaded → Maksmine: the seller, VAT off, MSL from 1 in 2026, a week to pay. */
 const SELLER = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" };
 /** Seaded → Ettemaksu juhised. */
 const BANK = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };

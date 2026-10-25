@@ -24,7 +24,7 @@ export type ManualPaymentInput = { registrationId: number; cents: number; paidOn
  * confirmed before); `full` it reached 50 % but the session had no free seat, so the place stayed unconfirmed (D2); `receiptNumber` the receipt's
  * number, null without one. Refusals, nothing written: `notFound`; `cancelled` (the panel is hidden there); `invalid` (an input that is none of
  * the above); `future` (a day after today in Tallinn); `overRemainder` (more than the price leaves open: piece2-texts S3-e); `stale` (the paid
- * total moved since the panel was built: another tab, an online payment); `sellerMissing` (a receipt asked while Seaded → Arve andmed has no
+ * total moved since the panel was built: another tab, an online payment); `sellerMissing` (a receipt asked while Seaded → Maksmine has no
  * seller: the money is not added either).
  */
 export type ManualPaymentResult =

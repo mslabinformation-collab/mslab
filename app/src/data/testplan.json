@@ -229,12 +229,12 @@
       "title": "Järelmaksu rida koolituse lehel",
       "href": "/koolitused",
       "steps": [
-        "Märgi halduses Seaded → „Järelmaks (Inbank)“ sisse ja salvesta; kontroll „Seaded: järelmaks“ vaatab seda lähemalt.",
+        "Märgi halduses Seaded → „Järelmaks (Inbank)“ sisse; kontroll „Seaded: järelmaks“ vaatab seda lähemalt.",
         "Ava kontaktkoolituse leht, mille grupihind on 100–5000 €, vali „Grupikoolitus“ ja vaata rida hindade all ning valikuid „Tasumine“ all.",
         "Vali „Individuaalkoolitus“ ja vaata sama kohta.",
         "Ava e-koolituse leht, mille hind on 100–5000 €, ja vaata rida hinna all.",
         "Ava mõlemad lehed vene keeles (lehe päises RU).",
-        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja, salvesta ja ava mõlemad lehed uuesti.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja ava mõlemad lehed uuesti.",
         "Lülita seade Seadetes uuesti sisse ja salvesta.",
         "Ava koolitus, mille hind on alla 100 € või üle 5000 € (kui sellist pole, jäta samm vahele)."
       ],
@@ -251,8 +251,8 @@
       "why": "Rida ütleb õpilasele, et järelmaks on olemas, ja ilmub ainult siis, kui see on tõesti võimalik.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-galerii",
@@ -1642,40 +1642,49 @@
       "title": "Seaded: kontaktandmed",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja vaata üle „Kontaktandmed“.",
-        "Paranda vajadusel „E-post“, „Telefon“ ja „Aadress“.",
-        "Vajuta „Salvesta“.",
+        "Ava „Seaded“ ja vali jaotiste loendist „Kontakt“.",
+        "Paranda vajadusel „E-post“, „Telefon“ ja „Aadress“ ja liigu väljalt edasi.",
+        "Vaata lehe päises salvestamise olekut.",
         "Ava avaliku lehe jalus ja kontaktileht."
       ],
       "expect": [
+        "Nuppu „Salvesta“ pole: muudatus salvestub ise ja päis ütleb „Salvestatud …“.",
         "Jaluses on sama e-post ja telefon.",
         "Kontaktilehel on sama e-post ja aadress.",
         "Tühja välja ei näidata."
       ],
       "why": "Õpilane võtab ühendust nende andmete järgi.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-ettemaks",
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: ettemaksu juhised",
+      "title": "Seaded: Maksmine, pangaandmed",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri plokini „Ettemaksu juhised“.",
+        "Ava „Seaded“ ja vali jaotiste loendist „Maksmine“.",
         "Täida „Saaja“, „IBAN“ ja „Pank“.",
-        "Kirjuta „Selgituse algus“, näiteks MSLAB.",
-        "Vajuta „Salvesta“."
+        "Kirjuta „Selgituse algus“, näiteks MSLAB, ja liigu väljalt edasi.",
+        "Kirjuta IBANi lõppu üks täht juurde ja liigu väljalt edasi.",
+        "Kustuta see täht ja liigu väljalt edasi."
       ],
       "expect": [
-        "Pärast salvestamist näed „Salvestatud.“.",
-        "Vigase IBANi korral näed „Kontrolli IBANi: …“ ja midagi ei salvestata."
+        "Saaja ja IBANi all on vihje „Juhised on õpilasele näha ainult siis, …“.",
+        "Muudatus salvestub ise ja päis ütleb „Salvestatud …“; nuppu „Salvesta“ pole.",
+        "Vigase IBANi korral näed välja all „Kontrolli IBANi: …“.",
+        "Siis ütleb päis „Salvestamata — kontrolli märgitud välja“ ja vigast IBANi ei salvestata.",
+        "Pärast parandamist ütleb päis jälle „Salvestatud …“."
       ],
       "why": "Ilma nendeta ei saa õpilane pangaülekandega maksta.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-tingimused",
@@ -1711,49 +1720,56 @@
       "title": "Seaded: tunnistuse andmed",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Tunnistus“.",
+        "Ava „Seaded“ ja vali jaotiste loendist „Tunnistus“.",
         "Kirjuta selle kontrolli märkusesse „Järgmine number“ praegune aasta ja number.",
         "Vaata üle „Koht“, „Registrikood“ ja „Praktilise töö rida“.",
-        "Kirjuta „Koolitaja nimi“ nii, nagu tahad allkirja.",
-        "Vajuta „Salvesta tunnistuse andmed“."
+        "Kirjuta „Koolitaja nimi“ nii, nagu tahad allkirja, ja liigu väljalt edasi.",
+        "Kui kaardil on „Viimati väljastatud: …“, kirjuta see number väljale „Number“ ja liigu edasi.",
+        "Pane „Number“ tagasi endiseks ja liigu väljalt edasi."
       ],
       "expect": [
+        "Numbri all on rida „Järgmine tunnistus: MS LAB …“, mis muutub kirjutades.",
         "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole tunnistusi väljastatud.",
         "„Järgmine number“ juures on vihje „Jätka oma paberil tunnistuste numbreid. …“.",
-        "Pärast salvestamist näed „Tunnistuse andmed on salvestatud.“."
+        "Juba väljastatud numbri korral näed välja all „See number on juba väljastatud. …“.",
+        "Nuppu „Salvesta“ pole: pärast igat muudatust ütleb päis „Salvestatud …“."
       ],
       "why": "Tunnistus jätkab Maria paberil tunnistuste numbrite rida.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-arve",
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: arve andmed",
+      "title": "Seaded: Maksmine, arve andmed",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Arve andmed“.",
-        "Kirjuta selle kontrolli märkusesse praegune „Arve numbri eesliide“ ja „Järgmine number“.",
-        "Vaata, et „Järgmine number“ all on ainult number ja välja „Aasta“ pole.",
+        "Ava „Seaded“ ja vali jaotiste loendist „Maksmine“.",
+        "Kirjuta selle kontrolli märkusesse praegune „Arve numbri eesliide“ ja „Arve järgmine number“.",
         "Täida „Ettevõtte nimi“, „Registrikood“ ja „Aadress“.",
-        "Märgi „Arvel on käibemaks“, jäta „KMKR number“ tühjaks ja vajuta „Salvesta arve andmed“.",
-        "Võta märge ära ja vajuta „Salvesta arve andmed“ uuesti."
+        "Jäta „KMKR number“ tühjaks ja märgi „Arvel on käibemaks“.",
+        "Kirjuta „KMKR number“, näiteks EE100200300, ja liigu väljalt edasi.",
+        "Võta märge „Arvel on käibemaks“ ära ja kustuta „KMKR number“, kui see polnud päris.",
+        "Kirjuta eesliite lõppu üks täht, vaata numbri rida ja kustuta täht enne väljalt lahkumist."
       ],
       "expect": [
-        "Esimesel salvestamisel näed „Käibemaksuga arve vajab KMKR numbrit.“ ja midagi ei salvestata.",
-        "Teisel salvestamisel näed „Arve andmed on salvestatud.“.",
+        "Märkimisel näed kasti all „Käibemaksuga arve vajab KMKR numbrit.“ ja päises „Salvestamata — …“.",
+        "Pärast KMKR numbrit ütleb päis „Salvestatud …“; nuppu „Salvesta“ pole.",
+        "„Arve järgmine number“ all on rida „Järgmine arve: …“, näiteks MSL2026-007.",
+        "Uue eesliitega näitab rida numbrit 001, endise eesliitega jälle endist numbrit.",
         "„Arve numbri eesliide“ all on vihje „Uus eesliide alustab oma numbrit 001-st.“.",
-        "„Pangaandmed“ näitab saajat, IBANi ja panka, nagu „Ettemaksu juhised“.",
         "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole arveid väljastatud.",
-        "Alates 1. detsembrist on „Järgmine number“ all rida „1. jaanuarist: …“ uue aasta esimese numbriga, näiteks MSL2027-001."
+        "Alates 1. detsembrist on samal real ka „1. jaanuarist: …“, näiteks MSL2027-001."
       ],
       "why": "Ilma nende andmeteta ei koosta sait ühtegi arvet.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-naidisarve",
@@ -1763,25 +1779,24 @@
       "title": "Seaded: näidisarve",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Arve andmed“.",
-        "Muuda „Ettevõtte nimi“, aga ära salvesta.",
-        "Vajuta „Näidisarve (PDF)“.",
+        "Ava „Seaded“ ja vali jaotiste loendist „Maksmine“.",
+        "Kirjuta „Ettevõtte nimi“ lõppu X ja vajuta kohe „Näidisarve (PDF)“.",
         "Märgi „Arvel on käibemaks“, kirjuta „KMKR number“ ja ava „Näidisarve (PDF)“ uuesti.",
-        "Lae leht uuesti ja vaata „Ettevõtte nimi“."
+        "Pane „Ettevõtte nimi“, „Arvel on käibemaks“ ja „KMKR number“ tagasi endiseks."
       ],
       "expect": [
         "PDF avaneb uues aknas ja mahub ühele A4 lehele.",
-        "Arvel on muudetud ettevõtte nimi, kuigi seda polnud salvestatud.",
+        "Arvel on ekraanil olev ettevõtte nimi koos X-iga.",
         "Arvel on „Näidiskoolitus“, „Ettemaks 50%“ ja summa 175,00 €.",
-        "Pangaandmed on samad mis „Ettemaksu juhised“.",
+        "Pangaandmed on samad mis kaardi väljadel „Saaja“, „IBAN“ ja „Pank“.",
         "Käibemaksuga näidisel on „Summa käibemaksuta“, „Käibemaks 24%“ ja „Kokku“.",
-        "Pärast lehe uuesti laadimist on endine ettevõtte nimi: midagi ei salvestatud."
+        "Näidisarve ei võta numbrit: „Arve järgmine number“ jääb samaks."
       ],
       "why": "Maria näeb arvet enne, kui keegi seda saab.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-lepingud",
@@ -1831,7 +1846,7 @@
       "expect": [
         "PDF avaneb uues aknas ja selles on muudetud pealkiri ja tekst, kuigi neid polnud salvestatud.",
         "Õpilane on „Proov (näidis)“, koolitus „Näidiskoolitus“ ja kohahoidjad on täidetud.",
-        "Ettevõtte andmed on samad mis kaardil „Arve andmed“.",
+        "Ettevõtte andmed on samad mis kaardil „Maksmine“.",
         "Venekeelsel näidisel on vene tekst ja sildid, näiteks „Стороны“.",
         "Pärast lehe uuesti laadimist on endine pealkiri: midagi ei salvestatud."
       ],
@@ -1839,7 +1854,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-jarelmaks",
@@ -1849,29 +1864,28 @@
       "title": "Seaded: järelmaks",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Järelmaks (Inbank)“.",
+        "Ava „Seaded“, vali jaotiste loendist „Maksmine“ ja keri kaardini „Järelmaks (Inbank)“.",
         "Kirjuta märkusesse, kas ruut „Paku järelmaksu (Inbank)“ on märgitud.",
-        "Muuda ruudu seisu ja lae leht uuesti, vajutamata „Salvesta“.",
-        "Muuda ruudu seisu uuesti, vali arendaja tööriistades (F12) Network all „Slow 3G“ ja vajuta kaardi „Salvesta“.",
-        "Võta võrgu piirang ära ja lae leht uuesti.",
-        "Vali Network all „Offline“, muuda ruudu seisu uuesti ja vajuta kaardi „Salvesta“.",
-        "Võta „Offline“ ära ja lae leht uuesti.",
-        "Märgi ruut, vajuta kaardi „Salvesta“ ja jäta see märgituks: järgmised järelmaksu kontrollid vajavad seda."
+        "Muuda ruudu seisu ja vaata lehe päist.",
+        "Lae leht uuesti.",
+        "Vali arendaja tööriistades (F12) Network all „Offline“ ja muuda ruudu seisu uuesti.",
+        "Võta „Offline“ ära ja oota, kuni päis ütleb „Salvestatud …“; lae leht uuesti.",
+        "Märgi ruut ja jäta see märgituks: järgmised järelmaksu kontrollid vajavad seda."
       ],
       "expect": [
         "Kaardil on pealkiri „Järelmaks (Inbank)“ ja ruut „Paku järelmaksu (Inbank)“.",
         "Kaardil on selgitus „Lülita sisse, kui Montonio on järelmaksu sinu poele avanud. Hind peab olema 100–5000 €.“.",
-        "Ainult muutmine ei salvesta midagi: pärast lehe uuesti laadimist on ruut endine.",
-        "Aeglasel võrgul ütleb nupp salvestamise ajal „Salvestan…“ ja pärast näed „Järelmaksu seade on salvestatud.“.",
-        "Pärast salvestamist ja lehe uuesti laadimist on ruut täpselt nii, nagu salvestasid.",
-        "Võrguta salvestades näed „Salvestamine ei õnnestunud. Proovi uuesti.“ ja pärast lehe uuesti laadimist on ruut endine.",
-        "Pärast viimast salvestamist on ruut märgitud."
+        "Nuppu „Salvesta“ pole: ruudu muutmine salvestub kohe ja päis ütleb „Salvestatud …“.",
+        "Pärast lehe uuesti laadimist on ruut nii, nagu viimati muutsid.",
+        "Võrguta ütleb päis „Salvestamata — proovin uuesti“ ja ruut jääb nii, nagu muutsid.",
+        "Kui võrk on tagasi, salvestub see ise; pärast laadimist on ruut nii, nagu muutsid.",
+        "Pärast viimast sammu on ruut märgitud."
       ],
       "why": "Ilma selle ruuduta ei näe õpilane kuskil järelmaksu.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-laadimine-viga",
@@ -2492,7 +2506,7 @@
         "Küsimus „Kas koostan … arvet?“ ütleb numbrite vahemiku ja „Õpilastele neid ei saadeta.“; „Katkesta“ ei tee midagi.",
         "Pärast „Jah“ ütleb riba „Koostatud … arvet“ ja numbrid; read kaovad ribalt ja arved on loendis.",
         "Iga arve on „Tasutud“, makse päevaga ja makseviisiga „Montonio“; õpilasele kirja ei saadeta.",
-        "Kui „Arve andmed“ on tühi, näed nupu asemel lingi „Täida Seaded → Arve andmed“."
+        "Kui müüja andmed on tühjad, näed nupu asemel lingi „Täida Seaded → Maksmine“."
       ],
       "why": "Ükski tasutud makse ei jää arveta.",
       "risk": "high",
@@ -2759,7 +2773,7 @@
       "expect": [
         "Enne koostamist pakub „Koosta arve“ summasid „Ettemaks 50%“ ja „Kogu summa (100%)“.",
         "Plokis on uus arve numbriga, näiteks MSL2026-001, märkega „Tasumata“ ja tähtajaga.",
-        "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu „Ettemaksu juhised“.",
+        "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu Seaded → „Maksmine“.",
         "Pärast koostamist pakub „Koosta arve“ ainult summat „Jääk 50%“.",
         "„Raha“ näitab nulli laekununa ja staatus on „Ootab ettemaksu“."
       ],
@@ -2767,7 +2781,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -2984,11 +2998,11 @@
       "href": "/admin/seaded",
       "steps": [
         "Ava Proov 6 paneelis tasutud arve real „Laadi alla (PDF)“ ja vaata arve alumist rida.",
-        "Ava „Seaded“, kirjuta kaardil „Arve andmed“ väljale „Arve alumine rida“: Proov jalus, ja salvesta.",
+        "Ava „Seaded“ → „Maksmine“ ja kirjuta väljale „Arve alumine rida“: Proov jalus.",
         "Laadi sama Proov 6 arve uuesti alla ja vaata arve alumist rida.",
         "Koosta Proov 6 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“ ja laadi see alla.",
         "Tühista see uus arve: „Veel ▾“, „Tühista arve“ ja „Jah, tühista arve“.",
-        "Pane „Arve alumine rida“ tagasi endiseks ja salvesta."
+        "Pane „Arve alumine rida“ tagasi endiseks ja liigu väljalt edasi."
       ],
       "expect": [
         "Vana arve alumine rida on sama mis enne: uus rida seda ei muuda.",
@@ -2999,7 +3013,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-laekunud",
@@ -3316,7 +3330,7 @@
         "Vali „Järelmaks (Inbank)“, märgi lepingu ruut, vajuta „Registreeru“ ja katkesta Inbanki leht, nagu Dimi märkus ütleb.",
         "Ava kiri „Registreering on vastu võetud — …“, vajuta kirjas „Maksa …“ ja jäta see leht lahti.",
         "Logi teises aknas sisse kui Proov 12, ava „Minu koolitused“ ja vaata registreeringu kaarti.",
-        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja salvesta.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja.",
         "Vajuta lahtisel „Koolituse eest tasumine“ lehel „Maksa järelmaksuga (Inbank)“.",
         "Ava kirja link uuesti.",
         "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse, ava kirja link veel kord ja tühista halduses Proov 12 registreering („Jah, tühista“)."
@@ -3347,11 +3361,11 @@
         "Ava kaks lehte, kontaktkoolituse (grupihind 100–5000 €) ja e-koolituse ostukorv, ning veendu, et järelmaks on Seadetes sees.",
         "Täida registreerimisvorm: Proov 13, +proov13, oma Eesti telefon, „Järelmaks (Inbank)“ ja lepingu ruut; ära vajuta „Registreeru“.",
         "Täida ostukorv: Proov 13, sama +proov13 aadress, „Järelmaks (Inbank)“ ja lepingu ruut; ära vajuta „Maksa …“.",
-        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja salvesta.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja.",
         "Vajuta ostukorvis „Maksa …“.",
         "Vajuta ostukorvis uuesti „Maksa …“ ja katkesta makse testpangas.",
         "Vajuta registreerimisvormis „Registreeru“ ja vaata halduses Proov 13 registreeringut.",
-        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse."
       ],
       "expect": [
         "Ostukorvis on valikute juures „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ ja valitud on „Pangalink“.",
@@ -4041,8 +4055,8 @@
         "Vali „Järelmaks (Inbank)“, märgi lepingu ruut ja vajuta „Maksa …“.",
         "Inbanki lehel kirjuta isikukood 10101010005 ja SMS-kood 0000 ning kinnita taotlus.",
         "Vajuta tagasi lehel „Ava e-koolitus“ ja ava postkastis kiri „E-koolitus on avatud — …“ koos arvega.",
-        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja, salvesta ja ava sama ostukorv uuesti.",
-        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja ava sama ostukorv uuesti.",
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse."
       ],
       "expect": [
         "Ostukorvis on „Tasumine“ all kaks valikut: „Pangalink“ (valitud) ja „Järelmaks (Inbank)“.",
@@ -4057,8 +4071,8 @@
       "why": "E-koolituse ostja saab ligipääsu ilma Maria abita, ka järelmaksuga.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tingimused",
@@ -5549,7 +5563,7 @@
       "device": "any",
       "title": "Kiri: veebimakse arve manusena",
       "steps": [
-        "Kontrolli enne Proov 1 ettemaksu, et halduses „Seaded“ → „Arve andmed“ on täidetud.",
+        "Kontrolli enne Proov 1 ettemaksu, et halduses „Seaded“ → „Maksmine“ on müüja andmed täidetud.",
         "Ava Gmailis telefonis kiri „Koht on kinnitatud — …“, mis tuli Proov 1 ettemaksust.",
         "Ava kirja manus.",
         "Ava sama kiri ja manus Gmailis arvutis."
@@ -5559,13 +5573,13 @@
         "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“.",
         "Arve summa on tasutud ettemaks.",
         "Arvel on „Tasutud“, makse kuupäev ja makseviis „Montonio“.",
-        "Arvel on müüja andmed nagu „Arve andmed“ ja ostjana Proov 1."
+        "Arvel on müüja andmed nagu „Maksmine“ ja ostjana Proov 1."
       ],
       "why": "Iga veebimakse saab arve, mille õpilane saab endale hoida.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-arve-oppilasele",
@@ -5582,7 +5596,7 @@
       "expect": [
         "Saatja on MS LAB ja kirjas on „Tere, Proov!“.",
         "Kirjas on koolitus, summa ja „Tasumise tähtaeg“.",
-        "Kirjas on Saaja, IBAN, Pank ja Selgitus, nagu „Ettemaksu juhised“.",
+        "Kirjas on Saaja, IBAN, Pank ja Selgitus, nagu Seaded → „Maksmine“.",
         "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“, mille number on sama mis pealkirjas.",
         "Nupp „Ava minu konto“ avab sisselogimise lehe.",
         "Vastuse saaja on Maria aadress."
@@ -5590,8 +5604,8 @@
       "why": "Õpilane saab arve koos pangaandmetega.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-arve-vene-keeles",
@@ -5609,15 +5623,15 @@
       ],
       "expect": [
         "Kiri on vene keeles ja algab sõnadega „Здравствуйте, Proov!“.",
-        "Kirjas on „Оплатить до“ koos kuupäevaga, Получатель, IBAN, Банк, Сумма ja Назначение платежа, nagu „Ettemaksu juhised“.",
+        "Kirjas on „Оплатить до“ koos kuupäevaga, Получатель, IBAN, Банк, Сумма ja Назначение платежа, nagu „Maksmine“.",
         "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“, mille number on sama mis pealkirjas; arve ise on eesti keeles.",
         "Nupp „Открыть мой кабинет“ avab sisselogimise lehe vene keeles."
       ],
       "why": "Venekeelne õpilane saab arve koos pangaandmetega oma keeles.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-makse-katte",

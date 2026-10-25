@@ -369,7 +369,7 @@ export const adminEt = {
         methods: { bank: "Pangaülekanne", cash: "Sularaha", card: "Kaart" },
         receipt: "Koosta kviitung (arve „Juba tasutud“)",
         needSeller: "Kviitungit ei saa koostada: täida {link}.",
-        needSellerLink: "Seaded → Arve andmed",
+        needSellerLink: "Seaded → Maksmine",
         submit: "Lisa {x}",
         submitSeat: "Lisa {x} · koht kinnitub",
         submitAlone: "Lisa {x} · registreering kinnitub",
@@ -466,7 +466,7 @@ export const adminEt = {
     noneForClient: "Makseid pole.",
   },
 
-  // „Arved“ (invoices, phase 4 piece 2, Task 5): the registration drawer's block, the list (/admin/arved) and Seaded → „Arve andmed“. The words
+  // „Arved“ (invoices, phase 4 piece 2, Task 5): the registration drawer's block, the list (/admin/arved) and Seaded → „Maksmine“. The words
   // of the spec (§2, §5) are verbatim: „Arved“, „Arve andmed“, „Arveta maksed“, „Koosta arve“, „Maksmiseks“, „Juba tasutud“, „Saada õpilasele“,
   // „Saada ka aadressile“, „Muuda saajat“, „Märgi tasutuks“, „Võta tasumine tagasi“, „Tühista arve“, „Laadi alla (PDF)“, „Laadi alla (CSV)“,
   // „Näidisarve (PDF)“ (the states and the paid methods are domain/invoice.ts invoiceStatusText and paidMethodText). Every other text is Draft for
@@ -479,7 +479,7 @@ export const adminEt = {
       none: "Sellele registreeringule pole arveid koostatud.",
       create: "Koosta arve",
       // no seller yet (D3): in place of „Koosta arve“, a link to Seaded
-      needSeller: "Täida Seaded → Arve andmed",
+      needSeller: "Täida Seaded → Maksmine",
       allCovered: "Kõik summad on juba arvega kaetud.",
       // a paid online payment of the registration with no invoice yet (the final review's I1; Draft): {amount} its sum, {date} the day it was paid
       uninvoiced: "Veebimakse {amount} ({date}) on veel arveta.",
@@ -583,8 +583,8 @@ export const adminEt = {
       notPaid: "See arve pole tasutud. Laadi leht uuesti.",
       notManual: "Veebis tasutud arvet ei saa tagasi võtta.",
       notOpen: "See summa on vahepeal arvega kaetud. Laadi leht uuesti.",
-      sellerMissing: "Täida enne Seaded → „Arve andmed“.",
-      bankMissing: "Täida enne Seaded → „Ettemaksu juhised“ (saaja ja IBAN).",
+      sellerMissing: "Täida enne Seaded → „Maksmine“.",
+      bankMissing: "Täida enne Seaded → „Maksmine“ (saaja ja IBAN).",
       paidOnline: "See arve on juba veebis tasutud — koosta arve „Arveta maksed“ alt.",
       invalid: "Kontrolli andmeid. Kuupäev ei tohi olla tulevikus.",
       already: "Sellel maksel on arve juba olemas. Laadi leht uuesti.",
@@ -623,7 +623,7 @@ export const adminEt = {
       // P-8: the toggle of the per-row list
       show: "Näita ▸",
       hide: "Peida ▾",
-      needSeller: "Täida Seaded → Arve andmed",
+      needSeller: "Täida Seaded → Maksmine",
       paidOn: "Makstud {date}",
       pays: "Tasub arve {number}",
       makes: "Koostab uue arve",
@@ -655,10 +655,13 @@ export const adminEt = {
       },
       col: { date: "Kuupäev", payer: "Maksja", what: "Eest", amount: "Summa", invoice: "Arve" },
     },
-    // Seaded → „Arve andmed“ (components/admin/InvoiceSettings.tsx)
+    // Seaded → „Maksmine“ (components/admin/InvoiceSettings.tsx; admin UX pass piece 3b, Task 4: README B4, ruling R-f, piece3-texts P-9 and P-10): one
+    // card for the bank details of the prepayment instructions and the invoice settings, its title the section's (settings.sections.payment). The lead
+    // is the drawn line, then the sentence about issued invoices (they keep their frozen IBAN too); the bank fields are settings.receiver … with the
+    // hint settings.prepaymentHint under Saaja and IBAN. „Arve järgmine number“ shows the preview; from 1 December the new year's first number joins it
+    // on one line (P-10, the Part 4 frame: „Järgmine arve: MSL2026-007 · 1. jaanuarist: MSL2027-001“).
     settings: {
-      title: "Arve andmed",
-      lead: "Need andmed lähevad igale uuele arvele. Väljastatud arve jääb selliseks, nagu see väljastati: hilisem muudatus puudutab ainult uusi arveid.",
+      lead: "Ühed pangaandmed ettemaksu juhistes ja arvetel. Väljastatud arve jääb selliseks, nagu see väljastati: hilisem muudatus puudutab ainult uusi arveid.",
       company: "Ettevõtte nimi",
       registryCode: "Registrikood",
       address: "Aadress",
@@ -669,11 +672,13 @@ export const adminEt = {
       vatRate: "Käibemaksumäär (%)",
       prefix: "Arve numbri eesliide",
       prefixHint: "Uus eesliide alustab oma numbrit 001-st.",
-      nextNumber: "Järgmine number",
-      nextSeq: "Number",
-      nextHint: "Arve number on eesliide, aasta ja number, näiteks MSL2026-001. Uue aasta esimene arve saab numbri 1.",
+      nextNumber: "Arve järgmine number",
+      // P-10: {number} e.g. MSL2026-007 (001 while the typed prefix is not the stored one, R3)
+      preview: "Järgmine arve: {number}",
       // admin UX pass B21: from 1 December the next year's first number; {number}: e.g. MSL2027-001
       fromJanuary: "1. jaanuarist: {number}",
+      // P-10: the preview and the January line on one line
+      previewLine: "{preview} · {january}",
       last: "Viimati väljastatud: {number}",
       // {year}: the year the card is about
       lastNone: "{year}. aastal pole veel arveid väljastatud.",
@@ -681,17 +686,9 @@ export const adminEt = {
       termDaysHint: "Mitu päeva pärast koostamist tuleb arve tasuda.",
       footer: "Arve alumine rida",
       footerHint: "Valikuline. Trükitakse arve jalusesse.",
-      bank: "Pangaandmed",
-      bankLead: "Arvele tulevad „Ettemaksu juhised“ andmed, nii et need on ühes kohas.",
-      bankLink: "Muuda: Ettemaksu juhised",
-      bankMissing: "Ettemaksu juhised on täitmata (saaja ja IBAN): pangaülekande arvet ei saa koostada.",
-      save: "Salvesta arve andmed",
-      saving: "Salvestan…",
-      saved: "Arve andmed on salvestatud.",
-      invalid: "Kontrolli märgitud välju.",
-      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
+      bankMissing: "Saaja ja IBAN on täitmata: pangaülekande arvet ei saa koostada.",
       sample: "Näidisarve (PDF)",
-      sampleHint: "Näidis tehakse kaardi praegustest väärtustest, ka salvestamata. Midagi ei salvestata.",
+      sampleHint: "Näidis tehakse kaardi praegustest väärtustest. Midagi ei salvestata.",
       // server/invoices.ts InvoiceFieldError, by field (`vatNumber` "required" is VAT on without a number; `prefix` "invalid" a character outside
       // A–Z and 0–9); `other` for a code this list does not know
       errors: {
@@ -1377,11 +1374,8 @@ export const adminEt = {
       last: "Viimati väljastatud: {number}",
       // {year}: the year the card is about (the next number's year: this year, or the later year of Maria's preset)
       lastNone: "{year}. aastal pole veel tunnistusi väljastatud.",
-      save: "Salvesta tunnistuse andmed",
-      saving: "Salvestan…",
-      saved: "Tunnistuse andmed on salvestatud.",
-      invalid: "Kontrolli märgitud välju.",
-      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
+      // admin UX pass piece 3b, P-10: {number} e.g. MS LAB 2026-93 (formatCertificateNumber: two digits at least)
+      preview: "Järgmine tunnistus: {number}",
       // server/certificates.ts CertificateFieldError (`letters` and `length` are the name rules' refusals of the trainer's name); `other` for a
       // code this list does not know. "invalid" on the year (not this Tallinn year or the next) has its own words, `year`; on the number, `invalid`
       errors: {
@@ -1439,10 +1433,6 @@ export const adminEt = {
       title: "Järelmaks (Inbank)",
       enabled: "Paku järelmaksu (Inbank)",
       lead: "Lülita sisse, kui Montonio on järelmaksu sinu poele avanud. Hind peab olema 100–5000 €.",
-      save: "Salvesta",
-      saving: "Salvestan…",
-      saved: "Järelmaksu seade on salvestatud.",
-      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
     },
   },
 
@@ -2315,10 +2305,12 @@ export const adminEt = {
     ],
   },
 
+  // Seaded (admin UX pass piece 3b, Task 4; README B4): one page with a section map; its sections, as the map names them. The page lead is gone (the
+  // design draws none, piece3-texts §4).
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    lead: "Kontaktandmed, sotsiaalmeedia lingid, uudiskirja soodustus ja tervituskood, ettemaksu juhised, õigustekstid ja e-koolituse tingimused.",
+    sections: { contact: "Kontakt", newsletter: "Uudiskiri", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",
@@ -2333,9 +2325,7 @@ export const adminEt = {
     discountHint: "Jaluse uudiskirja plokis: „… {discount} tervitussoodustus sinu esimesele koolitusele.“ Näiteks 10%.",
     welcomeCode: "Tervituskood",
     welcomeCodeHint: "Saadetakse tervituskirjas pärast uudiskirja kinnitamist ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
-    // where students pay the prepayment: on the unpaid contact-course cards of their account (never on a public page)
-    prepayment: "Ettemaksu juhised",
-    prepaymentLead: "Õpilase kontol, kontaktkoolituse kaardil, mis ootab ettemaksu.",
+    // where students pay the prepayment: on the unpaid contact-course cards of their account (never on a public page); the „Maksmine“ card's bank fields
     prepaymentHint: "Juhised on õpilasele näha ainult siis, kui saaja ja IBAN on täidetud. Muidu ütleb kaart: „Maria saadab sulle arve“.",
     receiver: "Saaja",
     iban: "IBAN",

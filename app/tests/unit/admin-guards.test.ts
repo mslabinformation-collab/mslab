@@ -111,8 +111,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/arved/route.ts",
         "app/api/admin/naidisarve/route.ts",
         "server/actions/admin-invoices.ts",
-        // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle
-        "server/actions/admin-financing.ts",
+        // admin UX pass piece 3b, Task 4: every Seaded card autosaves on its part's route (the financing toggle's action is gone with its „Salvesta“)
+        "app/api/admin/seaded/[part]/route.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -135,6 +135,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/koolitus/[id]/osa/[part]/route.ts", "app/api/admin/koolitus/[id]/avalda/route.ts", "app/api/admin/koolitus/[id]/loobu/route.ts",
         // Task 5 review I-1: a module's name and a lesson's name and short text, autosaved row by row
         "app/api/admin/moodul/[id]/route.ts", "app/api/admin/oppetund/[id]/route.ts",
+        // piece 3b, Task 4: a Seaded card's autosave
+        "app/api/admin/seaded/[part]/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
@@ -184,7 +186,8 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect([...strip(assessmentActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(assessmentExports);
     const certificateActions = files().find((f) => f.path === "server/actions/admin-certificates.ts")!;
     const certificateExports = [...strip(certificateActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(certificateExports).toEqual(["saveCertificateSettingsAction", "reissueCertificateAction"]);
+    // admin UX pass piece 3b, Task 4: Seaded's "Tunnistus" card autosaves on api/admin/seaded/certificate, so „Salvesta tunnistuse andmed“ is gone
+    expect(certificateExports).toEqual(["reissueCertificateAction"]);
     expect(violations(certificateActions.path, certificateActions.source)).toEqual([]);
     expect([...strip(certificateActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(certificateExports);
     // student reviews, Task 4: Maria's „Avalda“ / „Peida“, „Avalehel“, „Lisa arvustus“ / „Muuda“ and „Kustuta“
@@ -193,12 +196,13 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(reviewExports).toEqual(["decideReviewAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction"]);
     expect(violations(reviewActions.path, reviewActions.source)).toEqual([]);
     expect([...strip(reviewActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(reviewExports);
-    // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle
-    const financingActions = files().find((f) => f.path === "server/actions/admin-financing.ts")!;
-    const financingExports = [...strip(financingActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(financingExports).toEqual(["saveFinancingSettingsAction"]);
-    expect(violations(financingActions.path, financingActions.source)).toEqual([]);
-    expect([...strip(financingActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(financingExports);
+    // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle had an action; since piece 3b, Task 4 it autosaves on api/admin/seaded/financing
+    expect(files().some((f) => f.path === "server/actions/admin-financing.ts")).toBe(false);
+    // the invoice actions: Seaded's „Salvesta arve andmed“ is gone (the „Maksmine“ card autosaves on api/admin/seaded/invoice)
+    const invoiceActions = files().find((f) => f.path === "server/actions/admin-invoices.ts")!;
+    const invoiceExports = [...strip(invoiceActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(invoiceExports).toEqual(["createInvoiceAction", "sendInvoiceAction", "markInvoicePaidAction", "undoInvoicePaidAction", "cancelInvoiceAction", "updateInvoiceBuyerAction", "catchUpInvoiceAction", "createInvoicesForUnbilledAction"]);
+    expect(violations(invoiceActions.path, invoiceActions.source)).toEqual([]);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

@@ -1,9 +1,8 @@
-/* Seaded → „Järelmaks (Inbank)“ (instalments Task 5, spec D4): a card of its own after „Arve andmed“; one checkbox, its lead, and the save line. Every
-   control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → „Järelmaks (Inbank)“ (instalments Task 5, spec D4; admin UX pass piece 3b, Task 4): a card in the „Maksmine“ section; one checkbox and
+   its lead, saved at once. Every control is the admin's 44 px one; colours from tokens.css only. */
 
 .card {
-  margin-top: 25px;
-  scroll-margin-top: 20px;
+  min-width: 0;
 }
 
 .check {
@@ -20,23 +19,4 @@
   height: 18px;
   margin: 0;
   accent-color: var(--ink);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 18px;
-  margin-top: 22px;
-}
-
-.actions p {
-  flex: 1 1 260px;
-  margin: 0;
-}
-
-@media (max-width: 640px) {
-  .actions button {
-    flex: 1 1 100%;
-  }
 }

@@ -3,7 +3,7 @@ import type { BrowserContext, Locator, Page, Route, TestInfo } from "@playwright
 import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
 import { LOCAL_ADMINS } from "../local-secrets";
-import { adminReady, editLang, saveBarButton, seadedSave, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, saveBarButton, saveBarStatus, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
 import { holdContractTexts } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 import { holdNewsletter } from "./newsletter";
@@ -607,22 +607,86 @@ test.describe("the newsletter popup (phase 2c)", () => {
 });
 
 test.describe("settings", () => {
-  test("contact links (https only) and the newsletter discount reach the footer and the contact page", async ({ page, context, visitorIp }, info) => {
+  /** The legal texts' „Salvesta“ (their save bar in „Lepingud ja tingimused“; every other card autosaves): saved, its own line says so. */
+  const legalSave = async (page: Page) => {
+    await saveBarButton(page).click();
+    await expect(saveBarStatus(page)).toHaveText("Salvestatud.");
+  };
+
+  test("375 × 812: the section map is the „Jaotised ▾“ select under the header; a choice goes to its section below the phone bar; the old anchors land in „Maksmine“; nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+    test.skip(!phone(info), "the phone project");
+    await page.setViewportSize({ width: 375, height: 812 });
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/seaded");
+    await adminReady(page);
+    const select = page.locator("[data-section-select]");
+    await expect(select).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Jaotised" })).toBeHidden();
+    await expect(select.locator("[data-section-face]")).toHaveText(/^Jaotised · Kontakt\s*▾$/);
+    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
+    const box = (await select.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.x).toBeGreaterThanOrEqual(16);
+    expect(box.x + box.width).toBeLessThanOrEqual(375 - 16 + 0.5);
+    // under the header, before the first card
+    const head = (await page.locator("[data-seaded-head]").boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(head.y + head.height);
+    expect(box.y).toBeLessThan((await page.locator("[data-contact-card]").boundingBox())!.y);
+    expect(await noOverflow(page)).toBe(true);
+    // the chip in its short form beside the H1, the one status of the page
+    await expect(page.locator("[data-save-status][data-save-kind]")).toHaveCount(1);
+    const top = (id: string) => page.locator(`#${id}`).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    await select.locator("select").selectOption("maksmine");
+    await expect(select.locator("[data-section-face]")).toContainText("Maksmine");
+    await expect.poll(() => top("maksmine")).toBeGreaterThanOrEqual(64);
+    await expect.poll(() => top("maksmine")).toBeLessThanOrEqual(64 + 24 + 4);
+    await select.locator("select").selectOption("ligipaas");
+    await expect.poll(async () => (await page.locator("[data-admin-emails]").boundingBox())!.y).toBeLessThan(812);
+    // the old anchors: #arve, #ettemaks, #jarelmaks at the top of „Maksmine“ (below the phone bar), #tunnistus its section
+    for (const alias of ["arve", "ettemaks", "jarelmaks"]) {
+      await page.goto(`/admin/seaded#${alias}`);
+      await adminReady(page);
+      await expect.poll(() => top("maksmine"), alias).toBeGreaterThanOrEqual(64);
+      await expect.poll(() => top("maksmine"), alias).toBeLessThanOrEqual(64 + 24 + 4);
+    }
+    await page.goto("/admin/seaded#tunnistus");
+    await adminReady(page);
+    await expect.poll(() => top("tunnistus")).toBeGreaterThanOrEqual(64);
+    await expect.poll(() => top("tunnistus")).toBeLessThanOrEqual(64 + 24 + 4);
+    expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("contact links (https only) and the newsletter discount autosave (no „Salvesta“) and reach the footer and the contact page", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the contact settings; the phone project the privacy page");
     await changing(["settings", { column: "key", value: "contact" }], ["settings", { column: "key", value: "newsletter" }]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
+    await expect(page.locator("[data-contact-card]").getByRole("button")).toHaveCount(0);
+    const stored = () => one((sql) => sql<{ value: Record<string, string> }[]>`select value from settings where key = 'contact'`);
+    const before = (await stored()).value;
     const instagram = page.getByRole("textbox", { name: "Instagram", exact: true });
-    await instagram.fill("javascript:alert(1)");
-    await seadedSave(page).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
+    const refused = await seadedAutosave(page, "contact", async () => {
+      await instagram.fill("javascript:alert(1)");
+      await instagram.press("Tab");
+    });
+    expect(refused.status()).toBe(400);
+    await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "invalid");
     await expect(instagram).toHaveAttribute("aria-invalid", "true");
     await expect(page.getByText("Sisesta täielik aadress, mis algab https://.")).toBeVisible();
+    expect((await stored()).value.instagram).toBe(before.instagram); // (nothing of it stored)
     await instagram.fill("https://www.instagram.com/mslab.e2e");
-    await page.getByRole("textbox", { name: "Telefon", exact: true }).fill("+372 5555 0199");
-    await page.getByRole("textbox", { name: "Tervitussoodustus", exact: true }).fill("15%");
-    await save(page);
+    const phoneField = page.getByRole("textbox", { name: "Telefon", exact: true });
+    await phoneField.fill("+372 5555 0199");
+    await phoneField.press("Tab");
+    const discount = page.getByRole("textbox", { name: "Tervitussoodustus", exact: true });
+    const saved = await seadedAutosave(page, "newsletter", async () => {
+      await discount.fill("15%");
+      await discount.press("Tab");
+    });
+    expect(saved.status()).toBe(200);
+    await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
+    await expect.poll(async () => (await stored()).value).toMatchObject({ instagram: "https://www.instagram.com/mslab.e2e", phone: "+372 5555 0199" });
 
     await page.goto("/");
     const footer = page.locator("footer");
@@ -640,8 +704,13 @@ test.describe("settings", () => {
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
-    await page.getByRole("textbox", { name: "Tervituskood", exact: true }).fill("e2e-tere");
-    await save(page);
+    const code = page.getByRole("textbox", { name: "Tervituskood", exact: true });
+    const saved = await seadedAutosave(page, "newsletter", async () => {
+      await code.fill("e2e-tere");
+      await code.press("Tab");
+    });
+    expect(saved.status()).toBe(200);
+    await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
     expect(await one((sql) => sql<{ code: string }[]>`select value->>'welcomeCode' as code from settings where key = 'newsletter'`)).toEqual({ code: "E2E-TERE" });
     const addr = testEmail("welcome", info.project.name);
     const token = "w".repeat(40) + info.project.name.slice(0, 3).padEnd(3, "x");
@@ -663,7 +732,8 @@ test.describe("settings", () => {
     await page.goto("/admin/seaded");
     await adminReady(page);
 
-    // the e-course contract keeps its card in the settings' form, retitled; its title is Maria's (ruling R3) with the suggestion in a hint
+    // the e-course contract keeps its card in the legal texts' form („Lepingud ja tingimused“, its own save until Task 5), retitled; its title is
+    // Maria's (ruling R3) with the suggestion in a hint
     const ecourse = page.locator('[data-legal-editor="course_terms"]');
     await expect(ecourse.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping (tingimused)");
     const ecourseTitle = ecourse.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
@@ -722,7 +792,7 @@ test.describe("settings", () => {
     await editLang(page, "et");
     const before = await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'course_terms'`);
     await ecourseTitle.fill("E2E E-koolituse leping");
-    await save(page);
+    await legalSave(page);
     const after = await one((sql) => sql<{ title: { et: string }; body: unknown }[]>`select title, body from pages where key = 'course_terms'`);
     expect(after.title.et).toBe("E2E E-koolituse leping");
     expect(after.body).toEqual(before.body);
@@ -749,17 +819,17 @@ test.describe("settings", () => {
       await route.continue();
     };
     await page.route("**/admin/seaded", slow);
-    await seadedSave(page).click();
-    await expect(status(page)).toHaveText("Salvestan…");
+    await saveBarButton(page).click();
+    await expect(saveBarStatus(page)).toHaveText("Salvestan…");
     await body.focus();
     await page.keyboard.press("Control+End");
     await page.keyboard.type(" Lisa.");
-    await expect(status(page)).toHaveText("Salvestamata muudatused", { timeout: 15_000 });
+    await expect(saveBarStatus(page)).toHaveText("Salvestamata muudatused", { timeout: 15_000 });
     await expect(body).toHaveValue("E2E privaatsus, esimene lõik.\n\nTeine lõik. Lisa.");
     const stored = () => one((sql) => sql<{ body: { et: string } }[]>`select body from pages where key = 'privacy'`);
     expect((await stored()).body.et).toBe("E2E privaatsus, esimene lõik.\n\nTeine lõik."); // what was sent
     await page.unroute("**/admin/seaded", slow);
-    await save(page);
+    await legalSave(page);
     expect((await stored()).body.et).toBe("E2E privaatsus, esimene lõik.\n\nTeine lõik. Lisa.");
 
     await page.goto("/privaatsus");

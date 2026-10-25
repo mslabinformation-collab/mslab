@@ -92,7 +92,7 @@ export function ContractTexts({ initial }: { initial: ContractCard }) {
   const hasRu = (draft.body.ru ?? "").trim() !== "";
 
   return (
-    <section id="lepingud" className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} data-contract-texts="">
+    <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} data-contract-texts="">
       <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
         {t.title}
       </h2>

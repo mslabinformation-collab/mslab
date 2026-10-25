@@ -41,7 +41,7 @@ const MIN = 60_000;
 const LATER = new Date(NOW.getTime() + 5 * MIN);
 const LATEST = new Date(NOW.getTime() + 60 * MIN);
 const NBSP = " ";
-/** Seaded → Arve andmed: the seller (the school of every contract), VAT off, MSL from 1 in 2026. */
+/** Seaded → Maksmine: the seller (the school of every contract), VAT off, MSL from 1 in 2026. */
 const SELLER = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" };
 const SCHOOL = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu" };
 /** Maria's contact text: every placeholder and an unknown one, two paragraphs; the Russian text with its own title. */

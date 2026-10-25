@@ -32,7 +32,7 @@ function inARow(numbers: string[]): boolean {
  * What a press made, in words (piece2-texts S3-l), one line each: one made is „Arve {number} on valmis.“ (the row button's own words), two or more
  * „Koostatud {n} arvet: {first}–{last}.“ — without „: {first}–{last}“ when some of them were invoices already made (`linked`: their numbers are
  * not a range) or when the numbers made are no run (a payment of the web took one meanwhile: `inARow`); some billed meanwhile „Juba arvega: {n}.“; the payers whose invoice failed „Ei õnnestunud: {names}.
- * Proovi uuesti.“; Seaded's seller card empty the line the button gives way to, „Täida Seaded → Arve andmed“.
+ * Proovi uuesti.“; Seaded's seller card empty the line the button gives way to, „Täida Seaded → Maksmine“.
  */
 export function resultLines(r: BatchOutcome): string[] {
   const t = adminEt.invoices.uninvoiced;
@@ -60,8 +60,8 @@ const IDLE: Line = { tone: "idle", text: "" };
  *
  * - `ids`: the payments the list shows, oldest first: what a press sends (the work walks them in that order); `first`, `last`: the numbers the first
  *   and the last newly issued invoice will take, and `linked` how many of the payments pay an invoice already made instead (server/invoices.ts
- *   unbilledPreview). `ready`: Seaded's seller card is filled in; if not, the link „Täida Seaded → Arve
- *   andmed“ stands in place of the button.
+ *   unbilledPreview). `ready`: Seaded's seller card is filled in; if not, the link „Täida Seaded →
+ *   Maksmine“ stands in place of the button.
  * - When the press leaves nothing to bill the page draws the strip with no `ids`; it then draws only the line that says what was done (this
  *   component is the same one, so it keeps it), and nothing at all without one.
  */
@@ -152,7 +152,7 @@ export function UninvoicedStrip({
               {open ? t.hide : t.show}
             </button>
             {!ready ? (
-              <Link className={ui.link} href="/admin/seaded#arve" data-uninvoiced-need-seller="">
+              <Link className={ui.link} href="/admin/seaded#maksmine" data-uninvoiced-need-seller="">
                 {t.needSeller}
               </Link>
             ) : (

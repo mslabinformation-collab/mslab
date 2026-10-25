@@ -145,7 +145,7 @@ export async function shownVersionHolds(q: Q, kind: ContractKind, locale: "et" |
 /**
  * What a contact registration's contract is made of: its fields (D3), `prepaymentText` and the `template` it is made from, from one read of the
  * registration and one read of the text, so that the language, the payment words, the course's name and the text agree and the caller reads none again.
- * The fields come from the registration, its course and its session: the school (Seaded → Arve andmed), the student as she typed herself, the course's
+ * The fields come from the registration, its course and its session: the school (Seaded → Maksmine), the student as she typed herself, the course's
  * name in the contract's language, the session's date and place, the price (the group or the individual price: registrationPrice) and the payment
  * choice in words. `prepaymentText` is „Ettemaks“, the half the choice asks first (or the whole price), for the placeholder. `locale` (the template's
  * too) is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian). The template's version is read

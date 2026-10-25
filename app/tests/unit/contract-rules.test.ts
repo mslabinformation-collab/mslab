@@ -175,7 +175,7 @@ describe("the download: file name and headers", () => {
   });
 });
 
-describe("schoolOf: the school block from Seaded → Arve andmed (spec §6)", () => {
+describe("schoolOf: the school block from Seaded → Maksmine (spec §6)", () => {
   test("the company, its registry code and its address as set", () => {
     expect(schoolOf({ company: "MS LAB OÜ", registryCode: "12345678", address: "Pärnu mnt 1, Tallinn" })).toEqual({
       company: "MS LAB OÜ", registryCode: "12345678", address: "Pärnu mnt 1, Tallinn",

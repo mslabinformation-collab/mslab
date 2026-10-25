@@ -1,0 +1,67 @@
+/* Seaded (admin UX pass piece 3b, Task 4; README B4; the Part 3 frame „B4 Seaded“ and the Part 4 phone frame): from 1180 px two columns — the 190 px
+   section map (SectionMap, sticky) and the sections, 22 px apart; below 1180 px one column, the map's „Jaotised ▾“ select under the header and the
+   sections after it. Sections and their cards 16 px apart, as drawn. Colours from tokens.css only. */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  /* the cards' own two-column grids fold to one in a narrow column (editor.module.css: @container course-cards) */
+  container: course-cards / inline-size;
+}
+
+/* a section: its cards one under another; the map's jump puts the focus on it (tabindex -1): no ring for a jump, one for the keyboard */
+.section {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.section:focus {
+  outline: none;
+}
+
+.section:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* an old anchor (#arve, #ettemaks, #jarelmaks): at the top of the section that holds its card now, taking no room */
+.alias {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+/* the legal texts' form: their cards one under another, the save bar at its foot */
+.legal {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.legal [data-save-bar] {
+  margin-top: 0;
+}
+
+/* after a conflict: „Taasta minu tekst“ at the foot of the card */
+.restore {
+  margin: 18px 0 0;
+}
+
+@media (min-width: 1180px) {
+  .layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 22px;
+  }
+}

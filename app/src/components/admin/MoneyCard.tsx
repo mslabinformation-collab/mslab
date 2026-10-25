@@ -20,7 +20,7 @@ import styles from "./MoneyCard.module.css";
 // way Maria records money that came in outside the site (B4: server/registration-money.ts addManualPayment, one transaction with the seat check and
 // the receipt). The panel opens in place of its button: the amount pills (P-2: what is missing up to 50 %, preselected; the remainder; „Muu summa“,
 // refused in the field above what is left, S3-e), the day (today, never later), the way (Pangaülekanne by default), „Koosta kviitung“ (ticked when
-// Seaded → Arve andmed has a seller; else the S3-c line in its place), the submit „Lisa {summa}“ (+ „· koht kinnitub“ when this amount reaches 50 %
+// Seaded → Maksmine has a seller; else the S3-c line in its place), the submit „Lisa {summa}“ (+ „· koht kinnitub“ when this amount reaches 50 %
 // and the place is not confirmed yet and a seat is free for it or it holds one; S3-d's words without a session) and „Katkesta“. The press sends the paid total the card was drawn with: the
 // server refuses one built on an old total (`stale`) and refreshes the page. Hidden on a cancelled registration. This file runs on old iPads: no
 // regular expression with a lookbehind here or in what it imports (tests/unit/old-safari.test.ts).
@@ -105,7 +105,7 @@ export function MoneyCard({
   session: { taken: number; capacity: number } | null;
   /** The registration holds a seat of that session now (domain/sessions.ts holdsSeat: confirmed, or awaiting with a live hold): `taken` counts it. */
   takesSeat: boolean;
-  /** Seaded → Arve andmed has a seller (domain/invoice.ts sellerReady): a receipt can be made. */
+  /** Seaded → Maksmine has a seller (domain/invoice.ts sellerReady): a receipt can be made. */
   sellerReady: boolean;
   /**
    * Its online payments, newest first (listPaymentsOf: no replaced orders), as PaymentLines drawn by the page on the server — or null when there are
@@ -357,7 +357,7 @@ export function MoneyCard({
             ) : (
               <p className={styles.seller} data-receipt-need-seller="">
                 {sellerBefore}
-                <Link className={styles.sellerLink} href="/admin/seaded#arve">
+                <Link className={styles.sellerLink} href="/admin/seaded#maksmine">
                   {m.needSellerLink}
                 </Link>
                 {sellerAfter}
