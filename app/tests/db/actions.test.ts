@@ -361,6 +361,18 @@ describe("requests", () => {
     expect(await handlePractice(deps, form({ ...fields, package: "MAXI" }))).toEqual({ ok: false, errors: { package: "required" } });
   });
 
+  test("Maria's practice mail names the package once when its name is its code, and name (code) when they differ", async () => {
+    const { mails } = outbox();
+    const { deps, flush } = setup({ secrets: true });
+    await db.insert(practicePackages).values({ code: "MAXI", name: { et: "Põhjalik praktika" }, tagline: { et: "" }, models: 3, durationLabel: { et: "8 ak" }, price: 20000 });
+    const fields = { name: "Proov 3", email: "test@example.com", phone: "+372 5555 5555", times: "Õhtud" };
+    await handlePractice(deps, form({ ...fields, package: "MINI" }));
+    await handlePractice(deps, form({ ...fields, package: "MAXI" }));
+    await flush();
+    const subjects = mails().filter((m) => m.to === "maria@example.com").map((m) => m.subject);
+    expect(subjects).toEqual(["Praktika taotlus: MINI — Proov 3", "Praktika taotlus: Põhjalik praktika (MAXI) — Proov 3"]);
+  });
+
   test("waitlist for a scheduled session of a published course", async () => {
     const { mails } = outbox();
     const { deps, flush, changes } = setup({ secrets: true });
