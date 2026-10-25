@@ -1887,14 +1887,15 @@ export const adminEt = {
       newLabel: "Uus toimumine",
       editLabel: "Toimumine: {name}",
       notFound: "Seda toimumist ei leitud.",
-      // the header line „{dd.mm.yyyy} · {linn} · {k}/{cap} kinnitatud · ootab ettemaksu {h} · ootenimekirjas {n}“, its parts joined with " · ", the held
-      // seats' and the waitlist's left out at 0 (P-7, Dim 25.10); the phone's short form (Part 4) „… · {k}/{cap} · ootab ettemaksu {h} · ootel {n}“. {k}: the
+      // the header line „{dd.mm.yyyy} · {linn} · {k}/{cap} kinnitatud · ootab ettemaksu {a} · ootenimekirjas {n}“, its parts joined with " · ", the awaiting
+      // registrations' and the waitlist's left out at 0 (P-7, Dim 25.10); the phone's short form (Part 4) „… · {k}/{cap} · ootab ettemaksu {a} · ootel {n}“. {k}: the
       // confirmed registrations.
       seats: "{k}/{cap} kinnitatud",
-      // Dim 25.10: the seats held for an unpaid registration (a live seat hold, as the public seats count), between the seats and the waitlist, only
+      // Dim 25.10 (count: the controller's ruling): the registrations with the status „Ootab ettemaksu“, a seat hold live or ended — the number Registreerimised'
+      // filter shows — between the seats and the waitlist, only
       // when there is one; the status's own words („Ootab ettemaksu“) in lower case; the phone's short line has it too (it fits: „… · 4/4 · ootab ettemaksu
       // 1 · ootel 2“).
-      held: "ootab ettemaksu {n}",
+      awaiting: "ootab ettemaksu {n}",
       waitlist: "ootenimekirjas {n}",
       seatsShort: "{k}/{cap}",
       waitlistShort: "ootel {n}",

@@ -26,8 +26,8 @@ import styles from "./SessionForm.module.css";
 // The Kalender drawer (admin UX pass piece 3b, Task 3; README B3, the Part 3 frame „B3 Kalender“ and the Part 4 „B3 Session drawer“; piece3-texts
 // S3-P3-g, S3-P3-i, P-2, P-7, P-8; rulings R-a, R-b, R-c). Two drawers:
 // - SessionDrawer, a stored session (?id=<n>), top to bottom: the header — SaveStatus left of the drawer's ✕, the course (Jost 28), „{dd.mm.yyyy} ·
-//   {linn} · {k}/{cap} kinnitatud · ootab ettemaksu {h} · ootenimekirjas {n}“ (the held seats' part Dim's 25.10, the waitlist's P-7, each only when
-//   there is one; the phone's „… · {k}/{cap} · ootab ettemaksu {h} · ootel {n}“, Part 4's with the held part, which fits its line) and „Protokollid“, the first button; with registrations the notice „{n} õpilast on registreerunud. Muudatusest neile kirja ei saadeta.“; the
+//   {linn} · {k}/{cap} kinnitatud · ootab ettemaksu {a} · ootenimekirjas {n}“ (the awaiting registrations' part Dim's 25.10, the waitlist's P-7, each
+//   only when there is one; the phone's „… · {k}/{cap} · ootab ettemaksu {a} · ootel {n}“, Part 4's with that part, which fits its line) and „Protokollid“, the first button; with registrations the notice „{n} õpilast on registreerunud. Muudatusest neile kirja ei saadeta.“; the
 //   fields, autosaved (useAutosave on POST /api/admin/toimumine/<id>, server/session-edit.ts writeSession) — „Kuupäev“ or „Algus (Eesti aeg)“ changed on a
 //   booked session says „Muudetud — teavita {n} õpilast ise.“ (#6b4f5c), „Kohti“ commits on blur (piece3-texts §4, behaviours "Server-side changes" 1)
 //   and below the confirmed is refused in the field, „Koolitus“ is disabled once anyone is booked with S3-P3-i under it; „Staatus“, instant
@@ -249,8 +249,11 @@ type DrawerProps = {
   fields: SessionFields;
   status: SessionStatus;
   counts: SessionCounts;
-  /** Its seats held for an unpaid registration now (awaiting its prepayment with a live seat hold: db/queries/seats.ts takesSeat, as the public seats count). */
-  held: number;
+  /**
+   * Its registrations awaiting their prepayment (status „Ootab ettemaksu“, a seat hold live or not: the same number as Registreerimised' status filter;
+   * controller ruling, fix round 2 of Dim's 25.10 line).
+   */
+  awaiting: number;
   /** Open waitlist requests for it. */
   waitlist: number;
   /** The course's name. */
@@ -414,9 +417,9 @@ export function SessionDrawer(p: DrawerProps) {
       p.when,
       p.fields.city,
       fill(short ? t.drawer.seatsShort : t.drawer.seats, { k: p.counts.confirmed, cap: p.fields.capacity }),
-      // (Dim 25.10: the held seats between the confirmed and the waitlist; on the phone's short line too, where it fits: Part 4's sample with it is
-      // about 302 px of the 343 px a 375 px phone gives the line)
-      p.held > 0 ? fill(t.drawer.held, { n: p.held }) : null,
+      // (Dim 25.10: the awaiting registrations between the confirmed and the waitlist; on the phone's short line too, where it fits: Part 4's sample
+      // with it is about 302 px of the 343 px a 375 px phone gives the line)
+      p.awaiting > 0 ? fill(t.drawer.awaiting, { n: p.awaiting }) : null,
       p.waitlist > 0 ? fill(short ? t.drawer.waitlistShort : t.drawer.waitlist, { n: p.waitlist }) : null,
     ]
       .filter(Boolean)

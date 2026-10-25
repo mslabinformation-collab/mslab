@@ -47,7 +47,7 @@ const props = (over: Partial<DrawerProps> = {}): DrawerProps => ({
   fields: FIELDS,
   status: "scheduled",
   counts: { confirmed: 4, booked: 4, all: 4 },
-  held: 0,
+  awaiting: 0,
   waitlist: 2,
   title: "Kulmumeistri baaskoolitus",
   when: "05.12.2026",
@@ -182,13 +182,13 @@ describe("the header (README B3; P-7)", () => {
     expect($("[data-session-protocols]")).toBeNull();
   });
 
-  it("held, unpaid seats (Dim 25.10): „· ootab ettemaksu {n}“ between the confirmed and the waitlist, only when there is one; on the phone's line too", async () => {
-    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 1 });
+  it("registrations awaiting their prepayment (Dim 25.10): „· ootab ettemaksu {n}“ between the confirmed and the waitlist, only when there is one; on the phone's line too", async () => {
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, awaiting: 1 });
     expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootab ettemaksu 1 · ootenimekirjas 2");
     expect(text($("[data-line='short']"))).toBe("05.12.2026 · Pärnu · 3/4 · ootab ettemaksu 1 · ootel 2");
-    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 2, waitlist: 0 });
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, awaiting: 2, waitlist: 0 });
     expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootab ettemaksu 2");
-    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, held: 0 });
+    await show({ counts: { confirmed: 3, booked: 5, all: 5 }, awaiting: 0 });
     expect(text($("[data-line='wide']"))).toBe("05.12.2026 · Pärnu · 3/4 kinnitatud · ootenimekirjas 2");
     expect(text($("[data-line='short']"))).toBe("05.12.2026 · Pärnu · 3/4 · ootel 2");
     expect($("[data-session-head]")!.textContent).not.toContain("ootab ettemaksu");

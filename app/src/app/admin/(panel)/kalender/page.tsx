@@ -148,8 +148,8 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
             fields={fieldsOf(stored.value)}
             status={stored.value.status}
             counts={regs}
-            // (the seats taken now are the confirmed and the live holds of unpaid ones, db/queries/seats.ts takesSeat: the held are the rest)
-            held={Math.max(0, open.taken - open.confirmed)}
+            // (every registration with the status „Ootab ettemaksu“, its seat hold live or ended: the number Registreerimised' filter shows)
+            awaiting={open.awaiting}
             waitlist={open.waitlist}
             title={name}
             when={formatDate(open.startsAt, "et")}

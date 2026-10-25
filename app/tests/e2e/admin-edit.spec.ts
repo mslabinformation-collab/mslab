@@ -1377,12 +1377,8 @@ test.describe("calendar", () => {
     await expect(page).toHaveURL(/\/admin\/kalender$/);
     await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4");
     await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
-    // the drawer's header says the held, unpaid seats (Dim 25.10): her seat is held while her payment's hold is live, not once it has ended
+    // the drawer's header says it (Dim 25.10): her registration awaits its prepayment — with no seat hold (as a bank transfer's), it still counts
     await page.goto(`/admin/kalender?id=${id}`);
-    await adminReady(page);
-    await expect(dialog.locator("[data-line='wide']")).toHaveText(new RegExp(` · ${city} · 0/4 kinnitatud$`));
-    await onLocalDb((sql) => sql`update registrations set seat_hold_until = now() + interval '30 minutes' where course_session_id = ${id}`);
-    await page.reload();
     await adminReady(page);
     await expect(dialog.locator("[data-line='wide']")).toHaveText(new RegExp(` · ${city} · 0/4 kinnitatud · ootab ettemaksu 1$`));
 
@@ -1422,8 +1418,6 @@ test.describe("calendar", () => {
     const city = `${EDIT_CITY_PREFIX}${info.project.name} ${unique()}`;
     const id = await insertEditSession(COURSE.slug, city);
     await registerOnSession(id, info.project.name);
-    // her seat held while her payment is on its way (Dim 25.10: the header says it, the phone's short line too)
-    await onLocalDb((sql) => sql`update registrations set seat_hold_until = now() + interval '30 minutes' where course_session_id = ${id}`);
     await page.setViewportSize({ width: 375, height: 812 });
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/kalender?id=${id}`);
