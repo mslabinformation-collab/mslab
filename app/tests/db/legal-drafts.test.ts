@@ -216,6 +216,42 @@ describe("publish (C6): through the existing writers, a new version exactly as a
     expect((await db.select().from(pages).where(eq(pages.key, "privacy")))[0].body).toEqual({ et: "Minu mustand." });
   });
 
+  test("review M1: spaces at either end are no change (the writers trim them): typed, they make no draft; a stored draft that is live but for them is not „changed“, and its publish writes nothing — no page row, no version — and drops it", async () => {
+    // typed: a trailing space and a newline before the text, both languages
+    const typed = await typeText("course_terms", { body: { et: `${LIVE.course_terms.body.et}  `, ru: `\n${LIVE.course_terms.body.ru}` } });
+    expect(typed).toMatchObject({ ok: true, version: expect.stringMatching(/^l:/) });
+    expect(await drafts()).toHaveLength(0);
+    expect((await readLegal(db, "course_terms")).changed).toBe(false);
+    // a draft of the contact text that differs only so (made before this rule, or by hand): not changed, and the press publishes nothing
+    const saved = await typeText("contract_contact", { title: { et: "Muu pealkiri" } });
+    await db.update(contentDrafts).set({ value: { title: { et: ` ${LIVE.contract_contact.title.et} `, ru: "" }, body: { et: `${LIVE.contract_contact.body.et}\n`, ru: " " } } });
+    const state = await readLegal(db, "contract_contact");
+    expect(state).toMatchObject({ version: (saved as { version: string }).version, changed: false });
+    const rows = await liveRows();
+    expect(await publishLegal(db, "contract_contact", state.version, NOW)).toMatchObject({ ok: true, state: { changed: false, version: expect.stringMatching(/^l:/) } });
+    expect(await liveRows()).toEqual(rows); // (contractContactVersion kept: nobody is asked again)
+    expect(await versionOf("contractContactVersion")).toBe(OLD_VERSION);
+    expect(await drafts()).toHaveLength(0);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+  });
+
+  test("review M3: the contact text published again with the very text that is live (a change typed and typed back, spaces aside) keeps contractContactVersion; a refused one writes nothing", async () => {
+    const first = await typeText("contract_contact", { body: { et: "Uus tekst, {nimi}." } });
+    expect(await publishLegal(db, "contract_contact", (first as { version: string }).version, NOW)).toMatchObject({ ok: true });
+    const version = await versionOf("contractContactVersion");
+    expect(version).toBe(NOW.toISOString());
+    // the same text through the writer itself, at a later time: the version stays
+    const later = new Date(NOW.getTime() + 60_000);
+    const { saveContractTexts } = await import("@/server/contracts");
+    expect(await saveContractTexts(db, { title: { et: LIVE.contract_contact.title.et }, body: { et: "  Uus tekst, {nimi}. " } }, later)).toEqual({ ok: true });
+    expect(await versionOf("contractContactVersion")).toBe(version);
+    // a refused field and a shape that is no text: nothing written
+    const rows = await liveRows();
+    expect(await saveContractTexts(db, { title: { et: " " }, body: { et: "Tekst." } }, later)).toEqual({ ok: false, fields: { title: "required" } });
+    expect(await saveContractTexts(db, "not an object", later)).toEqual({ ok: false, fields: { form: "invalid" } });
+    expect(await liveRows()).toEqual(rows);
+  });
+
   test("a draft the writer refuses (a first contact text without a title) is invalid by field: nothing is written and the draft stays", async () => {
     await db.delete(pages).where(eq(pages.key, "contract_contact"));
     const saved = await typeText("contract_contact", { body: { et: "Ainult tekst." } });

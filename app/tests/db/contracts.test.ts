@@ -614,6 +614,13 @@ describe("saveContractTexts (Seaded → Lepingud)", () => {
     expect(await v()).toBe(new Date(LATEST.getTime() + 1001).toISOString());
   });
 
+  test("a refused first save writes nothing at all: no page row, no version (the writer of the contact text's publish, admin UX pass piece 3b, Task 5 review M3)", async () => {
+    expect(await saveContractTexts(db, { title: { et: "" }, body: { et: "Tekst." } }, NOW)).toEqual({ ok: false, fields: { title: "required" } });
+    expect(await saveContractTexts(db, "not an object", NOW)).toEqual({ ok: false, fields: { form: "invalid" } });
+    expect(await read()).toBeUndefined();
+    expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).toBeNull();
+  });
+
   test("a field that is empty or too long is refused by its name and nothing is stored; so is anything that is not a text", async () => {
     await saveContact();
     const before = await read();

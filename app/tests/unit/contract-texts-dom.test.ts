@@ -152,6 +152,17 @@ describe("typing saves only to the draft", () => {
     expect(publishButton("terms")).toBeNull();
   });
 
+  test("review M1: spaces typed at either end are no change (the writers trim them): no tag, no field mark, no button", async () => {
+    await show();
+    await type(field("course_terms", "body"), "Tere {nimi}.  ");
+    await type(field("course_terms", "title"), " E-koolituse leping");
+    expect(tag("course_terms")).toBeNull();
+    expect(publishButton("course_terms")).toBeNull();
+    expect(card("course_terms").querySelector("[data-unpublished-tag]")).toBeNull();
+    await type(field("course_terms", "body"), "Tere {nimi}. Lisa.");
+    expect(words(publishButton("course_terms"))).toBe("Avalda uus leping");
+  });
+
   test("the contracts' button is „Avalda uus leping“, the pages' „Avalda uus tekst“", async () => {
     await show();
     for (const key of ["privacy", "terms", "course_terms", "contract_contact"] as const) await type(field(key, "title"), `Muudetud ${key}`);
@@ -269,6 +280,26 @@ describe("„Jah, avalda“", () => {
     expect(said("terms")).toBe("Seda teksti muudeti vahepeal teises aknas. Vaata see üle.");
     expect(field("terms", "body").value).toBe("Teise akna tekst.");
     expect(words(publishButton("terms"))).toBe("Avalda uus tekst");
+  });
+
+  test("review M5: a 409 that finds the screen's text live and no other draft is her own publish whose answer came too late — published, not a change", async () => {
+    await show();
+    await type(field("privacy", "body"), "Uus privaatsustekst.");
+    await press(publishButton("privacy"));
+    // (the first press's answer was lost: the route published it after the client's bound; the next press finds it live)
+    publishAnswer = () => Response.json({ ok: false, error: "changed", version: "l:p2", value: live("Privaatsus", "Uus privaatsustekst."), live: live("Privaatsus", "Uus privaatsustekst."), changed: false }, { status: 409 });
+    await yes("privacy");
+    await settle();
+    expect(said("privacy")).toBe("Uus tekst on avaldatud.");
+    expect(tag("privacy")).toBeNull();
+    expect(publishButton("privacy")).toBeNull();
+    // a 409 with another text live is the other window's: the P-11 refusal
+    await type(field("privacy", "body"), "Minu järgmine tekst.");
+    await press(publishButton("privacy"));
+    publishAnswer = () => Response.json({ ok: false, error: "changed", version: "l:p3", value: live("Privaatsus", "Teise akna tekst."), live: live("Privaatsus", "Teise akna tekst."), changed: false }, { status: 409 });
+    await yes("privacy");
+    await settle();
+    expect(said("privacy")).toBe("Seda teksti muudeti vahepeal teises aknas. Vaata see üle.");
   });
 
   test("a failure (a server error): D-2's words, the panel closes and its button takes the focus; signed out: „Logi uuesti sisse.“", async () => {
@@ -396,5 +427,63 @@ describe("the phone (Part 4: „Pikk tekst avaneb täisekraanil.“)", () => {
     expect(drawer.getAttribute("aria-label")).toBe("E-koolituse leping");
     expect(drawer.querySelector<HTMLTextAreaElement>('[data-i18n="course_terms.body"]')!.value).toBe("Mustand.");
     expect(drawer.querySelectorAll("[data-placeholder-chip]")).toHaveLength(PLACEHOLDERS.length);
+  });
+
+  describe("review I-1: the drawer's chips stay above the on-screen keyboard", () => {
+    const keyboard = (view: { height: number; offsetTop: number } | undefined) => {
+      const target = view ? Object.assign(new EventTarget(), view) : undefined;
+      Object.defineProperty(window, "visualViewport", { value: target, configurable: true });
+      return target;
+    };
+    let innerHeight: PropertyDescriptor | undefined;
+    beforeEach(() => {
+      innerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
+      Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+    });
+    afterEach(() => {
+      if (innerHeight) Object.defineProperty(window, "innerHeight", innerHeight);
+      Reflect.deleteProperty(window, "visualViewport");
+    });
+    const drawerChips = () => document.querySelector<HTMLElement>("dialog[data-drawer] [data-placeholder-chips]")!;
+    const openDrawer = async () => {
+      phoneWidth();
+      nav.params = new URLSearchParams("tekst=course_terms");
+      await show();
+    };
+
+    test("the keyboard's height over the foot of the screen (innerHeight − visual height − its offset, at least 0) lifts the sticky row, and follows the keyboard; the mark for the 💬 bubble stays", async () => {
+      const view = keyboard({ height: 480, offsetTop: 20 })!;
+      await openDrawer();
+      expect(drawerChips().style.getPropertyValue("--keyboard-inset")).toBe("300px");
+      expect(drawerChips().hasAttribute("data-fab-avoid")).toBe(true);
+      Object.assign(view, { height: 800, offsetTop: 0 }); // the keyboard closed
+      await act(async () => void view.dispatchEvent(new Event("resize")));
+      expect(drawerChips().style.getPropertyValue("--keyboard-inset")).toBe("0px");
+      Object.assign(view, { height: 500, offsetTop: 60 }); // opened again, the visual viewport scrolled
+      await act(async () => void view.dispatchEvent(new Event("scroll")));
+      expect(drawerChips().style.getPropertyValue("--keyboard-inset")).toBe("240px");
+      Object.assign(view, { height: 820, offsetTop: 0 }); // (taller than the layout viewport: never below 0)
+      await act(async () => void view.dispatchEvent(new Event("resize")));
+      expect(drawerChips().style.getPropertyValue("--keyboard-inset")).toBe("0px");
+      // the card's own row (no drawer) is never lifted
+      expect(card("contract_contact").querySelector<HTMLElement>("[data-placeholder-chips]")!.style.getPropertyValue("--keyboard-inset")).toBe("");
+    });
+
+    test("the drawer closed, the listeners go with it", async () => {
+      const view = keyboard({ height: 480, offsetTop: 0 })!;
+      const removed = vi.spyOn(view, "removeEventListener");
+      await openDrawer();
+      expect(drawerChips()).not.toBeNull();
+      nav.params = new URLSearchParams();
+      await show();
+      expect(document.querySelector("dialog[data-drawer]")).toBeNull();
+      expect(removed.mock.calls.map((c) => c[0]).sort()).toEqual(["resize", "scroll"]);
+    });
+
+    test("old iPads without visualViewport: no lift, nothing breaks", async () => {
+      keyboard(undefined);
+      await openDrawer();
+      expect(drawerChips().style.getPropertyValue("--keyboard-inset")).toBe("");
+    });
   });
 });

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { PLACEHOLDERS } from "@/domain/contract";
-import { LEGAL_KEYS, legalI18n, legalProblems, sameI18n, sameLegalText, type LegalField, type LegalKey, type LegalState, type LegalText } from "@/domain/legal-text";
+import { LEGAL_KEYS, legalI18n, legalProblems, sameStoredI18n, sameStoredText, type LegalField, type LegalKey, type LegalState, type LegalText } from "@/domain/legal-text";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
@@ -113,15 +113,41 @@ async function postJson(url: string, body: unknown): Promise<{ status: number; b
 }
 
 /**
+ * The on-screen keyboard's height over the foot of the screen, as the CSS variable --keyboard-inset on `ref`'s element while `on` (Task 5 review I-1).
+ * iOS Safari and Android Chrome (resizes-visual) keep the layout viewport, and the drawer's 100dvh, under the keyboard: what the visual viewport shows
+ * ends `innerHeight − visualViewport.height − visualViewport.offsetTop` px above the layout viewport's foot (at least 0). It follows the visual
+ * viewport's resize and scroll, and is gone with the element or when `on` ends. Without visualViewport (iOS before 13) nothing is set: no lift.
+ */
+function useKeyboardInset(ref: RefObject<HTMLElement | null>, on: boolean): void {
+  useEffect(() => {
+    const el = ref.current;
+    const view = typeof window === "undefined" ? undefined : window.visualViewport;
+    if (!on || !el || !view) return;
+    const update = () => el.style.setProperty("--keyboard-inset", `${Math.max(0, Math.round(window.innerHeight - view.height - view.offsetTop))}px`);
+    update();
+    view.addEventListener("resize", update);
+    view.addEventListener("scroll", update);
+    return () => {
+      view.removeEventListener("resize", update);
+      view.removeEventListener("scroll", update);
+      el.style.removeProperty("--keyboard-inset");
+    };
+  }, [ref, on]);
+}
+
+/**
  * The placeholders a contract's text may use (domain/contract.ts PLACEHOLDERS: the cart, the terms gate and the registration form fill them), as chips
  * „+ nimi“ … „+ ettemaks“ under the text (README B4, the Part 3 frame): a chip puts „{nimi}“ where the cursor is. Its title says what fills it. A press
- * keeps the cursor in the text (no focus moves to the chip). `sticky`: in the phone's drawer the row stays at the foot of the screen, above the keyboard.
+ * keeps the cursor in the text (no focus moves to the chip). `sticky`: in the phone's drawer the row stays at the foot of what the screen shows, above
+ * the on-screen keyboard (the Part 4 note; useKeyboardInset).
  */
 export function PlaceholderChips({ onInsert, disabled, sticky }: { onInsert: (text: string) => void; disabled?: boolean; sticky?: boolean }) {
   const t = adminEt.contracts.settings;
   const uid = useId();
+  const row = useRef<HTMLDivElement>(null);
+  useKeyboardInset(row, sticky === true);
   return (
-    <div className={`${styles.chips} ${sticky ? styles.stickyChips : ""}`.trim()} data-placeholder-chips="" data-fab-avoid={sticky ? "" : undefined}>
+    <div ref={row} className={`${styles.chips} ${sticky ? styles.stickyChips : ""}`.trim()} data-placeholder-chips="" data-fab-avoid={sticky ? "" : undefined}>
       <p id={`${uid}-lead`} className={ui.hint}>
         {t.placeholders}
       </p>
@@ -202,7 +228,8 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
   const title = legalI18n(part.text("title"));
   const body = legalI18n(part.text("body"));
   const current: LegalText = { title, body };
-  const changed = !sameLegalText(current, state.live);
+  // (spaces at either end are no change: the writers trim them, review M1)
+  const changed = !sameStoredText(current, state.live);
   useEffect(() => onChanged?.(k, changed), [k, changed, onChanged]);
   const now = useRef(current);
   useEffect(() => {
@@ -270,12 +297,14 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
       return close({ tone: "error", text: part.conflictNow() ? l.changed : why?.reason === "signedOut" ? adminEt.leave.reasons.signedOut : adminEt.publish.publishFailed });
     }
     // typed back to live while the panel was open: there is nothing to publish
-    if (sameLegalText(now.current, state.live)) return close(null);
+    if (sameStoredText(now.current, state.live)) return close(null);
     const answer = await postJson(`/api/admin/oigustekst/${k}/avalda`, { version: part.versionNow() });
     const stored = answer && (answer.status === 200 || answer.status === 409) ? stateOf(answer.body) : null;
     if (answer && stored) {
       router.refresh(); // (the other cards' panels read the page: the contact text's emptiness, the e-course count)
-      onReseed(stored, answer.status === 200 ? { tone: "done", text: publishedLine(k), focus: true } : { tone: "error", text: l.changed, focus: true });
+      // a 409 that finds the screen's text live and no other draft is her own publish whose answer the 10 s bound cut off (review M5): published
+      const mine = answer.status === 409 && !stored.changed && sameStoredText(stored.live, now.current);
+      onReseed(stored, answer.status === 200 || mine ? { tone: "done", text: publishedLine(k), focus: true } : { tone: "error", text: l.changed, focus: true });
       return;
     }
     const reply = answer?.body;
@@ -301,7 +330,7 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
           hint={card.titleHint}
           error={errorOf("title")}
           name={`${k}.title`}
-          unpublished={!sameI18n(title, state.live.title)}
+          unpublished={!sameStoredI18n(title, state.live.title)}
           readOnly={busy}
         />
       </div>
@@ -317,7 +346,7 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
           hint={t.pageHint}
           error={errorOf("body")}
           name={`${k}.body`}
-          unpublished={!sameI18n(body, state.live.body)}
+          unpublished={!sameStoredI18n(body, state.live.body)}
           readOnly={busy}
         />
       </div>

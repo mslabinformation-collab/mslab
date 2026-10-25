@@ -88,10 +88,11 @@
   cursor: progress;
 }
 
-/* in the phone's drawer the chips stay at the foot of the screen while the text scrolls (the 💬 bubble lifts above them: data-fab-avoid) */
+/* in the phone's drawer the chips stay at the foot of what the screen shows while the text scrolls: above the on-screen keyboard, whose height
+   the card sets as --keyboard-inset (ContractTexts.tsx useKeyboardInset; 0 without one) — the 💬 bubble lifts above them: data-fab-avoid */
 .stickyChips {
   position: sticky;
-  bottom: 0;
+  bottom: var(--keyboard-inset, 0px);
   z-index: 1;
   padding: 10px 0 12px;
   border-top: 1px solid var(--line);

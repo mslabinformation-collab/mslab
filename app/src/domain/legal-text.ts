@@ -32,6 +32,13 @@ export function legalI18n(value: unknown): { et: string; ru: string } {
 export const sameI18n = (a: I18n, b: I18n): boolean => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
 export const sameLegalText = (a: LegalText, b: LegalText): boolean => sameI18n(a.title, b.title) && sameI18n(a.body, b.body);
 
+/**
+ * The same text as the writers store it (Task 5 review M1): each language trimmed — they trim it and leave a blank Russian one out — so spaces added or
+ * taken at either end are no change to publish (no „Avaldamata muudatus“, no new version, nobody asked again).
+ */
+export const sameStoredI18n = (a: I18n, b: I18n): boolean => a.et.trim() === b.et.trim() && (a.ru ?? "").trim() === (b.ru ?? "").trim();
+export const sameStoredText = (a: LegalText, b: LegalText): boolean => sameStoredI18n(a.title, b.title) && sameStoredI18n(a.body, b.body);
+
 /** A field's limit: the legal titles' and the legal texts' (SITE_LIMITS, as every writer of these pages checks them). */
 const LIMIT: Record<LegalField, number> = { title: SITE_LIMITS.legalTitle, body: SITE_LIMITS.legal };
 

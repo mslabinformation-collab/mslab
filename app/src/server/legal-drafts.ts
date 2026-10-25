@@ -7,7 +7,7 @@ import type { I18n } from "@/i18n/field";
 import type { SaveAnswer } from "@/domain/autosave";
 import { CONTRACT_CONTACT_KEY } from "@/domain/contract";
 import { TERMS_PAGE_KEY, TERMS_PAGE_TITLE } from "@/domain/course-terms";
-import { LEGAL_KEYS, legalI18n, legalProblems, sameLegalText, type LegalKey, type LegalState, type LegalText } from "@/domain/legal-text";
+import { LEGAL_KEYS, legalI18n, legalProblems, sameLegalText, sameStoredText, type LegalKey, type LegalState, type LegalText } from "@/domain/legal-text";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
 import { saveLegalParts } from "./admin-site";
@@ -80,7 +80,8 @@ async function storedOf(q: Q, key: LegalKey): Promise<Stored> {
   const [draft] = await readDrafts(q, ENTITY, LEGAL_IDS[key], { only: [PART] });
   if (!draft) return { state: { version: `l:${base}`, value: live, live, changed: false }, base, draft: null };
   const value = draftValueOf(draft.value, live);
-  return { state: { version: draftVersion(draft.id, draft.version), value, live, changed: !sameLegalText(value, live) }, base, draft };
+  // (a draft that differs from live only in spaces at either end is no change: the writers trim, review M1)
+  return { state: { version: draftVersion(draft.id, draft.version), value, live, changed: !sameStoredText(value, live) }, base, draft };
 }
 
 /** The text's lock, first thing in every transaction that writes its draft or publishes it (the lock order above). */
@@ -118,8 +119,8 @@ export async function writeLegalDraft(db: Db, key: LegalKey, patch: { title?: I1
     if (version !== s.state.version) return conflict(s.state);
     const next: LegalText = { title: patch.title ? legalI18n(patch.title) : s.state.value.title, body: patch.body ? legalI18n(patch.body) : s.state.value.body };
     if (sameLegalText(next, s.state.value)) return { ok: true, version: s.state.version, savedAt };
-    if (sameLegalText(next, s.state.live)) {
-      // typed back to what is live: no change is left to publish
+    if (sameStoredText(next, s.state.live)) {
+      // typed back to what is live (spaces at either end aside: the writers trim them, review M1): no change is left to publish
       if (s.draft) await dropDraftPart(tx, ENTITY, id, PART);
       return { ok: true, version: `l:${s.base}`, savedAt };
     }
@@ -162,7 +163,8 @@ async function writeLive(tx: Tx, key: LegalKey, base: string, value: LegalText, 
 /**
  * „Avalda uus leping“ / „Avalda uus tekst“ of `key` from the `version` its screen holds (spec C6), in one transaction under the text's lock:
  * - the screen's version must be the stored one's, else "changed" with what is stored (nothing written);
- * - no draft: nothing to publish (pressed again, or typed back meanwhile): ok, nothing written — a second publish never bumps a version;
+ * - no draft: nothing to publish (pressed again, or typed back meanwhile): ok, nothing written — a second publish never bumps a version; a draft
+ *   that is live's text but for spaces at either end (the writers trim them) is no change either: it goes, nothing is written;
  * - live written another way after the draft began (its base is not live's version): "changed", nothing overwritten unseen; the draft is kept on the
  *   live version now, so once she has looked, the next press publishes it (there is no discard to start again from);
  * - else the existing writer (writeLive) stores it — refused by field: "invalid", nothing written — and the draft is deleted.
@@ -175,6 +177,11 @@ export async function publishLegal(db: Db, key: LegalKey, version: string, now: 
     const s = await storedOf(tx, key);
     if (version !== s.state.version) return { ok: false, error: "changed", state: s.state };
     if (!s.draft) return { ok: true, state: s.state };
+    // a draft that is live's text but for spaces at either end (review M1): nothing to publish, it goes; no writer, no version
+    if (!s.state.changed) {
+      await tx.delete(contentDrafts).where(eq(contentDrafts.id, s.draft.id));
+      return { ok: true, state: (await storedOf(tx, key)).state };
+    }
     if (s.draft.baseVersion !== s.base) {
       await tx.update(contentDrafts).set({ baseVersion: s.base }).where(eq(contentDrafts.id, s.draft.id));
       return { ok: false, error: "changed", state: s.state };
