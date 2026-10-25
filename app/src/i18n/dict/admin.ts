@@ -18,6 +18,9 @@ const fieldErrors = {
   date: "Sisesta kuupäev.",
   time: "Sisesta kellaaeg, näiteks 10:00.",
   capacity: "Kohtade arv peab olema 1–99.",
+  // a calendar session's rules (piece 3b, R-c and R-b): README B3, {n} the confirmed registrations; piece3-texts S3-P3-i
+  capacityBelow: "Kinnitatud on {n} — kohti ei saa olla vähem.",
+  courseLocked: "Toimumisel on registreeringuid, seega koolitust muuta ei saa.",
   typeLocked: "Sellel koolitusel on toimumisi või registreerimisi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.",
   href: "Sisesta lehe aadress, mis algab kaldkriipsuga (nt /koolitused), või täielik aadress, mis algab https://.",
   url: "Sisesta täielik aadress, mis algab https://.",

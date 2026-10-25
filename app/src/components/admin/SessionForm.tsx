@@ -54,7 +54,8 @@ export function SessionForm({
   const err = (name: string) => {
     const code = fields[name] as FieldError | undefined;
     if (!code) return undefined;
-    return code === "required" ? (required[name] ?? e.required) : e[code];
+    // („Kinnitatud on {n} — …“: n the confirmed registrations, R-c)
+    return code === "required" ? (required[name] ?? e.required) : fill(e[code], { n: registrations?.confirmed ?? 0 });
   };
 
   useEffect(() => {

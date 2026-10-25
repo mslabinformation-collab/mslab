@@ -372,6 +372,25 @@ describe("calendar sessions", () => {
     expect(await saveSessionForm(db, session({ id: "abc" }))).toEqual({ ok: false, error: "invalid" });
   });
 
+  test("the old drawer's „Salvesta toimumine“ (until the drawer autosaves, piece 3b Task 3) keeps the session rules under its lock (R-b, R-c)", async () => {
+    const { id } = (await saveSessionForm(db, session())) as { id: number };
+    const [lift] = await db.insert(courses).values({ ...base, slug: "ripsmete-lift", type: "contact", title: { et: "Ripsmete lift" }, priceGroup: 19000, sort: 3 }).returning();
+    const reg = (n: number, status: "confirmed" | "awaiting_prepayment") =>
+      ({ courseId: contact.id, courseSessionId: id, kind: "group" as const, name: `Õpilane ${n}`, email: `opilane${n}@example.test`, paymentChoice: "half" as const, status });
+    await db.insert(registrations).values([reg(1, "confirmed"), reg(2, "confirmed"), reg(3, "awaiting_prepayment")]);
+    expect(fieldsOf(await saveSessionForm(db, session({ id: String(id), capacity: "1" })))).toEqual({ capacity: "capacityBelow" });
+    expect(fieldsOf(await saveSessionForm(db, session({ id: String(id), courseId: String(lift.id) })))).toEqual({ courseId: "courseLocked" });
+    const [kept] = await db.select().from(courseSessions).where(eq(courseSessions.id, id));
+    expect(kept).toMatchObject({ courseId: contact.id, capacity: 6 });
+    expect(await saveSessionForm(db, session({ id: String(id), capacity: "2", status: "cancelled" }))).toEqual({ ok: true, id, created: false });
+    const [row] = await db.select().from(courseSessions).where(eq(courseSessions.id, id));
+    expect(row).toMatchObject({ capacity: 2, status: "cancelled" });
+    // a session row under an e-course (cannot be made any more) keeps its course and saves nothing: „Vali koolitus.“
+    const [legacy] = await db.insert(courseSessions).values({ courseId: online.id, startsAt: new Date("2026-11-15T08:00:00Z"), city: "Vale", capacity: 4 }).returning();
+    expect(fieldsOf(await saveSessionForm(db, session({ id: String(legacy.id), courseId: String(online.id), city: "Vale", date: "2026-11-15", capacity: "3" })))).toEqual({ courseId: "course" });
+    expect((await db.select().from(courseSessions).where(eq(courseSessions.id, legacy.id)))[0].capacity).toBe(4);
+  });
+
   test("delete: only a session nobody registered for", async () => {
     const { id: free } = (await saveSessionForm(db, session())) as { id: number };
     const { id: booked } = (await saveSessionForm(db, session({ date: "2026-12-05" }))) as { id: number };

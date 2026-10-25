@@ -2,16 +2,17 @@ import { z } from "zod";
 import type { Db, Q } from "@/db/client";
 import { courses, type TestQuestion } from "@/db/schema";
 import { inArray } from "drizzle-orm";
-import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourseTo, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
-import { tallinnInstant } from "@/domain/calendar";
+import { courseUsage, typeLocked, deleteUnusedSession, isSlugTaken, moveCourseTo, saveCourseWithImages, type CourseFields } from "@/db/queries/admin";
 import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
 import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft, type CourseType, type DraftImage, type TestDraft } from "@/domain/course-editor";
 import { checkStages } from "@/domain/protocols";
+import type { SessionFields } from "@/domain/session-fields";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 import { toStorable } from "@/lib/to-storable";
 import { Check, field, invalid, isStorableImageKey, type EditResult, type FieldError, type FieldPlace } from "./edit-check";
+import { saveWholeSession } from "./session-edit";
 
 // The content editors' form handling (courses, calendar sessions). Callers have already checked the admin session
 // (server/actions/admin-content.ts wraps each in adminAction); these take a Db and run without Next.js
@@ -319,52 +320,31 @@ export async function moveCourseRequest(db: Db, input: unknown): Promise<EditRes
 const SESSION_STATUS = z.enum(["scheduled", "cancelled"]);
 
 /**
- * The session form: id (empty for a new one), courseId (a contact course), date (YYYY-MM-DD) and time (HH:MM) in
- * Estonian time, city, venue, language (ET | RU | ET / RU), capacity (1–99), status (scheduled | cancelled).
+ * The old drawer's session form (until piece 3b Task 3's drawer autosaves on api/admin/toimumine/<id> and creates with server/session-edit.ts
+ * createSession): id (empty for a new one), courseId (a contact course), date (YYYY-MM-DD) and time (HH:MM) in Estonian time, city, venue, language
+ * (ET | RU | ET / RU), capacity (1–99), status (scheduled | cancelled). A new session is the explicit create; a stored one is saved whole through
+ * session-edit.ts saveWholeSession: the same checks and, under the session's lock, the same rules as the autosave („Kohti“ never fewer than the
+ * confirmed, `capacityBelow`; no other course once anyone is booked, `courseLocked`; rulings R-b, R-c).
  */
 export async function saveSessionForm(db: Db, formData: FormData): Promise<EditResult> {
   const rawId = field(formData, "id") ?? "";
   const sessionId = rawId === "" ? null : id.safeParse(rawId);
   if (sessionId && !sessionId.success) return { ok: false, error: "invalid" };
-  const c = new Check();
-
-  const courseId = id.safeParse(field(formData, "courseId"));
-  const course = courseId.success ? await getCourseForEdit(db, courseId.data) : null;
-  if (!course || course.type !== "contact") c.fail("courseId", "course");
-
-  const date = (field(formData, "date") ?? "").trim();
-  const time = (field(formData, "time") ?? "").trim();
-  if (!date) c.fail("date", "required");
-  else if (!tallinnInstant(date, "12:00")) c.fail("date", "date");
-  if (!time) c.fail("time", "required");
-  else if (!tallinnInstant("2026-01-01", time)) c.fail("time", "time");
-  const startsAt = tallinnInstant(date, time);
-
-  const city = (field(formData, "city") ?? "").trim();
-  if (!city) c.fail("city", "required");
-  else if (city.length > 60) c.fail("city", "tooLong");
-  const venue = (field(formData, "venue") ?? "").trim();
-  if (venue.length > 120) c.fail("venue", "tooLong");
-  const language = z.enum(COURSE_LANGUAGES).safeParse(field(formData, "language"));
-  if (!language.success) c.fail("language", "required");
-  const capacityText = (field(formData, "capacity") ?? "").trim();
-  const capacity = /^\d{1,2}$/.test(capacityText) ? Number(capacityText) : NaN;
-  if (!(capacity >= 1 && capacity <= 99)) c.fail("capacity", "capacity");
   const status = SESSION_STATUS.safeParse(field(formData, "status"));
   if (!status.success) return { ok: false, error: "invalid" };
-
-  if (!c.ok || !course || !startsAt || !language.success) return invalid(c.errors);
-  if (sessionId && !(await getSession(db, sessionId.data))) return { ok: false, error: "notFound" };
-  const saved = await upsertSession(db, {
-    ...(sessionId ? { id: sessionId.data } : {}),
-    courseId: course.id,
-    startsAt,
-    city,
-    venue,
-    language: language.data,
-    capacity,
-    status: status.data,
-  });
+  const courseId = id.safeParse(field(formData, "courseId"));
+  const text = (name: string) => toStorable(field(formData, name) ?? "");
+  const fields: SessionFields = {
+    courseId: courseId.success ? courseId.data : null,
+    date: text("date"),
+    time: text("time"),
+    city: text("city"),
+    venue: text("venue"),
+    language: text("language"),
+    capacity: text("capacity"),
+  };
+  const saved = await saveWholeSession(db, sessionId ? sessionId.data : null, fields, status.data);
+  if (!saved.ok) return saved.error === "notFound" ? { ok: false, error: "notFound" } : invalid(saved.fields as Record<string, FieldError>);
   return { ok: true, id: saved.id, created: !sessionId };
 }
 

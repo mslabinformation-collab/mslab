@@ -27,6 +27,9 @@ export type FieldError =
   | "date"
   | "time"
   | "capacity"
+  // a calendar session's rules (piece 3b, rulings R-b, R-c; domain/session-fields.ts): „Kohti“ below the confirmed, „Koolitus“ once anyone is booked
+  | "capacityBelow"
+  | "courseLocked"
   | "href"
   | "url"
   | "email"

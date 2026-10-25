@@ -10,6 +10,7 @@ import { parseSwitch, switchCoursePublished, switchCourseSample, type SwitchResu
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
 import { stampOrNull } from "../read-stamp";
+import { createSession, parseStatusRequest, setSessionStatus, type CreateSessionResult, type SessionStatusResult } from "../session-edit";
 
 // The content editors' server actions (courses, calendar): every export is wrapped in adminAction (signed-in admin or a
 // redirect to /admin/login; tests/unit/admin-guards.test.ts fails otherwise). The work is in ../admin-content.ts.
@@ -73,11 +74,49 @@ export const setCoursePublished = adminAction(async (_admin, input: unknown) => 
 /** The course editor's „Näidissisu“, instant: `{ id, on }` (admin only: no public page shows it). */
 export const setCourseSample = adminAction(async (_admin, input: unknown) => runSwitch("course sample switch", input, switchCourseSample));
 
-/** Calendar drawer "Salvesta" / "Lisa toimumine". A new session closes the drawer and is highlighted in the list. */
+/**
+ * The old calendar drawer's "Salvesta" / "Lisa toimumine" (until piece 3b Task 3's drawer, which autosaves and creates with createSessionAction): the
+ * whole session, through the same checks and rules as the autosave (server/session-edit.ts saveWholeSession). A new session closes the drawer and is
+ * highlighted in the list.
+ */
 export const saveSession = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
   const result = await run("session save", { kind: "sessions" }, (db) => saveSessionForm(db, formData));
   if (result.ok && result.created) redirect(`/admin/kalender?lisatud=${result.id}`);
   return result;
+});
+
+/**
+ * The Kalender drawer's „Lisa toimumine“ (piece 3b, Task 2; README B3, S3-P3-g: the one explicit create): `{ courseId, date, time, city, venue, language,
+ * capacity }`. Answers the new session's id and version, so the drawer stays open, goes on at `?id=<n>` and autosaves (api/admin/toimumine/<id>);
+ * createSession revalidates the public pages once; the open list is refreshed.
+ */
+export const createSessionAction = adminAction(async (_admin, input: unknown): Promise<CreateSessionResult | { ok: false; error: "server" }> => {
+  try {
+    const result = await createSession(getDb(), input, new Date());
+    if (result.ok) refresh();
+    return result;
+  } catch (e) {
+    logFailure("[admin] session create failed", e);
+    return { ok: false, error: "server" };
+  }
+});
+
+/**
+ * The Kalender drawer's status, instant (README B3: „Tühistatud“ with registrations after the ConfirmPanel „Jah, tühista“; „Toimub“ back): `{ id,
+ * status, version }`, the version the drawer holds (R-a). A conflict answers the stored fields; setSessionStatus revalidates the public pages once; the
+ * open page is refreshed.
+ */
+export const setSessionStatusAction = adminAction(async (_admin, input: unknown): Promise<SessionStatusResult> => {
+  const request = parseStatusRequest(input);
+  if (!request) return { ok: false, error: "invalid" };
+  try {
+    const result = await setSessionStatus(getDb(), request.id, request.status, request.version);
+    if (result.ok) refresh();
+    return result;
+  } catch (e) {
+    logFailure("[admin] session status failed", e);
+    return { ok: false, error: "server" };
+  }
 });
 
 /** Calendar drawer "Kustuta toimumine": field id. Back to the list with a notice. */

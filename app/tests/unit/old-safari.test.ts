@@ -127,6 +127,8 @@ const BROWSER_FILES = [
   // where the focus may go after an undo (the list editors, the lesson drawer and its files)
   "src/domain/lesson-limits.ts",
   "src/components/admin/focus-fell.ts",
+  // piece 3b, Task 2: a calendar session's fields and rules (R-b, R-c), which the Kalender drawer checks by in the browser (pure; it pulls domain/calendar.ts and domain/course-editor.ts)
+  "src/domain/session-fields.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

@@ -397,6 +397,24 @@ export async function listContactCourses(db: Db): Promise<Pick<Course, "id" | "t
 }
 
 /**
+ * A session's registrations as the Kalender drawer and its rules count them (admin UX pass piece 3b, rulings R-b, R-c): `confirmed` („Kohti“ may not be
+ * fewer, R-c; the header's „{k}/{cap} kinnitatud“), `booked`, those not cancelled (confirmed and awaiting: „{n} õpilast on registreerunud“, „teavita {n}
+ * õpilast ise“, and „Koolitus“ locked, R-b) and `all`, cancelled ones too („Kustuta toimumine“ only at 0: the rows stay as history, as
+ * {@link deleteUnusedSession} counts). Read under the session's lock where a rule decides by it (server/session-edit.ts). Zeros for no such session.
+ */
+export async function countSessionRegistrations(q: Q, sessionId: number): Promise<{ confirmed: number; booked: number; all: number }> {
+  const [row] = await q
+    .select({
+      confirmed: sql<number>`count(*) filter (where ${registrations.status} = 'confirmed')`.mapWith(Number),
+      booked: sql<number>`count(*) filter (where ${registrations.status} <> 'cancelled')`.mapWith(Number),
+      all: count(),
+    })
+    .from(registrations)
+    .where(eq(registrations.courseSessionId, sessionId));
+  return { confirmed: row?.confirmed ?? 0, booked: row?.booked ?? 0, all: Number(row?.all ?? 0) };
+}
+
+/**
  * Deletes a session that nobody has registered for. "inUse" when registrations point to it (they keep their history:
  * cancel the session instead), "notFound" when it does not exist.
  */

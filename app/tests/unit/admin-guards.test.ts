@@ -150,8 +150,9 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(actions.path, actions.source)).toEqual([]);
     const content = files().find((f) => f.path === "server/actions/admin-content.ts")!;
     const contentExports = [...strip(content.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    // admin UX pass piece 3a, Task 4: the editor's instant switches „Avaldatud“ (R-d) and „Näidissisu“
-    expect(contentExports).toEqual(["createCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "saveSession", "deleteSession"]);
+    // admin UX pass piece 3a, Task 4: the editor's instant switches „Avaldatud“ (R-d) and „Näidissisu“; piece 3b, Task 2: the Kalender drawer's explicit
+    // „Lisa toimumine“ (answers the id: the drawer stays open and autosaves, api/admin/toimumine/<id>) and its instant status („Tühistatud“ / „Toimub“)
+    expect(contentExports).toEqual(["createCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "saveSession", "createSessionAction", "setSessionStatusAction", "deleteSession"]);
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
