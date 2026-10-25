@@ -108,16 +108,24 @@ export function InvoiceSettings({ initial, bank, now, onStatus }: { initial: Inv
 
   // A new prefix (ruling R3): the number its save left is the page's to say, so the page is read again once it is stored. The number shown when the
   // prefix went out is noted: the page's number is taken (as stored, nothing sent: useSeadedPart adopt) only if the field still holds it then —
-  // a number she typed meanwhile (or one on its way) stays hers, and no refusal is ever shown for a number she did not type (review I-1).
+  // a number she typed meanwhile (or one on its way) stays hers, and no refusal is ever shown for a number she did not type (review I-1). Only a save
+  // that changes the prefix (as this card knows it stored: in capitals, trimmed) is followed, and only by a read newer than the one shown when it
+  // went out: a prefix typed as it was („msl“ over MSL) or a read from before the save never brings a number (review round 2, N-1).
   const latest = useRef<{ text: (name: string) => unknown } | null>(null);
-  const prefixSent = useRef<{ prefix: string; number: string; stored: boolean } | null>(null);
+  const prefixStored = useRef(initial.prefix);
+  const readShown = useRef(initial.version);
+  const prefixSent = useRef<{ prefix: string; number: string; read: string; stored: boolean } | null>(null);
   const onSend = useCallback((patch: Record<string, unknown>) => {
-    if ("prefix" in patch && typeof patch.prefix === "string")
-      prefixSent.current = { prefix: patch.prefix.trim().toUpperCase(), number: String(latest.current?.text("nextSeq") ?? ""), stored: false };
+    if (!("prefix" in patch) || typeof patch.prefix !== "string") return;
+    const prefix = patch.prefix.trim().toUpperCase();
+    prefixSent.current = prefix === prefixStored.current ? null : { prefix, number: String(latest.current?.text("nextSeq") ?? ""), read: readShown.current, stored: false };
   }, []);
   const onSaved = useCallback((patch: Record<string, unknown>) => {
-    if (!("prefix" in patch)) return;
-    if (prefixSent.current) prefixSent.current = { ...prefixSent.current, stored: true };
+    if (!("prefix" in patch) || typeof patch.prefix !== "string") return;
+    const sent = prefixSent.current;
+    if (!sent || sent.prefix !== patch.prefix.trim().toUpperCase()) return;
+    prefixStored.current = sent.prefix;
+    prefixSent.current = { ...sent, stored: true };
     startTransition(() => nav.current.refresh());
   }, []);
   const fields = useMemo(() => invoiceForm(initial), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
@@ -128,10 +136,14 @@ export function InvoiceSettings({ initial, bank, now, onStatus }: { initial: Inv
     latest.current = invoice;
   });
 
-  // the page's read with the stored prefix: the number it gives (1, or the series' next for a prefix used before) comes into an untouched field
+  // the page's new read with the stored prefix: the number it gives (1, or the series' next for a prefix used before) comes into an untouched field
   useLayoutEffect(() => {
     const sent = prefixSent.current;
-    if (!sent?.stored || initial.prefix !== sent.prefix) return;
+    if (initial.version !== readShown.current) {
+      readShown.current = initial.version;
+      prefixStored.current = initial.prefix;
+    }
+    if (!sent?.stored || initial.version === sent.read || initial.prefix !== sent.prefix) return;
     prefixSent.current = null;
     if (invoice.typing("nextSeq") || String(invoice.text("nextSeq")) !== sent.number) return;
     invoice.adopt("nextSeq", String(initial.nextSeq));

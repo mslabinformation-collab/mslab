@@ -329,6 +329,25 @@ describe("the number and the prefix commit on blur (behaviours conflict 13)", ()
     expect(statuses.at(-1)![1].kind).toBe("saved");
   });
 
+  test("review round 2, N-1: a prefix typed as it was stored („msl“ over MSL) after a saved number brings no number: the field keeps 50, nothing is read again", async () => {
+    await show();
+    await type(input("nextSeq"), "50");
+    await leave(input("nextSeq"));
+    await settle();
+    await type(input("prefix"), "msl");
+    await leave(input("prefix"));
+    await settle();
+    expect(sent("invoice").map((b) => b.patch)).toEqual([{ nextSeq: "50" }, { prefix: "msl" }]);
+    expect(router.refresh).not.toHaveBeenCalled();
+    // any later render of the same (older) read of the page: still hers
+    await show(INITIAL, BANK, OCTOBER, true);
+    await wait(DEBOUNCE_MS * 2);
+    await settle();
+    expect(input("nextSeq").value).toBe("50");
+    expect(preview()).toBe("Järgmine arve: MSL2026-050");
+    expect(sent("invoice")).toHaveLength(2);
+  });
+
   test("review M-1: a number typed and not left, then a link: the guard commits and saves it, and asks when the route refuses it (taken)", async () => {
     refuse.invoice = { nextSeq: "taken" };
     mounts++;
