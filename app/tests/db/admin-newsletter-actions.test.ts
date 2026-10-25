@@ -5,11 +5,12 @@ import { kvEntries, mailQuota, newsletterCampaigns, settings, subscribers } from
 import { CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import { PgKv } from "@/server/kv";
-import { getCampaign, progressOf, sendRefused } from "@/server/newsletter-campaigns";
+import { getCampaign, progressOf, saveCampaign, sendRefused } from "@/server/newsletter-campaigns";
 import { stubFetch } from "../fakes";
 import { makeTestDb } from "./helpers";
 
-// Maria's campaign actions on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's, Task 3): „Salvesta“,
+// Maria's letter actions on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's, Task 3; piece 3b Task 6:
+// the letter autosaves on its route, so „Uus kiri +“ and „Kustuta mustand“ are the actions of its own): „Uus kiri +“, „Kustuta mustand“,
 // „Kopeeri“, and the sends („Saada kõigile“ in its two steps, „Peata saatmine“, „Saada proov“, the progress) through their actions: what they answer,
 // that a change refreshes the open page and a refusal does not, and that a failure is logged by its class only. The admin session and the cache are
 // stand-ins (the guard is tests/unit/admin-guards.test.ts's); Resend is never called: its HTTP API is stubbed (tests/fakes.ts stubFetch).
@@ -60,32 +61,36 @@ const CAMPAIGN = {
   buttonHref: "",
 };
 
-describe("the campaigns' actions: save and copy", () => {
+describe("the letters' actions: „Uus kiri +“, „Kustuta mustand“ and „Kopeeri“", () => {
   const saved = async () => {
-    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+    const r = await saveCampaign(db, null, CAMPAIGN, new Date());
     if (!r.ok || !("id" in r)) throw new Error(JSON.stringify(r));
-    cache.refresh.mockReset();
     return r.id;
   };
 
-  test("saveCampaignAction: a new draft (`id: null`) and the same again in place; the page is refreshed; refused fields come back by name", async () => {
-    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+  test("createDraftAction: the new draft „Uus kiri“ (ruling R-g) and its id; the page is refreshed", async () => {
+    const r = await actions.createDraftAction();
     expect(r).toEqual({ ok: true, id: expect.any(Number) });
     expect(cache.refresh).toHaveBeenCalledTimes(1);
-    const id = (r as { id: number }).id;
-    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, name: "Uus nimi" } })).toEqual({ ok: true, id });
-    expect((await db.select().from(newsletterCampaigns)).map((c) => c.name)).toEqual(["Uus nimi"]);
-    cache.refresh.mockReset();
-    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, name: "" } })).toEqual({ ok: false, fields: { name: "required" } });
-    expect(cache.refresh).not.toHaveBeenCalled();
+    const [row] = await db.select().from(newsletterCampaigns);
+    expect(row).toMatchObject({ id: (r as { id: number }).id, name: "Uus kiri", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, status: "draft" });
   });
 
-  test("saveCampaignAction: an id the page never sends is refused without a write; a sent campaign is `sent`, one that is gone `notFound`", async () => {
-    for (const id of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.saveCampaignAction({ id, draft: CAMPAIGN }), String(id)).toEqual({ ok: false, error: "notFound" });
+  test("deleteDraftAction: a draft is deleted; a letter sent meanwhile is `sent`; one that is gone `notFound`; an id the page never sends `notFound` without a read", async () => {
     const id = await saved();
-    await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, id));
-    expect(await actions.saveCampaignAction({ id, draft: CAMPAIGN })).toEqual({ ok: false, error: "sent" });
-    expect(await actions.saveCampaignAction({ id: id + 100, draft: CAMPAIGN })).toEqual({ ok: false, error: "notFound" });
+    expect(await actions.deleteDraftAction({ id })).toEqual({ ok: true });
+    expect(cache.refresh).not.toHaveBeenCalled(); // (the editor moves to the list itself)
+    expect(await db.select().from(newsletterCampaigns)).toEqual([]);
+    expect(await actions.deleteDraftAction({ id })).toEqual({ ok: false, error: "notFound" });
+    expect(cache.refresh).toHaveBeenCalledTimes(1); // (the page is behind: the letter is gone)
+    const sent = await saved();
+    await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, sent));
+    cache.refresh.mockReset();
+    expect(await actions.deleteDraftAction({ id: sent })).toEqual({ ok: false, error: "sent" });
+    expect(cache.refresh).toHaveBeenCalledTimes(1); // (the page is behind: it shows the sent letter)
+    expect(adminEt.newsletter.campaigns.errorsOf.sent).toBe("See kiri on juba saadetud.");
+    for (const bad of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.deleteDraftAction({ id: bad }), String(bad)).toEqual({ ok: false, error: "notFound" });
+    expect(await db.select().from(newsletterCampaigns)).toHaveLength(1);
   });
 
   test("copyCampaignAction: the new draft's id, the page refreshed; a campaign that is gone is `notFound`", async () => {
@@ -108,7 +113,8 @@ describe("the campaigns' actions: save and copy", () => {
       },
     });
     try {
-      expect(await actions.saveCampaignAction({ id: null, draft: CAMPAIGN })).toEqual({ ok: false, error: "server" });
+      expect(await actions.createDraftAction()).toEqual({ ok: false, error: "server" });
+      expect(await actions.deleteDraftAction({ id: 1 })).toEqual({ ok: false, error: "server" });
       expect(await actions.copyCampaignAction({ id: 1 })).toEqual({ ok: false, error: "server" });
     } finally {
       state.db = db;
@@ -133,9 +139,8 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
   const subscriber = (email: string, locale: "et" | "ru" = "et") =>
     db.insert(subscribers).values({ email, locale, token: `tok_${email.replace(/[^a-z0-9]/gi, "_")}_0123456789`, confirmedAt: new Date() });
   const saved = async () => {
-    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+    const r = await saveCampaign(db, null, CAMPAIGN, new Date());
     if (!r.ok || !("id" in r)) throw new Error(JSON.stringify(r));
-    cache.refresh.mockReset();
     return r.id;
   };
 
@@ -147,14 +152,14 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     await subscriber("kati@example.com");
     await subscriber("olga@example.com", "ru");
     const plan = await actions.prepareSendAction({ id });
-    expect(plan).toEqual({ ok: true, et: 1, ru: 1, ruFallsBack: true, updatedAt: expect.any(String) });
+    expect(plan).toEqual({ ok: true, et: 1, ru: 1, samples: 0, ruFallsBack: true, updatedAt: expect.any(String) });
     expect(f.calls).toHaveLength(0);
     expect(cache.refresh).not.toHaveBeenCalled();
     for (const bad of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.prepareSendAction({ id: bad }), String(bad)).toEqual({ ok: false, error: "notFound" });
     const other = await saved();
     await db.update(newsletterCampaigns).set({ status: "sending" }).where(eq(newsletterCampaigns.id, other));
     expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "busy" });
-    expect(adminEt.newsletter.campaigns.errorsOf.busy).toBe("Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.");
+    expect(adminEt.newsletter.campaigns.errorsOf.busy).toBe("Eelmine kiri on veel saatmisel. Saada see, kui see on lõppenud.");
   });
 
   test("startSendAction: the press with what the confirmation showed — the first batch goes at once on SITE_URL's links, the page is refreshed; `changed` refreshes nothing", async () => {
@@ -233,6 +238,19 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     vi.stubEnv("MARIA_EMAIL", "");
     expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "address" });
     expect(r.mails()).toHaveLength(2);
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("a letter without its subject (saved so by the autosave, ruling R-g): „Saada proov“ and „Saada kõigile“ answer the fields by name, nothing sent, nothing refreshed", async () => {
+    configured();
+    const r = resend();
+    const id = (await actions.createDraftAction()) as { id: number };
+    cache.refresh.mockReset();
+    await subscriber("kati@example.com");
+    const refused = { ok: false, error: "invalid", fields: { "subject.et": "required", "body.et": "required" } };
+    expect(await actions.sendTestAction({ id: id.id, to: "maria", locale: "et" })).toEqual(refused);
+    expect(await actions.prepareSendAction({ id: id.id })).toEqual(refused);
+    expect(r.mails()).toHaveLength(0);
     expect(cache.refresh).not.toHaveBeenCalled();
   });
 

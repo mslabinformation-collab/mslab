@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { AdminIcon } from "@/components/admin/AdminIcon";
 import { CampaignsPanel, campaignEditorView, campaignListRow } from "@/components/admin/CampaignsPanel";
 import { getAdminCounts } from "@/components/admin/data";
@@ -7,6 +6,7 @@ import { LangSwitch } from "@/components/admin/EditLang";
 import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
+import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { pageSubscribers } from "@/db/queries/admin";
@@ -19,7 +19,7 @@ import { gateOn } from "@/lib/site-gate";
 import { requireAdmin } from "@/server/auth";
 import { gateEnv, serverEnv } from "@/server/env";
 import { serverKv } from "@/server/kv";
-import { getCampaign, listCampaigns, progressOf, sendRefused } from "@/server/newsletter-campaigns";
+import { campaignVersion, getCampaign, listCampaigns, progressOf, sendCountsNow, sendRefused } from "@/server/newsletter-campaigns";
 import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
 
@@ -44,7 +44,8 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
  * „Uudiskiri“: two views. The subscribers (no ?vaade=): e-mail, language, consent time, confirmed or not (new sign-ups are confirmed at once; "not" is
  * a row of the old double opt-in that was never confirmed), newest first, and the CSV downloads (confirmed only — the addresses a newsletter may go
  * to — or all). 50 a page (?leht=); the CSV has all.
- * „Kampaaniad“ (?vaade=kampaaniad): the campaigns and the editor of the one chosen (&kampaania=<id>, or `uus`; components/admin/CampaignsPanel.tsx).
+ * „Kirjad“ (?vaade=kampaaniad, the address kept: README B5): the letters and the editor of the one chosen (&kampaania=<id>; components/admin/CampaignsPanel.tsx).
+ * The two views are tabs („Tellijad“ | „Kirjad“, TabPills).
  */
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
@@ -52,43 +53,17 @@ export default async function NewsletterPage({ searchParams }: Props) {
   return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(email, search);
 }
 
-/** The page's heading and its two views. `editing`: a campaign's editor is open, so the heading has the page's ET | RU switch for its fields. */
-function Top({ view, editing = false }: { view: "subscribers" | "campaigns"; editing?: boolean }) {
+/** The two views as tabs (README B5: „Tellijad“ | „Kirjad“; every tab a page of its own). */
+function Views({ view }: { view: "subscribers" | "campaigns" }) {
   const t = adminEt.newsletter;
   return (
-    <>
-      <div className={ui.heading}>
-        <div>
-          <p className={ui.eyebrow}>{t.eyebrow}</p>
-          <h1 className={ui.h1}>{view === "campaigns" ? t.campaigns.title : t.title}</h1>
-          <p className={ui.lead}>{view === "campaigns" ? t.campaigns.lead : t.lead}</p>
-        </div>
-        {view === "subscribers" && (
-          <div className={styles.downloads}>
-            <a className={ui.btn} href="/api/admin/subscribers.csv?kinnitatud=1" download data-csv="confirmed">
-              {t.csvConfirmed}
-              <AdminIcon name="arrow" />
-            </a>
-            <a className={`${ui.btn} ${ui.secondary}`} href="/api/admin/subscribers.csv" download data-csv="all">
-              {t.csvAll}
-            </a>
-          </div>
-        )}
-        {view === "campaigns" && editing && (
-          <div className={ui.headAside}>
-            <LangSwitch />
-          </div>
-        )}
-      </div>
-      <nav className={ui.filters} aria-label={t.viewsLabel} data-newsletter-views="">
-        <Link className={ui.pill} href="/admin/uudiskiri" aria-current={view === "subscribers" ? "page" : undefined} data-view="subscribers">
-          {t.views.subscribers}
-        </Link>
-        <Link className={ui.pill} href={CAMPAIGNS_HREF} aria-current={view === "campaigns" ? "page" : undefined} data-view="campaigns">
-          {t.views.campaigns}
-        </Link>
-      </nav>
-    </>
+    <TabPills
+      label={t.viewsLabel}
+      tabs={[
+        { href: "/admin/uudiskiri", label: t.views.subscribers, current: view === "subscribers" },
+        { href: CAMPAIGNS_HREF, label: t.views.campaigns, current: view === "campaigns" },
+      ]}
+    />
   );
 }
 
@@ -101,7 +76,23 @@ async function subscribersPage(email: string, search: Search) {
 
   return (
     <div className={ui.page}>
-      <Top view="subscribers" />
+      <div className={ui.heading}>
+        <div>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1}>{t.title}</h1>
+          <p className={ui.lead}>{t.lead}</p>
+        </div>
+        <div className={styles.downloads}>
+          <a className={ui.btn} href="/api/admin/subscribers.csv?kinnitatud=1" download data-csv="confirmed">
+            {t.csvConfirmed}
+            <AdminIcon name="arrow" />
+          </a>
+          <a className={`${ui.btn} ${ui.secondary}`} href="/api/admin/subscribers.csv" download data-csv="all">
+            {t.csvAll}
+          </a>
+        </div>
+      </div>
+      <Views view="subscribers" />
 
       <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
         <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: counts.subscribers, confirmed: counts.confirmedSubscribers })}</p>
@@ -156,32 +147,49 @@ function testTargetsOf(mariaEmail: string, adminEmail: string): TestTarget[] {
 }
 
 /**
- * The campaigns' view: the list (each campaign going out with its progress), and the editor of the one chosen (`kampaania`: an id, `uus` for a new one,
- * or nothing), which once it is no draft carries where its deliveries stand and whether the last batch was refused. (It reads.) `gated`: the coming-soon
- * gate is on (SITE_GATE, read as the middleware reads it), so the confirmation of „Saada kõigile“ and the result of „Saada proov“ say that the mail's
- * links open „Tulekul“ (final review I1); the editor, a browser component, never reads the environment.
+ * The letters' view (README B5; the Part 3 frame „B5 Uudiskiri“): the eyebrow „Uudiskiri“, the H1 „Kirjad“ and the tabs at its right (no lead: none is
+ * drawn); the list (each letter going out with its progress), and the editor of the one chosen (`kampaania`: an id, or nothing; the old `uus` is
+ * nothing now, „Uus kiri +“ makes its draft at once), which once it is no draft carries where its deliveries stand and whether the last batch was refused.
+ * While a letter is open the heading has the page's ET | RU switch for its fields and its preview. A draft's „Saada kõigile ({n})“ is given the count of
+ * the confirmed subscribers as read now, without the press's lock (B9, ruling R-h: server/newsletter-campaigns.ts sendCountsNow; the panel reads it again
+ * under the lock). (It reads.) `gated`: the coming-soon gate is on (SITE_GATE, read as the middleware reads it), so the panel of „Saada kõigile“ and the
+ * result of „Saada proov“ say that the mail's links open „Tulekul“ (final review I1); the editor, a browser component, never reads the environment.
+ * On a phone (below 900 px) an open letter is a screen of its own: the H1 and the tabs give way to its „← Kirjad“ (newsletter.module.css).
  */
 async function campaignsPage(email: string, kampaania: string) {
   const db = getDb();
-  const id = kampaania === "uus" ? null : parseRowId(kampaania);
+  const id = kampaania === "" || kampaania === "uus" ? null : parseRowId(kampaania);
   const [rows, links, chosen] = await Promise.all([listCampaigns(db), linkSuggestions(db), id === null ? Promise.resolve(null) : getCampaign(db, id)]);
-  const selected = kampaania === "uus" ? "new" : chosen ? chosen.id : null;
-  // the deliveries of every campaign going out (one at a time, by the design) and of the one chosen, if it is no draft
+  // the deliveries of every letter going out (one at a time, by the design) and of the one chosen, if it is no draft
   const shown = new Set([...rows.filter((r) => r.status === "sending").map((r) => r.id), ...(chosen && chosen.status !== "draft" ? [chosen.id] : [])]);
   const progress = new Map(await Promise.all([...shown].map(async (campaignId) => [campaignId, await progressOf(db, campaignId)] as const)));
   const refused = chosen?.status === "sending" ? await sendRefused(serverKv(), chosen.id) : false;
+  const audience = chosen?.status === "draft" ? await sendCountsNow(db) : { et: 0, ru: 0, samples: 0 };
+  const t = adminEt.newsletter;
 
   return (
-    <div className={ui.page}>
-      <Top view="campaigns" editing={selected !== null} />
+    <div className={ui.page} data-letter-open={chosen ? "" : undefined}>
+      <div className={`${ui.heading} ${styles.lettersHeading}`}>
+        <div className={styles.lettersTitle}>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1}>{t.campaigns.title}</h1>
+        </div>
+        <div className={`${ui.headAside} ${styles.lettersAside}`}>
+          <div className={styles.lettersTabs}>
+            <Views view="campaigns" />
+          </div>
+          {chosen && <LangSwitch />}
+        </div>
+      </div>
       <CampaignsPanel
         campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
-        selected={selected}
-        editing={chosen ? campaignEditorView(chosen, { progress: progress.get(chosen.id) ?? null, refused }) : null}
-        notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
+        selected={chosen ? chosen.id : null}
+        editing={chosen ? campaignEditorView(chosen, { version: await campaignVersion(chosen), progress: progress.get(chosen.id) ?? null, refused }) : null}
+        notFound={id !== null && chosen === null}
         links={links}
         testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
         gated={gateOn(gateEnv().SITE_GATE)}
+        audience={audience}
       />
     </div>
   );

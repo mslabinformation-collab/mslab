@@ -231,7 +231,7 @@ export const newsletterCampaigns = pgTable("newsletter_campaigns", {
   /** A code shown in a box like the welcome code (domain/welcome-code.ts shape); null for none. */
   code: text("code"),
   buttonLabel: jsonb("button_label").$type<I18n>(),
-  /** An https:// address or a path of the site; set together with `buttonLabel` or both null. */
+  /** An https:// address or a path of the site; set together with `buttonLabel` or both null by a send's check (a draft's autosave may hold one alone). */
   buttonHref: text("button_href"),
   /** `draft` (editable), `sending` (going out over the coming days: its `newsletter_deliveries` are being worked off) or `sent` (frozen). */
   status: text("status").$type<"draft" | "sending" | "sent">().notNull().default("draft"),

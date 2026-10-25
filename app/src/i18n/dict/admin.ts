@@ -1948,29 +1948,38 @@ export const adminEt = {
     // Maria's campaign editor (newsletter campaigns Task 4, `campaigns` below): the text under a field that domain/newsletter-campaign.ts
     // checkCampaignDraft refuses with `ruLabel` (a button and a Russian text, but no Russian label). Draft for Dim's wording sheet.
     campaignErrors: { ruLabel: "Lisa nupu tekst ka vene keeles." },
-    // The page's two views (newsletter campaigns Task 4): the subscribers, and the campaigns (?vaade=kampaaniad). „Kampaaniad“ is the spec's (D4);
-    // the rest is Draft.
+    // The page's two views (newsletter campaigns Task 4): the subscribers, and the letters (?vaade=kampaaniad, the address kept). „Kirjad“ is the
+    // design's rename of the spec's „Kampaaniad“ (piece3-texts P-12; README B5, §1.11 „Uudiskiri → Kirjad“: „kampaania“ stays for the popup only).
     viewsLabel: "Vaade",
-    views: { subscribers: "Tellijad", campaigns: "Kampaaniad" },
-    // „Kampaaniad“ (newsletter campaigns Task 4; spec D4, D5; components/admin/CampaignsPanel.tsx, NewsletterCampaignEditor.tsx).
-    // Quoted from the spec as they are: „Kampaaniad“, „Saada proov“, „Saada kõigile“, the confirmation „Saadad kampaania {n} tellijale (eesti keeles {a},
-    // vene keeles {b}). Kas saadame?“, „Saadetud {date} · {n} tellijale“, „Kopeeri“, „Vene keeles tellijad saavad eestikeelse kirja.“ The spec marks
-    // as Draft „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“, „Peata saatmine“ and the two lines of `errorsOf` (`refused`, `busy`).
-    // „Tühi rida alustab uut lõiku.“ is the site editors' own. Every other text here is a Draft for Dim's wording sheet.
+    views: { subscribers: "Tellijad", campaigns: "Kirjad" },
+    // „Kirjad“ (newsletter campaigns Task 4; spec D4, D5; admin UX pass piece 3b Task 6: README B5, B9, B17, the Part 3 frame „B5 Uudiskiri“ and the Part 4
+    // „B5 Kirjad“; components/admin/CampaignsPanel.tsx, NewsletterCampaignEditor.tsx). The words are piece3-texts' (P-12 the renames, P-13 the list rows,
+    // the send panel and the stop's split, S3-P3-f „Kustuta mustand“, S3-P3-h „Uus kiri +“, S3-P3-l the sends while the letter is not saved) and the
+    // design's (README B5, Part 3 and Part 4: „Saada kõigile ({n})“, the select „{aadress} · {eesti|vene keeles}“, the hint under the buttons, „Muuda |
+    // Eelvaade“, „← Kirjad“, „Saada proov · maria@… · ET“); the rest are the spec's and the earlier Drafts, unchanged.
     // {n} a count, {max} a limit, {date} a time, {a} / {b} the Estonian and the Russian counts, {sent} / {left} the mails that went and those waiting,
-    // {email} an address.
+    // {email} an address, {name} the letter's name.
     campaigns: {
-      title: "Kampaaniad",
-      lead: "Kiri kõigile uudiskirja tellijatele: eesti keeles ja soovi korral vene keeles. Vaata eelvaadet, saada endale proov ja siis kõigile. Mis päevas ei mahu välja, läheb järgmisel päeval.",
-      list: "Kampaaniad",
-      new: "Uus kampaania",
-      empty: "Kampaaniaid veel pole.",
-      status: { draft: "Mustand", sending: "Saatmine pooleli", sent: "Saadetud" },
-      changed: "Muudetud {date}",
-      notFound: "Seda kampaaniat enam pole.",
-      newTitle: "Uus kampaania",
+      title: "Kirjad",
+      list: "Kirjad",
+      // „Uus kiri +“ (the „+“ is the component's): a draft of this name at once (S3-P3-h, ruling R-g: `newTitle` is its name)
+      new: "Uus kiri",
+      empty: "Kirju veel pole.",
+      // a row's line under its name (P-13; the first two drawn, P3:239-240): {date} „dd.mm hh:mm“ for a draft, „dd.mm“ for a sent letter
+      row: {
+        draft: "Mustand · muudetud {date}",
+        sent: "Saadetud {date} · {n} tellijale",
+        sending: "Saatmine pooleli · {sent} / {n}",
+      },
+      notFound: "Seda kirja enam pole.",
+      newTitle: "Uus kiri",
+      // README §1.4's {asja} of SaveStatus' gone state: „Seda kirja enam ei ole. …“ (P-12's „kirja“)
+      thing: "kirja",
+      // the phone (Part 4 „B5 Kirjad“): the list is its own screen, „← Kirjad“ back to it, and a letter's „Muuda | Eelvaade“
+      back: "← Kirjad",
+      panes: { edit: "Muuda", preview: "Eelvaade" },
       // the editor's fields
-      form: "Kampaania",
+      form: "Kiri",
       name: "Nimi",
       nameHint: "Ainult sulle: tellijad seda ei näe.",
       subject: "Teema",
@@ -1987,79 +1996,98 @@ export const adminEt = {
       buttonHrefHint: "Saidi leht (nt /koolitused) või https:// aadress. Nupp on kirjas siis, kui tekst ja aadress on mõlemad olemas.",
       count: "{n} / {max}",
       countI18n: "ET {et} / {max} · RU {ru} / {max}",
-      // the field errors of domain/newsletter-campaign.ts checkCampaignDraft (its `ruLabel` is `campaignErrors.ruLabel` above)
+      // the field errors of domain/newsletter-campaign.ts (its `ruLabel` is `campaignErrors.ruLabel` above): a save's, and the sends' required fields
       errors: { required: "Täida see väli.", tooLong: "Tekst on liiga pikk.", invalid: "Kontrolli seda välja." },
-      // the live preview (the real mail, from the preview route)
+      // „Kustuta mustand“ (B17, S3-P3-f): a draft's only; its ConfirmPanel, and the line in the list once the draft is gone
+      remove: {
+        button: "Kustuta mustand",
+        question: "Kas kustutan mustandi „{name}“?",
+        line: "Seda ei saa tagasi võtta.",
+        yes: "Jah, kustuta",
+        done: "Mustand kustutatud.",
+      },
+      // the live preview (the real mail, from the preview route), in the language of the page's ET | RU switch
       preview: "Eelvaade",
       previewSubject: "Teema",
       previewFallback: "Vene keeles tellijad saavad eestikeelse kirja.",
       previewFrame: "Kirja eelvaade: {lang}",
       previewWorking: "Uuendan eelvaadet…",
       previewError: "Eelvaadet ei saanud näidata. Proovi uuesti.",
-      // the sends of a draft (spec §3): „Saada proov“ and „Saada kõigile“ with its confirmation
+      // the sends of a draft (spec §3; README B5): „Saada proov“ and „Saada kõigile ({n})“ with its ConfirmPanel
       send: "Saatmine",
-      saveFirst: "Salvesta muudatused enne saatmist.",
+      // S3-P3-l: what stands in the two buttons' place while the letter's text cannot be saved (with the leave guard's reason, adminEt.leave.reasons)
+      blocked: "Saatmiseks peab kiri olema salvestatud.",
       test: {
-        title: "Saada proov",
-        lead: "Proov on täpselt see kiri, mille tellijad saavad, teemas „[Proov]“. Selle loobumislink ei loobu kellegi uudiskirjast.",
+        // the select's name (for a screen reader: the design draws the select without a label)
         to: "Kellele",
-        toMaria: "Maria: {email}",
-        toMe: "Mina: {email}",
-        language: "Keel",
-        languages: { et: "Eesti keeles", ru: "Vene keeles" },
+        // the select's line: „maria@example.test · eesti keeles“ (README B5)
+        option: "{email} · {lang}",
+        optionLang: { et: "eesti keeles", ru: "vene keeles" },
         button: "Saada proov",
+        // the phone's button (Part 4): „Saada proov · maria@… · ET“; {email} the address's name part and „@…“, {lang} ET or RU
+        phoneButton: "Saada proov · {email} · {lang}",
+        phoneEmail: "{name}@…",
         working: "Saadan proovi…",
         sent: "Proov läks aadressile {email}. Kiri jõuab mõne minuti jooksul.",
       },
       all: {
-        title: "Saada kõigile",
-        lead: "Enne kinnitust näed, mitmele tellijale kiri läheb. Päevas läheb välja nii palju kirju, kui mahub; ülejäänud lähevad järgmisel päeval.",
-        button: "Saada kõigile",
+        button: "Saada kõigile ({n})",
         checking: "Vaatan tellijaid…",
-        confirm: "Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?",
+        // the ConfirmPanel (P-13): the question, the counts (one language: its own part only), the sample line (only when a sample address is among the
+        // confirmed), the day's room (only when n is more than CAMPAIGN_DAILY_ROOM: the existing sentence), what cannot be undone
+        question: "Kas saadan kirja „{name}“?",
+        counts: "{n} kinnitatud tellijat: {a} eesti, {b} vene keeles.",
+        countsEt: "{n} kinnitatud tellijat: {a} eesti keeles.",
+        countsRu: "{n} kinnitatud tellijat: {b} vene keeles.",
+        samples: "Näidisaadressidele (@example.test) ei saadeta.",
+        room: "Päevas läheb välja nii palju kirju, kui mahub; ülejäänud lähevad järgmisel päeval.",
+        final: "Saadetud kirja ei saa tagasi võtta ega muuta.",
+        yes: "Jah, saada {n} tellijale",
+        // the hint under the buttons (drawn: „3 eesti, 1 vene keeles · näidisaadressidele ei saadeta“): a zero part and the sample part left out when empty
+        hint: { both: "{a} eesti, {b} vene keeles", et: "{a} eesti keeles", ru: "{b} vene keeles", samples: "näidisaadressidele ei saadeta" },
         fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
-        yes: "Saada",
-        no: "Tühista",
         working: "Saadan…",
-        done: "Kampaania on saadetud.",
+        done: "Kiri on saadetud.",
       },
       // while the coming-soon gate is on (SITE_GATE, lib/site-gate.ts) the mail's links and button open the „Tulekul“ page: a notice under the
       // confirmation of „Saada kõigile“ and under the result of „Saada proov“, never a block (final review I1, ruling R9; Draft)
       gateNotice: "Koduleht pole veel avatud — kirja lingid ja nupp viivad „Tulekul“ lehele.",
-      // a campaign that is going out (status `sending`): the progress, and „Peata saatmine“ (spec §3, Draft). {sent} the mails that went, {n} every
+      // a letter that is going out (status `sending`): the progress, and „Peata saatmine“ (spec §3, Draft). {sent} the mails that went, {n} every
       // subscriber it was written for, {left} those still waiting (they go the next day, or when the day has room)
       progress: "Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.",
       // the counts that are worth a line only when they are not 0 (spec §3: a failure count is added to the sent line if there were any)
       failedLine: "Kiri ei läinud {n} aadressile: aadress ei sobinud.",
       unknownLine: "{n} kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.",
+      // „Peata saatmine“'s ConfirmPanel, split as P2T P-13 (piece3-texts P-13)
       stop: {
         button: "Peata saatmine",
-        confirm: "Kas peatan saatmise? Veel saatmata {n} kirja ei lähe välja. Seda ei saa tagasi võtta.",
+        question: "Kas peatan saatmise?",
+        left: "Veel saatmata {n} kirja ei lähe välja.",
+        final: "Seda ei saa tagasi võtta.",
         yes: "Jah, peata",
-        no: "Ei",
         working: "Peatan…",
         done: "Saatmine peatatud.",
       },
-      // a sent campaign (read-only), and one going out
+      // a sent letter (read-only), and one going out
       sentLine: "Saadetud {date} · {n} tellijale",
-      readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
-      readOnlySending: "Pooleli kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
+      readOnly: "Saadetud kirja ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
+      readOnlySending: "Pooleli kirja ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
       copy: "Kopeeri",
       copying: "Kopeerin…",
-      // the copy's name: the campaign's own with this after it (cut to the name's limit)
+      // the copy's name: the letter's own with this after it (cut to the name's limit)
       copySuffix: " (koopia)",
       // the page behind a test mail's unsubscribe link (/api/newsletter/loobu?proov=1, ruling R4): it changes nothing
       testPage: "Proovikiri — päris kirjas viib see link loobumisele.",
-      // what an action answers when it did not go through (actions/admin-newsletter.ts); `busy` and `refused` are the spec's own (Draft), `refused`
+      // what an action answers when it did not go through (actions/admin-newsletter.ts); `busy` is the design's (README B5), `refused` the spec's (Draft);
       // is also the line of a batch that stopped because Resend refused (startSendAction's `stopped`, the page's `refused`: sendRefused)
       errorsOf: {
-        notFound: "Seda kampaaniat enam pole.",
-        sent: "See kampaania on juba saadetud.",
+        notFound: "Seda kirja enam pole.",
+        sent: "See kiri on juba saadetud.",
         server: "Ei õnnestunud. Proovi uuesti.",
-        busy: "Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.",
-        changed: "Kampaaniat või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kampaania üle ja vajuta uuesti „Saada kõigile“.",
+        busy: "Eelmine kiri on veel saatmisel. Saada see, kui see on lõppenud.",
+        changed: "Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“.",
         empty: "Kinnitatud tellijaid pole: kirja pole kellelegi saata.",
-        notSending: "Selle kampaania saatmine ei ole pooleli.",
+        notSending: "Selle kirja saatmine ei ole pooleli.",
         refused: "Saatmine peatus: Resend keeldus. Kirjuta Dimile.",
         limited: "Selle tunni 10 proovi on saadetud. Proovi tunni pärast uuesti.",
         mail: "Proovi ei saanud saata. Proovi uuesti.",

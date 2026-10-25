@@ -1,88 +1,241 @@
-/* The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4): the list of campaigns above, the editor of the one chosen under it
-   (its fields and, beside them, the preview of the real mail; site-editor.module.css .cols puts them in one column on a narrow
-   screen). */
+/* The „Kirjad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; admin UX pass piece 3b, Task 6: README B5, the Part 3 frame „B5 Uudiskiri“ and the
+   Part 4 „B5 Kirjad“). The frame: a 300 px list | the letter's card | a 380 px column of the preview and the sends, 18 px apart (Part 3:237). They stand
+   side by side where they fit: the list beside the rest from 860 px of the panel, the card beside its 380 px column from 760 px of what is left (at a
+   1440 px screen, the frame's own, all three: 300 | 399 | 380); narrower, the column goes under the card, and then the list over it. Below 900 px of the
+   screen (the admin's phone: the top bar, Shell.module.css) the list is a screen of its own (an open letter hides it, „← Kirjad“ goes back to it), the
+   letter shows its fields or its preview („Muuda | Eelvaade“), and the two send buttons stand at the foot of the screen (Part 4). */
 
 .panel {
   display: grid;
-  gap: 25px;
+  gap: 18px;
   min-width: 0;
+  container-type: inline-size;
 }
 
-.listHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  margin-bottom: 14px;
+@container (min-width: 860px) {
+  .panel {
+    grid-template-columns: 300px minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ---------- the list ---------- */
+
+.listCard {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+}
+
+.newPart {
+  display: grid;
+  margin-bottom: 6px;
+}
+
+/* „Uus kiri +“: the ink pill across the list (the frame) */
+.new {
+  width: 100%;
+}
+
+.listNotice {
+  margin: 0 0 6px;
 }
 
 .list {
   display: grid;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0 12px;
-  padding: 0 0 10px;
-  border-top: 1px solid var(--line);
+  min-width: 0;
 }
 
-.row > :last-child {
-  grid-column: 1 / -1;
-}
-
-/* the radio pill of an address in „Saada proov“ ("Maria: …", "Mina: …"): a long address wraps instead of widening the screen */
-.address {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-/* the line under a name (sent, going out with its progress, or the last change): never wider than the screen */
-.rowLine {
-  overflow-wrap: anywhere;
-}
-
-/* a 44px tall target, whatever the length of the name (tests/e2e/newsletter-campaigns.spec.ts looks at it at four widths) */
+/* a row is its name over its state line, the whole of it the link: at least 44 px, whatever the length of the name; the open one on #f0ebed */
 .rowLink {
-  display: flex;
-  align-items: center;
+  display: grid;
+  gap: 2px;
   min-width: 0;
   min-height: 44px;
-  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  border-radius: 12px;
   color: var(--ink);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: var(--heather);
-  text-underline-offset: 3px;
+  text-decoration: none;
+}
+
+.rowLink:hover {
+  background: #faf6f8;
 }
 
 .rowLink[aria-current] {
-  text-decoration-color: var(--ink);
+  background: #f0ebed;
+}
+
+.rowLink:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.rowName {
+  overflow-wrap: anywhere;
+  font: 600 14px/1.35 var(--font-body);
+}
+
+/* the line under a name: never wider than the screen; a draft's in the status accent, a sent one's in green, one going out plain */
+.rowLine {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.draft {
+  color: var(--warn);
+}
+
+.sent {
+  color: var(--ok);
+}
+
+.sending {
+  color: var(--muted);
+}
+
+/* ---------- the letter ---------- */
+
+.work {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.notice {
+  margin: 0;
 }
 
 .editor {
   display: grid;
-  gap: 25px;
+  gap: 18px;
+  align-items: start;
   min-width: 0;
+}
+
+@container (min-width: 760px) {
+  .editor {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+}
+
+.aside {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.formCard {
+  padding: 22px;
+}
+
+.formHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.formTitle {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 300 24px/1.2 var(--font-display);
+}
+
+.cardTitle {
+  margin-bottom: 12px;
 }
 
 .count {
   margin: 6px 0 0;
 }
 
-.formTitle {
-  margin-bottom: 18px;
-}
-
 /* the picture's thumbnail (or its empty frame) in a flyer's 4:5, kept small: the mail shows it at the card's width */
 .picture [style*="aspect-ratio"] {
   max-width: 240px;
+}
+
+/* „Kood“ | „Nupu tekst“ | „Nupu aadress“ in one row (the frame) where the card has the room for three fields */
+.trio {
+  display: grid;
+  gap: 22px 12px;
+}
+
+@container (min-width: 1100px) {
+  .trio {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.restore {
+  margin: 0;
+}
+
+.deletePart {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.deletePart > [data-confirm-panel] {
+  justify-self: stretch;
+}
+
+/* the phone's „← Kirjad“ and „Muuda | Eelvaade“ (Part 4): below 900 px only */
+.back,
+.panes {
+  display: none;
+}
+
+.back {
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font: 600 13px/1.2 var(--font-body);
+  text-decoration: none;
+}
+
+.back:focus-visible,
+.pane:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the switch: two halves in a pill, the chosen one in ink (Part 4:133; its halves 44 px, the touch target rule, where the mock draws 40) */
+.panes {
+  grid-template-columns: 1fr 1fr;
+  margin: 0 0 16px;
+  padding: 3px;
+  border: 1px solid #d5d0d3;
+  border-radius: 99px;
+}
+
+.pane {
+  min-height: 44px;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink);
+  font: 600 13px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.pane[aria-pressed="true"] {
+  background: var(--ink);
+  color: #fff;
 }
 
 /* ---------- the preview ---------- */
@@ -111,29 +264,62 @@
   border: 0;
 }
 
-/* ---------- the sends: „Saada proov“, „Saada kõigile“ and its confirmation, „Peata saatmine“ ---------- */
+/* ---------- the sends: the select, „Saada proov“, „Saada kõigile ({n})“ and its panel, the hint ---------- */
 
-.sendPart {
+.sends {
   display: grid;
   gap: 10px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  padding: 18px;
 }
 
-.sendPart p {
+.sends p {
   margin: 0;
 }
 
-.sendTitle {
-  margin: 0;
-  font: 600 15px/1.3 var(--font-body);
+/* the select of „Saada proov“ (48 px, radius 10, #d9d2d5: the frame): a long address wraps its line instead of widening the screen */
+.target {
+  min-width: 0;
+  max-width: 100%;
 }
 
-.sendRow {
-  display: flex;
-  flex-wrap: wrap;
+.select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #d9d2d5;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: 400 14px/1.3 var(--font-body);
+  text-overflow: ellipsis;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.sendButtons {
+  display: grid;
   gap: 10px;
+}
+
+.sendButton {
+  width: 100%;
+}
+
+/* the test's two labels: the desktop's „Saada proov“, the phone's „Saada proov · maria@… · ET“ (one shows; the other is gone for a screen reader too) */
+.phone {
+  display: none;
+}
+
+.blocked {
+  margin: 0;
+}
+
+.hint {
+  overflow-wrap: anywhere;
 }
 
 .status:empty {
@@ -143,19 +329,32 @@
 .confirm {
   display: grid;
   gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--ink);
-  border-radius: 14px;
 }
 
-.confirm p {
+.confirm > [data-confirm-panel] {
   margin: 0;
 }
 
-/* ---------- a sent campaign, or one going out ---------- */
+/* ---------- a sent letter, or one going out ---------- */
 
 .readOnly {
   margin: 14px 0;
+}
+
+.sendPart {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.sendPart p {
+  margin: 0;
+}
+
+.sendRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 /* the failed and unknown counts, one line each, only when they are not 0 */
@@ -169,13 +368,79 @@
   margin: 0;
 }
 
-/* the progress line of a campaign going out (and its list row): the numbers may be long, never wider than the screen */
+/* the progress line of a letter going out: the numbers may be long, never wider than the screen */
 .progress {
   overflow-wrap: anywhere;
+}
+
+/* ---------- the phone (below 900 px: Part 4 „B5 Kirjad“) ---------- */
+
+@media (max-width: 899.98px) {
+  /* the list is its own screen: an open letter hides it */
+  .panel[data-open] .listCard {
+    display: none;
+  }
+
+  .back {
+    display: inline-flex;
+  }
+
+  .panes {
+    display: grid;
+  }
+
+  /* the letter on the page's own ground, as drawn: no card round its fields */
+  .formCard {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  /* „Muuda“: the fields; „Eelvaade“: the preview (the sends stay under either) */
+  .editor[data-pane="edit"] [data-pane-part="preview"],
+  .editor[data-pane="preview"] [data-pane-part="edit"] {
+    display: none;
+  }
+
+  /* the two buttons at the foot of the screen, white, a line above (Part 4:137); the page keeps its foot free (Shell's main, 80–100 px), and
+     the UndoBar and the 💬 bubble stand above them (foot-bar.ts, data-fab-avoid) */
+  .sendButtons {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    gap: 8px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 12px 16px 18px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .editor {
+    padding-bottom: 130px;
+  }
+
+  .wide {
+    display: none;
+  }
+
+  .phone {
+    display: inline;
+  }
 }
 
 @media (max-width: 640px) {
   .sendRow > button {
     flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowLink,
+  .pane {
+    transition: none;
   }
 }

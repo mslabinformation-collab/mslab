@@ -81,6 +81,11 @@ describe("the admin's bars are marked data-fab-avoid", () => {
     expect(rows.map((r) => r.hasAttribute("data-fab-avoid"))).toEqual([true, false]);
   });
 
+  it("the newsletter letter's two send buttons (fixed at the bottom on a phone, Part 4 „B5 Kirjad“; piece 3b, Task 6: its markup is in NewsletterCampaignEditor.tsx)", () => {
+    const source = readFileSync(join(process.cwd(), "src", "components", "admin", "NewsletterCampaignEditor.tsx"), "utf8");
+    expect(source).toMatch(/className=\{styles\.sendButtons\} data-send-buttons="" data-fab-avoid="">/);
+  });
+
   it("the phone's top bar is not marked (it is at the top: the mark would do nothing)", () => {
     const source = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.tsx"), "utf8");
     expect(source).toContain("<header className={styles.bar}>");
@@ -123,9 +128,10 @@ describe("a bar fixed or sticky at the bottom of the screen is known", () => {
     expect(names.some((n) => n.startsWith("app/admin/") && n.endsWith(".css"))).toBe(true);
   });
 
-  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar, the practical work's send bar and the legal texts' chips in the phone's drawer: each marked above; a new one is to be marked too", () => {
+  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar, the practical work's send bar, the legal texts' chips in the phone's drawer and a letter's send buttons: each marked above; a new one is to be marked too", () => {
     expect(bottomBars()).toEqual([
       "components/admin/Assessment.module.css .dock",
+      "components/admin/CampaignsPanel.module.css .sendButtons",
       "components/admin/ContractTexts.module.css .stickyChips",
       "components/admin/PublishBar.module.css .bar",
       "components/admin/UndoBar.module.css .region",

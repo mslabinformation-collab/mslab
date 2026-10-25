@@ -71,3 +71,31 @@
     flex: 1 1 100%;
   }
 }
+
+/* „Kirjad“ (piece 3b Task 6; the Part 3 frame): the eyebrow and „Kirjad“ on the left, the tabs at the right of the heading (and the ET | RU switch while a
+   letter is open). Below 900 px an open letter is a screen of its own (Part 4 „B5 Kirjad“): the H1 and the tabs give way to its „← Kirjad“; the switch
+   stays, for the letter's Russian. */
+.lettersHeading {
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.lettersAside {
+  align-items: center;
+}
+
+/* (TabPills' own margin is for a row under a heading) */
+.lettersTabs > nav {
+  margin: 0;
+}
+
+@media (max-width: 899.98px) {
+  [data-letter-open] .lettersTitle,
+  [data-letter-open] .lettersTabs {
+    display: none;
+  }
+
+  [data-letter-open] .lettersHeading {
+    margin-bottom: 12px;
+  }
+}

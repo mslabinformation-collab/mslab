@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { mailQuota, newsletterCampaigns, newsletterDeliveries, settings, subscribers } from "@/db/schema";
 import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
+import { adminEt } from "@/i18n/dict/admin";
 import { getDict } from "@/i18n/locales";
 import { countSentMail, mailsSentToday } from "@/server/client-auth";
 import { unsubscribeUrl } from "@/server/newsletter";
@@ -167,7 +168,8 @@ describe("prepareSend: what the confirmation shows", () => {
     await subscribe("naidis@example.test");
     await subscribe("MARI@example.com", "ru"); // a legacy row of the same address in other letters: one mail for the address
     const plan = await prepareSend(db, id);
-    expect(plan).toEqual({ ok: true, et: 2, ru: 1, ruFallsBack: true, updatedAt: (await campaignRow(id)).updatedAt.toISOString() });
+    // (`samples`: the confirmed sample addresses left out, for the panel's line „Näidisaadressidele (@example.test) ei saadeta.“)
+    expect(plan).toEqual({ ok: true, et: 2, ru: 1, samples: 1, ruFallsBack: true, updatedAt: (await campaignRow(id)).updatedAt.toISOString() });
     expect(await rowsOf(id)).toEqual([]); // nothing written,
     expect((await campaignRow(id)).status).toBe("draft"); // nothing changed
     expect(await prepareSend(db, await campaign(DRAFT))).toMatchObject({ ok: true, ruFallsBack: false });
@@ -187,6 +189,52 @@ describe("prepareSend: what the confirmation shows", () => {
     }
     // `id` is `sending` now: any other draft is busy
     expect(await prepareSend(db, await campaign())).toEqual({ ok: false, error: "busy" });
+  });
+});
+
+// Piece 3b, Task 6 (ruling R-g; spec C4): the required fields are the sends' now, not the save's; a save that changes nothing leaves the press's version.
+describe("the sends' own rules (R-g) and a save that changes nothing (C4)", () => {
+  const BARE = { ...DRAFT, subject: { et: "", ru: "" }, body: { et: "", ru: "" }, buttonLabel: { et: "", ru: "" }, buttonHref: "" };
+
+  test("a letter saved without its subject or text is refused by „Saada kõigile“ and „Saada proov“ with the required fields' codes: nothing written, nothing sent", async () => {
+    const id = await campaign(BARE);
+    await subscribe("kati@example.com");
+    const resend = fakeSend();
+    const refused = { ok: false, error: "invalid", fields: { "subject.et": "required", "body.et": "required" } };
+    expect(await prepareSend(db, id)).toEqual(refused);
+    expect(await startSend(deps(resend.send), id, { et: 1, ru: 0, updatedAt: (await campaignRow(id)).updatedAt.toISOString() })).toEqual(refused);
+    expect(await sendTest(deps(resend.send), id, "maria@example.com", "et")).toEqual(refused);
+    expect(resend.send).not.toHaveBeenCalled();
+    expect(await rowsOf(id)).toEqual([]);
+    expect((await campaignRow(id)).status).toBe("draft");
+    // the words are the editor's existing ones for a required field
+    expect(adminEt.newsletter.campaigns.errors.required).toBe("Täida see väli.");
+  });
+
+  test("a button half typed by the autosave (its label stored, its address not yet): the send names the address", async () => {
+    const id = await campaign({ ...DRAFT, buttonLabel: { et: "", ru: "" }, buttonHref: "" });
+    await db.update(newsletterCampaigns).set({ buttonLabel: { et: "Vaata", ru: "Смотреть" } }).where(eq(newsletterCampaigns.id, id));
+    await subscribe("kati@example.com");
+    expect(await prepareSend(db, id)).toEqual({ ok: false, error: "invalid", fields: { buttonHref: "required" } });
+  });
+
+  test("C4: a save that changes nothing between the confirmation and the press leaves `updatedAt`: the press goes; a real change is `changed`", async () => {
+    const id = await campaign();
+    await subscribe("kati@example.com");
+    const plan = await prepareSend(db, id);
+    if (!plan.ok) throw new Error("no plan");
+    vi.setSystemTime(NOW.getTime() + 60_000);
+    expect(await saveCampaign(db, id, DRAFT, new Date())).toEqual({ ok: true, id });
+    const resend = fakeSend();
+    expect(await startSend(deps(resend.send), id, { et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toMatchObject({ ok: true, stopped: null });
+    expect(resend.to()).toEqual(["kati@example.com"]);
+    const other = await campaign();
+    await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, id));
+    const next = await prepareSend(db, other);
+    if (!next.ok) throw new Error("no plan");
+    vi.setSystemTime(NOW.getTime() + 120_000);
+    expect(await saveCampaign(db, other, { ...DRAFT, name: "Muudetud" }, new Date())).toEqual({ ok: true, id: other });
+    expect(await startSend(deps(resend.send), other, { et: next.et, ru: next.ru, updatedAt: next.updatedAt })).toEqual({ ok: false, error: "changed" });
   });
 });
 

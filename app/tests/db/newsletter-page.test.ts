@@ -10,8 +10,9 @@ import { makeTestDb } from "./helpers";
 
 // Maria's „Uudiskiri“ page and the student's drawer on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's):
 // the subscribers' view (the list, its count line, the two CSV buttons, and nothing of Resend: no sync, no counts, no marks on the rows), the
-// „Kampaaniad“ view (the list with the progress of the campaign going out, the editor of the chosen one with its sends, one going out with its
-// progress, its failed and unknown counts and the refused mark, a sent one read-only), and the student's drawer (its newsletter line, no mark). The
+// „Kirjad“ view (piece 3b Task 6, README B5: the tabs „Tellijad“ | „Kirjad“, the list with „Uus kiri +“ and each letter's state line, the editor of the
+// chosen one with its sends and the count on „Saada kõigile ({n})“, one going out with its progress, its failed and unknown counts and the refused mark, a
+// sent one read-only), and the student's drawer (its newsletter line, no mark). The
 // drawer's forms and the server actions are stand-ins (they need a browser or a request).
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
@@ -24,7 +25,8 @@ vi.mock("@/components/admin/data", async () => {
   return { getAdminCounts: async (email: string) => adminCounts(state.db as Db, email, new Date()) };
 });
 vi.mock("@/server/actions/admin-newsletter", () => ({
-  saveCampaignAction: vi.fn(),
+  createDraftAction: vi.fn(),
+  deleteDraftAction: vi.fn(),
   copyCampaignAction: vi.fn(),
   prepareSendAction: vi.fn(),
   startSendAction: vi.fn(),
@@ -104,7 +106,7 @@ describe("the subscribers' view", () => {
   });
 });
 
-describe("the „Kampaaniad“ view (?vaade=kampaaniad)", () => {
+describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
   const DRAFT = {
     name: "Oktoobri pakkumine",
     subject: { et: "Sügispakkumine", ru: "" },
@@ -115,44 +117,82 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad)", () => {
     const [row] = await db.insert(newsletterCampaigns).values({ ...DRAFT, name, ...o }).returning();
     return row;
   };
+  /** The tabs' links: each tab's label, its address and whether it is the current one (TabPills). */
+  const tabs = (html: string) =>
+    [...(html.match(/<nav[^>]*data-tab-pills=""[\s\S]*?<\/nav>/)?.[0] ?? "").matchAll(/<a([^>]*)>([^<]*)/g)].map((m) => ({
+      label: m[2],
+      href: m[1].match(/href="([^"]*)"/)?.[1],
+      current: m[1].includes('aria-current="page"'),
+    }));
 
-  test("both views are named above the page; the subscribers' view is the default, the campaigns' its own heading without the CSV buttons", async () => {
+  test("the tabs „Tellijad“ | „Kirjad“ (TabPills; the address keeps ?vaade=kampaaniad); the letters' own heading „Kirjad“ without the CSV buttons or a lead; „Uus kiri +“", async () => {
     const subscribersView = await render();
-    expect(subscribersView).toContain('data-newsletter-views=""');
-    expect(subscribersView).toMatch(/<a[^>]*aria-current="page"[^>]*data-view="subscribers"/);
-    const campaigns = await render({ vaade: "kampaaniad" });
-    expect(campaigns).toMatch(/<a[^>]*aria-current="page"[^>]*data-view="campaigns"/);
-    expect(campaigns).toContain(">Kampaaniad</h1>");
-    expect(campaigns).not.toContain("data-csv");
-    expect(campaigns).not.toContain("data-subscriber=");
-    expect(text(campaigns)).toContain("Kampaaniaid veel pole.");
-    expect(campaigns).toContain(`href="/admin/uudiskiri?vaade=kampaaniad&amp;kampaania=uus"`);
+    expect(tabs(subscribersView)).toEqual([
+      { label: "Tellijad", href: "/admin/uudiskiri", current: true },
+      { label: "Kirjad", href: "/admin/uudiskiri?vaade=kampaaniad", current: false },
+    ]);
+    const letters = await render({ vaade: "kampaaniad" });
+    expect(tabs(letters)).toEqual([
+      { label: "Tellijad", href: "/admin/uudiskiri", current: false },
+      { label: "Kirjad", href: "/admin/uudiskiri?vaade=kampaaniad", current: true },
+    ]);
+    expect(letters).toContain(">Kirjad</h1>");
+    expect(letters).not.toContain("data-csv");
+    expect(letters).not.toContain("data-subscriber=");
+    expect(letters).not.toContain("data-newsletter-views");
+    expect(text(letters)).toContain("Kirju veel pole.");
+    expect(letters).toMatch(/<button[^>]*data-campaign-new=""[^>]*>Uus kiri \+<\/button>/);
+    // „Uus kiri +“ makes its draft at once: there is no address of an empty editor any more
+    expect(letters).not.toContain("kampaania=uus");
+    expect(text(letters)).not.toMatch(/Kampaania|kampaania/);
+    // the old `uus` opens nothing (an old bookmark): the list
+    const old = await render({ vaade: "kampaaniad", kampaania: "uus" });
+    expect(old).not.toContain("data-campaign-form");
+    expect(old).not.toContain("data-campaign-not-found");
   });
 
-  test("the list: drafts first, then the sent ones the newest first, each linking to its editor; „Saadetud {date} · {n} tellijale“ for a sent one", async () => {
+  test("the list: drafts first, then the sent ones the newest first, each row a link of its name over its state line (P-13)", async () => {
     const sent = await campaign("Saadetud", { status: "sent", sentAt: at(-60), recipients: { et: 3, ru: 2 } });
-    const draft = await campaign("Mustand");
+    const draft = await campaign("Mustand", { updatedAt: at(-10) });
     const html = await render({ vaade: "kampaaniad" });
     const order = [...html.matchAll(/data-campaign-row="(\d+)"/g)].map((m) => Number(m[1]));
     expect(order).toEqual([draft.id, sent.id]);
     expect(html).toContain(`href="/admin/uudiskiri?vaade=kampaaniad&amp;kampaania=${draft.id}"`);
-    expect(text(html)).toContain("Saadetud 19.10.2026 12:00 · 5 tellijale");
+    const row = (id: number) => text(html.match(new RegExp(`<li[^>]*data-campaign-row="${id}"[\\s\\S]*?</li>`))?.[0] ?? "");
+    expect(row(draft.id)).toBe("Mustand Mustand · muudetud 19.10 12:50");
+    expect(row(sent.id)).toBe("Saadetud Saadetud 19.10 · 5 tellijale");
     expect(html).toContain('data-campaign-status="draft"');
     expect(html).not.toContain("data-campaign-form"); // (none chosen)
   });
 
-  test("a chosen draft opens its editor with its fields, the preview and its sends: a new one an empty editor; an id that is not there says so", async () => {
+  test("a chosen draft opens its editor with its fields, the preview and its sends; an id that is not there says so", async () => {
     const draft = await campaign("Mustand");
     const html = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });
     expect(html).toContain(`data-campaign-form="${draft.id}"`);
     expect(html).toContain('value="Mustand"');
     expect(html).toContain("data-campaign-preview");
-    for (const shown of ["data-campaign-send", "data-test-send", "data-send-all", "data-test-to"]) expect(html, shown).toContain(shown);
-    for (const absent of ["data-campaign-stop", "data-campaign-progress", "data-mark-not-sent", "data-send-missing"]) expect(html, absent).not.toContain(absent);
-    expect(await render({ vaade: "kampaaniad", kampaania: "uus" })).toContain('data-campaign-form="new"');
+    for (const shown of ["data-campaign-send", "data-test-send", "data-test-target", "data-campaign-delete", "data-save-status", "data-edit-lang-switch"]) expect(html, shown).toContain(shown);
+    for (const absent of ["data-campaign-stop", "data-campaign-progress", "data-mark-not-sent", "data-send-missing", "data-save-bar", "data-campaign-save-first"]) expect(html, absent).not.toContain(absent);
+    // the open row in the list
+    const link = [...html.matchAll(/<a [^>]*>/g)].map((m) => m[0]).find((a) => a.includes(`kampaania=${draft.id}"`));
+    expect(link).toContain('aria-current="page"');
     const gone = await render({ vaade: "kampaaniad", kampaania: "999999" });
-    expect(text(gone)).toContain("Seda kampaaniat enam pole.");
+    expect(text(gone)).toContain("Seda kirja enam pole.");
     expect(gone).not.toContain("data-campaign-form");
+  });
+
+  test("B9, R-h: „Saada kõigile ({n})“ counts the confirmed subscribers a press would write now — never a sample address — and its hint says so", async () => {
+    const draft = await campaign("Mustand");
+    const search = { vaade: "kampaaniad", kampaania: String(draft.id) };
+    expect(text(await render(search))).toContain("Kinnitatud tellijaid pole: kirja pole kellelegi saata.");
+    await sub("kati@example.com");
+    await sub("mari@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    await sub("ootab@example.com", { confirmedAt: null });
+    await sub("naidis@example.test");
+    const html = await render(search);
+    expect(html).toMatch(/data-send-all="">Saada kõigile \(3\)</);
+    expect(text(html)).toContain("2 eesti, 1 vene keeles · näidisaadressidele ei saadeta");
   });
 
   // The coming-soon gate (final review I1): the page reads SITE_GATE the way the middleware does (lib/site-gate.ts gateOn) and hands the editor the flag, so the
@@ -209,13 +249,10 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad)", () => {
     await deliveries(going.id, { sent: 3, waiting: 2, failed: 1 });
     const list = await render({ vaade: "kampaaniad" });
     const row = (id: number) => text(list.match(new RegExp(`<li[^>]*data-campaign-row="${id}"[\\s\\S]*?</li>`))?.[0] ?? "");
-    expect(row(going.id)).toContain("Saatmine pooleli");
-    expect(row(going.id)).toContain("Saadetud 3 / 6 — ülejäänud 2 lähevad järgmisel päeval.");
-    expect(row(sent.id)).toContain("Saadetud 19.10.2026 11:00 · 4 tellijale");
-    expect(row(sent.id)).not.toContain("ülejäänud");
-    expect(row(draft.id)).toContain("Mustand");
-    expect(row(draft.id)).toContain("Muudetud");
-    expect(row(draft.id)).not.toContain("ülejäänud");
+    // (P-13: a letter going out says its mails that went of all; the open letter's card says the rest, below)
+    expect(row(going.id)).toBe("Pooleli Saatmine pooleli · 3 / 6");
+    expect(row(sent.id)).toBe("Saadetud Saadetud 19.10 · 4 tellijale");
+    expect(row(draft.id)).toMatch(/^Mustand Mustand · muudetud \d{2}\.\d{2} \d{2}:\d{2}$/);
   });
 
   test("a campaign going out opens read-only with its progress line, the failed count, „Peata saatmine“ and „Kopeeri“; the state is its status", async () => {
@@ -251,19 +288,21 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad)", () => {
     expect(await render({ vaade: "kampaaniad", kampaania: String(going.id) })).not.toContain("data-campaign-refused");
   });
 
-  test("„Saada proov“ offers Maria's address and the signed-in admin's; without Maria's only the admin's; one choice when they are the same", async () => {
+  test("„Saada proov“'s select offers Maria's address and the signed-in admin's, each in both languages; without Maria's only the admin's; one when they are the same", async () => {
     const draft = await campaign("Mustand");
     const search = { vaade: "kampaaniad", kampaania: String(draft.id) };
-    const targets = async () => [...(await render(search)).matchAll(/data-test-to="(\w+)"/g)].map((m) => m[1]);
+    const options = (html: string) => [...html.matchAll(/<option value="([\w:]+)"[^>]*>([^<]*)</g)].map((m) => [m[1], m[2]]);
     vi.stubEnv("MARIA_EMAIL", "Maria@Example.com");
-    const both = await render(search);
-    expect([...both.matchAll(/data-test-to="(\w+)"/g)].map((m) => m[1])).toEqual(["maria", "me"]);
-    expect(text(both)).toContain("Maria: maria@example.com");
-    expect(text(both)).toContain("Mina: maria@example.test");
+    expect(options(await render(search))).toEqual([
+      ["maria:et", "maria@example.com · eesti keeles"],
+      ["maria:ru", "maria@example.com · vene keeles"],
+      ["me:et", "maria@example.test · eesti keeles"],
+      ["me:ru", "maria@example.test · vene keeles"],
+    ]);
     vi.stubEnv("MARIA_EMAIL", "");
-    expect(await targets()).toEqual(["me"]);
+    expect(options(await render(search)).map(([v]) => v)).toEqual(["me:et", "me:ru"]);
     vi.stubEnv("MARIA_EMAIL", "maria@example.test");
-    expect(await targets()).toEqual(["maria"]);
+    expect(options(await render(search)).map(([v]) => v)).toEqual(["maria:et", "maria:ru"]);
   });
 });
 

@@ -38,7 +38,8 @@ export function campaignRoomSetting(value: unknown): number | null {
 
 /**
  * A campaign as Maria writes it, checked: every optional text is "" (an `I18n` always holds both languages) or null, the code is in capitals, and a
- * button has all of its label (Estonian) and its address or none of them. The database row (schema.ts NewsletterCampaign) has these fields and more.
+ * button checked for a send has all of its label (Estonian) and its address or none of them (a saved draft may hold a button half typed: the autosave
+ * stores what is typed, piece 3b R-g). The database row (schema.ts NewsletterCampaign) has these fields and more.
  */
 export type NewsletterCampaignDraft = {
   name: string;
@@ -112,25 +113,26 @@ export function isCampaignHref(value: string): boolean {
   }
 }
 
+/** What a check gives back: the texts cleaned (always, refused or not) and the refused fields by key ("subject.et", "buttonHref", …). */
+type Checked = { value: NewsletterCampaignDraft; errors: Errors };
+
 /**
- * The editor's form, checked. `raw` is a `NewsletterCampaignDraft` as the form holds it: texts as typed, an optional one empty, absent or null, a bilingual one
- * `{ et, ru }`. Required: `name`, `subject.et` and `body.et`. The code is raised to capitals and must have the welcome code's shape
- * (domain/welcome-code.ts); the button needs both its Estonian label and its address (any of its fields typed starts it), and the address is an
- * https:// address or a path of this site (isCampaignHref); a button (its address set) with a Russian text (`body.ru`) needs its Russian label too, so that it never
- * drops out of the Russian mail. The picture's key must be one the site stores (lib/media.ts isStorableImageKey: an upload or a /seed/ picture, never an
- * address of another site). Texts come back cleaned (see `textOf`) and trimmed; nothing is cut.
- * A wrong field is named in `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid",
- * or with "ruLabel" on "buttonLabel.ru" (a button and a Russian text without the Russian label, ruling R2); anything but an object is
- * `{ form: "invalid" }`. Keys it does not know are left out.
+ * The rules of one letter, for a save (`send` false) or for a send (`send` true; ruling R-g of piece 3b: the required texts are the sends' now).
+ * - Every field's own rule, for both: a text no longer than its limit, the code in the welcome code's shape, the picture a key the site stores, the
+ *   button's address an https:// address or a path of this site (isCampaignHref); the name is required for both (the list's line).
+ * - The button's rule, for both, as before (ruling R2): any of its fields typed starts it, and then its Estonian label and its address are required,
+ *   and its Russian label too when there is a Russian text. Each refusal falls on the field that breaks it.
+ * - Required for a send only: the subject's and the text's Estonian (an empty draft, „Uus kiri +“, saves).
+ * The value: for a send as stored for a mail (a button whole or null); for a save as typed (a label without its address is kept: the autosave stores
+ * what she has typed so far, and the send refuses it).
  */
-export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } {
-  if (!isObject(raw)) return { ok: false, fields: { form: "invalid" } };
+function check(raw: Record<string, unknown>, send: boolean): Checked {
   const errors: Errors = {};
   const L = CAMPAIGN_LIMITS;
   const name = field(raw.name, "name", L.name, true, true, errors);
-  const subject = bilingual(raw.subject, "subject", L.subject, true, true, errors);
+  const subject = bilingual(raw.subject, "subject", L.subject, send, true, errors);
   const preheader = bilingual(raw.preheader, "preheader", L.preheader, false, true, errors);
-  const body = bilingual(raw.body, "body", L.body, true, false, errors);
+  const body = bilingual(raw.body, "body", L.body, send, false, errors);
   const imageKey = field(raw.imageKey, "imageKey", L.href, false, true, errors);
   if (imageKey !== "" && !errors.imageKey && !isStorableImageKey(imageKey)) errors.imageKey = "invalid";
 
@@ -144,16 +146,14 @@ export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterC
   const label = bilingual(raw.buttonLabel, "buttonLabel", L.buttonLabel, false, true, errors);
   const href = field(raw.buttonHref, "buttonHref", L.href, false, false, errors);
   if (href !== "" && !errors.buttonHref && !isCampaignHref(href)) errors.buttonHref = "invalid";
-  const button = label.et !== "" || label.ru !== "" || href !== "";
+  const labelTyped = label.et !== "" || label.ru !== "";
+  const button = labelTyped || href !== "";
   if (button) {
     if (label.et === "" && !errors.buttonLabel && !errors["buttonLabel.et"]) errors["buttonLabel.et"] = "required";
     if (href === "" && !errors.buttonHref) errors.buttonHref = "required";
     if (href !== "" && body.ru !== "" && label.ru === "" && !errors.buttonLabel && !errors["buttonLabel.ru"]) errors["buttonLabel.ru"] = "ruLabel";
   }
-
-  if (Object.keys(errors).length > 0) return { ok: false, fields: errors };
   return {
-    ok: true,
     value: {
       name,
       subject,
@@ -161,10 +161,60 @@ export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterC
       imageKey: imageKey === "" ? null : imageKey,
       body,
       code: code === "" ? null : code,
-      buttonLabel: button ? label : null,
-      buttonHref: button ? href : null,
+      buttonLabel: send ? (button ? label : null) : labelTyped ? label : null,
+      buttonHref: send ? (button ? href : null) : href === "" ? null : href,
     },
+    errors,
   };
+}
+
+const result = (c: Checked): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } =>
+  Object.keys(c.errors).length > 0 ? { ok: false, fields: c.errors } : { ok: true, value: c.value };
+
+/**
+ * A letter as it goes out, checked (the sends': „Saada proov“, „Saada kõigile“). `raw` is a `NewsletterCampaignDraft` as the form holds it (texts as
+ * typed, an optional one empty, absent or null, a bilingual one `{ et, ru }`) or as stored. Required: `name`, `subject.et` and `body.et`; the button
+ * whole (see `check`). The code is raised to capitals. Texts come back cleaned (see `textOf`) and trimmed; nothing is cut. A wrong field is named in
+ * `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid", or with "ruLabel" on
+ * "buttonLabel.ru" (a button and a Russian text without the Russian label, ruling R2); anything but an object is `{ form: "invalid" }`. Keys it
+ * does not know are left out.
+ */
+export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } {
+  if (!isObject(raw)) return { ok: false, fields: { form: "invalid" } };
+  return result(check(raw, true));
+}
+
+/**
+ * A letter as it is saved (ruling R-g): checkCampaignDraft's rules but for the required subject and text, and with a half-typed button kept. The
+ * whole save (server/newsletter-campaigns.ts saveCampaign) takes it whole; the autosave of a field takes campaignSaveCheck.
+ */
+export function checkCampaignSave(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } {
+  if (!isObject(raw)) return { ok: false, fields: { form: "invalid" } };
+  return result(check(raw, false));
+}
+
+/** The editor's fields (the autosave's: one per form field, a bilingual one whole). */
+export const CAMPAIGN_FIELDS = ["name", "subject", "preheader", "imageKey", "body", "code", "buttonLabel", "buttonHref"] as const;
+export type CampaignField = (typeof CAMPAIGN_FIELDS)[number];
+
+/** A check's keys as the editor's fields: "subject.et" is the field "subject" (a field's first code stands). */
+export function campaignFieldCodes(fields: Record<string, string>): Partial<Record<CampaignField, string>> {
+  const out: Partial<Record<CampaignField, string>> = {};
+  for (const [key, code] of Object.entries(fields)) {
+    const name = key.split(".")[0] as CampaignField;
+    if ((CAMPAIGN_FIELDS as readonly string[]).includes(name) && !(name in out)) out[name] = code;
+  }
+  return out;
+}
+
+/**
+ * The save's rules over the letter's fields as they stand (the editor's, or the stored ones with a patch over them): the cleaned value, and the
+ * refused fields by the editor's field name. One rule for the browser (useAutosave's `validate`: a refused field is held back) and the server (the
+ * autosave route refuses the fields of the patch it names): never a hand copy.
+ */
+export function campaignSaveCheck(fields: Record<string, unknown>): { value: NewsletterCampaignDraft; codes: Partial<Record<CampaignField, string>> } {
+  const c = check(fields, false);
+  return { value: c.value, codes: campaignFieldCodes(c.errors) };
 }
 
 const blank = (text: string | undefined): boolean => text === undefined || text.trim() === "";

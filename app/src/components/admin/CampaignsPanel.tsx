@@ -1,51 +1,47 @@
 import Link from "next/link";
 import type { NewsletterCampaign } from "@/db/schema";
 import { adminEt } from "@/i18n/dict/admin";
-import { fill, formatDate, formatTime } from "@/i18n/format";
-import type { Progress } from "@/server/newsletter-campaigns";
-import { NewsletterCampaignEditor, type CampaignEditorView, type TestTarget } from "./NewsletterCampaignEditor";
+import { fill, formatDayMonth, formatTime } from "@/i18n/format";
+import { campaignValues, type Progress } from "@/server/newsletter-campaigns";
+import { DeletedNotice, NewLetterButton, NewsletterCampaignEditor, type Audience, type CampaignEditorView, type TestTarget } from "./NewsletterCampaignEditor";
 import ui from "./ui.module.css";
 import styles from "./CampaignsPanel.module.css";
 
-// The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; spec D4; the 20.10 design §3): the campaigns (drafts first, then the sent ones and
-// the one going out, the newest first; server/newsletter-campaigns.ts listCampaigns) each with its state and, for the one going out, its progress
-// („Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“), „Uus kampaania“, and the editor of the one chosen (?kampaania=<id>, or `uus`).
-// A server component: the list is links; the editor (NewsletterCampaignEditor) is the browser's part.
+// The „Kirjad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; spec D4; the 20.10 design §3; admin UX pass piece 3b, Task 6: README B5, the Part 3 frame
+// „B5 Uudiskiri“ and the Part 4 „B5 Kirjad“, piece3-texts P-12, P-13): a 300 px list on the left — „Uus kiri +“, then the letters (drafts first, then the
+// sent ones and the one going out, the newest first; server/newsletter-campaigns.ts listCampaigns), each its name over its state line („Mustand · muudetud
+// {dd.mm hh:mm}“, „Saadetud {dd.mm} · {n} tellijale“, „Saatmine pooleli · {sent} / {n}“) — and the editor of the one chosen (?kampaania=<id>) on the
+// right: its fields, then a 380 px column of the preview and the sends. On a phone (below 900 px) the list is its own screen: a letter open hides it.
+// A server component: the list is links; „Uus kiri +“, the list's „Mustand kustutatud.“ and the editor are the browser's parts.
 
 const BASE = "/admin/uudiskiri?vaade=kampaaniad";
-export const campaignListHref = (id: number | "new") => `${BASE}&kampaania=${id === "new" ? "uus" : id}`;
+export const campaignListHref = (id: number) => `${BASE}&kampaania=${id}`;
 
 /**
- * A row of the list: its name, its status, its last change (a draft) or its send (ISO), how many the send reached, and, for a campaign going out,
- * where its deliveries stand.
+ * A row of the list: its name, its status, its last change (a draft) or its send (ISO), how many the send reached, and, for a letter going out, where
+ * its deliveries stand.
  */
 export type CampaignListRow = { id: number; name: string; status: CampaignEditorView["status"]; at: string; reached: number | null; progress: Progress | null };
 
-const both = (v: { et: string; ru?: string } | null) => ({ et: v?.et ?? "", ru: v?.ru ?? "" });
-
 /**
- * A stored campaign as the editor shows it: its fields as strings ("" for none), what its send recorded, and, once it is no draft, where its deliveries
- * stand (`progress`) and whether the last batch was refused by Resend (`refused`); the page reads both (server/newsletter-campaigns.ts progressOf, sendRefused).
+ * A stored letter as the editor shows it: its fields as strings ("" for none), its autosave version, what its send recorded, and, once it is no draft,
+ * where its deliveries stand (`progress`) and whether the last batch was refused by Resend (`refused`); the page reads them (server/newsletter-campaigns.ts
+ * campaignVersion, progressOf, sendRefused).
  */
-export function campaignEditorView(row: NewsletterCampaign, delivery: { progress: Progress | null; refused: boolean } = { progress: null, refused: false }): CampaignEditorView {
+export function campaignEditorView(
+  row: NewsletterCampaign,
+  read: { version: string; progress?: Progress | null; refused?: boolean },
+): CampaignEditorView {
   return {
     id: row.id,
     status: row.status,
-    values: {
-      name: row.name,
-      subject: both(row.subject),
-      preheader: both(row.preheader),
-      imageKey: row.imageKey ?? "",
-      body: both(row.body),
-      code: row.code ?? "",
-      buttonLabel: both(row.buttonLabel),
-      buttonHref: row.buttonHref ?? "",
-    },
+    values: campaignValues(row),
+    version: read.version,
     sentAt: row.sentAt ? row.sentAt.toISOString() : null,
     updatedAt: row.updatedAt.toISOString(),
     recipients: row.recipients ?? null,
-    progress: row.status === "draft" ? null : delivery.progress,
-    refused: row.status === "sending" && delivery.refused,
+    progress: row.status === "draft" ? null : (read.progress ?? null),
+    refused: row.status === "sending" && read.refused === true,
   };
 }
 
@@ -62,19 +58,13 @@ export const campaignListRow = (row: NewsletterCampaign, progress: Progress | nu
   progress: row.status === "sending" ? progress : null,
 });
 
-// (a campaign going out is the routine state of a big one: the plain tag, never the red of an error)
-const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: "", sent: ui.ok };
-const stamp = (iso: string) => {
-  const d = new Date(iso);
-  return `${formatDate(d, "et")} ${formatTime(d, "et")}`;
-};
-
-/** What a row says under its name: the send's line (sent), the progress (going out), or the last change (a draft). */
+/** What a row says under its name (P-13): a draft's last change, a sent letter's day and count, a letter going out its mails that went of all. */
 function rowLine(c: CampaignListRow): string {
-  const t = adminEt.newsletter.campaigns;
-  if (c.status === "sent" && c.reached !== null) return fill(t.sentLine, { date: stamp(c.at), n: c.reached });
-  if (c.status === "sending" && c.progress) return fill(t.progress, { sent: c.progress.sent, n: c.progress.total, left: c.progress.waiting });
-  return fill(t.changed, { date: stamp(c.at) });
+  const t = adminEt.newsletter.campaigns.row;
+  const d = new Date(c.at);
+  if (c.status === "sent") return fill(t.sent, { date: formatDayMonth(d, "et"), n: c.reached ?? 0 });
+  if (c.status === "sending") return fill(t.sending, { sent: c.progress?.sent ?? 0, n: c.progress?.total ?? 0 });
+  return fill(t.draft, { date: `${formatDayMonth(d, "et")} ${formatTime(d, "et")}` });
 }
 
 export function CampaignsPanel({
@@ -85,30 +75,30 @@ export function CampaignsPanel({
   links,
   testTargets,
   gated,
+  audience,
 }: {
   campaigns: CampaignListRow[];
-  /** The campaign chosen (?kampaania=): its id, "new" for „Uus kampaania“, or null for none. */
-  selected: number | "new" | null;
-  /** The chosen campaign, as the editor shows it (null for a new one, or when none is chosen or it is not there). */
+  /** The letter chosen (?kampaania=): its id, or null for none. */
+  selected: number | null;
+  /** The chosen letter, as the editor shows it (null when none is chosen or it is not there). */
   editing: CampaignEditorView | null;
-  /** ?kampaania= names a campaign that is not there (deleted, or a link from elsewhere). */
+  /** ?kampaania= names a letter that is not there (deleted, or a link from elsewhere). */
   notFound: boolean;
   links: string[];
   /** The addresses „Saada proov“ offers. */
   testTargets: TestTarget[];
   /** The coming-soon gate is on (the page reads it: NewsletterCampaignEditor never reads the environment). */
   gated: boolean;
+  /** Who „Saada kõigile ({n})“ goes to, as the page read it (B9, R-h). */
+  audience: Audience;
 }) {
   const t = adminEt.newsletter.campaigns;
+  const open = editing !== null;
   return (
-    <div className={styles.panel} data-campaigns="">
-      <section className={ui.card} aria-label={t.list} data-campaigns-list="">
-        <div className={styles.listHead}>
-          <h2 className={ui.h3}>{t.list}</h2>
-          <Link className={`${ui.btn} ${ui.smallBtn}`} href={campaignListHref("new")} aria-current={selected === "new" ? "page" : undefined} data-campaign-new="">
-            {t.new}
-          </Link>
-        </div>
+    <div className={styles.panel} data-campaigns="" data-open={open ? "" : undefined}>
+      <section className={`${ui.card} ${styles.listCard}`} aria-label={t.list} data-campaigns-list="">
+        <NewLetterButton />
+        <DeletedNotice selected={selected} />
         {campaigns.length === 0 ? (
           <p className={ui.empty}>{t.empty}</p>
         ) : (
@@ -116,27 +106,28 @@ export function CampaignsPanel({
             {campaigns.map((c) => (
               <li key={c.id} className={styles.row} data-campaign-row={c.id}>
                 <Link className={styles.rowLink} href={campaignListHref(c.id)} aria-current={selected === c.id ? "page" : undefined}>
-                  {c.name}
+                  <span className={styles.rowName}>{c.name}</span>
+                  <span className={`${styles.rowLine} ${styles[c.status]}`} data-campaign-row-line="" data-campaign-status={c.status}>
+                    {rowLine(c)}
+                  </span>
                 </Link>
-                <span className={`${ui.tag} ${STATUS_TAG[c.status]}`} data-campaign-status={c.status}>
-                  {t.status[c.status]}
-                </span>
-                <span className={`${ui.muted} ${ui.small} ${styles.rowLine}`} data-campaign-row-line="">
-                  {rowLine(c)}
-                </span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {notFound && (
-        <p className={ui.notice} data-campaign-not-found="">
-          {t.notFound}
-        </p>
+      {(open || notFound) && (
+        <div className={styles.work}>
+          {notFound && (
+            <p className={ui.notice} data-campaign-not-found="">
+              {t.notFound}
+            </p>
+          )}
+          {/* (keyed by the letter: its autosave starts from the page's read of it, and another letter is another editor) */}
+          {editing && <NewsletterCampaignEditor key={editing.id} campaign={editing} links={links} testTargets={testTargets} gated={gated} audience={audience} />}
+        </div>
       )}
-      {/* (no key: the editor follows another campaign itself, and keeps its state when the page comes back with the one it has just saved) */}
-      {(selected === "new" || editing) && <NewsletterCampaignEditor campaign={editing} links={links} testTargets={testTargets} gated={gated} />}
     </div>
   );
 }

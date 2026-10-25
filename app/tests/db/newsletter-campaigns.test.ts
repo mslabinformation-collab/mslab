@@ -3,7 +3,20 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { newsletterCampaigns } from "@/db/schema";
 import { CAMPAIGN_LIMITS } from "@/domain/newsletter-campaign";
-import { copyCampaign, listCampaigns, saveCampaign } from "@/server/newsletter-campaigns";
+import { adminEt } from "@/i18n/dict/admin";
+import {
+  copyCampaign,
+  createDraft,
+  deleteDraft,
+  listCampaigns,
+  prepareSend,
+  readCampaign,
+  saveCampaign,
+  sendCountNow,
+  sendCountsNow,
+  writeCampaign,
+} from "@/server/newsletter-campaigns";
+import { subscribers } from "@/db/schema";
 import { makeTestDb } from "./helpers";
 
 // Maria's newsletter campaigns on a real (PGlite) database (newsletter campaigns, Task 4; spec D4, D5): a draft is saved through the rules
@@ -41,6 +54,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await db.delete(newsletterCampaigns);
+  await db.delete(subscribers);
   for (const method of ["info", "error", "warn", "log"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => {
@@ -70,7 +84,8 @@ describe("saveCampaign: a draft through the rules", () => {
   });
 
   test("a refused draft names its fields and stores nothing; a Russian text with a button needs the Russian label (ruling R2)", async () => {
-    expect(await saveCampaign(db, null, { ...DRAFT, name: "", subject: { et: "", ru: "" } }, NOW)).toEqual({ ok: false, fields: { name: "required", "subject.et": "required" } });
+    // (an empty subject is no refusal of a save any more, ruling R-g: only the name is required to save)
+    expect(await saveCampaign(db, null, { ...DRAFT, name: "", subject: { et: "", ru: "" } }, NOW)).toEqual({ ok: false, fields: { name: "required" } });
     expect(await saveCampaign(db, null, { ...DRAFT, buttonLabel: { et: "Vaata", ru: "" } }, NOW)).toEqual({ ok: false, fields: { "buttonLabel.ru": "ruLabel" } });
     expect(await saveCampaign(db, null, { ...DRAFT, name: "x".repeat(CAMPAIGN_LIMITS.name + 1) }, NOW)).toEqual({ ok: false, fields: { name: "tooLong" } });
     expect(await saveCampaign(db, null, "not a form", NOW)).toEqual({ ok: false, fields: { form: "invalid" } });
@@ -84,7 +99,8 @@ describe("saveCampaign: a draft through the rules", () => {
     const asSent = { name: row.name, subject: row.subject, preheader: row.preheader, imageKey: row.imageKey, body: row.body, code: row.code, buttonLabel: row.buttonLabel, buttonHref: row.buttonHref };
     expect(asSent).toMatchObject({ imageKey: null, code: null, buttonLabel: null, buttonHref: null });
     expect(await saveCampaign(db, row.id, asSent, at(1))).toEqual({ ok: true, id: row.id });
-    expect(await rowOf(row.id)).toMatchObject({ ...asSent, updatedAt: at(1) });
+    // (the same content again: nothing changed, so `updatedAt` stays, spec C4)
+    expect(await rowOf(row.id)).toMatchObject({ ...asSent, updatedAt: NOW });
   });
 
   test("a draft is saved again in place, with the new time; another campaign is not touched", async () => {
@@ -113,6 +129,146 @@ describe("saveCampaign: a draft through the rules", () => {
     expect(await saveCampaign(db, sent, { ...DRAFT, name: "" }, at(5))).toEqual({ ok: false, fields: { name: "required" } });
   });
 });
+
+// Piece 3b, Task 6 (README B5, B17, B9; spec C4; rulings R-g, R-h): the letter's autosave, „Uus kiri +“, „Kustuta mustand“ and the count on „Saada kõigile ({n})“.
+describe("C4 and R-g: a save that changes nothing, a draft without its subject", () => {
+  test("C4: a save that changes no field keeps `updatedAt` (the send guard's version), whole or by field; a real change moves it", async () => {
+    const id = await draft();
+    const before = await rowOf(id);
+    expect(await saveCampaign(db, id, DRAFT, at(5))).toEqual({ ok: true, id });
+    // (the code typed in small letters is stored in capitals: the same text again is no change either)
+    expect((await rowOf(id)).updatedAt).toEqual(before.updatedAt);
+    const read = await readCampaign(db, id);
+    if (!read) throw new Error("no letter");
+    const again = await writeCampaign(db, id, { subject: DRAFT.subject, code: "SUGIS15", name: " Oktoobri pakkumine " }, read.version, at(6));
+    expect(again).toEqual({ ok: true, version: read.version, savedAt: at(6).toISOString() });
+    expect(await rowOf(id)).toEqual(before);
+    // the press's version is the one before the saves: it still holds
+    const plan = await prepareSendWith(id);
+    expect(plan.updatedAt).toBe(before.updatedAt.toISOString());
+    const moved = await writeCampaign(db, id, { preheader: { et: "Uus rida", ru: "" } }, read.version, at(7));
+    expect(moved).toMatchObject({ ok: true });
+    expect((moved as { version: string }).version).not.toBe(read.version);
+    expect((await rowOf(id)).updatedAt).toEqual(at(7));
+  });
+
+  test("R-g: „Uus kiri +“ makes the draft „Uus kiri“ with an empty subject and text; saves take an empty subject and text; the name stays required", async () => {
+    const { id } = await createDraft(db, NOW);
+    expect(await rowOf(id)).toMatchObject({
+      name: "Uus kiri",
+      subject: { et: "", ru: "" },
+      preheader: { et: "", ru: "" },
+      body: { et: "", ru: "" },
+      imageKey: null,
+      code: null,
+      buttonLabel: null,
+      buttonHref: null,
+      status: "draft",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(adminEt.newsletter.campaigns.newTitle).toBe("Uus kiri");
+    const read = await readCampaign(db, id);
+    if (!read) throw new Error("no letter");
+    expect(read.value).toEqual({ name: "Uus kiri", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" });
+    // a subject typed, then emptied again: both saves go
+    const typed = await writeCampaign(db, id, { subject: { et: "Teema", ru: "" } }, read.version, at(1));
+    if (!typed.ok) throw new Error(JSON.stringify(typed));
+    const emptied = await writeCampaign(db, id, { subject: { et: "", ru: "" }, body: { et: "", ru: "" } }, typed.version, at(2));
+    expect(emptied).toMatchObject({ ok: true });
+    expect(await rowOf(id)).toMatchObject({ subject: { et: "", ru: "" }, updatedAt: at(2) });
+    expect(await saveCampaign(db, id, { ...DRAFT, subject: { et: "", ru: "" }, body: { et: "", ru: "" } }, at(3))).toEqual({ ok: true, id });
+    // the name is the list's: an empty one is refused by field, nothing stored
+    const now = await readCampaign(db, id);
+    expect(await writeCampaign(db, id, { name: "  " }, now!.version, at(4))).toEqual({ ok: false, error: "invalid", fields: { name: "required" } });
+    expect((await rowOf(id)).updatedAt).toEqual(at(3));
+  });
+
+  test("the autosave of a field: the other fields' rules do not hold it back; the button's rule falls on the field that breaks it; a field too long is refused by name", async () => {
+    const { id } = await createDraft(db, NOW);
+    let v = (await readCampaign(db, id))!.version;
+    // the button's label first: stored, its address still to come (the rule names the address, which this save does not carry)
+    const label = await writeCampaign(db, id, { buttonLabel: { et: "Vaata", ru: "" } }, v, at(1));
+    if (!label.ok) throw new Error(JSON.stringify(label));
+    v = label.version;
+    expect(await rowOf(id)).toMatchObject({ buttonLabel: { et: "Vaata", ru: "" }, buttonHref: null });
+    expect(await writeCampaign(db, id, { buttonHref: "javascript:alert(1)" }, v, at(2))).toEqual({ ok: false, error: "invalid", fields: { buttonHref: "invalid" } });
+    const href = await writeCampaign(db, id, { buttonHref: "/koolitused" }, v, at(2));
+    if (!href.ok) throw new Error(JSON.stringify(href));
+    expect(await writeCampaign(db, id, { subject: { et: "x".repeat(CAMPAIGN_LIMITS.subject + 1), ru: "" } }, href.version, at(3))).toEqual({ ok: false, error: "invalid", fields: { subject: "tooLong" } });
+    // a Russian text under a button without its Russian label: the label is the field held back (ruling R2), the text itself goes
+    const ru = await writeCampaign(db, id, { body: { et: "Tekst.", ru: "Текст." } }, href.version, at(4));
+    if (!ru.ok) throw new Error(JSON.stringify(ru));
+    expect(await writeCampaign(db, id, { buttonLabel: { et: "Vaata kõiki", ru: "" } }, ru.version, at(5))).toEqual({ ok: false, error: "invalid", fields: { buttonLabel: "ruLabel" } });
+    const both = await writeCampaign(db, id, { buttonLabel: { et: "Vaata kõiki", ru: "Смотреть" } }, ru.version, at(5));
+    if (!both.ok) throw new Error(JSON.stringify(both));
+    // the button taken away: its label and its address together (each alone would break the rule, so the editor holds the first until the second)
+    expect(await writeCampaign(db, id, { buttonHref: "" }, both.version, at(6))).toEqual({ ok: false, error: "invalid", fields: { buttonHref: "required" } });
+    expect(await writeCampaign(db, id, { buttonLabel: { et: "", ru: "" }, buttonHref: "" }, both.version, at(6))).toMatchObject({ ok: true });
+    expect(await rowOf(id)).toMatchObject({ buttonLabel: null, buttonHref: null });
+  });
+
+  test("another tab's version is a conflict with the stored fields; a letter sent meanwhile is a conflict too and never changes", async () => {
+    const id = await draft();
+    const read = (await readCampaign(db, id))!;
+    expect(await writeCampaign(db, id, { name: "Esimene vahekaart" }, read.version, at(1))).toMatchObject({ ok: true });
+    const stale = await writeCampaign(db, id, { name: "Teine vahekaart" }, read.version, at(2));
+    expect(stale).toMatchObject({ ok: false, error: "conflict", value: { name: "Esimene vahekaart" } });
+    const now = (await readCampaign(db, id))!;
+    await db.update(newsletterCampaigns).set({ status: "sending" }).where(eq(newsletterCampaigns.id, id));
+    const before = await rowOf(id);
+    expect(await writeCampaign(db, id, { name: "Pärast saatmist" }, now.version, at(3))).toMatchObject({ ok: false, error: "conflict" });
+    expect(await rowOf(id)).toEqual(before);
+    expect(await readCampaign(db, 999_999)).toBeNull();
+  });
+});
+
+describe("deleteDraft: „Kustuta mustand“ (B17)", () => {
+  test("a draft is deleted; a letter sent or going out is refused (`sent`) and stays; one that is not there is `notFound`", async () => {
+    const id = await draft();
+    const other = await draft({ ...DRAFT, name: "Teine" });
+    expect(await deleteDraft(db, id)).toBe("ok");
+    expect(await rowOf(id)).toBeUndefined();
+    expect(await rowOf(other)).toBeDefined();
+    expect(await deleteDraft(db, id)).toBe("notFound");
+    for (const status of ["sent", "sending"] as const) {
+      const letter = await draft();
+      await db.update(newsletterCampaigns).set({ status, recipients: { et: 1, ru: 0 } }).where(eq(newsletterCampaigns.id, letter));
+      const before = await rowOf(letter);
+      expect(await deleteDraft(db, letter), status).toBe("sent");
+      expect(await rowOf(letter)).toEqual(before);
+    }
+    expect(adminEt.newsletter.campaigns.errorsOf.sent).toBe("See kiri on juba saadetud.");
+  });
+});
+
+describe("sendCountNow: the count on „Saada kõigile ({n})“ (B9, R-h)", () => {
+  const sub = (email: string, locale: "et" | "ru" = "et", confirmed = true) =>
+    db.insert(subscribers).values({ email, locale, token: `tok_${email.replace(/[^a-z0-9]/gi, "_")}_0123456789`, confirmedAt: confirmed ? NOW : null });
+
+  test("the confirmed subscribers a press would write now: never a sample address (@example.test), an unconfirmed row or an address twice", async () => {
+    expect(await sendCountNow(db)).toBe(0);
+    await sub("kati@example.com");
+    await sub("olga@example.com", "ru");
+    await sub("ootab@example.com", "et", false);
+    await sub("naidis@example.test");
+    await sub("Teine.Naidis@Example.Test", "ru");
+    await sub("KATI@example.com", "ru");
+    expect(await sendCountNow(db)).toBe(2);
+    expect(await sendCountsNow(db)).toEqual({ et: 1, ru: 1, samples: 2 });
+    // the press's own read under its lock says the same
+    const id = await draft();
+    expect(await prepareSend(db, id)).toMatchObject({ ok: true, et: 1, ru: 1, samples: 2 });
+  });
+});
+
+/** prepareSend's plan, or the test fails. */
+async function prepareSendWith(id: number): Promise<{ updatedAt: string }> {
+  await db.insert(subscribers).values({ email: "kati@example.com", locale: "et", token: "tok_kati_0123456789", confirmedAt: NOW }).onConflictDoNothing();
+  const plan = await prepareSend(db, id);
+  if (!plan.ok) throw new Error(JSON.stringify(plan));
+  return plan;
+}
 
 describe("copyCampaign: „Kopeeri“", () => {
   test("a sent campaign gives a new draft with the same content and „(koopia)“ after its name; the sent one stays as it was", async () => {

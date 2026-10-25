@@ -1,7 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { adminEt } from "@/i18n/dict/admin";
-import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_LIMITS, CAMPAIGN_ROOM_KEY, campaignContentFor, campaignRoomSetting, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
+import {
+  CAMPAIGN_DAILY_ROOM,
+  CAMPAIGN_LIMITS,
+  CAMPAIGN_ROOM_KEY,
+  campaignContentFor,
+  campaignFieldCodes,
+  campaignRoomSetting,
+  campaignSaveCheck,
+  checkCampaignDraft,
+  checkCampaignSave,
+  ruFallsBack,
+  type NewsletterCampaignDraft,
+} from "@/domain/newsletter-campaign";
 
 // The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, §5): the limits, the draft Maria's editor sends checked
 // field by field, and the text a subscriber of each language gets (the Estonian one as a whole when the Russian subject or text is empty,
@@ -38,6 +50,40 @@ const draft = (over: Partial<NewsletterCampaignDraft> = {}): NewsletterCampaignD
 describe("the limits", () => {
   test("the brief's values", () => {
     expect(CAMPAIGN_LIMITS).toEqual({ name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 });
+  });
+});
+
+// Piece 3b, Task 6 (ruling R-g): the save's rules and the sends' rules are one module. A save takes an empty subject and text (an empty draft, „Uus kiri +“)
+// and a button half typed; the sends (checkCampaignDraft) require them. The autosave's rule is campaignSaveCheck, by the editor's field names: the browser
+// holds a refused field back by it and the route refuses the patch's fields by it (never a hand copy).
+describe("checkCampaignSave and campaignSaveCheck: the save's rules (R-g)", () => {
+  const empty = { name: "Uus kiri", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" };
+
+  test("an empty subject and text save; the sends refuse them with the required code", () => {
+    expect(checkCampaignSave(empty)).toMatchObject({ ok: true, value: { name: "Uus kiri", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, buttonLabel: null, buttonHref: null } });
+    expect(checkCampaignDraft(empty)).toEqual({ ok: false, fields: { "subject.et": "required", "body.et": "required" } });
+    expect(campaignSaveCheck(empty).codes).toEqual({});
+  });
+
+  test("the name stays required, and every field keeps its own rule: the limit, the code's shape, the address, the picture's key", () => {
+    expect(campaignSaveCheck({ ...empty, name: " " }).codes).toEqual({ name: "required" });
+    expect(campaignSaveCheck({ ...empty, subject: { et: "x".repeat(CAMPAIGN_LIMITS.subject + 1), ru: "" } }).codes).toEqual({ subject: "tooLong" });
+    expect(campaignSaveCheck({ ...empty, code: "ei sobi!" }).codes).toEqual({ code: "invalid" });
+    expect(campaignSaveCheck({ ...empty, buttonLabel: { et: "Vaata", ru: "" }, buttonHref: "javascript:alert(1)" }).codes).toEqual({ buttonHref: "invalid" });
+    expect(campaignSaveCheck({ ...empty, imageKey: "https://elsewhere.example/a.jpg" }).codes).toEqual({ imageKey: "invalid" });
+  });
+
+  test("the button's rule falls on the field that breaks it, and a button half typed is kept for the save (the send refuses it)", () => {
+    const half = { ...empty, subject: { et: "Teema", ru: "" }, body: { et: "Tekst.", ru: "" }, buttonLabel: { et: "Vaata", ru: "" } };
+    expect(campaignSaveCheck(half)).toMatchObject({ codes: { buttonHref: "required" }, value: { buttonLabel: { et: "Vaata", ru: "" }, buttonHref: null } });
+    expect(checkCampaignDraft(half)).toEqual({ ok: false, fields: { buttonHref: "required" } });
+    const ru = { ...half, body: { et: "Tekst.", ru: "Текст." }, buttonHref: "/koolitused" };
+    expect(campaignSaveCheck(ru).codes).toEqual({ buttonLabel: "ruLabel" });
+    expect(campaignSaveCheck({ ...ru, buttonLabel: { et: "Vaata", ru: "Смотреть" } }).codes).toEqual({});
+  });
+
+  test("campaignFieldCodes names the editor's fields: a language's key is its field, the first code of a field stands, a key it does not know is left out", () => {
+    expect(campaignFieldCodes({ "subject.et": "required", "subject.ru": "tooLong", buttonHref: "invalid", form: "invalid" })).toEqual({ subject: "required", buttonHref: "invalid" });
   });
 });
 

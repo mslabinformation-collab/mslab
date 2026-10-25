@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { Db, Q } from "@/db/client";
 import { newsletterCampaigns, newsletterDeliveries, settings, subscribers, type DeliveryStatus, type NewsletterCampaign, type NewsletterDelivery } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
@@ -6,17 +7,23 @@ import {
   CAMPAIGN_DAILY_ROOM,
   CAMPAIGN_LIMITS,
   CAMPAIGN_ROOM_KEY,
+  CAMPAIGN_FIELDS,
   campaignContentFor,
   campaignRoomSetting,
+  campaignSaveCheck,
   checkCampaignDraft,
+  checkCampaignSave,
   isCampaignHref,
   ruFallsBack,
+  type CampaignField,
   type NewsletterCampaignDraft,
 } from "@/domain/newsletter-campaign";
+import type { SaveAnswer } from "@/domain/autosave";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import { isStorableImageKey, mediaUrl } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
+import { contentVersion, stableJson } from "@/lib/version";
 import { campaignMail } from "./campaign-mail";
 import { mailsSentToday } from "./client-auth";
 import { getInvoiceSettings } from "./invoices";
@@ -25,9 +32,13 @@ import { unsubscribeUrl } from "./newsletter";
 import { sendMailResult, type Env, type MailOutcome } from "./notify";
 import { forgetKey, releaseSlot, reserveSlot, windowKey, type TextKv } from "./ratelimit";
 
-// Maria's newsletter campaigns (newsletter campaigns, Task 4; spec D4–D8, §5; rulings R2, R4, R5, R7, R9, R11): the drafts she writes on the
-// „Kampaaniad“ tab, „Kopeeri“ and the live preview. The rules of a draft are domain/newsletter-campaign.ts and the mail is campaign-mail.ts
-// campaignMail. Without Next.js: the actions (actions/admin-newsletter.ts), the preview route and the daily job (api/cron/uudiskiri) call these.
+// Maria's newsletter letters (newsletter campaigns, Task 4; spec D4–D8, §5; rulings R2, R4, R5, R7, R9, R11): the drafts she writes on the
+// „Kirjad“ tab, „Kopeeri“ and the live preview. The rules of a draft are domain/newsletter-campaign.ts and the mail is campaign-mail.ts
+// campaignMail. Without Next.js: the actions (actions/admin-newsletter.ts), the autosave route (api/admin/kiri/<id>), the preview route and the daily
+// job (api/cron/uudiskiri) call these.
+// Admin UX pass piece 3b, Task 6 (README B5, B9, B17; spec C4; rulings R-g, R-h): a draft autosaves by field (readCampaign, writeCampaign) and a save that
+// changes nothing leaves `updatedAt`, the press's version of the letter (C4); „Uus kiri +“ is createDraft (an empty draft „Uus kiri“: saves take an empty
+// subject and text, the sends require them, R-g); „Kustuta mustand“ is deleteDraft, under the press's lock; „Saada kõigile ({n})“ shows sendCountNow.
 // Logs carry ids and counts, never an address, a token or a text of hers.
 //
 // The sending is the 20.10 design's (docs/superpowers/specs/2026-10-20-newsletter-simple-design.md §3, §5): one ordinary mail per subscriber.
@@ -90,10 +101,49 @@ export async function listCampaigns(db: Db): Promise<NewsletterCampaign[]> {
     );
 }
 
+/** A letter's fields as the editor holds them: every text a string ("" for none), the picture's key "" for none (NewsletterCampaignEditor.tsx CampaignValues). */
+export type CampaignValues = {
+  name: string;
+  subject: { et: string; ru: string };
+  preheader: { et: string; ru: string };
+  imageKey: string;
+  body: { et: string; ru: string };
+  code: string;
+  buttonLabel: { et: string; ru: string };
+  buttonHref: string;
+};
+
+/** The stored letter as the editor's fields (its autosave's value, and what a conflict shows). */
+export function campaignValues(row: NewsletterCampaign): CampaignValues {
+  const both = (v: { et: string; ru?: string } | null) => ({ et: v?.et ?? "", ru: v?.ru ?? "" });
+  return {
+    name: row.name,
+    subject: both(row.subject),
+    preheader: both(row.preheader),
+    imageKey: row.imageKey ?? "",
+    body: both(row.body),
+    code: row.code ?? "",
+    buttonLabel: both(row.buttonLabel),
+    buttonHref: row.buttonHref ?? "",
+  };
+}
+
 /**
- * „Salvesta“: `raw` (the editor's fields) through the rules (checkCampaignDraft: refused fields by name, nothing stored), then a new draft (`id`
- * null) or the draft `id` again, with `now` as its change time. A campaign that is sent or being sent never changes (`sent`: frozen once sent), one
- * that is not there is `notFound`. The update is one statement that requires `draft`, so a send that begins meanwhile wins.
+ * The letter's version for its autosave: "k:" and the hash of its stored fields and its status (lib/version.ts contentVersion), so another tab's save,
+ * and a send that began, are a conflict. (The press keeps its own guard, `updatedAt`: C4 keeps it still when nothing changed.)
+ */
+export const campaignVersion = async (row: NewsletterCampaign): Promise<string> => `k:${await contentVersion({ status: row.status, ...campaignValues(row) })}`;
+
+/** The columns a draft writes, compared as stored: the same is no change (C4). */
+const sameColumns = (row: NewsletterCampaign, next: ReturnType<typeof columnsOf>): boolean =>
+  stableJson(columnsOf(draftOf(row))) === stableJson(next);
+
+/**
+ * The whole draft saved (the tests', the race spec's and the copy's way; the editor autosaves by field: writeCampaign): `raw` through the save's rules
+ * (domain/newsletter-campaign.ts checkCampaignSave: refused fields by name, nothing stored; an empty subject and text save, ruling R-g), then a new draft
+ * (`id` null) or the draft `id` again, with `now` as its change time — unless nothing would change, when nothing is written and `updatedAt` stays (C4:
+ * the press's guard reads it). A letter that is sent or being sent never changes (`sent`), one that is not there is `notFound`. The row is read FOR
+ * UPDATE, so a press that begins meanwhile waits for it or wins.
  */
 export async function saveCampaign(
   db: Db,
@@ -101,7 +151,7 @@ export async function saveCampaign(
   raw: unknown,
   now: Date,
 ): Promise<{ ok: true; id: number } | { ok: false; fields: Record<string, string> } | { ok: false; error: "sent" | "notFound" }> {
-  const checked = checkCampaignDraft(raw);
+  const checked = checkCampaignSave(raw);
   if (!checked.ok) return { ok: false, fields: checked.fields };
   if (id === null) {
     const [row] = await db
@@ -111,13 +161,116 @@ export async function saveCampaign(
     console.info(`[newsletter] campaign ${row.id} created`);
     return { ok: true, id: row.id };
   }
-  const updated = await db
-    .update(newsletterCampaigns)
-    .set({ ...columnsOf(checked.value), updatedAt: now })
-    .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "draft")))
+  return db.transaction(async (t) => {
+    const [row] = await t.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return { ok: false as const, error: "notFound" as const };
+    if (row.status !== "draft") return { ok: false as const, error: "sent" as const };
+    const next = columnsOf(checked.value);
+    if (!sameColumns(row, next)) await t.update(newsletterCampaigns).set({ ...next, updatedAt: now }).where(eq(newsletterCampaigns.id, id));
+    return { ok: true as const, id };
+  });
+}
+
+/** „Uus kiri +“ (S3-P3-h, ruling R-g): a new draft named „Uus kiri“ with an empty subject and text, at once; the editor opens it with the cursor in „Nimi“. */
+export async function createDraft(db: Db, now: Date): Promise<{ id: number }> {
+  const empty = { et: "", ru: "" };
+  const [row] = await db
+    .insert(newsletterCampaigns)
+    .values({ name: adminEt.newsletter.campaigns.newTitle, subject: empty, preheader: empty, body: empty, status: "draft", createdAt: now, updatedAt: now })
     .returning();
-  if (updated.length > 0) return { ok: true, id };
-  return { ok: false, error: (await getCampaign(db, id)) ? "sent" : "notFound" };
+  console.info(`[newsletter] campaign ${row.id} created (new letter)`);
+  return { id: row.id };
+}
+
+/**
+ * „Kustuta mustand“ (B17): under the press's lock (the same first statement as every press) and with the row FOR UPDATE, a draft is deleted; a letter
+ * that is sent or going out (another tab pressed) is never deleted (`sent`); one that is not there is `notFound`. A draft has no deliveries (the press
+ * writes them as it makes the letter `sending`).
+ */
+export async function deleteDraft(db: Db, id: number): Promise<"ok" | "sent" | "notFound"> {
+  const result = await db.transaction(async (t) => {
+    await t.execute(sql`select pg_advisory_xact_lock(hashtext(${PRESS_LOCK}))`);
+    const [row] = await t.select({ status: newsletterCampaigns.status }).from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return "notFound" as const;
+    if (row.status !== "draft") return "sent" as const;
+    await t.delete(newsletterCampaigns).where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "draft")));
+    return "ok" as const;
+  });
+  if (result === "ok") console.info(`[newsletter] campaign ${id} deleted (a draft)`);
+  return result;
+}
+
+// ---------- the autosave (api/admin/kiri/<id>; server/autosave-route.ts' contract) ----------
+
+const both = (max: number) => z.strictObject({ et: z.string({ error: "invalid" }).max(max, "tooLong"), ru: z.string({ error: "invalid" }).max(max, "tooLong") }, { error: "invalid" });
+/** The outer limits of a field (twice its rule's, for text that loses its control characters on the way in); the rules are domain/newsletter-campaign.ts. */
+const L2 = { name: CAMPAIGN_LIMITS.name * 2, subject: CAMPAIGN_LIMITS.subject * 2, preheader: CAMPAIGN_LIMITS.preheader * 2, body: CAMPAIGN_LIMITS.body * 2, label: CAMPAIGN_LIMITS.buttonLabel * 2, href: CAMPAIGN_LIMITS.href * 2 };
+
+/** The editor's autosave patch (the route's schema): some of the letter's fields, no other; each refusal is its field's code. */
+export const CAMPAIGN_PATCH = z
+  .strictObject(
+    {
+      name: z.string({ error: "invalid" }).max(L2.name, "tooLong"),
+      subject: both(L2.subject),
+      preheader: both(L2.preheader),
+      imageKey: z.string({ error: "invalid" }).max(L2.href, "invalid"),
+      body: both(L2.body),
+      code: z.string({ error: "invalid" }).max(WELCOME_CODE_MAX * 2, "invalid"),
+      buttonLabel: both(L2.label),
+      buttonHref: z.string({ error: "invalid" }).max(L2.href, "invalid"),
+    } satisfies Record<CampaignField, z.ZodType>,
+    { error: "invalid" },
+  )
+  .partial();
+export type CampaignPatch = z.output<typeof CAMPAIGN_PATCH>;
+
+/** The letter as its autosave reads it (the route's `read`): its version and its fields; null when there is no such letter (404). */
+export async function readCampaign(q: Q, id: number): Promise<{ version: string; value: CampaignValues } | null> {
+  const row = await getCampaign(q, id);
+  return row ? { version: await campaignVersion(row), value: campaignValues(row) } : null;
+}
+
+/**
+ * The editor's autosave (the route's `write`): `patch` (some of the fields) over the letter at `version`, in one transaction with the row FOR UPDATE (a
+ * press holds it while it decides, so the two are one after the other). The answers:
+ * - ok with the letter's version after it; a save that changes nothing writes nothing and answers the version it came from: `updatedAt` stays (C4);
+ * - a conflict with the stored version and fields when `version` is not the letter's (another tab saved first), or the letter is no draft any more (a
+ *   send began: it never changes); a letter deleted meanwhile: version "", value null;
+ * - invalid with the patch's fields that the save's rules refuse (domain/newsletter-campaign.ts campaignSaveCheck over the stored fields with the patch
+ *   on them): a rule broken by a field the patch does not carry (the button's address while its label is typed) holds nothing back.
+ */
+export async function writeCampaign(db: Db, id: number, patch: Record<string, unknown>, version: string, now: Date): Promise<SaveAnswer> {
+  const savedAt = now.toISOString();
+  const own = Object.fromEntries(Object.entries(patch).filter(([k]) => (CAMPAIGN_FIELDS as readonly string[]).includes(k)));
+  const parsed = CAMPAIGN_PATCH.safeParse(own);
+  if (!parsed.success) return { ok: false, error: "invalid", fields: Object.fromEntries(Object.keys(own).map((k) => [k, "invalid"])) };
+  const sent = Object.keys(parsed.data) as CampaignField[];
+  return db.transaction(async (t): Promise<SaveAnswer> => {
+    const [row] = await t.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return { ok: false, error: "conflict", version: "", value: null };
+    const current = await campaignVersion(row);
+    if (version !== current || row.status !== "draft") return { ok: false, error: "conflict", version: current, value: campaignValues(row) };
+    const checked = campaignSaveCheck({ ...campaignValues(row), ...parsed.data });
+    const refused = Object.fromEntries(sent.filter((f) => checked.codes[f] !== undefined).map((f) => [f, checked.codes[f] as string]));
+    if (Object.keys(refused).length > 0) return { ok: false, error: "invalid", fields: refused };
+    // the patch's fields as the rules cleaned them; every other field as it is stored
+    const stored = columnsOf(draftOf(row));
+    const cleaned = columnsOf(checked.value);
+    const pick = <K extends keyof typeof stored>(k: K, f: CampaignField) => (sent.includes(f) ? cleaned[k] : stored[k]);
+    const next = {
+      name: pick("name", "name"),
+      subject: pick("subject", "subject"),
+      preheader: pick("preheader", "preheader"),
+      imageKey: pick("imageKey", "imageKey"),
+      body: pick("body", "body"),
+      code: pick("code", "code"),
+      buttonLabel: pick("buttonLabel", "buttonLabel"),
+      buttonHref: pick("buttonHref", "buttonHref"),
+    };
+    if (sameColumns(row, next)) return { ok: true, version: current, savedAt };
+    const [after] = await t.update(newsletterCampaigns).set({ ...next, updatedAt: now }).where(eq(newsletterCampaigns.id, id)).returning();
+    return { ok: true, version: await campaignVersion(after), savedAt };
+  });
 }
 
 /** „Kopeeri“: a new draft with the content of campaign `id` (sent or not) and „ (koopia)“ after its name, cut to the name's limit. */
@@ -333,7 +486,7 @@ type Recipient = { email: string; locale: Locale; token: string };
  * address in lower case and once per address (a legacy pair of rows that differ only in case gets one mail: the older row's). Never a sample address
  * (`@example.test`, domain/email.ts isSampleAddress: the live checks and the demo data make such rows, and they are never mailed).
  */
-async function recipientsNow(q: Q): Promise<Recipient[]> {
+async function recipientsNow(q: Q): Promise<{ list: Recipient[]; samples: number }> {
   const rows = await q
     .select({ email: subscribers.email, locale: subscribers.locale, token: subscribers.token })
     .from(subscribers)
@@ -341,16 +494,34 @@ async function recipientsNow(q: Q): Promise<Recipient[]> {
     .orderBy(asc(subscribers.id));
   const seen = new Set<string>();
   const list: Recipient[] = [];
+  const samples = new Set<string>();
   for (const r of rows) {
     const email = normalizeEmail(r.email);
+    if (isSampleAddress(email)) samples.add(email);
     if (isSampleAddress(email) || seen.has(email)) continue;
     seen.add(email);
     list.push({ email, locale: r.locale === "ru" ? "ru" : "et", token: r.token });
   }
-  return list;
+  return { list, samples: samples.size };
 }
 
 const countsOf = (list: Recipient[]) => ({ et: list.filter((r) => r.locale === "et").length, ru: list.filter((r) => r.locale === "ru").length });
+
+/**
+ * B9, ruling R-h: who „Saada kõigile ({n})“ would write the list for now (recipientsNow, read without the press's lock, at render), by language, and the
+ * confirmed sample addresses it leaves out (the hint „· näidisaadressidele ei saadeta“). The ConfirmPanel reads it again under the lock (prepareSend):
+ * a number that moved meanwhile is the `changed` answer.
+ */
+export async function sendCountsNow(q: Q): Promise<{ et: number; ru: number; samples: number }> {
+  const { list, samples } = await recipientsNow(q);
+  return { ...countsOf(list), samples };
+}
+
+/** The n of „Saada kõigile ({n})“: sendCountsNow's two languages together (never a sample address). */
+export async function sendCountNow(q: Q): Promise<number> {
+  const c = await sendCountsNow(q);
+  return c.et + c.ru;
+}
 
 /**
  * Every press takes this transaction lock first, so two presses (two tabs, two campaigns) are one after the other: one campaign at a time holds. (Exported for the
@@ -359,41 +530,54 @@ const countsOf = (list: Recipient[]) => ({ et: list.filter((r) => r.locale === "
 export const PRESS_LOCK = "newsletter-press";
 
 type PressRefusal = "notFound" | "sent" | "busy" | "empty";
+/** A letter the sends' rules refuse (ruling R-g: the required subject and text, the whole button): its fields by key, nothing sent. */
+export type SendInvalid = { ok: false; error: "invalid"; fields: Record<string, string> };
+
+/** The sends' rules (domain/newsletter-campaign.ts checkCampaignDraft) over the stored letter: null when it may go, else its refused fields. */
+function sendRefusal(row: NewsletterCampaign): SendInvalid | null {
+  const checked = checkCampaignDraft(draftOf(row));
+  return checked.ok ? null : { ok: false, error: "invalid", fields: checked.fields };
+}
 
 /**
  * What a press is decided on, inside its transaction: the press lock, then the campaign's row (FOR UPDATE), then the checks. The campaign is there
- * (`notFound`), still a draft (`sent`: sent, or going out already), no other campaign is going out (`busy`: spec §3 "One campaign at a time"), and
- * there is someone to send to (`empty`); with the recipients at this moment.
+ * (`notFound`), still a draft (`sent`: sent, or going out already), whole by the sends' rules (`invalid`, R-g), no other campaign is going out (`busy`:
+ * spec §3 "One campaign at a time"), and there is someone to send to (`empty`); with the recipients at this moment and the confirmed sample addresses
+ * left out.
  */
-async function pressState(t: Q, id: number): Promise<{ row: NewsletterCampaign; list: Recipient[] } | { error: PressRefusal }> {
+async function pressState(t: Q, id: number): Promise<{ row: NewsletterCampaign; list: Recipient[]; samples: number } | { error: PressRefusal } | SendInvalid> {
   await t.execute(sql`select pg_advisory_xact_lock(hashtext(${PRESS_LOCK}))`);
   const [row] = await t.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
   if (!row) return { error: "notFound" };
   if (row.status !== "draft") return { error: "sent" };
+  const invalid = sendRefusal(row);
+  if (invalid) return invalid;
   const [other] = await t
     .select({ id: newsletterCampaigns.id })
     .from(newsletterCampaigns)
     .where(and(eq(newsletterCampaigns.status, "sending"), ne(newsletterCampaigns.id, id)))
     .limit(1);
   if (other) return { error: "busy" };
-  const list = await recipientsNow(t);
+  const { list, samples } = await recipientsNow(t);
   if (list.length === 0) return { error: "empty" };
-  return { row, list };
+  return { row, list, samples };
 }
 
 /**
- * „Saada kõigile“, before the confirmation: the confirmed subscribers by language as a press would write them now, whether the Russian ones get the
- * Estonian text (ruFallsBack), and `updatedAt`, the campaign's last change as this read it (ISO): the press goes only if both are still so. A
- * refusal in a code (pressState). Writes nothing.
+ * „Saada kõigile“, before the confirmation: the confirmed subscribers by language as a press would write them now, the confirmed sample addresses it
+ * leaves out (`samples`: the panel's line „Näidisaadressidele (@example.test) ei saadeta.“), whether the Russian ones get the Estonian text
+ * (ruFallsBack), and `updatedAt`, the campaign's last change as this read it (ISO): the press goes only if the counts and it are still so. A refusal in
+ * a code (pressState), or the fields the sends' rules refuse (`invalid`). Writes nothing.
  */
 export async function prepareSend(
   db: Db,
   id: number,
-): Promise<{ ok: true; et: number; ru: number; ruFallsBack: boolean; updatedAt: string } | { ok: false; error: PressRefusal }> {
+): Promise<{ ok: true; et: number; ru: number; samples: number; ruFallsBack: boolean; updatedAt: string } | { ok: false; error: PressRefusal } | SendInvalid> {
   return db.transaction(async (t) => {
     const state = await pressState(t, id);
+    if ("fields" in state) return state;
     if ("error" in state) return { ok: false as const, error: state.error };
-    return { ok: true as const, ...countsOf(state.list), ruFallsBack: ruFallsBack(draftOf(state.row)), updatedAt: state.row.updatedAt.toISOString() };
+    return { ok: true as const, ...countsOf(state.list), samples: state.samples, ruFallsBack: ruFallsBack(draftOf(state.row)), updatedAt: state.row.updatedAt.toISOString() };
   });
 }
 
@@ -406,9 +590,10 @@ export async function startSend(
   deps: SendDeps,
   id: number,
   confirmed: { et: number; ru: number; updatedAt: string },
-): Promise<({ ok: true } & BatchResult) | { ok: false; error: PressRefusal | "changed" }> {
+): Promise<({ ok: true } & BatchResult) | { ok: false; error: PressRefusal | "changed" } | SendInvalid> {
   const written = await deps.db.transaction(async (t) => {
     const state = await pressState(t, id);
+    if ("fields" in state) return state;
     if ("error" in state) return state.error;
     const counts = countsOf(state.list);
     if (counts.et !== confirmed.et || counts.ru !== confirmed.ru || state.row.updatedAt.getTime() !== Date.parse(confirmed.updatedAt)) return "changed" as const;
@@ -421,6 +606,10 @@ export async function startSend(
   if (typeof written === "string") {
     console.info(`[newsletter] campaign ${id}: not pressed (${written})`);
     return { ok: false, error: written };
+  }
+  if ("fields" in written) {
+    console.info(`[newsletter] campaign ${id}: not pressed (invalid)`);
+    return written;
   }
   console.info(`[newsletter] campaign ${id}: pressed, ${written.et + written.ru} deliveries written (et ${written.et}, ru ${written.ru})`);
   return { ok: true, ...(await runBatch(deps, id)) };
@@ -704,11 +893,14 @@ const TEST_KEY = "newsletter:proov";
  * „Saada proov“: the stored campaign `id` in `locale` as one ordinary mail to `to` (Maria's address or the signed-in admin's: the action decides),
  * the very mail of a send but for „[Proov] “ before the subject and the test page behind its link and its List-Unsubscribe headers
  * (api/newsletter/loobu?proov=1: it changes nothing). Counted like every mail. At most TEST_SEND_LIMIT an hour (`limited`, nothing sent); one that
- * did not go (`mail`) is not counted against the hour. Any campaign, sent or not: Maria can still write and test.
+ * did not go (`mail`) is not counted against the hour. Any campaign, sent or not: Maria can still write and test; a letter the sends' rules refuse
+ * (`invalid`, ruling R-g: no subject, no text, half a button) is not sent and takes no place of the hour.
  */
-export async function sendTest(deps: SendDeps, id: number, to: string, locale: Locale): Promise<{ ok: true } | { ok: false; error: "notFound" | "mail" | "limited" }> {
+export async function sendTest(deps: SendDeps, id: number, to: string, locale: Locale): Promise<{ ok: true } | { ok: false; error: "notFound" | "mail" | "limited" } | SendInvalid> {
   const row = await getCampaign(deps.db, id);
   if (!row) return { ok: false, error: "notFound" };
+  const invalid = sendRefusal(row);
+  if (invalid) return invalid;
   const now = deps.now();
   const kv = deps.env.KV;
   const key = windowKey(TEST_KEY, now, TEST_WINDOW_SEC);
