@@ -257,6 +257,14 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(async () => {
+  // Whatever a test held back and did not let go is answered now, with the editor still up, and nothing is held from here on: an engine gives up on
+  // an unanswered save only SAVE_TIMEOUT_MS later, and the save queued behind it then goes out — unmounted or not — into the test that runs by then.
+  const held = remote.hold?.waiting.splice(0) ?? [];
+  remote.hold = null;
+  if (held.length > 0) {
+    await act(async () => void held.forEach((go) => go()));
+    await settle();
+  }
   await act(async () => root.unmount());
   container.remove();
   fetched.restore();
@@ -1138,6 +1146,12 @@ describe("the list editors (Task 8): drag and arrows, removal with the UndoBar, 
     expect(text(cardOf("qa"))).toContain("Märgi vähemalt üks vastus õigeks.");
     expect(cardOf("qb").hasAttribute("data-invalid")).toBe(false);
     expect(text(cardOf("qb"))).not.toContain("Märgi vähemalt üks vastus õigeks.");
+    // The save that followed the refused one (the moved list, sent the moment the refusal came) is still held. Let it go too: a save nobody answers gives
+    // up only SAVE_TIMEOUT_MS later, and the flush the move queued behind it then sends from an editor long gone, into whichever test runs by then.
+    expect(remote.hold.waiting).toHaveLength(1);
+    await act(async () => remote.hold!.waiting.shift()!());
+    await settle();
+    expect(remote.hold.waiting).toHaveLength(0);
   });
 });
 
