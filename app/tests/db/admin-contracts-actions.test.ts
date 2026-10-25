@@ -2,9 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
-import { readSetting } from "@/db/queries/public";
-import { clients, contracts, pages, registrations, type Contract } from "@/db/schema";
-import { CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY } from "@/domain/contract";
+import { clients, contracts, registrations, type Contract } from "@/db/schema";
 import { INVOICE_KEY } from "@/domain/invoice";
 import { adminEt } from "@/i18n/dict/admin";
 import { linkClientRecords } from "@/server/client-auth";
@@ -16,8 +14,8 @@ import { readPdf } from "../pdf-read";
 import { makeTestDb } from "./helpers";
 import { contactCourse, registrationOn, SITE } from "./payments-fixtures";
 
-// Maria's contract actions on a real (PGlite) database (contracts Task 5; spec D2, D4, D7; rulings R1 and R9): Seaded's save (the text stored, its
-// version bumped by a change only, the course pages revalidated through the settings' path), „Saada leping kinnitamiseks“ (recorded; the mail to the
+// Maria's contract actions on a real (PGlite) database (contracts Task 5; spec D4, D7; rulings R1 and R9; Seaded's save of the contact text is its
+// draft's publish since admin UX pass piece 3b, Task 5: tests/db/legal-drafts.test.ts): „Saada leping kinnitamiseks“ (recorded; the mail to the
 // registration's address in its language with a plain link to the account, best effort), „Saada koopia õpilasele“ (the PDF to the address the contract
 // froze, `sent_at` recorded). Resend is a recording fake, the renderer and fonts are the real ones; the admin session, the cache and the request's
 // headers are stand-ins (the guard is tests/unit/admin-guards.test.ts's, the routes' is admin-contract-routes.test.ts's).
@@ -89,46 +87,6 @@ const accept = async (r: { id: number; clientId: number | null; courseId: number
     const f = (await registrationContractFields(tx, r.id))!;
     return contractForRegistration(tx, { registrationId: r.id, clientId: r.clientId, courseId: r.courseId, template: f.template, fields: f.fields, prepaymentText: f.prepaymentText, via: "form", now });
   });
-
-describe("saveContractTextsAction: Seaded → Lepingud → „Salvesta lepingud“", () => {
-  test("the texts are stored as Maria's page, the version is the save's time, the card comes back as stored, and the course pages are revalidated through the settings' path", async () => {
-    const result = await actions.saveContractTextsAction({ title: { et: "  Kontaktkoolituse leping ", ru: " Договор очного обучения " }, body: { et: " Õpilane {nimi}. ", ru: " Ученик {nimi}. " } });
-    expect(result).toEqual({ ok: true, card: { title: { et: "Kontaktkoolituse leping", ru: "Договор очного обучения" }, body: { et: "Õpilane {nimi}.", ru: "Ученик {nimi}." } } });
-    const [page] = await db.select().from(pages).where(eq(pages.key, CONTRACT_CONTACT_KEY));
-    expect(page).toMatchObject({ title: { et: "Kontaktkoolituse leping", ru: "Договор очного обучения" }, body: { et: "Õpilane {nimi}.", ru: "Ученик {nimi}." } });
-    const version = await readSetting(db, CONTRACT_CONTACT_VERSION_KEY);
-    expect(new Date(version as string).toISOString()).toBe(version);
-    expect(pub.revalidatePublic).toHaveBeenCalledTimes(1);
-    expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "settings", parts: ["contract_contact"] });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("the same texts again keep the version (nobody is asked again), and still revalidate; a changed text is a new version", async () => {
-    const texts = { title: { et: "Leping" }, body: { et: "Tekst." } };
-    await actions.saveContractTextsAction(texts);
-    const first = await readSetting(db, CONTRACT_CONTACT_VERSION_KEY);
-    await actions.saveContractTextsAction(texts);
-    expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).toBe(first);
-    expect(pub.revalidatePublic).toHaveBeenCalledTimes(2);
-    await actions.saveContractTextsAction({ title: { et: "Leping" }, body: { et: "Teine tekst." } });
-    expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).not.toBe(first);
-  });
-
-  test("a refused field comes back by name; nothing is stored, nothing revalidated, the page not refreshed", async () => {
-    expect(await actions.saveContractTextsAction({ title: { et: " " }, body: { et: "x".repeat(30_001) } })).toEqual({ ok: false, fields: { title: "required", body: "tooLong" } });
-    expect(await actions.saveContractTextsAction({ title: { et: "Leping" }, body: { et: "Tekst.", ru: "Текст." }, extra: 1 } as never)).toMatchObject({ ok: true }); // an unknown key is ignored
-    expect(await actions.saveContractTextsAction("not an object")).toEqual({ ok: false, fields: { form: "invalid" } });
-    expect(pub.revalidatePublic).toHaveBeenCalledTimes(1); // the one good save
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("a save that is refused writes nothing at all", async () => {
-    await actions.saveContractTextsAction({ title: { et: "" }, body: { et: "Tekst." } });
-    expect(await db.select().from(pages).where(eq(pages.key, CONTRACT_CONTACT_KEY))).toEqual([]);
-    expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).toBeNull();
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-  });
-});
 
 describe("requestContractAction: „Saada leping kinnitamiseks“ (ruling R9)", () => {
   test("recorded, and the student is mailed: „MS LAB leping kinnitamiseks“ to the registration's address, with the course and a plain link to /konto — no login in it, no attachment", async () => {

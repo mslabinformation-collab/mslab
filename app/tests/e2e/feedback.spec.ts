@@ -345,11 +345,10 @@ test.describe("comment widget in the admin", () => {
       submitsForms();
       await signInAsAdmin(page, context, visitorIp, created);
       await page.setViewportSize(size);
-      await page.goto("/admin/seaded");
+      // (Avaleht's: Seaded has no save bar since admin UX pass piece 3b — its cards autosave and its legal texts are published by their own button)
+      await page.goto("/admin/avaleht");
       await adminReady(page);
       await expect(bubble(page)).toBeVisible();
-      // (Seaded's one save bar is the legal texts' since admin UX pass piece 3b, Task 4: sticky at the foot of the screen while their form is on it)
-      await page.locator("[data-legal-form]").evaluate((form) => form.scrollIntoView({ block: "start" }));
       await expect(saveBarButton(page)).toBeVisible();
       await expect
         .poll(async () =>

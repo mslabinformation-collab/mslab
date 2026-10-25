@@ -90,6 +90,8 @@ export function useAutosave(o: {
       adopt: (name: string, value: unknown) => engine.adopt(name, value),
       /** The conflict as it is now (`conflict` is the one of the last render): for an async handler that has awaited a flush, which may have met one. */
       conflictNow: () => engine.snapshot().conflict,
+      /** The server's version as the form last heard it (engine.ts confirmedVersion): what a publish of the part goes from, after a flush. */
+      versionNow: () => engine.confirmedVersion(),
     }),
     [engine],
   );

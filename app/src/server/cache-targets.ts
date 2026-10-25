@@ -80,7 +80,7 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
       const parts = new Set(change.parts);
       // contact details and the newsletter discount are in the footer
       if (parts.has("contact") || parts.has("newsletter")) return [EVERY_PAGE];
-      // the contracts (contracts, D1): "contract_contact" (Seaded → Lepingud, Maria's contact contract) is the text the course pages' registration
+      // the contracts (contracts, D1): "contract_contact" (Seaded → Kontaktkoolituse leping, Maria's contact contract, published from its draft) is the text the course pages' registration
       // form shows inline, and "terms" (the public „Õppetingimused“) is that text until she writes her own, so each revalidates the course pages:
       // the form refuses a stale contract version and refreshes, and a page kept for minutes would show the student the same refusal again.
       // "course_terms" (the e-course terms) is the e-course contract, which every cart shows inline. "financing" (Seaded → Järelmaks (Inbank), the

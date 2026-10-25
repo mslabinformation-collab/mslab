@@ -89,6 +89,19 @@ describe("SectionMap: the list of links (from 1180 px)", () => {
     expect(text(link("kkk").querySelector("[data-section-status]"))).toBe("6 · RU puudub");
   });
 
+  it("„{n} avaldamata“ (Seaded's legal texts waiting for their publish, piece3-texts P-11), marked for the accent, also in the select; none at 0", async () => {
+    await draw([
+      { id: "lepingud", label: "Lepingud ja tingimused", unpublished: 2 },
+      { id: "kkk", label: "KKK", count: 6, unpublished: 1 },
+      { id: "x", label: "Muu", unpublished: 0 },
+    ]);
+    expect(text(link("lepingud").querySelector("[data-section-status]"))).toBe("2 avaldamata");
+    expect(link("lepingud").querySelector("[data-unpublished]")).not.toBeNull();
+    expect(text(link("kkk").querySelector("[data-section-status]"))).toBe("6 · 1 avaldamata");
+    expect(text(link("x").querySelector("[data-section-status]"))).toBe("");
+    expect(options().map((o) => o.textContent)).toEqual(["Lepingud ja tingimused · 2 avaldamata", "KKK · 6 · 1 avaldamata", "Muu"]);
+  });
+
   it("a count of 0 is shown (the page decides whether to pass one)", async () => {
     await draw([{ id: "a", label: "Galerii", count: 0 }]);
     expect(text(link("a").querySelector("[data-section-status]"))).toBe("0");

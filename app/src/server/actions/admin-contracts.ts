@@ -7,13 +7,13 @@ import { isSampleAddress } from "@/domain/email";
 import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
-import { contractCard, contractForAdmin, contractOwner, contractPdf, mailContract, mailContractRequest, requestContract, saveContractTexts } from "../contracts";
+import { contractForAdmin, contractOwner, contractPdf, mailContract, mailContractRequest, requestContract } from "../contracts";
 import { logFailure } from "../log";
 import { mailConfigured } from "../notify";
-import { revalidatePublic } from "../public-cache";
 import { adminSendDeps } from "../send-deps";
 
-// Maria's contract actions (contracts Task 5, spec §4, D2, D4, D7; rulings R1, R9): every export is wrapped in adminAction (a signed-in admin, or a
+// Maria's contract actions (contracts Task 5, spec §4, D4, D7; rulings R1, R9; the contact text's „Salvesta lepingud“ went with admin UX pass piece 3b,
+// Task 5: the text is a draft published on api/admin/oigustekst/contract_contact/avalda): every export is wrapped in adminAction (a signed-in admin, or a
 // redirect to /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is
 // in ../contracts.ts (the rules, the writes and the mails). Each action answers in plain data: `{ ok: true, … }`, or `{ ok: false, error, text }`
 // with the refusal's code and its Estonian words (adminEt.contracts.errors; the codes of the work's own result, and `server` for a throw, logged by
@@ -28,28 +28,6 @@ const fail = <C extends ErrorCode>(error: C): Failure<C> => ({ ok: false, error,
 const rowId = z.number().int().min(1).max(ROW_ID_MAX);
 const registrationOnly = z.object({ registrationId: rowId });
 const idOnly = z.object({ id: rowId });
-
-/**
- * Seaded → Lepingud → „Salvesta lepingud“: `{ title: { et, ru? }, body: { et, ru? } }` as typed, checked by saveContractTexts (the Estonian text
- * required, the legal texts' limits). Saved: `{ ok: true, card }` with the texts as now stored (trimmed), and the course pages are revalidated: the
- * registration form shows this text inline and refuses a version it did not show, so a page kept in the cache would make the student read the refusal
- * again (server/cache-targets.ts "contract_contact"). A refused field comes back by name in `fields` (`title`, `body`; or `form`). A throw is
- * `{ ok: false, error: "server" }`, logged by its label and the error's class only.
- */
-export const saveContractTextsAction = adminAction(async (_admin, raw: unknown) => {
-  try {
-    const db = getDb();
-    const result = await saveContractTexts(db, raw, new Date());
-    if (!result.ok) return { ok: false as const, fields: result.fields };
-    const card = await contractCard(db);
-    revalidatePublic({ kind: "settings", parts: ["contract_contact"] });
-    refresh();
-    return { ok: true as const, card };
-  } catch (e) {
-    logFailure("[contracts] the texts' save failed", e);
-    return { ok: false as const, error: "server" as const };
-  }
-});
 
 /**
  * „Saada leping kinnitamiseks“ (D4, ruling R9): `{ registrationId }` — records that Maria asked (requestContract) and mails the student a plain link to her

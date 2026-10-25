@@ -2,6 +2,7 @@
 
 import { useState, type MouseEvent } from "react";
 import { adminEt } from "@/i18n/dict/admin";
+import { fill } from "@/i18n/format";
 import styles from "./SectionMap.module.css";
 
 export type SectionEntry = {
@@ -12,6 +13,8 @@ export type SectionEntry = {
   count?: number;
   /** „RU puudub“ (the Russian text is missing) or „Kontrolli“, in #6b4f5c. */
   flag?: "ru" | "check";
+  /** How many of its texts have an unpublished change: „{n} avaldamata“ (Seaded's „Lepingud ja tingimused“, piece3-texts P-11), in #6b4f5c; none at 0. */
+  unpublished?: number;
 };
 
 /**
@@ -52,8 +55,10 @@ export function SectionMap({ sections }: { sections: SectionEntry[] }) {
     go(id);
   };
 
-  /** "4", "RU puudub", "6 · RU puudub": the entry's status as one text (the select's options). */
-  const statusText = (s: SectionEntry) => [s.count === undefined ? "" : String(s.count), s.flag ? t[s.flag] : ""].filter(Boolean).join(t.join);
+  /** „{n} avaldamata“ while some of an entry's texts wait for their publish. */
+  const waiting = (s: SectionEntry) => (s.unpublished ? fill(t.unpublished, { n: s.unpublished }) : "");
+  /** "4", "RU puudub", "6 · RU puudub", "1 avaldamata": the entry's status as one text (the select's options). */
+  const statusText = (s: SectionEntry) => [s.count === undefined ? "" : String(s.count), s.flag ? t[s.flag] : "", waiting(s)].filter(Boolean).join(t.join);
 
   return (
     <>
@@ -65,6 +70,8 @@ export function SectionMap({ sections }: { sections: SectionEntry[] }) {
               {s.count !== undefined && <span data-count="">{s.count}</span>}
               {s.count !== undefined && s.flag && t.join}
               {s.flag && <span data-flag={s.flag}>{t[s.flag]}</span>}
+              {(s.count !== undefined || s.flag) && waiting(s) && t.join}
+              {waiting(s) && <span data-unpublished="">{waiting(s)}</span>}
             </span>
           </a>
         ))}

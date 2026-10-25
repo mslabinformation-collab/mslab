@@ -1,155 +1,438 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { PLACEHOLDERS } from "@/domain/contract";
+import { LEGAL_KEYS, legalI18n, legalProblems, sameI18n, sameLegalText, type LegalField, type LegalKey, type LegalState, type LegalText } from "@/domain/legal-text";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
-import { saveContractTextsAction } from "@/server/actions/admin-contracts";
-import type { ContractCard } from "@/server/contracts";
-import { I18nInput } from "./I18nInput";
+import { fill } from "@/i18n/format";
+import { SAVE_TIMEOUT_MS } from "./autosave/constants";
+import { ConfirmPanel } from "./ConfirmPanel";
+import { Drawer } from "./Drawer";
+import { LangSwitch } from "./EditLang";
+import { I18nInput, type I18nInputHandle } from "./I18nInput";
+import { useSeadedPart, type StatusReport } from "./useSeadedPart";
 import ui from "./ui.module.css";
 import site from "./site-editor.module.css";
 import styles from "./ContractTexts.module.css";
 
-/** The card's texts as typed: the Estonian one, and the Russian one (empty for none). */
-type Draft = { title: I18n; body: I18n };
-const draftOf = (card: ContractCard): Draft => ({ title: { ...card.title }, body: { ...card.body } });
+// Seaded → „Lepingud ja tingimused“ (admin UX pass piece 3b, Task 5; README B4, spec C6; rulings R-d, R-e; piece3-texts S3-P3-j, S3-P3-k, P-5, P-8,
+// P-11; the Part 3 frame „B4 Seaded“ and the Part 4 phone frame): the four legal texts — Privaatsus, Õppetingimused, E-koolituse leping,
+// Kontaktkoolituse leping — each a card of its title and its text in both languages (the page's ET | RU switch). What is typed autosaves into the
+// text's draft (api/admin/oigustekst/<key>, server/legal-drafts.ts) under the page's one SaveStatus; nothing goes live by typing. While the text differs
+// from live the card says „Avaldamata muudatus“ and offers „Avalda uus leping“ (the two contracts) or „Avalda uus tekst“ (the two pages), which opens
+// its ConfirmPanel in its place; „Jah, avalda“ sends what is typed first and then publishes from the version the screen holds (…/avalda): a new
+// contract version exactly as a save made one. There is no discard (R-d): typing the live text back removes the draft. The contracts' texts have the
+// placeholder chips, which insert at the cursor; the contact contract has „Näidisleping (PDF)“. On a phone a card shows „Pikk tekst avaneb
+// täisekraanil.“ and „Muuda teksti“, which opens the text in the shared drawer (its own address, ?tekst=<key>) with the chips under it. This file
+// runs on old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
-/** The status line: empty, on its way, done or refused. */
-type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
-const IDLE: Line = { tone: "idle", text: "" };
-const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
+/** Below 641 px (the admin's phone width, the Part 4 frame) a long text opens in the drawer: the same width as the cards' CSS below. */
+const PHONE = "(max-width: 640px)";
+function onPhoneChange(tell: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const phone = window.matchMedia(PHONE);
+  // (iOS before 14 has only the older addListener)
+  if (typeof phone.addEventListener === "function") {
+    phone.addEventListener("change", tell);
+    return () => phone.removeEventListener("change", tell);
+  }
+  phone.addListener(tell);
+  return () => phone.removeListener(tell);
+}
+const phoneNow = (): boolean => typeof window.matchMedia === "function" && window.matchMedia(PHONE).matches;
+const usePhone = (): boolean => useSyncExternalStore(onPhoneChange, phoneNow, () => false);
+
+/** What each card is: its title (as drawn: P-11), its lead, its title's hint, its public page, whether it is a contract (chips, „Avalda uus leping“), the sample. */
+type CardDef = { title: string; lead?: string; titleHint?: string; href?: string; contract: boolean; sample: boolean };
+function cardOf(key: LegalKey): CardDef {
+  const t = adminEt.settings;
+  const c = adminEt.contracts.settings;
+  switch (key) {
+    case "privacy":
+      return { title: t.privacy, href: "/privaatsus", contract: false, sample: false };
+    case "terms":
+      return { title: t.terms, href: "/tingimused", contract: false, sample: false };
+    case "course_terms":
+      // the e-course contract: read in the cart and at the terms gate (account-only, so no public page); its title is the contract's (ruling R3)
+      return { title: t.courseTerms, lead: t.courseTermsLead, titleHint: c.ecourseTitleHint, contract: true, sample: false };
+    case "contract_contact":
+      return { title: c.contact, lead: c.lead, contract: true, sample: true };
+  }
+}
+
+/** The card's ConfirmPanel: README B4 (the e-course one, with P-8's n = 1 and n = 0), S3-P3-j (the contact one), S3-P3-k (the pages'). */
+function panelOf(key: LegalKey, reaccept: number, contactEmpty: boolean): { question: string; lines: string[] } {
+  const l = adminEt.settings.legal;
+  switch (key) {
+    case "course_terms": {
+      const count = reaccept === 1 ? [l.ecourse.one] : reaccept > 1 ? [fill(l.ecourse.many, { n: reaccept })] : [];
+      return { question: l.ecourse.question, lines: [...count, l.ecourse.kept] };
+    }
+    case "contract_contact":
+      return { question: l.contact.question, lines: [l.contact.newOnly, l.contact.kept] };
+    case "privacy":
+      return { question: l.privacy.question, lines: [l.shownAtOnce] };
+    case "terms":
+      return { question: l.terms.question, lines: [l.shownAtOnce, ...(contactEmpty ? [l.terms.asContract] : [])] };
+  }
+}
+
+/** The line after „Jah, avalda“ (P-11). */
+const publishedLine = (key: LegalKey): string => {
+  const p = adminEt.settings.legal.published;
+  return key === "course_terms" ? p.course_terms : key === "contract_contact" ? p.contract_contact : p.text;
+};
+
+/** A field's words for its code (the site editors' shared words, server/edit-check.ts FieldError). */
+const errorText = (code: string | undefined): string | undefined => (code === undefined ? undefined : ((adminEt.courseEditor.errors as Record<string, string>)[code] ?? adminEt.editor.invalid));
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const textOf = (v: unknown): LegalText => (isRecord(v) ? { title: legalI18n(v.title), body: legalI18n(v.body) } : { title: legalI18n(null), body: legalI18n(null) });
+/** A publish's answer as the text stored now, or null when it is not one. */
+function stateOf(body: unknown): LegalState | null {
+  if (!isRecord(body) || typeof body.version !== "string" || !isRecord(body.value) || !isRecord(body.live)) return null;
+  return { version: body.version, value: textOf(body.value), live: textOf(body.live), changed: body.changed === true };
+}
+
+/** POST a JSON body with the admin's cookie, given up after 10 s (the autosave's bound). Null when no answer came. */
+async function postJson(url: string, body: unknown): Promise<{ status: number; body: unknown } | null> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), SAVE_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body), signal: abort.signal });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
- * The placeholders hint under a contract's text: the sentence and each placeholder with what fills it (domain/contract.ts PLACEHOLDERS). The contact
- * text's card has it, and so does the e-course text's („E-koolituse leping (tingimused)“, SettingsEditor; ruling R18: the cart and the terms gate
- * fill it, so Maria may use them there too).
+ * The placeholders a contract's text may use (domain/contract.ts PLACEHOLDERS: the cart, the terms gate and the registration form fill them), as chips
+ * „+ nimi“ … „+ ettemaks“ under the text (README B4, the Part 3 frame): a chip puts „{nimi}“ where the cursor is. Its title says what fills it. A press
+ * keeps the cursor in the text (no focus moves to the chip). `sticky`: in the phone's drawer the row stays at the foot of the screen, above the keyboard.
  */
-export function ContractPlaceholders() {
+export function PlaceholderChips({ onInsert, disabled, sticky }: { onInsert: (text: string) => void; disabled?: boolean; sticky?: boolean }) {
   const t = adminEt.contracts.settings;
+  const uid = useId();
   return (
-    <div className={styles.placeholders} data-contract-placeholders="">
-      <p className={ui.hint}>{t.placeholders}</p>
-      <ul>
+    <div className={`${styles.chips} ${sticky ? styles.stickyChips : ""}`.trim()} data-placeholder-chips="" data-fab-avoid={sticky ? "" : undefined}>
+      <p id={`${uid}-lead`} className={ui.hint}>
+        {t.placeholders}
+      </p>
+      <div className={styles.chipRow} role="group" aria-labelledby={`${uid}-lead`}>
         {PLACEHOLDERS.map((name) => (
-          <li key={name}>
-            <code>{`{${name}}`}</code> — {t.placeholderMeaning[name]}
-          </li>
+          <button
+            key={name}
+            type="button"
+            className={styles.chip}
+            title={t.placeholderMeaning[name]}
+            aria-disabled={disabled || undefined}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (!disabled) onInsert(`{${name}}`);
+            }}
+            data-placeholder-chip={name}
+          >
+            + {name}
+          </button>
         ))}
-      </ul>
+      </div>
+    </div>
+  );
+}
+
+/** A line under the card's button: what „Jah, avalda“ did or why it did not. `focus`: the line takes the focus when the card starts over with it. */
+type Said = { tone: "done" | "error"; text: string; focus?: boolean } | null;
+
+type CardProps = { k: LegalKey; contactEmpty: boolean; reaccept: number; onStatus?: StatusReport; onChanged?: (key: LegalKey, changed: boolean) => void };
+
+/**
+ * The section's four cards. `texts`: each as the page read it (server/legal-drafts.ts readLegalTexts); `reaccept`: the students the e-course panel says
+ * will be asked again (R-e, read with the page). Each card tells the page its autosave status (`onStatus`, part "legal-<key>") and whether its text
+ * waits to be published (`onChanged`: the section map's „{n} avaldamata“).
+ */
+export function LegalTexts({ texts, reaccept, onStatus, onChanged }: { texts: Record<LegalKey, LegalState>; reaccept: number; onStatus?: StatusReport; onChanged?: (key: LegalKey, changed: boolean) => void }) {
+  // the public „Õppetingimused“ text is the contact contract while hers is empty (server/contracts.ts storedTemplate): its panel says so
+  const contactEmpty = !texts.contract_contact.live.body.et.trim();
+  return (
+    <div className={styles.cards} data-legal-texts="">
+      {LEGAL_KEYS.map((key) => (
+        <LegalCard key={key} k={key} initial={texts[key]} contactEmpty={contactEmpty} reaccept={reaccept} onStatus={onStatus} onChanged={onChanged} />
+      ))}
     </div>
   );
 }
 
 /**
- * Seaded → „Lepingud“ (contracts Task 5, spec D2, §4): „Kontaktkoolituse leping“, the contract a student confirms on the registration form of a group
- * course — its title and its text in Estonian and Russian, in the legal texts' editor (a blank line starts a new paragraph), with the placeholders the
- * text may use and what fills each, and „Näidisleping (PDF)“, a sample drawn from the texts on the screen without saving anything. A form of its
- * own after the invoice's card (a form cannot sit inside another), with its own „Salvesta lepingud“; a refused field is marked in words and the first
- * one takes the focus. The sample is a second form that posts the texts to a new tab: a contract text is far too long for an address. The card keeps its
- * own state; the page is not reloaded. The e-course's contract has its own card in the settings' form („E-koolituse leping (tingimused)“). This file runs on
- * old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
+ * One text's card. It starts its editor from the page's read once, and over again from a publish's answer (the text as stored then: a new version,
+ * no draft; or, refused, what another window stored), so its autosave goes on from the published version; the line under the button stays.
  */
-export function ContractTexts({ initial }: { initial: ContractCard }) {
-  const t = adminEt.contracts.settings;
+function LegalCard({ initial, ...rest }: CardProps & { initial: LegalState }) {
+  const [seed, setSeed] = useState({ state: initial, n: 0 });
+  const [said, setSaid] = useState<Said>(null);
+  const reseed = useCallback((state: LegalState, line: Said) => {
+    setSeed((s) => ({ state, n: s.n + 1 }));
+    setSaid(line);
+  }, []);
+  return <LegalEditor key={seed.n} {...rest} state={seed.state} said={said} onSaid={setSaid} onReseed={reseed} />;
+}
+
+function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept, onStatus, onChanged }: CardProps & { state: LegalState; said: Said; onSaid: (s: Said) => void; onReseed: (state: LegalState, line: Said) => void }) {
+  const t = adminEt.settings;
+  const l = t.legal;
+  const card = cardOf(k);
   const uid = useId();
-  const form = useRef<HTMLFormElement>(null);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<Line>(IDLE);
-  const [pending, start] = useTransition();
+  const router = useRouter();
+  const params = useSearchParams();
+  const phone = usePhone();
+  const drawerOpen = phone && params?.get("tekst") === k;
+  const openHref = `/admin/seaded?tekst=${k}`;
+  const openId = `${uid}-open`;
 
-  // a refused save: the first marked field takes the focus
+  const fields = useMemo(() => ({ title: state.value.title, body: state.value.body }), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from its seed
+  const focusField = useCallback((name: string) => document.querySelector<HTMLElement>(`[data-i18n="${k}.${name}"]`)?.focus(), [k]);
+  const label = useCallback((name: string) => (name === "title" ? t.pageTitle : name === "body" ? t.pageBody : name), [t.pageTitle, t.pageBody]);
+  const part = useSeadedPart({ part: `legal-${k}`, url: `/api/admin/oigustekst/${k}`, version: state.version, fields, label, focusField, onStatus });
+  const title = legalI18n(part.text("title"));
+  const body = legalI18n(part.text("body"));
+  const current: LegalText = { title, body };
+  const changed = !sameLegalText(current, state.live);
+  useEffect(() => onChanged?.(k, changed), [k, changed, onChanged]);
+  const now = useRef(current);
   useEffect(() => {
-    if (Object.keys(fields).length > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-  }, [fields]);
+    now.current = current;
+  });
 
-  /** The words under a refused field ("required", "tooLong"), or undefined when it is not refused. */
-  const errorOf = (name: "title" | "body"): string | undefined => {
-    const code = fields[name];
-    if (code === undefined) return undefined;
-    return (adminEt.courseEditor.errors as Record<string, string>)[code] ?? t.invalid;
-  };
-
-  const save = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending) return;
-    setStatus({ tone: "busy", text: t.saving });
-    start(async () => {
-      const result = await saveContractTextsAction(draft);
-      if (result.ok) {
-        setDraft(draftOf(result.card));
-        setFields({});
-        setStatus({ tone: "done", text: t.saved });
-      } else if ("fields" in result && result.fields) {
-        setFields(result.fields);
-        setStatus({ tone: "error", text: t.invalid });
-      } else setStatus({ tone: "error", text: t.error });
+  // a field the press found empty or too long (the writers' rule): said in the field until it is typed in again
+  const [press, setPress] = useState<Partial<Record<LegalField, string>>>({});
+  const type = (name: LegalField, value: I18n) => {
+    setPress((p) => {
+      if (!(name in p)) return p;
+      const rest = { ...p };
+      delete rest[name];
+      return rest;
     });
+    part.type(name, value);
+  };
+  const errorOf = (name: LegalField) => errorText(press[name] ?? part.codeOf(name));
+
+  // the chips go to the field the cursor was last in (the text unless it was the title)
+  const inputs = { title: useRef<I18nInputHandle>(null), body: useRef<I18nInputHandle>(null) };
+  const lastField = useRef<LegalField>("body");
+
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (asking || !refocus.current) return;
+    refocus.current = false;
+    trigger.current?.focus();
+  }, [asking]);
+  const line = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    // the card started over from a publish's answer: its line takes the focus (the panel that had it is gone)
+    if (said?.focus && (document.activeElement === null || document.activeElement === document.body)) line.current?.focus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the card starts
+
+  /** „Avalda …“: the writers' rule first (a field that would be refused is said there and takes the focus), then the panel in the button's place. */
+  const ask = () => {
+    const problems = legalProblems(current);
+    if (problems.title || problems.body) {
+      setPress(problems);
+      // on a phone the fields are in the drawer
+      if (phone && !drawerOpen) router.push(openHref, { scroll: false });
+      else focusField(problems.title ? "title" : "body");
+      return;
+    }
+    onSaid(null);
+    setAsking(true);
   };
 
-  const hasRu = (draft.body.ru ?? "").trim() !== "";
+  /** „Jah, avalda“: what is typed is sent first; then the publish, from the version the screen holds. The panel is busy until the answer. */
+  const yes = async () => {
+    if (busy) return;
+    setBusy(true);
+    const close = (next: Said) => {
+      setBusy(false);
+      refocus.current = true;
+      setAsking(false);
+      onSaid(next);
+    };
+    if (!(await part.flush())) {
+      const why = part.unconfirmed();
+      return close({ tone: "error", text: part.conflictNow() ? l.changed : why?.reason === "signedOut" ? adminEt.leave.reasons.signedOut : adminEt.publish.publishFailed });
+    }
+    // typed back to live while the panel was open: there is nothing to publish
+    if (sameLegalText(now.current, state.live)) return close(null);
+    const answer = await postJson(`/api/admin/oigustekst/${k}/avalda`, { version: part.versionNow() });
+    const stored = answer && (answer.status === 200 || answer.status === 409) ? stateOf(answer.body) : null;
+    if (answer && stored) {
+      router.refresh(); // (the other cards' panels read the page: the contact text's emptiness, the e-course count)
+      onReseed(stored, answer.status === 200 ? { tone: "done", text: publishedLine(k), focus: true } : { tone: "error", text: l.changed, focus: true });
+      return;
+    }
+    const reply = answer?.body;
+    if (answer?.status === 400 && isRecord(reply) && reply.error === "invalid" && isRecord(reply.fields)) {
+      const refused = reply.fields;
+      setPress(Object.fromEntries((["title", "body"] as const).filter((f) => typeof refused[f] === "string").map((f) => [f, refused[f] as string])));
+    }
+    close({ tone: "error", text: answer?.status === 401 || answer?.status === 403 ? adminEt.leave.reasons.signedOut : adminEt.publish.publishFailed });
+  };
+
+  const insert = (piece: string) => {
+    if (!busy) inputs[lastField.current].current?.insert(piece);
+  };
+  const fieldsOf = (sticky: boolean) => (
+    <div className={site.fields}>
+      <div className={styles.field} onFocus={() => void (lastField.current = "title")}>
+        <I18nInput
+          ref={inputs.title}
+          label={t.pageTitle}
+          value={title}
+          onChange={(v) => type("title", v)}
+          maxLength={SITE_LIMITS.legalTitle}
+          hint={card.titleHint}
+          error={errorOf("title")}
+          name={`${k}.title`}
+          unpublished={!sameI18n(title, state.live.title)}
+          readOnly={busy}
+        />
+      </div>
+      <div className={styles.field} onFocus={() => void (lastField.current = "body")}>
+        <I18nInput
+          ref={inputs.body}
+          label={t.pageBody}
+          value={body}
+          onChange={(v) => type("body", v)}
+          multiline
+          rows={k === "contract_contact" ? 12 : 10}
+          maxLength={SITE_LIMITS.legal}
+          hint={t.pageHint}
+          error={errorOf("body")}
+          name={`${k}.body`}
+          unpublished={!sameI18n(body, state.live.body)}
+          readOnly={busy}
+        />
+      </div>
+      {card.contract && <PlaceholderChips onInsert={insert} disabled={busy} sticky={sticky} />}
+    </div>
+  );
+  const panel = panelOf(k, reaccept, contactEmpty);
 
   return (
-    <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} data-contract-texts="">
-      <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
-        {t.title}
-      </h2>
-      <p className={`${ui.muted} ${site.cardLead}`}>{t.lead}</p>
-      <form ref={form} onSubmit={save} noValidate data-contract-form="">
-        <div className={styles.group} data-contract-group="contact">
-          <h3 className={ui.h3}>{t.contact}</h3>
-          <I18nInput
-            label={adminEt.settings.pageTitle}
-            value={draft.title}
-            onChange={(title) => setDraft((d) => ({ ...d, title }))}
-            maxLength={SITE_LIMITS.legalTitle}
-            error={errorOf("title")}
-            name="contract.title"
-          />
-          <I18nInput
-            label={adminEt.settings.pageBody}
-            value={draft.body}
-            onChange={(body) => setDraft((d) => ({ ...d, body }))}
-            multiline
-            rows={12}
-            maxLength={SITE_LIMITS.legal}
-            hint={t.paragraphHint}
-            error={errorOf("body")}
-            name="contract.body"
-          />
-          <ContractPlaceholders />
-        </div>
+    // (a field left saves at once, as the other cards of Seaded do)
+    <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} onBlur={() => void part.flush()} data-legal-editor={k}>
+      <div className={styles.head}>
+        <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
+          {card.title}
+        </h2>
+        {changed && (
+          <span className={`${ui.tag} ${ui.warn} ${styles.tag}`} data-legal-tag="">
+            <span className={styles.long} data-tag-long="">
+              {l.tag}
+            </span>
+            <span className={styles.short} data-tag-short="">
+              {l.tagShort}
+            </span>
+          </span>
+        )}
+        {card.href && (
+          <a className={`${ui.link} ${styles.view}`} href={card.href} target="_blank" rel="noopener">
+            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
+          </a>
+        )}
+      </div>
+      {card.lead && <p className={`${ui.muted} ${site.cardLead}`}>{card.lead}</p>}
 
-        <div className={styles.actions}>
-          <p role="status" className={toneClass(status.tone)} data-contract-status="">
-            {status.text}
-          </p>
-          <button type="submit" className={`${ui.btn} ${ui.secondary}`} aria-disabled={pending || undefined} data-contract-save="">
-            {pending ? t.saving : t.save}
-          </button>
-        </div>
-      </form>
+      {/* the fields on the card; on a phone the card says the text opens full screen (the fields are hidden there, CSS), and in the drawer once it is open */}
+      <div className={styles.inline}>{!drawerOpen && fieldsOf(false)}</div>
+      <div className={styles.phone}>
+        <p className={styles.phoneHint}>{l.phoneHint}</p>
+        <Link href={openHref} scroll={false} id={openId} className={`${ui.btn} ${ui.secondary} ${styles.open}`} data-legal-open="">
+          {l.phoneOpen}
+        </Link>
+      </div>
 
-      {/* the sample: the texts as they stand on the screen, posted to a new tab; nothing is saved */}
-      <form className={styles.sample} method="post" action="/api/admin/naidisleping" target="_blank" data-contract-sample-form="">
-        <input type="hidden" name="titleEt" value={draft.title.et} />
-        <input type="hidden" name="titleRu" value={draft.title.ru ?? ""} />
-        <input type="hidden" name="bodyEt" value={draft.body.et} />
-        <input type="hidden" name="bodyRu" value={draft.body.ru ?? ""} />
-        <div className={styles.sampleButtons}>
-          <button type="submit" name="lang" value="et" className={`${ui.btn} ${ui.secondary}`} data-contract-sample="et">
-            {t.sample}
+      {part.conflict !== null && (
+        <p className={styles.restore}>
+          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void part.restore()} data-seaded-restore="">
+            {adminEt.courseEditor.restore}
           </button>
-          {hasRu && (
-            <button type="submit" name="lang" value="ru" className={`${ui.btn} ${ui.secondary}`} data-contract-sample="ru">
-              {t.sampleRu}
+        </p>
+      )}
+
+      <div className={styles.publish}>
+        {asking ? (
+          <ConfirmPanel
+            question={panel.question}
+            lines={panel.lines}
+            yesLabel={l.yes}
+            tone="send"
+            busy={busy}
+            onYes={() => void yes()}
+            onCancel={() => {
+              refocus.current = true;
+              setAsking(false);
+            }}
+          />
+        ) : (
+          changed && (
+            <button ref={trigger} type="button" className={ui.btn} onClick={ask} data-legal-publish="">
+              {card.contract ? l.publishContract : l.publishText}
             </button>
-          )}
-        </div>
-        <p className={ui.hint}>{t.sampleHint}</p>
-      </form>
+          )
+        )}
+        <p ref={line} role="status" tabIndex={-1} className={`${styles.said} ${said?.tone === "error" ? ui.error : said ? ui.success : ui.hint}`} data-legal-said="">
+          {said?.text ?? ""}
+        </p>
+      </div>
+
+      {card.sample && <SampleForm title={title} body={body} />}
+
+      {drawerOpen && (
+        <Drawer label={card.title} closeHref="/admin/seaded" closeLabel={adminEt.common.close} returnFocus={openId}>
+          <div className={styles.drawer}>
+            <h2 className={`${ui.h2} ${styles.drawerTitle}`}>{card.title}</h2>
+            <LangSwitch />
+            {fieldsOf(true)}
+          </div>
+        </Drawer>
+      )}
     </section>
+  );
+}
+
+/**
+ * „Näidisleping (PDF)“ (contracts Task 5, spec §4; ruling R-d): a form of its own that posts the card's texts as they stand on the screen — the draft
+ * as typed, published or not — to a new tab (a contract text is far too long for an address). Nothing is stored or published by it.
+ */
+function SampleForm({ title, body }: { title: I18n; body: I18n }) {
+  const c = adminEt.contracts.settings;
+  const hasRu = (body.ru ?? "").trim() !== "";
+  return (
+    <form className={styles.sample} method="post" action="/api/admin/naidisleping" target="_blank" data-contract-sample-form="">
+      <input type="hidden" name="titleEt" value={title.et} />
+      <input type="hidden" name="titleRu" value={title.ru ?? ""} />
+      <input type="hidden" name="bodyEt" value={body.et} />
+      <input type="hidden" name="bodyRu" value={body.ru ?? ""} />
+      <div className={styles.sampleButtons}>
+        <button type="submit" name="lang" value="et" className={`${ui.btn} ${ui.secondary}`} data-contract-sample="et">
+          {c.sample}
+        </button>
+        {hasRu && (
+          <button type="submit" name="lang" value="ru" className={`${ui.btn} ${ui.secondary}`} data-contract-sample="ru">
+            {c.sampleRu}
+          </button>
+        )}
+      </div>
+      <p className={ui.hint}>{c.sampleHint}</p>
+    </form>
   );
 }

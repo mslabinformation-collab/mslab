@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { withAdmin } from "@/server/auth";
 import { sampleContractPdf, type ContractSampleValues } from "@/server/contract-sample";
+import { sampleTexts } from "@/server/legal-drafts";
 import { logFailure } from "@/server/log";
 
 export const dynamic = "force-dynamic";
@@ -50,9 +51,11 @@ async function readBody(request: Request): Promise<Uint8Array | null> {
 }
 
 /**
- * POST /api/admin/naidisleping (contracts Task 5, spec §4): Seaded → Lepingud → „Näidisleping (PDF)“. A sample contract drawn from the card's texts as
- * they stand on the screen, saved or not: the card's form posts them (`titleEt`, `titleRu`, `bodyEt`, `bodyRu`, and `lang`: `ru` for the Russian sample), one
- * left out reads as empty. A form post, not a query: a contract text is up to 30 000 characters and a Russian one is six times that in an address.
+ * POST /api/admin/naidisleping (contracts Task 5, spec §4): Seaded → Kontaktkoolituse leping → „Näidisleping (PDF)“. A sample contract drawn from the
+ * card's texts as they stand on the screen, published or not: the card's form posts them (`titleEt`, `titleRu`, `bodyEt`, `bodyRu`, and `lang`: `ru`
+ * for the Russian sample), one left out reads as empty. A post with none of the four is the contact text's draft when there is one, else its live
+ * text (admin UX pass piece 3b, ruling R-d; server/legal-drafts.ts sampleTexts). A form post, not a query: a contract text is up to 30 000 characters
+ * and a Russian one is six times that in an address.
  * Nothing is stored. Shown in the browser as `inline; filename="MS-LAB-naidisleping.pdf"`, private and never kept, nosniff. Signed-in admins only
  * (withAdmin: 401 otherwise, before a byte of the body is read). 413 `tooLarge` for a body over MAX_BODY (about 1 MB), refused by its `content-length` or
  * at the first byte past the cap; 400 `invalid` for a body that is no form; 500 `server` (logged, no data).
@@ -78,7 +81,8 @@ export const POST = withAdmin(async (request) => {
     if (typeof value === "string") values[field] = value.slice(0, MAX);
   }
   try {
-    const bytes = await sampleContractPdf(getDb(), values, new Date());
+    const db = getDb();
+    const bytes = await sampleContractPdf(db, await sampleTexts(db, values), new Date());
     return new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
       headers: {
         "content-type": "application/pdf",

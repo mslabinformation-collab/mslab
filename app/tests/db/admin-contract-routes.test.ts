@@ -250,7 +250,8 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
 
   test("the card empty or the fields wild: a sample all the same, with brackets for the text that is missing, and the school as Seaded has it", async () => {
     await signIn();
-    const empty = await sample({});
+    // (the card posts its four texts, empty ones too)
+    const empty = await sample({ titleEt: "", titleRu: "", bodyEt: "", bodyRu: "" });
     expect(empty.status).toBe(200);
     const text = await textOf(await bytesOf(empty));
     for (const part of ["(lepingu pealkiri)", "(lepingu tekst)", "MS LAB OÜ"]) expect(text, part).toContain(part);
@@ -353,11 +354,11 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
       expect(await textOf(await bytesOf(res))).toContain("Proovileping");
     });
 
-    test("an empty body is not a form with fields: the sample of an empty card", async () => {
+    test("an empty body is not a form with fields: a post with no text is the stored contact text (its draft when there is one: admin UX pass piece 3b, R-d)", async () => {
       await signIn();
       const res = await post("");
       expect(res.status).toBe(200);
-      expect(await textOf(await bytesOf(res))).toContain("(lepingu pealkiri)");
+      expect(await textOf(await bytesOf(res))).toContain(CONTACT.title.et);
     });
 
     test("without a session nothing of the body is read (401 first)", async () => {

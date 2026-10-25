@@ -719,7 +719,7 @@ export const adminEt = {
   },
 
   // Contracts (contracts Task 5, spec §4): the registration drawer's block „Leping“ (components/admin/ContractBlock.tsx), the client drawer's list
-  // (ClientDrawer.tsx), Seaded → „Lepingud“ (components/admin/ContractTexts.tsx) and the sample PDF (server/contract-sample.ts). Verbatim from the
+  // (ClientDrawer.tsx), Seaded → „Kontaktkoolituse leping“ (components/admin/ContractTexts.tsx) and the sample PDF (server/contract-sample.ts). Verbatim from the
   // spec: „Leping“, „Lepingud“, „Kontaktkoolituse leping“, „Näidisleping (PDF)“, „Saada leping kinnitamiseks“, „Saada koopia õpilasele“,
   // „Õpilasel pole kontot — lisa ta Õpilased lehel.“, „Asendatud {date}“, „Laadi alla (PDF)“, „Tühi rida alustab uut lõiku.“ and „Kinnitamist ootab
   // (saadetud {date})“ (the brief's, Draft). Every other text below is Draft for Dim's wording sheet.
@@ -768,13 +768,11 @@ export const adminEt = {
       pdfFailed: "Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.",
       server: "Midagi läks valesti. Proovi uuesti.",
     },
-    // Seaded → „Lepingud“ (components/admin/ContractTexts.tsx)
+    // Seaded → „Lepingud ja tingimused“ → „Kontaktkoolituse leping“ (components/admin/ContractTexts.tsx; admin UX pass piece 3b, Task 5)
     settings: {
-      title: "Lepingud",
       lead: "Õpilane kinnitab registreerimisel selle lepingu teksti. Kinnitatud leping jääb selliseks, nagu see kinnitati: hilisem muudatus puudutab ainult uusi lepinguid. Kuni siia teksti pole kirjutatud, näeb õpilane lepinguna lehe „Õppetingimused“ teksti.",
       contact: "Kontaktkoolituse leping",
-      paragraphHint: "Tühi rida alustab uut lõiku.",
-      // the placeholders (domain/contract.ts PLACEHOLDERS), each with what fills it
+      // the placeholders (domain/contract.ts PLACEHOLDERS): the chips' lead, and what fills each (the chip's title; piece3-texts §3, ADM:761-768)
       placeholders: "Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel. Tundmatu sõna looksulgudes jääb tekstis alles.",
       placeholderMeaning: {
         nimi: "õpilase nimi",
@@ -784,15 +782,11 @@ export const adminEt = {
         hind: "koolituse hind",
         ettemaks: "summa, mille õpilane maksab registreerimisel",
       },
-      save: "Salvesta lepingud",
-      saving: "Salvestan…",
-      saved: "Lepingud on salvestatud.",
-      invalid: "Kontrolli märgitud välju.",
-      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
       sample: "Näidisleping (PDF)",
       sampleRu: "Näidisleping vene keeles (PDF)",
-      sampleHint: "Näidis tehakse kaardi praegustest väärtustest, ka salvestamata. Midagi ei salvestata.",
-      // the e-course contract's title (Seaded → „E-koolituse leping (tingimused)“): the page title is the contract's, as Maria writes it (ruling R3)
+      // piece3-texts P-5: the card's texts are its draft now
+      sampleHint: "Näidis tehakse kaardi praegustest väärtustest, ka avaldamata. Midagi ei avaldata.",
+      // the e-course contract's title (Seaded → „E-koolituse leping“): the page title is the contract's, as Maria writes it (ruling R3)
       ecourseTitleHint: "See on lepingu pealkiri õpilase kontol ja PDF-is. Soovitus: „E-koolituse leping“.",
     },
     // the sample PDF's stand-ins (server/contract-sample.ts): the student, the course and the session are made up; a text the card leaves empty is in brackets
@@ -1498,6 +1492,8 @@ export const adminEt = {
     join: " · ",
     ru: "RU puudub",
     check: "Kontrolli",
+    // Seaded's „Lepingud ja tingimused“ (piece3-texts P-11, drawn „1 avaldamata“): how many of its texts have an unpublished change
+    unpublished: "{n} avaldamata",
   },
 
   // The admin's lists (admin UX pass, README §1.10; components/admin/ListToolbar.tsx and ListStates.tsx): the sentence frames the pages fill with
@@ -2334,12 +2330,46 @@ export const adminEt = {
     referenceHint: "Makse selgitus on see algus ja registreerimise number, nt MSLAB-42. Tühjaks jättes ainult number.",
     privacy: "Privaatsus",
     terms: "Õppetingimused",
-    courseTerms: "E-koolituse leping (tingimused)",
-    // Draft (contracts Task 5): the text is the e-course contract, read in the cart before buying and at the terms gate of a course opened without a purchase
-    courseTermsLead: "See on e-koolituse leping. Õpilane loeb seda ostukorvis enne ostmist ja nõustub sellega; ilma ostuta avatud koolituse puhul nõustub ta enne esimest avamist. Kui salvestad muudetud teksti, peab iga õpilane uuesti nõustuma.",
+    // piece3-texts P-11 (strings.md W19): the card is named as drawn, not „… (tingimused)“
+    courseTerms: "E-koolituse leping",
+    // Draft (contracts Task 5): the text is the e-course contract, read in the cart before buying and at the terms gate of a course opened without a
+    // purchase; its last sentence as piece3-texts P-5 rewords it (the text is published, not saved)
+    courseTermsLead: "See on e-koolituse leping. Õpilane loeb seda ostukorvis enne ostmist ja nõustub sellega; ilma ostuta avatud koolituse puhul nõustub ta enne esimest avamist. Kui avaldad muudetud teksti, peab iga õpilane uuesti nõustuma.",
     pageTitle: "Pealkiri",
     pageBody: "Tekst",
     pageHint: "Tühi rida alustab uut lõiku.",
+    // the four legal texts on the draft layer (piece 3b, Task 5; components/admin/ContractTexts.tsx): README B4 (the tag, „Avalda uus leping“, the
+    // e-course panel, drawn), piece3-texts S3-P3-j (the contact panel), S3-P3-k (the pages' button and panels), P-8 (n = 1; at n = 0 the count line is
+    // left out), P-11 (the lines after „Jah, avalda“, the refusal); the Part 4 phone frame (the short tag, the full-screen editor's hint and button)
+    legal: {
+      tag: "Avaldamata muudatus",
+      tagShort: "Avaldamata",
+      publishContract: "Avalda uus leping",
+      publishText: "Avalda uus tekst",
+      yes: "Jah, avalda",
+      ecourse: {
+        question: "Kas avaldan uue e-koolituse lepingu?",
+        many: "{n} aktiivset õpilast peavad selle järgmisel sisselogimisel uuesti kinnitama.",
+        one: "1 aktiivne õpilane peab selle järgmisel sisselogimisel uuesti kinnitama.",
+        kept: "Vana leping jääb alles ja märgitakse asendatuks.",
+      },
+      contact: {
+        question: "Kas avaldan uue kontaktkoolituse lepingu?",
+        newOnly: "Uus tekst kehtib uutele registreeringutele.",
+        kept: "Varem kinnitatud lepingud jäävad selliseks, nagu need kinnitati.",
+      },
+      privacy: { question: "Kas avaldan lehe „Privaatsus“ uue teksti?" },
+      terms: {
+        question: "Kas avaldan lehe „Õppetingimused“ uue teksti?",
+        // only while „Kontaktkoolituse leping“ is empty (the terms text is the contact contract until then)
+        asContract: "Kuni „Kontaktkoolituse leping“ on tühi, kehtib see tekst uutele registreeringutele lepinguna.",
+      },
+      shownAtOnce: "Uus tekst on avalikul lehel kohe näha.",
+      published: { course_terms: "Uus e-koolituse leping on avaldatud.", contract_contact: "Uus kontaktkoolituse leping on avaldatud.", text: "Uus tekst on avaldatud." },
+      changed: "Seda teksti muudeti vahepeal teises aknas. Vaata see üle.",
+      phoneHint: "Pikk tekst avaneb täisekraanil.",
+      phoneOpen: "Muuda teksti",
+    },
     admins: "Halduse ligipääs",
     adminsLead: "Need aadressid saavad haldusesse sisse logida. Nimekirja muudab arendaja.",
   },

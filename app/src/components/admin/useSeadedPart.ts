@@ -71,6 +71,8 @@ function answerToEngine(body: unknown, group: FieldGroup | undefined): unknown {
  */
 export function useSeadedPart(o: {
   part: string;
+  /** The route the part saves on: by default api/admin/seaded/<part>; a legal text's draft is api/admin/oigustekst/<key> (Task 5). */
+  url?: string;
   version: string;
   fields: Fields;
   label: (field: string) => string;
@@ -91,8 +93,9 @@ export function useSeadedPart(o: {
     told.current = { onSend: o.onSend, onSaved: o.onSaved, onStatus: o.onStatus, label: o.label, focusField: o.focusField };
   });
 
+  const [url] = useState(o.url ?? `/api/admin/seaded/${part}`);
   const save = useMemo<SendPatch>(() => {
-    const send = patchSender(`/api/admin/seaded/${part}`);
+    const send = patchSender(url);
     return async (body, opts) => {
       const patch = toRoute(body.patch, group);
       told.current.onSend?.(patch);
@@ -107,7 +110,7 @@ export function useSeadedPart(o: {
       }
       return answer ? { status: answer.status, body: answerToEngine(answer.body, group) } : answer;
     };
-  }, [part, group]);
+  }, [url, group]);
   const codesRef = useRef(codes);
   useEffect(() => {
     codesRef.current = codes;
@@ -208,5 +211,8 @@ export function useSeadedPart(o: {
   /** Is a blur field typed and waiting to be left? */
   const typing = (name: string): boolean => name in typedView;
 
-  return { status, text, type, typing, commit, flush, codeOf, setField, adopt: auto.adopt, conflict: auto.conflict, restore: auto.restore };
+  return {
+    status, text, type, typing, commit, flush, codeOf, setField, adopt: auto.adopt, conflict: auto.conflict, restore: auto.restore, unconfirmed,
+    versionNow: auto.versionNow, conflictNow: auto.conflictNow,
+  };
 }

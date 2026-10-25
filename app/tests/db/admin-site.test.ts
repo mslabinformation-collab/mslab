@@ -18,7 +18,8 @@ import {
   saveHomeForm,
   savePostForm,
   savePracticeForm,
-  saveSettingsForm,
+  loadLegalParts,
+  saveLegalParts,
   saveTrainerForm,
   writeSettingsPart,
   type SettingsPart,
@@ -474,16 +475,16 @@ describe("settings", () => {
     expect((await getSettings(db)).contact).toEqual({ email: "maria@example.ee", phone: "+372 5555 0101", address: "Rüütli 12, Pärnu", instagram: "https://www.instagram.com/mslab", facebook: "https://facebook.com/mslab", extra: "kept" });
     // the version the page reads is the route's: from the one before the last save, a conflict with the stored text
     expect(await writeSettingsPart(db, "contact", { phone: "" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict", value: { phone: "+372 5555 0101" } });
-    // the legal texts' form takes only theirs
-    expect(await saveSettingsForm(db, form({ contact: { version: (await loadSettings(db)).versions.contact, value: good } }))).toEqual({ ok: false, error: "invalid" });
+    // the legal texts' writer (their publish, admin UX pass piece 3b, Task 5) takes only theirs
+    expect(await saveLegalParts(db, { contact: { version: (await loadSettings(db)).versions.contact, value: good } } as never)).toEqual({ ok: false, error: "invalid" });
   });
 
-  test("newsletter discount label (required) and the legal pages (their own form)", async () => {
-    const s = await loadSettings(db);
+  test("newsletter discount label (required) and the legal pages (their own writer)", async () => {
+    const s = await loadLegalParts(db);
     expect(refusedOf(await savePart("newsletter", { discountLabel: " " }))).toEqual({ discountLabel: "required" });
-    expect(fieldsOf(await saveSettingsForm(db, form({ terms: { version: s.versions.terms, value: { title: { et: "" }, body: { et: "" } } } })))).toEqual({ "terms.title": "required", "terms.body": "required" });
+    expect(fieldsOf(await saveLegalParts(db, { terms: { version: s.versions.terms, value: { title: { et: "" }, body: { et: "" } } } }))).toEqual({ "terms.title": "required", "terms.body": "required" });
     expect(await savePart("newsletter", { discountLabel: "15%" })).toMatchObject({ ok: true });
-    const r = await saveSettingsForm(db, form({ privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } } }));
+    const r = await saveLegalParts(db, { privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } } });
     expect(r).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "15%", welcomeCode: "" });
     expect(await getPage(db, "privacy")).toMatchObject({ title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } });
@@ -504,12 +505,12 @@ describe("settings", () => {
       version: (await getSettings(db)).courseTermsVersion,
     });
     const save = async (body: { et: string; ru?: string }) => {
-      const s = await loadSettings(db);
-      return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { body } } }));
+      const s = await loadLegalParts(db);
+      return saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { body } } });
     };
 
     test("the seed has a sample text in both languages and no version yet; the editor loads the title (the contract's, ruling R3) and the body", async () => {
-      const s = await loadSettings(db);
+      const s = await loadLegalParts(db);
       expect(s.values.course_terms.body.et).toMatch(/Näidistekst/);
       expect(s.values.course_terms.body.ru).toMatch(/Образец текста/);
       expect(s.values.course_terms.title).toEqual({ et: "E-koolituse tingimused", ru: "Условия онлайн-обучения" });
@@ -537,12 +538,12 @@ describe("settings", () => {
 
     test("the title is the e-course contract's (ruling R3): Maria writes it, trimmed and required in Estonian, within the legal titles' limit; a save without one (an older page) keeps the stored title", async () => {
       const saveTitled = async (title: { et: string; ru?: string }, body: { et: string; ru?: string } = { et: "Tekst." }) => {
-        const s = await loadSettings(db);
-        return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { title, body } } }));
+        const s = await loadLegalParts(db);
+        return saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { title, body } } });
       };
       expect(await saveTitled({ et: "  E-koolituse leping ", ru: " Договор онлайн-обучения " })).toMatchObject({ ok: true });
       expect((await stored()).page).toMatchObject({ title: { et: "E-koolituse leping", ru: "Договор онлайн-обучения" }, body: { et: "Tekst." } });
-      const saved = (await loadSettings(db)).values.course_terms;
+      const saved = (await loadLegalParts(db)).values.course_terms;
       expect(saved.title).toEqual({ et: "E-koolituse leping", ru: "Договор онлайн-обучения" });
       // an older page sends the body alone: the title Maria wrote stays
       expect(await save({ et: "Uus tekst." })).toMatchObject({ ok: true });
@@ -557,8 +558,8 @@ describe("settings", () => {
 
     test("the title is part of what a student accepts: a changed title alone gives a new version, the very same title and text keeps it", async () => {
       const saveTitled = async (title: { et: string }, body: { et: string }) => {
-        const s = await loadSettings(db);
-        return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { title, body } } }));
+        const s = await loadLegalParts(db);
+        return saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { title, body } } });
       };
       await saveTitled({ et: "E-koolituse tingimused" }, { et: "Tekst." });
       const first = (await stored()).version;
@@ -583,7 +584,7 @@ describe("settings", () => {
     });
 
     test("an empty Estonian text is refused and writes nothing; a stale save writes nothing; other parts save alongside", async () => {
-      const s = await loadSettings(db);
+      const s = await loadLegalParts(db);
       expect(fieldsOf(await save({ et: "  " }))).toEqual({ "course_terms.body": "required" });
       expect(fieldsOf(await save({ et: "", ru: "Только русский" }))).toEqual({ "course_terms.body": "required" });
       expect(fieldsOf(await save({ et: "x".repeat(30_001) }))).toEqual({ "course_terms.body": "tooLong" });
@@ -592,26 +593,23 @@ describe("settings", () => {
       expect(await save({ et: "Esimene." })).toMatchObject({ ok: true });
       const afterFirst = await stored();
       // another admin saved first: this one was loaded before it
-      const stale = await saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { body: { et: "Hilinenud." } } } }));
+      const stale = await saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { body: { et: "Hilinenud." } } } });
       expect(stale).toEqual({ ok: false, error: "stale" });
       expect(await stored()).toEqual(afterFirst);
 
       // a failed check of another part in the same save writes no version either
-      const fresh = await loadSettings(db);
-      const mixed = await saveSettingsForm(
-        db,
-        form({
-          course_terms: { version: fresh.versions.course_terms, value: { body: { et: "Kolmas." } } },
-          terms: { version: fresh.versions.terms, value: { title: { et: " " }, body: { et: "Tekst." } } },
-        }),
-      );
+      const fresh = await loadLegalParts(db);
+      const mixed = await saveLegalParts(db, {
+        course_terms: { version: fresh.versions.course_terms, value: { body: { et: "Kolmas." } } },
+        terms: { version: fresh.versions.terms, value: { title: { et: " " }, body: { et: "Tekst." } } },
+      });
       expect(mixed.ok).toBe(false);
       expect(await stored()).toEqual(afterFirst);
     });
 
     test("a first save when the page row is missing creates it with the default title", async () => {
       await db.delete(pages).where(eq(pages.key, "course_terms"));
-      const s = await loadSettings(db);
+      const s = await loadLegalParts(db);
       expect(s.values.course_terms.body).toEqual({ et: "" });
       expect(await save({ et: "Esimene." })).toMatchObject({ ok: true });
       expect((await stored()).page).toMatchObject({ title: { et: "E-koolituse tingimused" }, body: { et: "Esimene." } });
@@ -742,9 +740,10 @@ describe("missing rows", () => {
     await db.delete(pages).where(eq(pages.key, "terms"));
     await db.delete(settings).where(eq(settings.key, "newsletter"));
     const s = await loadSettings(db);
-    expect(s.values.terms).toEqual({ title: { et: "" }, body: { et: "" } });
+    const legal = await loadLegalParts(db);
+    expect(legal.values.terms).toEqual({ title: { et: "" }, body: { et: "" } });
     expect(s.values.newsletter).toEqual({ discountLabel: "", welcomeCode: "" });
-    const r = await saveSettingsForm(db, form({ terms: { version: s.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } } }));
+    const r = await saveLegalParts(db, { terms: { version: legal.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } } });
     expect(r).toMatchObject({ ok: true });
     expect(await writeSettingsPart(db, "newsletter", { discountLabel: "10%" }, s.versions.newsletter, new Date())).toMatchObject({ ok: true });
     expect(await getPage(db, "terms")).toMatchObject({ title: { et: "Tingimused" }, body: { et: "Tekst." } });

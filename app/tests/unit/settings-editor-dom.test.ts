@@ -8,8 +8,9 @@ import { stubFetch } from "../fakes";
 // Seaded (admin UX pass piece 3b, Task 4; README B4, the Part 3 frame „B4 Seaded“ and the Part 4 phone frame; rulings R-f, „Cards that move“) in a
 // browser-like document (happy-dom): one page with the section map Kontakt, Uudiskiri, Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs
 // (and below 1180 px its „Jaotised ▾“ select); the old anchors #arve, #ettemaks and #jarelmaks lead to „Maksmine“, #tunnistus and #lepingud to their
-// sections; every card autosaves under the one SaveStatus of the header — no page „Salvesta“ and no card button, save the legal texts' own (their
-// save path stays until their drafts, Task 5's: the pre-flight ruling). The page lead is gone (piece3-texts §4).
+// sections; every card autosaves under the one SaveStatus of the header — no page „Salvesta“ and no card button; the four legal texts type into their
+// drafts under the same chip (Task 5), and the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while some wait (P-11). The page lead is gone
+// (piece3-texts §4).
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -18,31 +19,34 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/admin/seaded", useSearchParams: () => new URLSearchParams() }));
-const site = vi.hoisted(() => ({ saveSettings: vi.fn() }));
-vi.mock("@/server/actions/admin-site", () => site);
-const contracts = vi.hoisted(() => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
-vi.mock("@/server/actions/admin-contracts", () => contracts);
 
 import { SettingsEditor } from "@/components/admin/SettingsEditor";
+import type { LegalState } from "@/domain/legal-text";
 
-const PAGE = { title: { et: "Privaatsus" }, body: { et: "Tekst." } };
+const legal = (version: string, title: string, body: string, changed = false): LegalState => {
+  const live = { title: { et: title, ru: "" }, body: { et: body, ru: "" } };
+  return { version, value: changed ? { ...live, body: { et: `${body} Muudetud.`, ru: "" } } : live, live, changed };
+};
 const PROPS: Parameters<typeof SettingsEditor>[0] = {
   initial: {
     values: {
       contact: { email: "info@example.test", phone: "", address: "Pärnu", instagram: "", facebook: "" },
       newsletter: { discountLabel: "10%", welcomeCode: "" },
       prepayment: { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" },
-      privacy: PAGE,
-      terms: { title: { et: "Õppetingimused" }, body: { et: "Tekst." } },
-      course_terms: { title: { et: "E-koolituse leping" }, body: { et: "Tekst." } },
     },
-    versions: { contact: "k1", newsletter: "n1", prepayment: "p1", privacy: "x1", terms: "x2", course_terms: "x3" },
+    versions: { contact: "k1", newsletter: "n1", prepayment: "p1" },
   },
   admins: ["maria@example.test"],
   invoice: { company: "MS LAB OÜ", registryCode: "16346048", address: "Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 7, termDays: 7, footer: "", last: null, version: "i:a.b" },
   certificate: { place: "Pärnu linn", registryCode: "16346048", practicalLine: "Praktiline töö", trainerName: "Maria Sosnina", nextYear: 2026, nextSeq: 93, last: null, version: "c:a.b" },
   financing: { enabled: false, version: "f1" },
-  contract: { title: { et: "", ru: "" }, body: { et: "", ru: "" } },
+  legal: {
+    privacy: legal("l:p", "Privaatsus", "Tekst."),
+    terms: legal("l:t", "Õppetingimused", "Tekst."),
+    course_terms: legal("d:3.2", "E-koolituse leping", "Tekst.", true),
+    contract_contact: legal("l:k", "", ""),
+  },
+  reaccept: 3,
   now: new Date("2026-10-25T09:00:00Z"),
 };
 
@@ -51,7 +55,7 @@ let root: Root;
 let fetched: ReturnType<typeof stubFetch>;
 let refuse: Record<string, Record<string, string>>;
 const route = async (url: string, init: RequestInit | undefined): Promise<Response> => {
-  const part = /^\/api\/admin\/seaded\/(\w+)$/.exec(url)?.[1];
+  const part = /^\/api\/admin\/(?:seaded|oigustekst)\/(\w+)$/.exec(url)?.[1];
   if (!part) return Response.json({ ok: false }, { status: 404 });
   const body = JSON.parse(String(init?.body)) as { version: string };
   if (refuse[part]) return Response.json({ ok: false, error: "invalid", fields: refuse[part] }, { status: 400 });
@@ -167,25 +171,53 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     }
   });
 
-  test("what each section holds: Maksmine the merged card and „Järelmaks (Inbank)“; Lepingud ja tingimused the four legal texts; the admin addresses read-only", async () => {
+  test("what each section holds: Maksmine the merged card and „Järelmaks (Inbank)“; Lepingud ja tingimused the four legal texts (as drawn: P-11); the admin addresses read-only", async () => {
     await show();
     const titles = (id: string) => Array.from(document.getElementById(id)!.querySelectorAll("h2")).map(text);
     expect(titles("kontakt")).toEqual(["Kontaktandmed"]);
     expect(titles("uudiskiri")).toEqual(["Uudiskiri"]);
     expect(titles("maksmine")).toEqual(["Maksmine", "Järelmaks (Inbank)"]);
     expect(titles("tunnistus")).toEqual(["Tunnistus"]);
-    expect(titles("lepingud")).toEqual(["Privaatsus", "Õppetingimused", "E-koolituse leping (tingimused)", "Lepingud"]);
+    expect(titles("lepingud")).toEqual(["Privaatsus", "Õppetingimused", "E-koolituse leping", "Kontaktkoolituse leping"]);
     expect(titles("ligipaas")).toEqual(["Halduse ligipääs"]);
     expect(Array.from(document.querySelectorAll("#ligipaas li")).map(text)).toEqual(["maria@example.test"]);
     expect(document.querySelector("#ligipaas input")).toBeNull();
   });
 
-  test("no „Salvesta“ outside „Lepingud ja tingimused“: the legal texts keep their own save until their drafts (Task 5)", async () => {
+  test("no „Salvesta“ anywhere and no save bar: the legal texts too type into their drafts and have their „Avalda …“ (Task 5)", async () => {
     await show();
-    const saves = $$<HTMLButtonElement>("button").filter((b) => /Salvesta/.test(text(b)));
-    expect(saves.map(text).sort()).toEqual(["Salvesta", "Salvesta lepingud"]);
-    for (const b of saves) expect(b.closest("[data-seaded-section]")!.id).toBe("lepingud");
-    expect(document.querySelector("#lepingud [data-save-bar]")).not.toBeNull();
+    expect($$<HTMLButtonElement>("button").filter((b) => /Salvesta/.test(text(b)))).toEqual([]);
+    expect(document.querySelector("[data-save-bar]")).toBeNull();
+    expect(text(document.querySelector('#lepingud [data-legal-editor="course_terms"] [data-legal-publish]'))).toBe("Avalda uus leping");
+  });
+
+  test("the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while texts wait for their publish (P-11, drawn „1 avaldamata“), and follows the typing", async () => {
+    await show();
+    const status = () => text($('nav a[href="#lepingud"] [data-section-status]'));
+    expect(status()).toBe("1 avaldamata");
+    expect($$<HTMLOptionElement>("[data-section-select] option").find((o) => o.value === "lepingud")!.textContent).toBe("Lepingud ja tingimused · 1 avaldamata");
+    await act(async () => {
+      const body = $<HTMLTextAreaElement>('[data-i18n="privacy.body"]')!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(body, "Uus privaatsustekst.");
+      body.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(status()).toBe("2 avaldamata");
+    expect(text($('nav a[href="#kontakt"] [data-section-status]'))).toBe("");
+  });
+
+  test("a legal text's draft save is one of the page's saves: the same chip says so", async () => {
+    await show();
+    const body = $<HTMLTextAreaElement>('[data-i18n="terms.body"]')!;
+    await act(async () => {
+      body.focus();
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(body, "Uued tingimused.");
+      body.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(chip()!.getAttribute("data-save-kind")).toBe("dirty");
+    await wait(DEBOUNCE_MS + 100);
+    await settle();
+    expect(fetched.calls.map((c) => [c.url, c.body])).toEqual([["/api/admin/oigustekst/terms", { version: "l:t", patch: { body: { et: "Uued tingimused.", ru: "" } } }]]);
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
   });
 });
 

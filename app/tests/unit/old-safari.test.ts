@@ -129,6 +129,9 @@ const BROWSER_FILES = [
   "src/components/admin/focus-fell.ts",
   // piece 3b, Task 2: a calendar session's fields and rules (R-b, R-c), which the Kalender drawer checks by in the browser (pure; it pulls domain/calendar.ts and domain/course-editor.ts)
   "src/domain/session-fields.ts",
+  // piece 3b, Task 5: the legal texts' keys, shape and the writers' rule, which Seaded's legal cards check by in the browser (pure; it pulls
+  // domain/lesson-limits.ts and domain/site-editor.ts)
+  "src/domain/legal-text.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

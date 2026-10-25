@@ -1691,18 +1691,22 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: e-koolituse leping (tingimused)",
+      "title": "Seaded: e-koolituse leping",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri plokini „E-koolituse leping (tingimused)“.",
+        "Ava „Seaded“ ja keri kaardini „E-koolituse leping“.",
         "Kirjuta „Pealkiri“: „E-koolituse leping“, ja oma päris lepingu tekst.",
-        "Vajuta „Salvesta“.",
+        "Vajuta „Avalda uus leping“, loe küsimus läbi ja vajuta „Katkesta“.",
+        "Vajuta uuesti „Avalda uus leping“ ja siis „Jah, avalda“.",
         "Ava e-koolituse ostukorv."
       ],
       "expect": [
-        "Pärast salvestamist näed „Salvestatud.“.",
         "Pealkirja all on vihje, mis soovitab pealkirjaks „E-koolituse leping“.",
-        "Teksti all on kohahoidjate loetelu, sama mis kaardil „Lepingud“.",
+        "Teksti all on samad kohahoidjate nupud mis kaardil „Kontaktkoolituse leping“.",
+        "Kirjutamise ajal on kaardil „Avaldamata muudatus“.",
+        "Küsimus on „Kas avaldan uue e-koolituse lepingu?“ ja selle all on aktiivsete õpilaste arv, kes peavad uuesti kinnitama.",
+        "„Katkesta“ sulgeb küsimuse ja midagi ei avaldata.",
+        "Pärast „Jah, avalda“ näed „Uus e-koolituse leping on avaldatud.“.",
         "Ostukorvis on „Loe lepingut“ all uus pealkiri ja tekst.",
         "Õpilane loeb seda enne ostmist ja enne tasuta avatud koolituse esimest avamist."
       ],
@@ -1710,7 +1714,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -1803,30 +1807,32 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: lepingud",
+      "title": "Seaded: kontaktkoolituse leping",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
-        "Jäta „Kontaktkoolituse leping“ all „Pealkiri“ tühjaks ja vajuta „Salvesta lepingud“.",
-        "Kirjuta eesti keeles „Pealkiri“ ja „Tekst“, kus on {nimi}, {koolitus} ja {hind}.",
-        "Vali lehe päises „Sisu keel“ juures RU ja kirjuta sama vene keeles.",
-        "Vajuta „Salvesta lepingud“.",
+        "Ava „Seaded“ ja vali jaotis „Lepingud ja tingimused“; leia kaart „Kontaktkoolituse leping“.",
+        "Kirjuta „Tekst“ ja lisa nuppudega „+ nimi“, „+ koolitus“ ja „+ hind“ kohahoidjad sinna, kus on kursor.",
+        "Jäta „Pealkiri“ tühjaks ja vajuta „Avalda uus leping“.",
+        "Kirjuta „Pealkiri“, vali lehe päises „Sisu keel“ juures RU ja kirjuta sama vene keeles.",
         "Vajuta lehe päises „Sisu keel“ juures „ET“.",
-        "Ava kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“."
+        "Ava teises vahelehes kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“.",
+        "Vajuta Seadetes „Avalda uus leping“ ja „Jah, avalda“; laadi kontaktkoolituse leht uuesti ja vaata lepingut."
       ],
       "expect": [
-        "Teksti all on „Tühi rida alustab uut lõiku.“ ja kuus kohahoidjat: {nimi}, {e-post}, {koolitus}, {toimumine}, {hind}, {ettemaks}.",
-        "Tühja pealkirja korral näed „Täida see väli (eesti keeles).“ ja „Kontrolli märgitud välju.“, midagi ei salvestata.",
-        "Pärast salvestamist näed „Lepingud on salvestatud.“.",
-        "Kontaktkoolituse lehel on „Loe lepingut“ all sinu tekst, kohahoidjad on täidetud.",
-        "Uus tekst on lehel kohe, ootamata.",
+        "Teksti all on „Tühi rida alustab uut lõiku.“ ja kuus nuppu „+ nimi“ kuni „+ ettemaks“.",
+        "Nupp lisab kohahoidja, näiteks {nimi}, täpselt kursori kohale.",
+        "Tühja pealkirja korral näed välja all „Täida see väli (eesti keeles).“ ja midagi ei küsita.",
+        "Kirjutamise ajal on kaardil „Avaldamata muudatus“ ja jaotiste loendis „1 avaldamata“.",
+        "Enne avaldamist on kontaktkoolituse lehel veel vana tekst.",
+        "„Avalda uus leping“ küsib „Kas avaldan uue kontaktkoolituse lepingu?“ ja ütleb, et uus tekst kehtib uutele registreeringutele.",
+        "Pärast „Jah, avalda“ näed „Uus kontaktkoolituse leping on avaldatud.“ ja lehel on uus tekst täidetud kohahoidjatega.",
         "Vene lehel on vene tekst."
       ],
-      "why": "Lepingu teksti kirjutab Maria ise.",
+      "why": "Lepingu teksti kirjutab Maria ise ja see muutub alles siis, kui ta selle avaldab.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -1836,24 +1842,56 @@
       "title": "Seaded: näidisleping",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
-        "Muuda „Pealkiri“ ja „Tekst“, aga ära salvesta.",
+        "Ava „Seaded“ ja keri kaardini „Kontaktkoolituse leping“.",
+        "Muuda „Pealkiri“ ja „Tekst“, aga ära vajuta „Avalda uus leping“.",
         "Vajuta „Näidisleping (PDF)“.",
         "Vali lehe päises „Sisu keel“ juures RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
         "Vajuta lehe päises „Sisu keel“ juures „ET“.",
-        "Lae leht uuesti ja vaata „Pealkiri“."
+        "Lae leht uuesti; ava teises vahelehes kontaktkoolituse leht ja vajuta ruudu all „Loe lepingut“.",
+        "Kirjuta Seadetes pealkiri ja tekst tagasi endiseks."
       ],
       "expect": [
-        "PDF avaneb uues aknas ja selles on muudetud pealkiri ja tekst, kuigi neid polnud salvestatud.",
+        "PDF avaneb uues aknas ja selles on muudetud pealkiri ja tekst, kuigi neid polnud avaldatud.",
         "Õpilane on „Proov (näidis)“, koolitus „Näidiskoolitus“ ja kohahoidjad on täidetud.",
         "Ettevõtte andmed on samad mis kaardil „Maksmine“.",
         "Venekeelsel näidisel on vene tekst ja sildid, näiteks „Стороны“.",
-        "Pärast lehe uuesti laadimist on endine pealkiri: midagi ei salvestatud."
+        "Pärast lehe uuesti laadimist on väljadel muudetud tekst ja kaardil „Avaldamata muudatus“.",
+        "Kontaktkoolituse lehel on endine tekst: näidis ei avalda midagi.",
+        "Kui tekst on jälle endine, kaob „Avaldamata muudatus“."
       ],
       "why": "Maria näeb lepingut enne, kui keegi seda kinnitab.",
       "risk": "med",
       "writes": false,
-      "mark": "reworded",
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-seaded-privaatsus-avalda",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Seaded: privaatsuse tekst telefonis",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava telefonis „Seaded“ ja vali „Jaotised“ alt „Lepingud ja tingimused“.",
+        "Vajuta kaardil „Privaatsus“ nuppu „Muuda teksti“.",
+        "Lisa teksti lõppu lause „Proov 1.“ ja vajuta „Sulge“.",
+        "Ava teises vahelehes leht /privaatsus.",
+        "Vajuta Seadetes „Avalda uus tekst“ ja „Jah, avalda“.",
+        "Laadi leht /privaatsus uuesti.",
+        "Kustuta lause „Proov 1.“ samamoodi ja avalda tekst uuesti."
+      ],
+      "expect": [
+        "Kaardil on „Pikk tekst avaneb täisekraanil.“ ja tekst avaneb kogu ekraani laiuses.",
+        "Pärast „Sulge“ on kaardil „Avaldamata“, aga lehel /privaatsus on veel vana tekst.",
+        "„Avalda uus tekst“ küsib „Kas avaldan lehe „Privaatsus“ uue teksti?“ ja ütleb, et tekst on kohe näha.",
+        "Pärast „Jah, avalda“ näed „Uus tekst on avaldatud.“ ja lehel /privaatsus on lause „Proov 1.“.",
+        "Leht ei kerigi küljele ja nupud on kerged vajutada."
+      ],
+      "why": "Privaatsuse tekst muutub avalikul lehel alles siis, kui Maria selle avaldab.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
       "markedAt": "deploy"
     },
     {
@@ -2218,7 +2256,7 @@
         "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaariks: Proov 1.",
         "Vajuta „Saada“ ja ava Telegram.",
         "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
-        "Keri lehel „Seaded“ jaotiseni „Lepingud ja tingimused“ ja vaata selle nuppu „Salvesta“."
+        "Ava halduses „Avaleht“ ja vaata lehe allservas nuppu „Salvesta“."
       ],
       "expect": [
         "Nupp „Kommentaar“ on igal halduse lehel, millele oled sisse logitud.",
@@ -2297,10 +2335,11 @@
       "steps": [
         "Ava oma kontaktkoolituse leht ja vali tulevane kuupäev.",
         "Kirjuta „Nimi“: Proov 1, oma +proov1 e-post ja telefon ning märgi lepingu ruut.",
-        "Ava teises vahelehes Seaded, lisa kontaktkoolituse lepingule (või „Õppetingimused“ tekstile) üks lause ja salvesta.",
+        "Ava teises vahelehes Seaded ja lisa kontaktkoolituse lepingule (või „Õppetingimused“ tekstile) üks lause.",
+        "Vajuta seal „Avalda uus leping“ (või „Avalda uus tekst“) ja „Jah, avalda“.",
         "Vajuta esimeses vahelehes „Registreeru“.",
         "Vajuta „Loe lepingut“.",
-        "Pane Seadetes tekst tagasi ja salvesta."
+        "Pane Seadetes tekst tagasi ja avalda see samamoodi."
       ],
       "expect": [
         "Ruudu all on „Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.“.",
@@ -2311,8 +2350,8 @@
       "why": "Õpilane kinnitab ainult seda lepingu teksti, mida ta nägi.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-montonio-esmane",
@@ -4729,7 +4768,7 @@
         "Ava Proov 5 postkastis kiri „MS LAB leping“ ja selle manus."
       ],
       "expect": [
-        "Enne sisu näed „Enne alustamist“, Seadetes kirjutatud lepingu pealkirja ja selle teksti.",
+        "Enne sisu näed „Enne alustamist“, Seadetes avaldatud lepingu pealkirja ja selle teksti.",
         "Kui Maria kasutas tekstis kohahoidjaid, on {koolitus} asemel koolituse nimi ja {e-post} asemel Proov 5 aadress.",
         "Proov 5 lisati ainult aadressiga, seega on ruudu kohal väli „Nimi“.",
         "Ilma nimeta näed välja all „Kirjuta oma nimi.“ ja koolitus ei avane.",
@@ -4742,7 +4781,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ava-jargmine",

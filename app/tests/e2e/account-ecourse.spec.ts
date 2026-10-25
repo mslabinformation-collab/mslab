@@ -3,14 +3,15 @@ import { formatDate } from "../../src/i18n/format";
 import {
   clientEmail, currentTermsVersion, E2E_TERMS, insertEcourseAccess, removeTermsPage, SEED_ECOURSE_SLUG, setTerms, signInAsClient, storedAcceptances, takeTerms,
 } from "./account";
-import { adminReady, saveBarButton, saveBarStatus, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, publishLegalText, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { holdLegalDraft } from "./contracts";
 import { LOCAL_FIXTURES, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { submitsForms, test, expect } from "./test";
 
 // Phase 2a Task 7: an e-course in the account (/konto/kursus/<slug>) — "Sul ei ole sellele koolitusele ligipääsu.", the terms
-// notice the student accepts once per terms version, the course view, and the admin's "E-koolituse tingimused" (Seaded), whose
-// save asks everyone to accept again. Clients are sample addresses (`e2e-client-…@example.test`, never mailed) with rows written
+// notice the student accepts once per terms version, the course view, and the admin's „E-koolituse leping“ (Seaded), whose
+// publish („Avalda uus leping“, admin UX pass piece 3b, Task 5) asks everyone to accept again. Clients are sample addresses (`e2e-client-…@example.test`, never mailed) with rows written
 // straight to the local database (account.ts). The terms text and version are shared by every client, so each test takes them
 // (takeTerms: an advisory lock, a snapshot, restored afterwards) and the desktop and phone runs take turns.
 
@@ -116,7 +117,7 @@ test("the notice shows first: title, the text, one checkbox, one button that sta
   await openFromDashboard(page, c.slug);
 
   await expect(gate(page).getByRole("heading", { level: 1 })).toHaveText("Enne alustamist");
-  // the contract's own title above its text (contracts, ruling R18): the page title of „E-koolituse leping (tingimused)“
+  // the contract's own title above its text (contracts, ruling R18): the page title of Seaded's „E-koolituse leping“
   await expect(gate(page).locator("[data-terms-text]").getByRole("heading", { level: 2 })).toHaveText("E-koolituse tingimused");
   await expect(gate(page).locator("[data-legal-body] p")).toHaveText(paragraphs(E2E_TERMS.et));
   await expect(gate(page).getByRole("checkbox")).toHaveCount(1);
@@ -261,7 +262,7 @@ test("an unpublished course with active access still opens: the notice, then the
   await expect(page.locator("[data-ecourse-access]")).toHaveText(`Ligipääs kuni ${formatDate(c.expiresAt!, "et")}`);
 });
 
-test("accept, then the admin saves new terms in Seaded: the next open shows the notice again with the new text", async ({ page, context, visitorIp }, info) => {
+test("accept, then the admin publishes new terms in Seaded („Avalda uus leping“): the next open shows the notice again with the new text", async ({ page, context, visitorIp }, info) => {
   submitsForms();
   const c = await signedIn(page, "readmin", info.project.name);
   await openFromDashboard(page, c.slug);
@@ -270,22 +271,34 @@ test("accept, then the admin saves new terms in Seaded: the next open shows the 
   expect(await storedAcceptances(c.clientId)).toEqual([{ slug: c.slug, version: "1" }]);
 
   const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
+  // (the text's draft out of the way, under the terms' turn this test holds; put back afterwards)
+  const restoreDraft = await holdLegalDraft("course_terms");
   try {
     await signInAsAdmin(page, context, visitorIp, created);
     await page.goto("/admin/seaded");
     await adminReady(page);
     const editor = page.locator('[data-legal-editor="course_terms"]');
-    await expect(editor.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping (tingimused)");
-    // next to privacy and terms; account-only, so no link to a public page
-    await expect(page.locator("[data-legal-editor]")).toHaveCount(3);
-    await expect(editor.getByRole("link")).toHaveCount(0);
-    const body = editor.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
+    await expect(editor.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping");
+    // with privacy, terms and the contact contract; account-only, so no link to a public page
+    await expect(page.locator("[data-legal-editor]")).toHaveCount(4);
+    await expect(editor.getByRole("link", { name: /Vaata lehel/ })).toHaveCount(0);
+    // on a phone the text opens full screen (the Part 4 frame): „Muuda teksti“, typed there, then ✕ „Sulge“
+    const onPhone = info.project.name.startsWith("mobile");
+    if (onPhone) await editor.getByRole("link", { name: "Muuda teksti", exact: true }).click();
+    const where = onPhone ? page.getByRole("dialog", { name: "E-koolituse leping" }) : editor;
+    const body = where.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     await expect(body).toHaveValue(E2E_TERMS.et);
     await body.fill("E2E uued tingimused.\n\nTeine lõik muutus.");
-    await saveBarButton(page).click(); // (the legal texts keep their own save until their drafts: admin UX pass piece 3b)
-    await expect(saveBarStatus(page)).toHaveText("Salvestatud.");
+    if (onPhone) {
+      await where.getByRole("button", { name: "Sulge" }).click();
+      await expect(where).toBeHidden();
+    }
+    // typed into its draft; „Avalda uus leping“ → „Jah, avalda“ publishes it (a new version, as a save made one)
+    expect((await publishLegalText(page, editor, "course_terms", "Avalda uus leping")).status()).toBe(200);
+    await expect(editor.locator("[data-legal-said]")).toHaveText("Uus e-koolituse leping on avaldatud.");
   } finally {
     await removeAdminRows(created);
+    await restoreDraft();
   }
   const version = await currentTermsVersion();
   expect(version, "the save time").toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);

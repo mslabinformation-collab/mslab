@@ -1,3 +1,4 @@
+import type postgres from "postgres";
 import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, snapshotRows } from "./fixtures";
 
 // What the contract specs share (contracts Task 7): the turn at the contact course's contract text, which Maria writes in Seaded.
@@ -31,6 +32,45 @@ export async function holdContractTexts(info: { setTimeout(ms: number): void; ti
       await unlock();
     }
   };
+}
+
+/** Each legal text's draft row in `content_drafts` (entity "legal": server/legal-drafts.ts LEGAL_IDS, ruling R-d of admin UX pass piece 3b). */
+const LEGAL_IDS = { privacy: 1, terms: 2, course_terms: 3, contract_contact: 4 } as const;
+type DraftRow = { id: number; entity: string; entity_id: number; part: string; value: unknown; base_version: string; version: number; updated_at: Date; updated_by: string };
+
+/**
+ * Takes a legal text's draft out of the way for one test (admin UX pass piece 3b, Task 5: Seaded's legal cards type into drafts and publish them):
+ * the draft as it is now (one left by hand on the local database) is kept and deleted, so the card starts from the live text; the function returned
+ * deletes whatever draft the test left (a test that failed before its publish) and writes the kept one back. Call it after the test, also when it
+ * failed. The live text itself is the caller's to put back (holdContractTexts, a rows snapshot).
+ */
+export async function holdLegalDraft(key: keyof typeof LEGAL_IDS): Promise<() => Promise<void>> {
+  const id = LEGAL_IDS[key];
+  const kept = await onLocalDb(
+    async (sql) => {
+      const rows = await sql<DraftRow[]>`select * from content_drafts where entity = 'legal' and entity_id = ${id}`;
+      await sql`delete from content_drafts where entity = 'legal' and entity_id = ${id}`;
+      return rows;
+    },
+    { marksPages: false },
+  );
+  return () =>
+    onLocalDb(
+      async (sql) => {
+        await sql`delete from content_drafts where entity = 'legal' and entity_id = ${id}`;
+        for (const r of kept)
+          await sql`
+            insert into content_drafts (id, entity, entity_id, part, value, base_version, version, updated_at, updated_by)
+            values (${r.id}, ${r.entity}, ${r.entity_id}, ${r.part}, ${sql.json(r.value as postgres.JSONValue)}, ${r.base_version}, ${r.version}, ${r.updated_at}, ${r.updated_by})`;
+      },
+      { marksPages: false },
+    );
+}
+
+/** The legal draft of `key` as stored now (null: none), for a test that checks that typing saved only there. */
+export async function legalDraftOf(key: keyof typeof LEGAL_IDS): Promise<{ value: { title: { et: string; ru: string }; body: { et: string; ru: string } } } | null> {
+  const [row] = await onLocalDb((sql) => sql<{ value: { title: { et: string; ru: string }; body: { et: string; ru: string } } }[]>`select value from content_drafts where entity = 'legal' and entity_id = ${LEGAL_IDS[key]}`, { marksPages: false });
+  return row ?? null;
 }
 
 /**

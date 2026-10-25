@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref } from "react";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -33,6 +33,15 @@ export function PreviewLangSwitch({ lang, onChange, label, missingRu }: { lang: 
   );
 }
 
+/** What a field's `ref` can do (piece 3b, Task 5: the legal texts' placeholder chips). */
+export type I18nInputHandle = {
+  /**
+   * Puts `text` where the cursor is in the language shown — over the selection, the cursor after it — and the focus back in the field; at the end of the
+   * text when the field has not had the cursor in this language. The change goes through `onChange`, as typing does.
+   */
+  insert(text: string): void;
+};
+
 type Props = {
   label: string;
   value: I18n;
@@ -54,6 +63,10 @@ type Props = {
   unpublished?: boolean;
   /** More of the field's description, by element id (a list row's own tag beside the field, the modules card's „avaldamata“). */
   describedBy?: string;
+  /** The text can be read and selected, not changed (a publish of it is on its way). */
+  readOnly?: boolean;
+  /** insert() at the cursor (I18nInputHandle). */
+  ref?: Ref<I18nInputHandle>;
 };
 
 /**
@@ -62,7 +75,7 @@ type Props = {
  * input (it is also the placeholder: what the Russian page shows while the translation is missing), an empty RU field offers „Kopeeri eesti
  * keelest“, and „tõlge tulekul“ stays on the field. The field tells the page when its Russian text is missing, for „RU puudub {n} väljal“.
  */
-export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished, describedBy: more }: Props) {
+export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished, describedBy: more, readOnly, ref }: Props) {
   const uid = useId();
   const { lang, register } = useEditLang();
   const t = adminEt.i18n;
@@ -86,6 +99,37 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
     el.scrollIntoView?.({ block: "center" });
   }, [input]);
   useEffect(() => register(uid, pending, focusField), [register, uid, pending, focusField]);
+  // insert(): the language the cursor was last put in (a field without the focus that never had it in the language shown takes the text at its end),
+  // and where the cursor goes once the field shows the new text
+  const cursorLang = useRef<Lang | null>(null);
+  const caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const at = caret.current;
+    if (at === null) return;
+    caret.current = null;
+    const el = input() as HTMLInputElement | HTMLTextAreaElement | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(at, at);
+  });
+  useImperativeHandle(
+    ref,
+    () => ({
+      insert(piece: string) {
+        const el = input() as HTMLInputElement | HTMLTextAreaElement | null;
+        const clamp = (n: number | null | undefined) => Math.min(Math.max(n ?? text.length, 0), text.length);
+        // (the cursor is the field's while it has the focus — a chip's press keeps it there — or since it was last put there in this language)
+        const here = el !== null && (document.activeElement === el || cursorLang.current === lang);
+        const start = here ? clamp(el.selectionStart) : text.length;
+        const end = here ? Math.max(start, clamp(el.selectionEnd)) : text.length;
+        cursorLang.current = lang;
+        caret.current = start + piece.length;
+        set(text.slice(0, start) + piece + text.slice(end));
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `set` is made from the same `value`, `lang` and `onChange`
+    [text, lang, value, onChange, input],
+  );
   const copy = () => {
     onChange({ ...value, ru: value.et });
     input()?.focus(); // (the link is gone with the copy: the cursor goes to the text, ready to be edited)
@@ -99,6 +143,8 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy,
     lang,
+    readOnly,
+    onFocus: () => void (cursorLang.current = lang),
     "data-i18n": name,
     "data-lang-field": lang,
   } as const;
@@ -130,7 +176,7 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
       ) : (
         <input {...common} className={ui.input} type="text" autoComplete="off" onChange={(e) => set(e.target.value)} />
       )}
-      {ru && pending && (
+      {ru && pending && !readOnly && (
         <button type="button" className={styles.copy} onClick={copy} aria-describedby={`${uid}-label`} data-copy-et="">
           {t.copyFromEt}
         </button>

@@ -12,7 +12,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const actions = vi.hoisted(() => ({ requestContractAction: vi.fn(), sendContractCopyAction: vi.fn(), saveContractTextsAction: vi.fn() }));
+const actions = vi.hoisted(() => ({ requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => actions);
 
 import { ContractBlock } from "@/components/admin/ContractBlock";

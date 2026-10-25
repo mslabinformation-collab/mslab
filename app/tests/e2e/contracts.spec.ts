@@ -6,8 +6,8 @@ import { prepaymentDue } from "../../src/domain/registration";
 import { formatDate } from "../../src/i18n/format";
 import { readPdf } from "../pdf-read";
 import { clientEmail, insertClient, signInAsClient } from "./account";
-import { adminReady, signInAsAdmin } from "./admin-login";
-import { holdContractTexts } from "./contracts";
+import { adminReady, publishLegalText, signInAsAdmin } from "./admin-login";
+import { holdContractTexts, holdLegalDraft } from "./contracts";
 import { test } from "./edit-lock";
 import { onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, noOverflow, openRow, today, WIDTHS } from "./invoices";
@@ -16,7 +16,8 @@ import { expect as plainExpect, submitsForms } from "./test";
 
 // Contracts end to end (contracts Task 7; spec §4): one continuous path on the local server and the local Postgres, the whole life of one contract
 // as the people in it meet it —
-//   1. Maria writes the contact course's contract text with placeholders in Seaded → „Lepingud“, and „Näidisleping (PDF)“ answers a PDF;
+//   1. Maria writes the contact course's contract text with placeholders in Seaded → „Kontaktkoolituse leping“ (its draft) and publishes it with
+//      „Avalda uus leping“ (admin UX pass piece 3b, Task 5), and „Näidisleping (PDF)“ answers a PDF;
 //   2. a visitor (a student whose address already has an account) registers on the course page with the box ticked; before she sends it the inline
 //      „Loe lepingut“ shows the text filled with the session she chose; the registration stores the contract, filled with the same text;
 //   3. Maria's registration drawer shows the contract, and its PDF downloads with the school, the student, the session and the way;
@@ -129,6 +130,12 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
   // the school of every contract is Seaded's „Arve andmed“, and the text is Maria's: both in the shared settings, put back afterwards
   undo.push(await holdInvoiceSettings(info));
   undo.push(await holdContractTexts(info));
+  undo.push(await holdLegalDraft("contract_contact"));
+  // (her text not written yet: the turn puts back what was there)
+  await onLocalDb(async (sql) => {
+    await sql`delete from pages where key = 'contract_contact'`;
+    await sql`delete from settings where key = 'contractContactVersion'`;
+  });
   const email = clientEmail("contract", info.project.name);
   await removeClientRows(email);
   mine.email = email;
@@ -137,11 +144,12 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
   await signInAsAdmin(page, context, visitorIp, created);
   await page.goto("/admin/seaded");
   await adminReady(page);
-  const texts = page.locator("[data-contract-texts]");
+  const texts = page.locator('[data-legal-editor="contract_contact"]');
   await texts.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill(TITLE);
   await texts.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true }).fill(BODY);
-  await texts.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
-  await expect(texts.locator("[data-contract-status]")).toHaveText("Lepingud on salvestatud.");
+  // typing is its draft; „Avalda uus leping“ → „Jah, avalda“ publishes it (sending what is typed first)
+  expect((await publishLegalText(page, texts, "contract_contact", "Avalda uus leping")).status()).toBe(200);
+  await expect(texts.locator("[data-legal-said]")).toHaveText("Uus kontaktkoolituse leping on avaldatud.");
   const version = await onLocalDb((sql) => sql<{ v: string }[]>`select value #>> '{}' as v from settings where key = 'contractContactVersion'`, { marksPages: false });
   expect(version).toHaveLength(1);
 

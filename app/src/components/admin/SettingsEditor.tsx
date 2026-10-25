@@ -1,27 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { SITE_LIMITS, type ContactDraft, type NewsletterDraft, type PageDraft } from "@/domain/site-editor";
+import type { LegalKey, LegalState } from "@/domain/legal-text";
+import { SITE_LIMITS, type ContactDraft, type NewsletterDraft } from "@/domain/site-editor";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
-import { saveSettings } from "@/server/actions/admin-site";
 import type { SettingsValues } from "@/server/admin-site";
-import type { ContractCard } from "@/server/contracts";
 import { CertificateSettings, type CertificateSettingsInitial } from "./CertificateSettings";
-import { ContractPlaceholders, ContractTexts } from "./ContractTexts";
+import { LegalTexts } from "./ContractTexts";
 import { combineStatus } from "./course/course-view";
 import { usePhoneChip } from "./course/usePhoneChip";
 import { LangSwitch } from "./EditLang";
 import { FinancingSettings, type FinancingInitial } from "./FinancingSettings";
-import { I18nInput } from "./I18nInput";
 import { InvoiceSettings, type InvoiceSettingsInitial } from "./InvoiceSettings";
-import { SaveBar } from "./SaveBar";
 import { SaveStatus } from "./SaveStatus";
 import { SectionMap, sectionCard, type SectionEntry } from "./SectionMap";
 import { TextField } from "./TextField";
 import { useSeadedPart, type StatusReport } from "./useSeadedPart";
-import { useSiteDraft, type Loaded } from "./useSiteDraft";
+import type { Loaded } from "./useSiteDraft";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
@@ -139,87 +136,16 @@ function Restore({ conflict, onRestore }: { conflict: boolean; onRestore: () => 
   );
 }
 
-type LegalValues = Pick<SettingsValues, "privacy" | "terms" | "course_terms">;
-
-/**
- * „Privaatsus“, „Õppetingimused“ and „E-koolituse leping (tingimused)“: their editors and their own save as before (the pre-flight ruling of piece 3b:
- * they keep them until their drafts and „Avalda …“, Task 5) — one form with the site editors' SaveBar, which sends only what changed
- * (saveSettings: the legal parts only). The e-course contract's text is what a student accepts in the cart and at the terms gate, with the contact
- * card's placeholders hint, since both fill them; account-only, so no link to a public page.
- */
-function LegalTexts({ initial }: { initial: Loaded<LegalValues> }) {
-  const t = adminEt.settings;
-  const uid = useId();
-  const form = useRef<HTMLFormElement>(null);
-  const d = useSiteDraft(initial, saveSettings, form);
-
-  const legal = (key: "privacy" | "terms", title: string, href: string) => {
-    const page: PageDraft = d.draft[key];
-    return (
-      <section className={ui.card} aria-labelledby={`${uid}-${key}`} data-legal-editor={key}>
-        <div className={site.cardHead}>
-          <h2 id={`${uid}-${key}`} className={`${ui.h2} ${site.cardTitle}`}>
-            {title}
-          </h2>
-          <a className={ui.link} href={href} target="_blank" rel="noopener">
-            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
-          </a>
-        </div>
-        <div className={site.fields}>
-          <I18nInput label={t.pageTitle} value={page.title} onChange={(v) => d.set(key, { ...page, title: v })} maxLength={SITE_LIMITS.legalTitle} error={d.err(`${key}.title`)} name={`${key}.title`} />
-          <I18nInput label={t.pageBody} value={page.body} onChange={(v) => d.set(key, { ...page, body: v })} multiline rows={10} maxLength={SITE_LIMITS.legal} hint={t.pageHint} error={d.err(`${key}.body`)} name={`${key}.body`} />
-        </div>
-      </section>
-    );
-  };
-  const courseTerms = d.draft.course_terms;
-
-  return (
-    <form ref={form} className={styles.legal} onSubmit={d.submit} noValidate data-legal-form="">
-      {legal("privacy", t.privacy, "/privaatsus")}
-      {legal("terms", t.terms, "/tingimused")}
-      <section className={ui.card} aria-labelledby={`${uid}-course_terms`} data-legal-editor="course_terms">
-        <h2 id={`${uid}-course_terms`} className={`${ui.h2} ${site.cardTitle}`}>
-          {t.courseTerms}
-        </h2>
-        <p className={`${ui.muted} ${site.cardLead}`}>{t.courseTermsLead}</p>
-        <div className={site.fields}>
-          <I18nInput
-            label={t.pageTitle}
-            value={courseTerms.title}
-            onChange={(title) => d.set("course_terms", { ...courseTerms, title })}
-            maxLength={SITE_LIMITS.legalTitle}
-            hint={adminEt.contracts.settings.ecourseTitleHint}
-            error={d.err("course_terms.title")}
-            name="course_terms.title"
-          />
-          <I18nInput
-            label={t.pageBody}
-            value={courseTerms.body}
-            onChange={(body) => d.set("course_terms", { ...courseTerms, body })}
-            multiline
-            rows={10}
-            maxLength={SITE_LIMITS.legal}
-            hint={t.pageHint}
-            error={d.err("course_terms.body")}
-            name="course_terms.body"
-          />
-          <ContractPlaceholders />
-        </div>
-      </section>
-      <SaveBar status={d.status} pending={d.pending} reloadHref="/admin/seaded" />
-    </form>
-  );
-}
-
 /**
  * Seaded (admin UX pass piece 3b, Task 4; README B4, B21; rulings R-f, „Cards that move“; the Part 3 frame „B4 Seaded“ and the Part 4 phone frame):
  * one page with the section map — Kontakt, Uudiskiri, Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs (SectionMap: from 1180 px the list
  * at the left, below it the „Jaotised ▾“ select under the header) — and the header's ET | RU switch and ONE SaveStatus for every card (compact below
  * 900 px). Every card autosaves its part on api/admin/seaded/<part> (useSeadedPart) and tells its status here: „Kontaktandmed“, „Uudiskiri“, „Maksmine“
  * (the prepayment instructions' bank fields and the invoice settings in one card, InvoiceSettings) with „Järelmaks (Inbank)“'s instant switch, and
- * „Tunnistus“. The four legal texts keep their own save until their drafts (LegalTexts, ContractTexts); the admin addresses are shown, never edited
- * (the environment variable ADMIN_EMAILS). „Näita“ of the chip goes to the first field a route refused. The page lead is gone (none is drawn).
+ * „Tunnistus“. The four legal texts (Task 5: ContractTexts.tsx LegalTexts) type into their drafts under the same chip and are published by their own
+ * „Avalda uus leping“ / „Avalda uus tekst“; the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while some wait. The admin addresses are
+ * shown, never edited (the environment variable ADMIN_EMAILS). „Näita“ of the chip goes to the first field a route refused. The page lead is gone
+ * (none is drawn).
  */
 export function SettingsEditor(p: {
   initial: Loaded<SettingsValues>;
@@ -227,7 +153,10 @@ export function SettingsEditor(p: {
   invoice: InvoiceSettingsInitial;
   certificate: CertificateSettingsInitial;
   financing: FinancingInitial;
-  contract: ContractCard;
+  /** The four legal texts with their drafts (server/legal-drafts.ts readLegalTexts). */
+  legal: Record<LegalKey, LegalState>;
+  /** The students the e-course contract's panel says will be asked again (ruling R-e). */
+  reaccept: number;
   now: Date;
 }) {
   const t = adminEt.settings;
@@ -237,7 +166,11 @@ export function SettingsEditor(p: {
   const report = useCallback<StatusReport>((part, status) => setBoard((b) => (sameStatus(b[part], status) ? b : { ...b, [part]: status })), []);
   const status = combineStatus(Object.values(board));
   const showInvalid = () => document.querySelector<HTMLElement>('[data-settings-editor] [data-seaded-section] [aria-invalid="true"]')?.focus();
-  const sections: SectionEntry[] = SECTIONS.map((s) => ({ id: s.id, label: t.sections[s.label] }));
+  // the legal texts that wait for their publish (the map's „{n} avaldamata“, piece3-texts P-11)
+  const [waiting, setWaiting] = useState<Partial<Record<LegalKey, boolean>>>(() => Object.fromEntries(Object.entries(p.legal).map(([k, s]) => [k, s.changed])));
+  const onChanged = useCallback((key: LegalKey, changed: boolean) => setWaiting((w) => (w[key] === changed ? w : { ...w, [key]: changed })), []);
+  const unpublished = Object.values(waiting).filter(Boolean).length;
+  const sections: SectionEntry[] = SECTIONS.map((s) => ({ id: s.id, label: t.sections[s.label], ...(s.id === "lepingud" && unpublished > 0 ? { unpublished } : {}) }));
   // A load with an anchor (a bookmark, a link from outside, #arve of an old one): the browser looks for it before the page has streamed in, so it is
   // gone to once the page is here (a link within the admin is the router's own jump; this one lands in the same place).
   useEffect(() => {
@@ -251,14 +184,6 @@ export function SettingsEditor(p: {
     if (target?.closest("[data-settings-editor]")) target.scrollIntoView({ block: "start" });
   }, []);
   const { initial } = p;
-  // the legal form's own read: a new object only with a new read of the page (useSiteDraft follows each one)
-  const legal = useMemo<Loaded<LegalValues>>(
-    () => ({
-      values: { privacy: initial.values.privacy, terms: initial.values.terms, course_terms: initial.values.course_terms },
-      versions: { privacy: initial.versions.privacy, terms: initial.versions.terms, course_terms: initial.versions.course_terms },
-    }),
-    [initial],
-  );
 
   return (
     <div className={ui.page} data-settings-editor="">
@@ -290,8 +215,7 @@ export function SettingsEditor(p: {
             <CertificateSettings initial={p.certificate} onStatus={report} />
           </Section>
           <Section id="lepingud">
-            <LegalTexts initial={legal} />
-            <ContractTexts initial={p.contract} />
+            <LegalTexts texts={p.legal} reaccept={p.reaccept} onStatus={report} onChanged={onChanged} />
           </Section>
           <Section id="ligipaas">
             <section className={ui.card} aria-labelledby={`${uid}-admins`} data-admin-emails="">

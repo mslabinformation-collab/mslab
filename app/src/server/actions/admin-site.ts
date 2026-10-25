@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { deletePostForm, saveCampaignForm, saveHomeForm, savePostForm, savePracticeForm, saveSettingsForm, saveTrainerForm } from "../admin-site";
+import { deletePostForm, saveCampaignForm, saveHomeForm, savePostForm, savePracticeForm, saveTrainerForm } from "../admin-site";
 import type { EditResult } from "../edit-check";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
@@ -44,9 +44,6 @@ export const saveTrainer = adminAction(async (_admin, _prev: EditResult | null, 
 
 /** Hüpikaken "Salvesta": field data ({ parts: campaign and/or newsletter }). */
 export const saveCampaign = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("campaign save", () => ({ kind: "campaign" }), (db) => saveCampaignForm(db, formData)));
-
-/** Seaded → „Lepingud ja tingimused“ „Salvesta“: field data ({ parts: privacy | terms | course_terms }); the other cards autosave (api/admin/seaded/<part>). */
-export const saveSettings = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("settings save", (r) => ({ kind: "settings", parts: savedParts(r) }), (db) => saveSettingsForm(db, formData)));
 
 /** Post editor "Salvesta": field data ({ parts: post }). A new post continues at its own address. */
 export const savePost = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {

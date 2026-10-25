@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import type { BrowserContext, Locator, Page, Route, TestInfo } from "@playwright/test";
+import type { BrowserContext, Locator, Page, TestInfo } from "@playwright/test";
 import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
 import { LOCAL_ADMINS } from "../local-secrets";
-import { adminReady, editLang, saveBarButton, saveBarStatus, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
-import { holdContractTexts } from "./contracts";
+import { adminReady, editLang, saveBarButton, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
+import { holdContractTexts, holdLegalDraft, legalDraftOf } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 import { holdNewsletter } from "./newsletter";
 
@@ -607,12 +607,6 @@ test.describe("the newsletter popup (phase 2c)", () => {
 });
 
 test.describe("settings", () => {
-  /** The legal texts' „Salvesta“ (their save bar in „Lepingud ja tingimused“; every other card autosaves): saved, its own line says so. */
-  const legalSave = async (page: Page) => {
-    await saveBarButton(page).click();
-    await expect(saveBarStatus(page)).toHaveText("Salvestatud.");
-  };
-
   test("375 × 812: the section map is the „Jaotised ▾“ select under the header; a choice goes to its section below the phone bar; the old anchors land in „Maksmine“; nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "the phone project");
     await page.setViewportSize({ width: 375, height: 812 });
@@ -726,117 +720,175 @@ test.describe("settings", () => {
     await expect(page.locator("[data-flash-code]")).toHaveCount(0);
   });
 
-  test("Lepingud (contracts Task 5): the contact contract's title and text are saved with their placeholders listed, a refused title is marked, the sample posts what is on the screen and stores nothing; the e-course contract's card has its own title", async ({ page, context, visitorIp }, info) => {
+  test("Lepingud ja tingimused (piece 3b, Task 5): the contact contract types into its draft only, the chips insert at the cursor, a missing title is said on the press, the sample posts the screen; „Avalda uus leping“ asks, then publishes a new version; the e-course contract likewise", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the contract texts; the phone project the privacy page");
     // (contracts.spec.ts writes the contact text too, and runs beside this one under `next dev`: they take turns, and the turn puts the two rows back)
     undo.push(await holdContractTexts(info));
     await changing(["pages", { column: "key", value: "course_terms" }], ["settings", { column: "key", value: "courseTermsVersion" }]);
+    undo.push(await holdLegalDraft("contract_contact"));
+    undo.push(await holdLegalDraft("course_terms"));
+    // her own contact text not written yet (the turn puts back what was there)
+    await onLocalDb(async (sql) => {
+      await sql`delete from pages where key = 'contract_contact'`;
+      await sql`delete from settings where key = 'contractContactVersion'`;
+    });
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
 
-    // the e-course contract keeps its card in the legal texts' form („Lepingud ja tingimused“, its own save until Task 5), retitled; its title is
-    // Maria's (ruling R3) with the suggestion in a hint
-    const ecourse = page.locator('[data-legal-editor="course_terms"]');
-    await expect(ecourse.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping (tingimused)");
-    const ecourseTitle = ecourse.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
-    await expect(ecourseTitle).toBeVisible();
-    await expect(ecourse).toContainText("Soovitus: „E-koolituse leping“.");
-
-    const card = page.locator("[data-contract-texts]");
-    await expect(card.getByRole("heading", { level: 2 })).toHaveText("Lepingud");
-    await expect(card.getByRole("heading", { level: 3 })).toHaveText("Kontaktkoolituse leping");
+    const TITLE = "E2E Kontaktkoolituse leping";
+    const BODY = "E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.";
+    const contactRows = () => one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`);
+    const contactVersion = () => one((sql) => sql<{ v: string | null }[]>`select (select value #>> '{}' from settings where key = 'contractContactVersion') as v`);
+    const card = page.locator('[data-legal-editor="contract_contact"]');
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText("Kontaktkoolituse leping");
     await expect(card.getByText("Tühi rida alustab uut lõiku.")).toBeVisible();
-    await expect(card.locator("[data-contract-placeholders] li code")).toHaveText(["{nimi}", "{e-post}", "{koolitus}", "{toimumine}", "{hind}", "{ettemaks}"]);
+    await expect(card.locator("[data-placeholder-chip]")).toHaveText(["+ nimi", "+ e-post", "+ koolitus", "+ toimumine", "+ hind", "+ ettemaks"]);
     const title = card.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
     const body = card.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     expect(await noOverflow(page)).toBe(true);
 
-    // an empty title is refused in words and nothing is stored
-    await body.fill("E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.");
-    await card.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
-    await expect(card.locator("[data-contract-status]")).toHaveText("Kontrolli märgitud välju.");
+    // typed, with the chips at the cursor: the text goes to its draft only
+    await body.fill("E2E ");
+    await card.locator('[data-placeholder-chip="nimi"]').click();
+    await page.keyboard.insertText(" registreerub koolitusele ");
+    await card.locator('[data-placeholder-chip="koolitus"]').click();
+    await page.keyboard.insertText(".\n\nHind ");
+    await card.locator('[data-placeholder-chip="hind"]').click();
+    await page.keyboard.insertText(".");
+    await expect(body).toHaveValue(BODY);
+    await expect(body).toBeFocused(); // (a chip keeps the cursor in the text)
+    await body.blur();
+    await expect.poll(async () => (await legalDraftOf("contract_contact"))?.value.body.et, { timeout: 15_000 }).toBe(BODY);
+    expect(await contactRows()).toEqual({ n: 0 });
+    expect(await contactVersion()).toEqual({ v: null });
+    await expect(card.locator("[data-tag-long]")).toHaveText("Avaldamata muudatus");
+    await expect(page.locator('nav a[href="#lepingud"] [data-section-status]')).toHaveText(/\d+ avaldamata/);
+
+    // the press finds the title empty: said in the field, which takes the focus; no panel
+    await card.getByRole("button", { name: "Avalda uus leping", exact: true }).click();
     await expect(title).toHaveAttribute("aria-invalid", "true");
     await expect(card.getByText("Täida see väli (eesti keeles).")).toBeVisible();
     await expect(title).toBeFocused();
-    expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`)).toEqual({ n: 0 });
+    await expect(card.locator("[data-confirm-panel]")).toHaveCount(0);
 
-    // the sample posts the screen's texts, saved or not; nothing is stored by it
-    await title.fill("E2E Kontaktkoolituse leping");
+    // the sample posts the screen's texts; a post without them is the draft (R-d); nothing is stored or published by it
+    await title.fill(TITLE);
     const sample = card.locator("[data-contract-sample-form]");
     await expect(sample).toHaveAttribute("method", "post");
     await expect(sample).toHaveAttribute("action", "/api/admin/naidisleping");
     await expect(sample).toHaveAttribute("target", "_blank");
-    await expect(sample.locator('input[name="titleEt"]')).toHaveValue("E2E Kontaktkoolituse leping");
-    await expect(sample.locator('input[name="bodyEt"]')).toHaveValue("E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.");
+    await expect(sample.locator('input[name="titleEt"]')).toHaveValue(TITLE);
+    await expect(sample.locator('input[name="bodyEt"]')).toHaveValue(BODY);
     await expect(sample.getByRole("button", { name: "Näidisleping (PDF)", exact: true })).toBeVisible();
     await expect(sample.getByRole("button", { name: "Näidisleping vene keeles (PDF)" })).toHaveCount(0); // no Russian text yet
-    const pdf = await page.request.post("/api/admin/naidisleping", { form: { titleEt: "E2E Kontaktkoolituse leping", bodyEt: "E2E {nimi} registreerub koolitusele {koolitus}.", lang: "et" } });
+    await expect(sample).toContainText("Näidis tehakse kaardi praegustest väärtustest, ka avaldamata. Midagi ei avaldata.");
+    const pdf = await page.request.post("/api/admin/naidisleping", { form: { lang: "et" } });
     expect(pdf.status()).toBe(200);
     expect(pdf.headers()["content-type"]).toBe("application/pdf");
     expect(pdf.headers()["content-disposition"]).toBe('inline; filename="MS-LAB-naidisleping.pdf"');
     expect(pdf.headers()["cache-control"]).toBe("private, no-store");
     expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
-    expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`)).toEqual({ n: 0 });
+    expect(await contactRows()).toEqual({ n: 0 });
 
-    // the Russian text makes the Russian sample available; then the save
+    // the Russian text makes the Russian sample available
     await editLang(page, "ru"); // (one switch for the whole page: both fields of the card, and the e-course card's too)
     await card.getByRole("textbox", { name: "Pealkiri (vene keeles)", exact: true }).fill("E2E Договор очного обучения");
     await card.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("E2E Ученик {nimi}.");
     await expect(sample.getByRole("button", { name: "Näidisleping vene keeles (PDF)", exact: true })).toBeVisible();
-    await card.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
-    await expect(card.locator("[data-contract-status]")).toHaveText("Lepingud on salvestatud.");
-    const stored = await one((sql) => sql<{ title: { et: string; ru: string }; body: { et: string; ru: string } }[]>`select title, body from pages where key = 'contract_contact'`);
-    expect(stored).toEqual({ title: { et: "E2E Kontaktkoolituse leping", ru: "E2E Договор очного обучения" }, body: { et: "E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.", ru: "E2E Ученик {nimi}." } });
-    const version = await one((sql) => sql<{ v: string }[]>`select value #>> '{}' as v from settings where key = 'contractContactVersion'`);
-    expect(Math.abs(Date.now() - new Date(version.v).getTime())).toBeLessThan(120_000);
-
-    // the e-course card: the title written there is the e-course contract's page title, and the text is not touched
     await editLang(page, "et");
-    const before = await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'course_terms'`);
-    await ecourseTitle.fill("E2E E-koolituse leping");
-    await legalSave(page);
-    const after = await one((sql) => sql<{ title: { et: string }; body: unknown }[]>`select title, body from pages where key = 'course_terms'`);
+
+    // „Avalda uus leping“: the panel (S3-P3-j); „Jah, avalda“ sends what is typed first, then publishes it: a new version
+    await card.getByRole("button", { name: "Avalda uus leping", exact: true }).click();
+    const panel = card.locator("[data-confirm-panel]");
+    await expect(panel.locator("p").first()).toHaveText("Kas avaldan uue kontaktkoolituse lepingu?");
+    await expect(panel.locator("li")).toHaveText(["Uus tekst kehtib uutele registreeringutele.", "Varem kinnitatud lepingud jäävad selliseks, nagu need kinnitati."]);
+    const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/admin/oigustekst/contract_contact/avalda");
+    await panel.getByRole("button", { name: "Jah, avalda", exact: true }).click();
+    expect((await answer).status()).toBe(200);
+    await expect(card.locator("[data-legal-said]")).toHaveText("Uus kontaktkoolituse leping on avaldatud.");
+    await expect(card.locator("[data-legal-tag]")).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Avalda uus leping", exact: true })).toHaveCount(0);
+    const stored = await one((sql) => sql<{ title: { et: string; ru: string }; body: { et: string; ru: string } }[]>`select title, body from pages where key = 'contract_contact'`);
+    expect(stored).toEqual({ title: { et: TITLE, ru: "E2E Договор очного обучения" }, body: { et: BODY, ru: "E2E Ученик {nimi}." } });
+    const version = await contactVersion();
+    expect(Math.abs(Date.now() - new Date(version.v!).getTime())).toBeLessThan(120_000);
+    expect(await legalDraftOf("contract_contact")).toBeNull();
+
+    // the e-course contract (P-11 „E-koolituse leping“): its title is the contract's (ruling R3); published, a new version, its text untouched
+    const ecourse = page.locator('[data-legal-editor="course_terms"]');
+    await expect(ecourse.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping");
+    await expect(ecourse).toContainText("Soovitus: „E-koolituse leping“.");
+    await expect(ecourse.locator("[data-placeholder-chip]")).toHaveCount(6);
+    const before = await one((sql) => sql<{ body: unknown; v: string | null }[]>`select body, (select value #>> '{}' from settings where key = 'courseTermsVersion') as v from pages where key = 'course_terms'`);
+    await ecourse.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill("E2E E-koolituse leping");
+    await ecourse.getByRole("button", { name: "Avalda uus leping", exact: true }).click();
+    const ecoursePanel = ecourse.locator("[data-confirm-panel]");
+    await expect(ecoursePanel.locator("p").first()).toHaveText("Kas avaldan uue e-koolituse lepingu?");
+    // (the count of the students asked again — distinct clients with an active access, R-e — is the page's read: one line, or none at 0)
+    const lines = await ecoursePanel.locator("li").allTextContents();
+    expect(lines.at(-1)).toBe("Vana leping jääb alles ja märgitakse asendatuks.");
+    for (const line of lines.slice(0, -1)) expect(line).toMatch(/^(\d+ aktiivset õpilast peavad|1 aktiivne õpilane peab) selle järgmisel sisselogimisel uuesti kinnitama\.$/);
+    const ecourseAnswer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/admin/oigustekst/course_terms/avalda");
+    await ecoursePanel.getByRole("button", { name: "Jah, avalda", exact: true }).click();
+    expect((await ecourseAnswer).status()).toBe(200);
+    await expect(ecourse.locator("[data-legal-said]")).toHaveText("Uus e-koolituse leping on avaldatud.");
+    const after = await one((sql) => sql<{ title: { et: string }; body: unknown; v: string | null }[]>`select title, body, (select value #>> '{}' from settings where key = 'courseTermsVersion') as v from pages where key = 'course_terms'`);
     expect(after.title.et).toBe("E2E E-koolituse leping");
     expect(after.body).toEqual(before.body);
+    expect(after.v).not.toBe(before.v);
   });
 
-  test("the privacy page in two paragraphs, text typed during a save is kept; the admin addresses are shown, not editable", async ({ page, context, visitorIp }, info) => {
-    test.skip(!phone(info), "the phone project changes the privacy page; desktop the contact settings");
+  test("on a phone (Part 4): the privacy text opens full screen with „Muuda teksti“ and types into its draft only; „Avalda uus tekst“ asks and publishes it in two paragraphs; the admin addresses are shown, not editable", async ({ page, context, visitorIp }, info) => {
+    test.skip(!phone(info), "the phone project changes the privacy page; desktop the contracts");
     await changing(["pages", { column: "key", value: "privacy" }]);
+    undo.push(await holdLegalDraft("privacy"));
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
     const admins = page.locator("[data-admin-emails] li");
     await expect(admins).toHaveText(LOCAL_ADMINS);
     await expect(page.locator("[data-admin-emails] input")).toHaveCount(0);
-    const privacy = page.locator('[data-legal-editor="privacy"]');
-    const body = privacy.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
-    await body.fill("E2E privaatsus, esimene lõik.\n\nTeine lõik.");
-    expect(await noOverflow(page)).toBe(true);
 
-    // typing on while the save is on its way (slowed down here): the newer text stays on screen, unsaved, and the next
-    // "Salvesta" stores it (with the version the first save made: not stale)
-    const slow = async (route: Route) => {
-      if (route.request().method() === "POST") await new Promise((r) => setTimeout(r, 1500));
-      await route.continue();
-    };
-    await page.route("**/admin/seaded", slow);
-    await saveBarButton(page).click();
-    await expect(saveBarStatus(page)).toHaveText("Salvestan…");
-    await body.focus();
-    await page.keyboard.press("Control+End");
-    await page.keyboard.type(" Lisa.");
-    await expect(saveBarStatus(page)).toHaveText("Salvestamata muudatused", { timeout: 15_000 });
-    await expect(body).toHaveValue("E2E privaatsus, esimene lõik.\n\nTeine lõik. Lisa.");
+    const TEXT = "E2E privaatsus, esimene lõik.\n\nTeine lõik.";
     const stored = () => one((sql) => sql<{ body: { et: string } }[]>`select body from pages where key = 'privacy'`);
-    expect((await stored()).body.et).toBe("E2E privaatsus, esimene lõik.\n\nTeine lõik."); // what was sent
-    await page.unroute("**/admin/seaded", slow);
-    await legalSave(page);
-    expect((await stored()).body.et).toBe("E2E privaatsus, esimene lõik.\n\nTeine lõik. Lisa.");
+    const live = (await stored()).body.et;
+    const card = page.locator('[data-legal-editor="privacy"]');
+    await expect(card.getByText("Pikk tekst avaneb täisekraanil.")).toBeVisible();
+    await expect(card.getByRole("textbox")).toHaveCount(0); // (the fields open full screen)
+    expect(await noOverflow(page)).toBe(true);
+    const open = card.getByRole("link", { name: "Muuda teksti", exact: true });
+    expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await open.click();
+    await expect(page).toHaveURL(/\/admin\/seaded\?tekst=privacy$/);
+    const drawer = page.getByRole("dialog", { name: "Privaatsus" });
+    await expect(drawer).toBeVisible();
+    const body = drawer.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
+    await body.fill(TEXT);
+    expect(await drawer.evaluate((d) => d.scrollWidth <= d.clientWidth)).toBe(true);
+    await drawer.getByRole("button", { name: "Sulge" }).click();
+    await expect(drawer).toBeHidden();
+    await expect(page).toHaveURL(/\/admin\/seaded$/);
+    await expect.poll(async () => (await legalDraftOf("privacy"))?.value.body.et, { timeout: 15_000 }).toBe(TEXT);
+    expect((await stored()).body.et).toBe(live); // nothing live by typing
+    await expect(card.locator("[data-tag-short]")).toHaveText("Avaldamata");
+    await expect(card.locator("[data-tag-long]")).toBeHidden();
+
+    // „Avalda uus tekst“ (S3-P3-k): the question, the line, „Jah, avalda“
+    await card.getByRole("button", { name: "Avalda uus tekst", exact: true }).click();
+    const panel = card.locator("[data-confirm-panel]");
+    await expect(panel.locator("p").first()).toHaveText("Kas avaldan lehe „Privaatsus“ uue teksti?");
+    await expect(panel.locator("li")).toHaveText(["Uus tekst on avalikul lehel kohe näha."]);
+    expect(await noOverflow(page)).toBe(true);
+    const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/admin/oigustekst/privacy/avalda");
+    await panel.getByRole("button", { name: "Jah, avalda", exact: true }).click();
+    expect((await answer).status()).toBe(200);
+    await expect(card.locator("[data-legal-said]")).toHaveText("Uus tekst on avaldatud.");
+    expect((await stored()).body.et).toBe(TEXT);
+    expect(await legalDraftOf("privacy")).toBeNull();
 
     await page.goto("/privaatsus");
-    await expect(page.locator("[data-legal-body] p")).toHaveText(["E2E privaatsus, esimene lõik.", "Teine lõik. Lisa."]);
+    await expect(page.locator("[data-legal-body] p")).toHaveText(["E2E privaatsus, esimene lõik.", "Teine lõik."]);
   });
 });
 

@@ -1,62 +1,147 @@
-/* Seaded → „Lepingud“ (contracts Task 5, spec D2): a card in the section „Lepingud ja tingimused“ (admin UX pass piece 3b, Task 4), the contact
-   contract's two texts and the sample under them. Every control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → „Lepingud ja tingimused“ (admin UX pass piece 3b, Task 5; README B4; the Part 3 frame „B4 Seaded“ and the Part 4 phone frame): the four
+   legal texts' cards, 16 px apart as drawn; in each the title with the tag „Avaldamata muudatus“ (#e9e1e5 on #6b4f5c, ui.warn) beside it, the fields, the
+   placeholder chips under a contract's text, the button and its ConfirmPanel, the sample. At 640 px and below a card shows the Part 4 face instead of
+   its fields: „Pikk tekst avaneb täisekraanil.“ and „Muuda teksti“ (the drawer holds the fields), and the tag's short word. Every control is the
+   admin's 44 px one; colours from tokens.css only. */
+
+.cards {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
 
 .card {
   min-width: 0;
 }
 
-.group {
-  display: grid;
-  gap: 22px;
-  min-width: 0;
-}
-
-.group h3 {
-  margin: 0;
-}
-
-/* the placeholders and what fills each, as a quiet box under the text */
-.placeholders {
-  display: grid;
-  gap: 8px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--canvas);
-}
-
-.placeholders p {
-  margin: 0;
-}
-
-.placeholders ul {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
-}
-
-.placeholders code {
-  font-family: inherit;
-  font-weight: 600;
-}
-
-.actions {
+.head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 18px;
-  margin-top: 22px;
+  gap: 8px 12px;
+  margin-bottom: 10px;
 }
 
-.actions p[role="status"] {
-  flex: 1 1 260px;
+/* the title takes the room and the tag stands at the card's right, as drawn; the page link after it */
+.head h2 {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+.tag {
+  flex: none;
+}
+
+.short {
+  display: none;
+}
+
+.view {
+  flex: none;
+}
+
+.field {
+  min-width: 0;
+}
+
+/* the placeholders: the lead, then the chips „+ nimi“ … in one wrapping row (drawn 6 px apart) */
+.chips {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chips p {
   margin: 0;
 }
 
-/* the sample's own form: a form cannot sit inside the save form, so it follows it */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: #fff;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--canvas);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.chip[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* in the phone's drawer the chips stay at the foot of the screen while the text scrolls (the 💬 bubble lifts above them: data-fab-avoid) */
+.stickyChips {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.restore {
+  margin: 18px 0 0;
+}
+
+/* the button, or its ConfirmPanel in its place, and the line under it */
+.publish {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin-top: 22px;
+}
+
+.publish > [data-confirm-panel] {
+  justify-self: stretch;
+}
+
+.said {
+  margin: 0;
+}
+
+.said:empty {
+  display: none;
+}
+
+.said:focus {
+  outline: none;
+}
+
+.said:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the phone's face of a card (Part 4): hidden on wider screens */
+.phone {
+  display: none;
+}
+
+.phoneHint {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* the sample's own form, after the card's controls */
 .sample {
   display: grid;
   gap: 8px;
@@ -74,8 +159,46 @@
   gap: 8px;
 }
 
+/* the full-screen editor (the shared drawer): the title clear of the ✕, the language switch, the fields */
+.drawer {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.drawerTitle {
+  margin: 0;
+  padding-right: 56px;
+}
+
 @media (max-width: 640px) {
-  .actions button {
+  .inline {
+    display: none;
+  }
+
+  .phone {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .open {
+    width: 100%;
+  }
+
+  .long {
+    display: none;
+  }
+
+  .short {
+    display: inline;
+  }
+
+  .publish > button {
+    width: 100%;
+  }
+
+  .sampleButtons button {
     flex: 1 1 100%;
   }
 }

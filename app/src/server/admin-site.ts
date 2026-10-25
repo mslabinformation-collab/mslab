@@ -132,6 +132,14 @@ function payload(formData: FormData): z.infer<typeof payloadSchema> | null {
 export async function saveParts(db: Db, parts: Parts, formData: FormData): Promise<EditResult> {
   const sent = payload(formData);
   if (!sent) return { ok: false, error: "invalid" };
+  return saveSent(db, parts, sent);
+}
+
+/**
+ * saveParts' work on the parts as sent: every part checked, then one transaction — the tables locked, each stored version compared, the writes. `db`
+ * may be a caller's open transaction: the save is then a savepoint of it (the legal texts' publish, server/legal-drafts.ts).
+ */
+async function saveSent(db: Q, parts: Parts, sent: z.infer<typeof payloadSchema>): Promise<EditResult> {
   const c = new Check();
   const writes: { name: string; def: Part<unknown>; version: string; write: Write }[] = [];
   for (const [name, p] of Object.entries(sent.parts)) {
@@ -145,7 +153,7 @@ export async function saveParts(db: Db, parts: Parts, formData: FormData): Promi
   if (!c.ok) return invalid(c.errors);
   if (writes.length === 0) return { ok: true, id: 0, saved: { values: {}, versions: {} } };
 
-  const outcome = await db.transaction(async (tx) => {
+  const outcome = await (db as Db).transaction(async (tx) => {
     await lockTables(tx, writes.flatMap((w) => w.def.tables));
     const stored = await Promise.all(writes.map((w) => w.def.read(tx)));
     for (const [i, w] of writes.entries()) if ((await contentVersion(stored[i])) !== w.version) return "stale" as const;
@@ -417,9 +425,6 @@ export type SettingsValues = {
   contact: ContactDraft;
   newsletter: NewsletterDraft;
   prepayment: PrepaymentDraft;
-  privacy: PageDraft;
-  terms: PageDraft;
-  course_terms: { title: I18n; body: I18n };
 };
 
 /**
@@ -514,11 +519,13 @@ export async function writeSettingsPart(db: Db, part: SettingsPart, patch: unkno
   });
 }
 
-// The legal pages and the e-course contract keep their own „Salvesta“ (the SaveBar of their section) until their drafts (piece 3b, Task 5).
+// The legal pages and the e-course contract (Seaded → „Lepingud ja tingimused“): since piece 3b, Task 5 their cards type into drafts
+// (server/legal-drafts.ts) and „Avalda uus tekst“ / „Avalda uus leping“ writes a draft live through these parts, unchanged: their checks, their
+// lock, the e-course version's bump (saveLegalParts below).
 const legalParts: Parts = {
   privacy: pagePart("privacy", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
   terms: pagePart("terms", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
-  // "E-koolituse leping (tingimused)": what a student accepts in the cart before buying and at the terms gate of a course opened without a purchase
+  // „E-koolituse leping“: what a student accepts in the cart before buying and at the terms gate of a course opened without a purchase
   // (account-only, no public page): the e-course contract (contracts, D2). Its title is the contract's (ruling R3: Maria's page title as she writes it;
   // the card suggests „E-koolituse leping“) and its text the contract's body. A page that sends the text alone (open since before the title was
   // editable) keeps the stored title. A changed text or title and the new version (settings courseTermsVersion = the save time) are written in
@@ -545,11 +552,23 @@ const legalParts: Parts = {
   }),
 };
 
-/** The page's read: every part of Seaded with its version (the autosaved ones' are their routes' versions). */
-export const loadSettings = async (q: Q) =>
-  (await loadParts(q, { ...Object.fromEntries(SETTINGS_PARTS.map((p) => [p, settingsRead(p)])), ...legalParts })) as SavedParts & { values: SettingsValues };
-/** The legal texts' „Salvesta“: field data ({ parts: privacy | terms | course_terms }); any other part is refused (it autosaves on its route). */
-export const saveSettingsForm = (db: Db, formData: FormData) => saveParts(db, legalParts, formData);
+/** The page's read: Seaded's autosaved parts with their versions (their routes' versions). The legal texts are read with their drafts (legal-drafts.ts). */
+export const loadSettings = async (q: Q) => (await loadParts(q, Object.fromEntries(SETTINGS_PARTS.map((p) => [p, settingsRead(p)])))) as SavedParts & { values: SettingsValues };
+
+/** The legal parts' names: Privaatsus, Õppetingimused and E-koolituse leping (the contact contract has its own writer, contracts.ts saveContractTexts). */
+export type LegalPart = "privacy" | "terms" | "course_terms";
+export type LegalValues = { privacy: PageDraft; terms: PageDraft; course_terms: { title: I18n; body: I18n } };
+
+/** The legal parts as stored, each with the version its writer compares (the hash of the stored page row). */
+export const loadLegalParts = async (q: Q, only?: LegalPart[]) => (await loadParts(q, legalParts, only)) as SavedParts & { values: LegalValues };
+
+/**
+ * The legal parts' writer (what their „Salvesta“ was, unchanged): `sent` is each part's `{ version, value }` — the version the value was made from —,
+ * any other part is refused as invalid. Every part checked (the refusals by `<part>.<field>`), then the pages (and for the e-course text the settings)
+ * locked, each stored version compared (`stale`: nothing written), the writes; a changed e-course title or text moves `courseTermsVersion` in the same
+ * transaction, the same text keeps it. `q` may be a caller's transaction (publishLegal: a savepoint of it).
+ */
+export const saveLegalParts = (q: Q, sent: Partial<Record<LegalPart, { version: string; value: unknown }>>) => saveSent(q, legalParts, { parts: sent as Record<string, { version: string; value: unknown }> });
 
 // ---------- Uudised: posts ----------
 

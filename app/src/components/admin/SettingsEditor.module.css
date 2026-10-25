@@ -43,17 +43,6 @@
   height: 0;
 }
 
-/* the legal texts' form: their cards one under another, the save bar at its foot */
-.legal {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.legal [data-save-bar] {
-  margin-top: 0;
-}
-
 /* after a conflict: „Taasta minu tekst“ at the foot of the card */
 .restore {
   margin: 18px 0 0;

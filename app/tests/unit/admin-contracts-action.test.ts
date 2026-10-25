@@ -1,15 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { adminEt } from "@/i18n/dict/admin";
 
-// Maria's contract actions (server/actions/admin-contracts.ts, contracts Task 5; spec D2, D4, D7, rulings R1 and R9): the work is in
-// server/contracts.ts (tests/db/contracts.test.ts, tests/db/admin-contracts-actions.test.ts). Here: what each action passes on (the ids and the texts as
-// typed), what it answers, that every refusal comes back in an Estonian text of `adminEt.contracts.errors` and never as a code alone, that every success
-// refreshes the page (and a saved text revalidates the course pages), that the ask's mail is best effort, and that a throw is logged by its id and the
-// error's class only.
+// Maria's contract actions (server/actions/admin-contracts.ts, contracts Task 5; spec D4, D7, rulings R1 and R9; the contact text's „Salvesta lepingud“
+// went with admin UX pass piece 3b, Task 5: its draft is published on its route, tests/db/legal-drafts.test.ts): the work is in server/contracts.ts
+// (tests/db/contracts.test.ts, tests/db/admin-contracts-actions.test.ts). Here: what each action passes on (the ids), what it answers, that every refusal
+// comes back in an Estonian text of `adminEt.contracts.errors` and never as a code alone, that every success refreshes the page, that the ask's mail is
+// best effort, and that a throw is logged by its id and the error's class only.
 
 const work = vi.hoisted(() => ({
-  saveContractTexts: vi.fn(),
-  contractCard: vi.fn(),
   requestContract: vi.fn(),
   mailContractRequest: vi.fn(),
   contractForAdmin: vi.fn(),
@@ -32,7 +30,6 @@ const E = adminEt.contracts.errors;
 
 /** The send deps (server/send-deps.ts adminSendDeps) of a deployment with Resend set up. */
 const SENDING = { db: {}, env: { RESEND_API_KEY: "re_test" }, siteUrl: "https://mslab.example", now: new Date("2026-10-17T09:00:00Z"), later: vi.fn() };
-const TEXTS = { title: { et: "Kontaktkoolituse leping", ru: "Договор" }, body: { et: "Tekst.", ru: "Текст." } };
 
 beforeEach(() => {
   for (const fn of [...Object.values(work), cache.refresh, pub.revalidatePublic, deps.adminSendDeps]) fn.mockReset();
@@ -42,45 +39,6 @@ beforeEach(() => {
 
 const refreshed = (times = 1) => expect(cache.refresh).toHaveBeenCalledTimes(times);
 const logged = () => vi.mocked(console.error).mock.calls.flat().join("\n");
-
-describe("saveContractTextsAction: Seaded → Lepingud → „Salvesta lepingud“", () => {
-  test("the texts as typed go on; saved: the card as stored comes back, the course pages are revalidated through the settings' path, the page refreshes", async () => {
-    const card = { title: { et: "Kontaktkoolituse leping", ru: "Договор" }, body: { et: "Tekst.", ru: "Текст." } };
-    work.saveContractTexts.mockResolvedValue({ ok: true });
-    work.contractCard.mockResolvedValue(card);
-    expect(await actions.saveContractTextsAction(TEXTS)).toEqual({ ok: true, card });
-    const [db, raw, now] = work.saveContractTexts.mock.calls[0];
-    expect([db, raw]).toEqual([{ marker: "db" }, TEXTS]);
-    expect(now).toBeInstanceOf(Date);
-    // the part is named: server/cache-targets.ts maps "contract_contact" to the course pages (the form refuses a stale version and refreshes)
-    expect(pub.revalidatePublic).toHaveBeenCalledTimes(1);
-    expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "settings", parts: ["contract_contact"] });
-    refreshed();
-  });
-
-  test("a refused field comes back by name, nothing is revalidated and the page is not refreshed", async () => {
-    work.saveContractTexts.mockResolvedValue({ ok: false, fields: { title: "required", body: "tooLong" } });
-    expect(await actions.saveContractTextsAction(TEXTS)).toEqual({ ok: false, fields: { title: "required", body: "tooLong" } });
-    expect(work.contractCard).not.toHaveBeenCalled();
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-    expect(cache.refresh).not.toHaveBeenCalled();
-  });
-
-  test("anything that is not the card's shape is the work's `form: invalid`, passed on as it is", async () => {
-    work.saveContractTexts.mockResolvedValue({ ok: false, fields: { form: "invalid" } });
-    expect(await actions.saveContractTextsAction("not an object")).toEqual({ ok: false, fields: { form: "invalid" } });
-    expect(work.saveContractTexts.mock.calls[0][1]).toBe("not an object");
-  });
-
-  test("a throw is `server`, logged by its label and the class only (never a text), and nothing is revalidated", async () => {
-    work.saveContractTexts.mockRejectedValue(new TypeError("boom: Tere, kati@example.test"));
-    expect(await actions.saveContractTextsAction(TEXTS)).toEqual({ ok: false, error: "server" });
-    expect(logged()).toContain("[contracts] the texts' save failed: TypeError");
-    expect(logged()).not.toContain("kati");
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-    expect(cache.refresh).not.toHaveBeenCalled();
-  });
-});
 
 describe("requestContractAction: „Saada leping kinnitamiseks“", () => {
   test("the registration goes on; asked: the student is mailed (ruling R9) and the answer says so; the page refreshes", async () => {

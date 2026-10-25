@@ -4,6 +4,7 @@ import { join, relative, sep } from "node:path";
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PlaceholderChips } from "@/components/admin/ContractTexts";
 import { PublishBar } from "@/components/admin/PublishBar";
 import { SaveBar } from "@/components/admin/SaveBar";
 import { UndoProvider, useUndo } from "@/components/admin/UndoBar";
@@ -72,6 +73,14 @@ describe("the admin's bars are marked data-fab-avoid", () => {
     expect(source).toMatch(/className=\{styles\.dock\} data-assess-dock="" data-fab-avoid="">/);
   });
 
+  it("the legal texts' placeholder chips in the phone's full-screen editor (sticky at its foot; piece 3b, Task 5), and not the card's own row", async () => {
+    await act(async () =>
+      root.render(createElement("div", null, createElement(PlaceholderChips, { onInsert: () => {}, sticky: true }), createElement(PlaceholderChips, { onInsert: () => {} }))),
+    );
+    const rows = Array.from(document.querySelectorAll("[data-placeholder-chips]"));
+    expect(rows.map((r) => r.hasAttribute("data-fab-avoid"))).toEqual([true, false]);
+  });
+
   it("the phone's top bar is not marked (it is at the top: the mark would do nothing)", () => {
     const source = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.tsx"), "utf8");
     expect(source).toContain("<header className={styles.bar}>");
@@ -114,9 +123,10 @@ describe("a bar fixed or sticky at the bottom of the screen is known", () => {
     expect(names.some((n) => n.startsWith("app/admin/") && n.endsWith(".css"))).toBe(true);
   });
 
-  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar and the practical work's send bar: each marked above; a new one is to be marked too", () => {
+  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar, the practical work's send bar and the legal texts' chips in the phone's drawer: each marked above; a new one is to be marked too", () => {
     expect(bottomBars()).toEqual([
       "components/admin/Assessment.module.css .dock",
+      "components/admin/ContractTexts.module.css .stickyChips",
       "components/admin/PublishBar.module.css .bar",
       "components/admin/UndoBar.module.css .region",
       "components/admin/site-editor.module.css .saveBar",

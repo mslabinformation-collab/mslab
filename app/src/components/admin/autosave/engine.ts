@@ -24,7 +24,8 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
 //   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
 // - adopt(name, value): the page read again holds another value for a field nobody typed in (a server rule moved it, piece 3b): it becomes the
-//   field's confirmed text, nothing is sent.
+//   field's confirmed text, nothing is sent;
+// - confirmedVersion(): the server's version as the form last heard it, which a publish of the part goes from (piece 3b, the legal texts).
 // Old iPads run it: no regex lookbehind, no crypto.randomUUID (tests/unit/old-safari.test.ts). The server's side is server/autosave-route.ts.
 
 export { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
@@ -292,6 +293,14 @@ export class AutosaveEngine {
     if (this.uncertain()) this.keep();
     this.refresh();
     return true;
+  }
+
+  /**
+   * The server's version of the part as this form last heard it (piece 3b, Task 5): what a publish of the part goes from. „Avalda uus leping“ sends it
+   * after a flush that confirmed the form's text (flush() true), so it is the version of the very text on the screen.
+   */
+  confirmedVersion(): string {
+    return this.version;
   }
 
   /** For useSyncExternalStore: told after every change. */

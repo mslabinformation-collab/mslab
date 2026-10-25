@@ -57,6 +57,11 @@
   color: var(--warn);
 }
 
+/* „1 avaldamata“ (Seaded's legal texts waiting for their publish), in the same #6b4f5c */
+.status [data-unpublished] {
+  color: var(--warn);
+}
+
 /* The select: the real one lies over the box, invisible, and carries the tap (iOS opens its own list); the face under it shows the choice. */
 .select {
   position: relative;

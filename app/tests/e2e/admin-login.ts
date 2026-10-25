@@ -122,9 +122,9 @@ export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
 }
 
 /**
- * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is. On
- * Seaded (admin UX pass piece 3b, Task 4) only the legal texts have one, at the foot of their form in „Lepingud ja tingimused“ (the contact
- * contract's card keeps its own „Salvesta lepingud“); every other card autosaves (seadedAutosave).
+ * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is (the
+ * editors of piece 4: Avaleht, Praktika, Koolitaja, Uudised, Hüpikaken). Seaded has none since admin UX pass piece 3b: its cards autosave
+ * (seadedAutosave) and its legal texts type into drafts (legalDraftSave) published by „Avalda uus leping“ / „Avalda uus tekst“.
  */
 export const saveBarButton = (page: Page): Locator => page.locator("[data-save-bar]").getByRole("button", { name: "Salvesta", exact: true });
 
@@ -141,5 +141,26 @@ export const seadedStatus = (page: Page): Locator => page.locator("[data-seaded-
 export async function seadedAutosave(page: Page, part: string, act: () => Promise<unknown>) {
   const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === `/api/admin/seaded/${part}`, { timeout: 30_000 });
   await act();
+  return answer;
+}
+
+/**
+ * A Seaded legal text's draft save (piece 3b, Task 5): runs `act` (a field typed and left) and waits for the save it makes on
+ * api/admin/oigustekst/<key> — its answer, whose status the caller checks. Nothing goes live by it.
+ */
+export async function legalDraftSave(page: Page, key: string, act: () => Promise<unknown>) {
+  const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === `/api/admin/oigustekst/${key}`, { timeout: 30_000 });
+  await act();
+  return answer;
+}
+
+/**
+ * „Avalda uus leping“ / „Avalda uus tekst“ of a Seaded legal card (piece 3b, Task 5): the button, then „Jah, avalda“ in its ConfirmPanel, and the
+ * publish's answer on api/admin/oigustekst/<key>/avalda. `card` is the card's locator (`[data-legal-editor="<key>"]`).
+ */
+export async function publishLegalText(page: Page, card: Locator, key: string, button: "Avalda uus leping" | "Avalda uus tekst") {
+  await card.getByRole("button", { name: button, exact: true }).click();
+  const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === `/api/admin/oigustekst/${key}/avalda`, { timeout: 30_000 });
+  await card.locator("[data-confirm-panel]").getByRole("button", { name: "Jah, avalda", exact: true }).click();
   return answer;
 }

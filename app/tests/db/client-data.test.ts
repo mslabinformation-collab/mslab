@@ -11,7 +11,7 @@ import {
   setFavourite, setNewsletter, updateProfile,
 } from "@/server/client-data";
 import { issueClientLogin, redeemClientCode, redeemClientLink } from "@/server/client-auth";
-import { loadSettings, saveSettingsForm } from "@/server/admin-site";
+import { loadLegalParts, saveLegalParts } from "@/server/admin-site";
 import { addModules, makeTestDb } from "./helpers";
 
 // What a client sees and may change (server/client-data.ts) against a real (PGlite) database. Every address is `@example.test`.
@@ -537,10 +537,9 @@ describe("e-course and terms", () => {
     await grant(kati.id, f.online.id);
     await db.delete(pages);
     expect((await loadEcourse(db, kati.id, "veebikursus", NOW))!.terms.accepted).toBe(true);
-    const s = await loadSettings(db);
-    const fd = new FormData();
-    fd.set("data", JSON.stringify({ parts: { course_terms: { version: s.versions.course_terms, value: { body: { et: "Esimesed tingimused." } } } } }));
-    expect(await saveSettingsForm(db, fd)).toMatchObject({ ok: true });
+    // (the e-course text's writer, which its publish in Seaded calls: admin UX pass piece 3b, Task 5, server/legal-drafts.ts)
+    const s = await loadLegalParts(db);
+    expect(await saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { body: { et: "Esimesed tingimused." } } } })).toMatchObject({ ok: true });
     const view = (await loadEcourse(db, kati.id, "veebikursus", NOW))!;
     expect(view.terms).toEqual({ version: await courseTermsVersion(db), accepted: false, text: gate({ et: "Esimesed tingimused." }), askName: null });
     expect(view.terms.version).not.toBe("1");
@@ -612,10 +611,8 @@ describe("e-course and terms", () => {
     const kati = await named();
     await grant(kati.id, f.online.id);
     const save = async (et: string) => {
-      const s = await loadSettings(db);
-      const fd = new FormData();
-      fd.set("data", JSON.stringify({ parts: { course_terms: { version: s.versions.course_terms, value: { body: { et } } } } }));
-      return saveSettingsForm(db, fd);
+      const s = await loadLegalParts(db);
+      return saveLegalParts(db, { course_terms: { version: s.versions.course_terms, value: { body: { et } } } });
     };
     expect(await acceptTerms(db, kati.id, "veebikursus", "1", NOW)).toBe("accepted");
     expect((await loadEcourse(db, kati.id, "veebikursus", NOW))!.terms).toMatchObject({ version: "1", accepted: true, text: null });

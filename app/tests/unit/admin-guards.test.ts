@@ -113,6 +113,9 @@ describe("admin guards are inherited by every admin entry point", () => {
         "server/actions/admin-invoices.ts",
         // admin UX pass piece 3b, Task 4: every Seaded card autosaves on its part's route (the financing toggle's action is gone with its „Salvesta“)
         "app/api/admin/seaded/[part]/route.ts",
+        // piece 3b, Task 5: a legal text's draft autosave and its „Avalda uus leping“ / „Avalda uus tekst“
+        "app/api/admin/oigustekst/[key]/route.ts",
+        "app/api/admin/oigustekst/[key]/avalda/route.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -137,6 +140,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/moodul/[id]/route.ts", "app/api/admin/oppetund/[id]/route.ts",
         // piece 3b, Task 4: a Seaded card's autosave
         "app/api/admin/seaded/[part]/route.ts",
+        // piece 3b, Task 5: a legal text's draft and its publish
+        "app/api/admin/oigustekst/[key]/route.ts", "app/api/admin/oigustekst/[key]/avalda/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
@@ -159,8 +164,15 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(siteExports).toEqual(["saveHome", "savePractice", "saveTrainer", "saveCampaign", "saveSettings", "savePost", "deletePost"]);
+    // admin UX pass piece 3b, Task 5: Seaded's legal texts' „Salvesta“ (saveSettings) is gone: they type into drafts (api/admin/oigustekst/<key>)
+    expect(siteExports).toEqual(["saveHome", "savePractice", "saveTrainer", "saveCampaign", "savePost", "deletePost"]);
     expect(violations(site.path, site.source)).toEqual([]);
+    // the contracts' actions: the contact text's „Salvesta lepingud“ (saveContractTextsAction) is gone with it (its draft is published on its route)
+    const contractActions = files().find((f) => f.path === "server/actions/admin-contracts.ts")!;
+    const contractExports = [...strip(contractActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(contractExports).toEqual(["requestContractAction", "sendContractCopyAction"]);
+    expect(violations(contractActions.path, contractActions.source)).toEqual([]);
+    expect([...strip(contractActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(contractExports);
     const clients = files().find((f) => f.path === "server/actions/admin-clients.ts")!;
     const clientExports = [...strip(clients.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
     expect(clientExports).toEqual(["addStudent", "grantCourseAccess", "revokeCourseAccess", "unlockNextLesson", "extendAccessAction"]);

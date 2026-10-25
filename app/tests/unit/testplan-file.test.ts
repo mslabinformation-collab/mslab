@@ -258,6 +258,30 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(expectText("konto-leping-kaardil")).toContain("uusimas kirjas „MS LAB leping“");
   });
 
+  test("admin UX pass piece 3b, Task 5: the legal texts are published, never saved — the checks press „Avalda uus leping“ / „Avalda uus tekst“, and their marks say what changed", () => {
+    expect(item("haldus-seaded-lepingud")).toMatchObject({ mark: "redo", title: "Seaded: kontaktkoolituse leping" });
+    expect(item("haldus-seaded-tingimused")).toMatchObject({ mark: "redo", title: "Seaded: e-koolituse leping" });
+    expect(item("haldus-seaded-naidisleping").mark).toBe("redo"); // (a reload shows the draft now: its last expectation changed)
+    for (const id of ["ekursus-tingimused-leping", "registreerimine-leping-muutunud"]) expect(item(id).mark, id).toBe("reworded");
+    for (const id of ["haldus-seaded-lepingud", "haldus-seaded-tingimused", "haldus-seaded-naidisleping", "ekursus-tingimused-leping", "registreerimine-leping-muutunud", "haldus-seaded-privaatsus-avalda"])
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    expect(item("registreerimine-leping-muutunud").steps.join("\n")).toContain("„Avalda uus leping“");
+    expect(item("haldus-seaded-lepingud").steps.join("\n")).toContain("„Avalda uus leping“");
+    expect(item("haldus-seaded-tingimused").steps.join("\n")).toContain("„Jah, avalda“");
+    // the new check: the privacy text on a phone, „Muuda teksti“, published with „Avalda uus tekst“
+    const privacy = item("haldus-seaded-privaatsus-avalda");
+    expect(privacy).toMatchObject({ area: "haldus", who: "maria", device: "telefon", mark: "new", href: "/admin/seaded" });
+    for (const words of ["„Muuda teksti“", "„Avalda uus tekst“", "„Jah, avalda“", "/privaatsus"]) expect(privacy.steps.join("\n"), words).toContain(words);
+    for (const words of ["„Pikk tekst avaneb täisekraanil.“", "„Avaldamata“", "„Uus tekst on avaldatud.“"]) expect(privacy.expect.join("\n"), words).toContain(words);
+    // the old words of the legal texts' save are gone from every check
+    const all = plan.items.flatMap((i) => [i.title, ...i.steps, ...i.expect]);
+    for (const old of ["„Salvesta lepingud“", "„Lepingud on salvestatud.“", "„E-koolituse leping (tingimused)“", "kaardini „Lepingud“", "kaardil „Lepingud“"])
+      expect(all.filter((line) => line.includes(old)), old).toEqual([]);
+    // and no check of a legal text tells her to save it
+    for (const id of ["haldus-seaded-lepingud", "haldus-seaded-tingimused", "haldus-seaded-naidisleping", "registreerimine-leping-muutunud", "haldus-seaded-privaatsus-avalda"])
+      expect(item(id).steps.filter((step) => /salvesta/i.test(step)), id).toEqual([]);
+  });
+
   test("the transient sentence after „Kinnitan“ is worded as seen for a moment, then the line the card goes to", () => {
     for (const id of ["konto-leping-kinnita", "konto-leping-vene-keeles"]) {
       const line = item(id).expect.find((l) => l.includes("kinnitatud.“") || l.includes("подтверждён.“"));
@@ -677,12 +701,17 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
   });
 
   test("the checks that switched a field's language by its own pills name the page's „Sisu keel“ now, and are reworded (no answer reopens)", () => {
-    for (const id of ["haldus-ru-tekst", "haldus-seaded-lepingud", "haldus-seaded-naidisleping", "avalik-uudiskiri-kampaania"]) {
+    for (const id of ["haldus-ru-tekst", "avalik-uudiskiri-kampaania"]) {
       const check = find(id);
       expect(check.mark, id).toBe("reworded");
       expect(markedSince(check.markedAt), id).toBe(true);
       expect(find(id).steps.join("\n"), id).toContain(`„${t.contentLang}“`);
       expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).toBeNull();
+    }
+    // the two contract cards' checks were rewritten since (admin UX pass piece 3b, Task 5: drafts and „Avalda uus leping“): redo, and still „Sisu keel“
+    for (const id of ["haldus-seaded-lepingud", "haldus-seaded-naidisleping"]) {
+      expect(find(id).mark, id).toBe("redo");
+      expect(find(id).steps.join("\n"), id).toContain(`„${t.contentLang}“`);
     }
     // no check sends her to a switch on a field any more
     expect(plan.items.flatMap((i) => i.steps).filter((s) => /välja „[^“]+“ juures „RU“/.test(s))).toEqual([]);
@@ -972,13 +1001,15 @@ describe("the review tools' checks (22.10)", () => {
     expect(expectText).toContain("Teine proov");
   });
 
-  test("a check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“", () => {
+  test("a check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“ on Avaleht", () => {
     const check = find("haldus-kommentaar-nupp");
-    // (reworded in admin UX pass piece 3b, Task 4: Seaded's one save bar is the legal texts', so the check scrolls to their section, not the page's end)
+    // (reworded in admin UX pass piece 3b: Seaded has no save bar since Task 5 — its legal texts are drafts with their own „Avalda …“ —, so the check
+    // looks at the save bar of Avaleht, an editor that keeps one)
     expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "reworded" });
     expect(markedSince(check.markedAt)).toBe(true);
     expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
-    expect(check.steps.join(" ")).toContain("jaotiseni „Lepingud ja tingimused“");
+    expect(check.steps.join(" ")).toContain("Ava halduses „Avaleht“ ja vaata lehe allservas nuppu „Salvesta“.");
+    expect(check.steps.join(" ")).not.toContain("„Lepingud ja tingimused“");
     expect(check.steps.join(" ")).not.toContain("lõppu");
     const text = whole("haldus-kommentaar-nupp");
     for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);

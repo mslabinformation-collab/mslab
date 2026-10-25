@@ -424,7 +424,7 @@ export async function markContractSent(db: Db, id: number, now: Date): Promise<v
   await db.update(contracts).set({ sentAt: now }).where(eq(contracts.id, id));
 }
 
-// ---------- Seaded → Lepingud ----------
+// ---------- Seaded → Kontaktkoolituse leping (its writer; the card types into a draft, server/legal-drafts.ts) ----------
 
 /** The longest raw string taken before it is cleaned and checked against its limit: Seaded's parts cap every string at this (admin-site.ts `i18n`). */
 const RAW_MAX = 40_000;
@@ -436,21 +436,23 @@ const storable = (f: { et: string; ru?: string }): I18n => ({ et: toStorable(f.e
 const sameText = (a: I18n, b: I18n): boolean => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
 
 /**
- * Seaded → Lepingud „Salvesta“ (D2): the contact contract's title and text in both languages, `{ title: { et, ru? }, body: { et, ru? } }`, stored as
+ * The contact contract's writer (D2; since admin UX pass piece 3b, Task 5 the publish of its draft, „Avalda uus leping“: server/legal-drafts.ts, which
+ * calls it unchanged inside its own transaction — `db` is then that transaction and this one a savepoint of it): the title and text in both
+ * languages, `{ title: { et, ru? }, body: { et, ru? } }`, stored as
  * the page `contract_contact`. Both are texts of Maria's: trimmed, the Estonian one required (a Russian text without it is refused), within the
  * legal texts' limits (SITE_LIMITS.legalTitle, SITE_LIMITS.legal), a blank Russian one left out; the refusals name their field (`title`, `body`) with
  * the editors' codes ("required", "tooLong"), and anything that is not that shape, or a string past RAW_MAX, is `form: "invalid"`. Nothing is stored when a field is refused.
  * The version (`contractContactVersion`, as `courseTermsVersion` is the e-course text's) moves to the time of the save only when the text or the title
  * changed, in the same transaction as the page, and never to the version already stored: the same text again keeps it. A first save is a change.
  */
-export async function saveContractTexts(db: Db, raw: unknown, now: Date = new Date()): Promise<{ ok: true } | { ok: false; fields: Record<string, string> }> {
+export async function saveContractTexts(db: Q, raw: unknown, now: Date = new Date()): Promise<{ ok: true } | { ok: false; fields: Record<string, string> }> {
   const parsed = textsInput.safeParse(raw);
   if (!parsed.success) return { ok: false, fields: { form: "invalid" } };
   const c = new Check();
   const title = c.text("title", storable(parsed.data.title), SITE_LIMITS.legalTitle, { required: true });
   const body = c.text("body", storable(parsed.data.body), SITE_LIMITS.legal, { required: true });
   if (!c.ok || !title || !body) return { ok: false, fields: { ...c.errors } };
-  await db.transaction(async (tx) => {
+  await (db as Db).transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${SAVE_LOCK}))`);
     const [stored] = await tx.select().from(pages).where(eq(pages.key, CONTRACT_CONTACT_KEY)).limit(1);
     await upsertPage(tx, { key: CONTRACT_CONTACT_KEY, title, body });
@@ -458,21 +460,6 @@ export async function saveContractTexts(db: Db, raw: unknown, now: Date = new Da
     await setSetting(tx, CONTRACT_CONTACT_VERSION_KEY, nextTermsVersion(now, await readSetting(tx, CONTRACT_CONTACT_VERSION_KEY)));
   });
   return { ok: true };
-}
-
-/** Seaded → Lepingud as the card loads it: Maria's contact text, title and body in both languages (an empty text for a language she has not written). */
-export type ContractCard = { title: { et: string; ru: string }; body: { et: string; ru: string } };
-
-/**
- * The card „Lepingud“ of Seaded (Task 5): Maria's own contact contract as stored (the page `contract_contact`), empty before her first save. It
- * never shows the public „Õppetingimused“ text that stands in for hers until she writes it (D2): the card says so in words, and a text she did
- * not write is not one she saves by pressing „Salvesta“.
- */
-export async function contractCard(q: Q): Promise<ContractCard> {
-  const [row] = await q.select().from(pages).where(eq(pages.key, CONTRACT_CONTACT_KEY)).limit(1);
-  const title = textOf(row?.title);
-  const body = textOf(row?.body);
-  return { title: { et: title?.et ?? "", ru: title?.ru ?? "" }, body: { et: body?.et ?? "", ru: body?.ru ?? "" } };
 }
 
 // ---------- the PDF ----------
