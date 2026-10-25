@@ -6,16 +6,18 @@ import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/ListToolbar";
 import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
-import { SessionForm, type SessionValues } from "@/components/admin/SessionForm";
+import { NewSession, SessionDrawer } from "@/components/admin/SessionForm";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { listAdminSessions, listContactCourses, listSessionCities, sessionCounts, type AdminSessionRow, type SessionFilter } from "@/db/queries/admin";
-import { startOfDayTallinn, tallinnFormParts } from "@/domain/calendar";
+import { countSessionRegistrations, listAdminSessions, listContactCourses, listSessionCities, sessionCounts, type AdminSessionRow, type SessionFilter } from "@/db/queries/admin";
+import { startOfDayTallinn } from "@/domain/calendar";
+import type { SessionFields } from "@/domain/session-fields";
 import { seatsLeft } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatDayShortMonth, formatTime, formatWeekday } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
+import { readSession, type SessionValue } from "@/server/session-edit";
 import styles from "./calendar.module.css";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +26,8 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.calendar) };
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
+/** The drawer's fields of a stored session (server/session-edit.ts readSession's value without the status, which is not an autosaved field). */
+const fieldsOf = (v: SessionValue): SessionFields => ({ courseId: v.courseId, date: v.date, time: v.time, city: v.city, venue: v.venue, language: v.language, capacity: v.capacity });
 const parseId = (v: string | undefined) => (v && /^\d{1,10}$/.test(v) && Number(v) > 0 && Number(v) <= 2_147_483_647 ? Number(v) : null);
 
 // Addresses (README B3, piece 3b Task 1): ?aeg=moodunud (the past sessions; none: the upcoming ones), ?koolitus=<course id> and ?linn=<city> (the two
@@ -57,8 +61,9 @@ function stateTag(s: AdminSessionRow): { text: string; cls: string } {
  * Kalender (B3, the list; admin UX pass, piece 3b Task 1): the sessions of the contact courses, upcoming first (or the past ones), under ListToolbar's
  * course select, city select and the pills „Tulevased“ / „Möödunud“ with their counts (no search: the two selects are the filters). The table is the
  * shared list table and each row is a link as a whole (ListRows): the course is the real Link, a click anywhere else on the row is forwarded to it. A
- * row opens the session form in a drawer (?id=<n>), „Lisa toimumine +“ the empty one (?id=uus); a saved new session closes it and is highlighted
- * (?lisatud=<n>). Part 3 draws four columns (date and weekday | course and place | seats with a bar | state); below 760 px of the box (calendar.module.css
+ * row opens the session in a drawer (?id=<n>; components/admin/SessionForm.tsx SessionDrawer, which autosaves, piece 3b Task 3), „Lisa toimumine +“ a
+ * new one (?id=uus, NewSession): its „Lisa toimumine“ creates it and the drawer goes on at ?id=<n>&lisatud=<n>, the row highlighted and „Toimumine
+ * lisatud.“ in the drawer. Part 3 draws four columns (date and weekday | course and place | seats with a bar | state); below 760 px of the box (calendar.module.css
  * `.box`, as courses.module.css is for Koolitused; Part 4) the section loses its card and each row is a white card of its own: the day over the month, the
  * course, „{linn} · {koht}“ („{linn} · tühistatud“ of a cancelled session), the seat bar with „{k}/{cap}“. The seats are only the figure („3 / 4“,
  * on a phone „4/4“) and the bar, as Part 3 and Part 4 draw them (Dim, 25.10): the list no longer says „kinnitatud“, „Vabu kohti“, „ootab ettemaksu“ or
@@ -83,11 +88,13 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
   };
   const filter: SessionFilter = { courseId: view.koolitus ?? undefined, city: view.linn ?? undefined };
   const filtered = view.koolitus !== null || view.linn !== null;
-  const [sessions, counts, [open]] = await Promise.all([
+  const [sessions, counts, [open], [stored, regs]] = await Promise.all([
     listAdminSessions(db, { from: startOfDayTallinn(now), upcoming: !view.past, ...filter }, now),
     sessionCounts(db, filter, now),
-    // the drawer's session with its counts, also when it is in the other list (upcoming / past) or outside the selects' choice
+    // the drawer's session with its counts, also when it is in the other list (upcoming / past) or outside the selects' choice; its fields and version
+    // as the autosave reads them (R-a), and its registrations as the rules count them (R-b)
     typeof openId === "number" ? listAdminSessions(db, { ids: [openId] }, now) : [],
+    typeof openId === "number" ? Promise.all([readSession(db, openId), countSessionRegistrations(db, openId)]) : [null, null],
   ]);
   const t = adminEt.calendar;
   const courseOptions = courses.map((c) => ({ id: c.id, title: pick(c.title, "et"), published: c.published }));
@@ -123,13 +130,9 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
 
   let drawer: React.ReactNode = null;
   if (openId === "uus" && courses.length > 0) {
-    const initial: SessionValues = { id: null, courseId: null, date: "", time: "10:00", city: "", venue: "", language: "ET", capacity: 4, status: "scheduled" };
     drawer = (
       <Drawer label={t.drawer.newLabel} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus="add-session">
-        <div className={styles.drawer}>
-          <h2 className={ui.h2}>{t.drawer.newLabel}</h2>
-          <SessionForm initial={initial} courses={courseOptions} />
-        </div>
+        <NewSession courses={courseOptions} listHref={href(view)} />
       </Drawer>
     );
   } else if (typeof openId === "number") {
@@ -137,28 +140,24 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
     const label = open ? fill(t.drawer.editLabel, { name: `${name}, ${formatDate(open.startsAt, "et")}` }) : t.drawer.notFound;
     drawer = (
       <Drawer label={label} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus={`session-${openId}`}>
-        <div className={styles.drawer}>
-          {open ? (
-            <>
-              <h2 className={ui.h2}>{name}</h2>
-              {/* the session's protocols (phase protocols, spec §4): one tap to the course day's screen; contact courses only (a row of
-                  another course's session can be left from before its type was locked) */}
-              {open.course.type === "contact" && (
-                <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.protocols}`} href={`/admin/protokollid?sessioon=${open.id}`} data-session-protocols="">
-                  {adminEt.protocols.open}
-                </Link>
-              )}
-              <SessionForm
-                key={open.id}
-                initial={{ id: open.id, courseId: open.courseId, ...tallinnFormParts(open.startsAt), city: open.city, venue: open.venue, language: open.language, capacity: open.capacity, status: open.status }}
-                courses={courseOptions}
-                registrations={{ confirmed: open.confirmed, awaiting: open.awaiting }}
-              />
-            </>
-          ) : (
-            <p className={ui.empty}>{t.drawer.notFound}</p>
-          )}
-        </div>
+        {open && stored && regs ? (
+          <SessionDrawer
+            key={open.id}
+            id={open.id}
+            version={stored.version}
+            fields={fieldsOf(stored.value)}
+            status={stored.value.status}
+            counts={regs}
+            waitlist={open.waitlist}
+            title={name}
+            when={formatDate(open.startsAt, "et")}
+            contact={open.course.type === "contact"}
+            courses={courseOptions}
+            added={added === open.id}
+          />
+        ) : (
+          <p className={ui.empty}>{t.drawer.notFound}</p>
+        )}
       </Drawer>
     );
   }
@@ -180,7 +179,8 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
         </div>
 
         {courses.length === 0 && <p className={ui.notice}>{t.noCourses}</p>}
-        {added && (
+        {/* (a session just created from its drawer says it in the drawer: the page behind a modal drawer cannot be read) */}
+        {added && added !== openId && (
           <p className={ui.notice} role="status" data-flash="added">
             {t.added}
           </p>

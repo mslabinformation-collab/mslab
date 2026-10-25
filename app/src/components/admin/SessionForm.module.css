@@ -1,0 +1,242 @@
+/* The Kalender drawer (admin UX pass piece 3b, Task 3; README B3). The metrics are the Part 3 frame „B3 Kalender“ (the drawer at 560 px) and, at 640 px
+   and under, the Part 4 „B3 Session drawer“ (full screen): the header — the chip left of the drawer's ✕, the course in Jost 300 28 px (24 px on a phone),
+   the line in 14 px #3a3437 (13 px), „Protokollid“ an ink pill (a 49 px bar across the phone) — over a hairline; the notice (ui.notice); the fields in
+   pairs 14 px apart (one per row on a phone); „Staatus“ as 44 px pills (a segmented track on a phone, the chosen half ink); the delete row under a
+   hairline. Colours are the palette's tokens: --warn (#6b4f5c) for „Muudetud — …“, --bad for a refusal (ui.error). */
+
+.drawer {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.head {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* the chip (or a new session's „Täida kohustuslikud väljad“) on the row of the drawer's ✕, clear of it */
+.chipRow {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-right: 56px;
+}
+
+/* level with ✕ (Drawer.module.css: 20 px from the top, the body's padding 32 px); not when the leave notice stands between them */
+button + .drawer > .head > .chipRow {
+  margin-top: -12px;
+}
+
+.title {
+  margin: 0;
+  font: 300 28px/1.1 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.line {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.short {
+  display: none;
+}
+
+.protocols {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+/* the notices: ui.notice without its page margin (p.notice outweighs ui.notice whichever stylesheet loads last) */
+p.notice {
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+/* „Muudetud — teavita {n} õpilast ise.“: the field's border and the line in the warning colour (Part 3) */
+.changed {
+  margin: 0;
+  color: var(--warn);
+  font: 600 12px/1.4 var(--font-body);
+}
+
+.fields input[data-changed] {
+  border-color: var(--warn);
+}
+
+.restore {
+  margin: 0;
+}
+
+.statusRow {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.status {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.pill > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pill > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.pill > input:checked + span {
+  border-color: var(--ink);
+  background: var(--first);
+}
+
+.pill > input:focus-visible + span {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* „Toimumisel on registreeringuid — kustutada ei saa. …“ in place of the button (Part 3: 12 px #716a6d over a hairline) */
+.refusal {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.deleteRow {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.deleteRow > [data-confirm-panel] {
+  justify-self: stretch;
+}
+
+.createLine {
+  color: var(--muted);
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.createRow {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  /* ✕ is 14 px from the top on a phone, the body's padding 24 px */
+  button + .drawer > .head > .chipRow {
+    margin-top: -10px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+
+  .line {
+    font-size: 13px;
+  }
+
+  .wide {
+    display: none;
+  }
+
+  .short {
+    display: inline;
+  }
+
+  /* Part 4: on the course day „Protokollid“ is the first thing under the title, a bar across the drawer */
+  .protocols {
+    justify-self: stretch;
+    min-height: 49px;
+    font-size: 14px;
+  }
+
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  /* Part 4: one rounded track, two halves, the chosen one ink with paper text */
+  .pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 3px;
+    border: 1px solid var(--heather);
+    border-radius: 99px;
+  }
+
+  .pill > span {
+    width: 100%;
+    border: 0;
+    font-weight: 600;
+  }
+
+  .pill > input:checked + span {
+    border: 0;
+    background: var(--ink);
+    color: var(--paper);
+  }
+}

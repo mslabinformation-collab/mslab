@@ -47,7 +47,7 @@ vi.mock("@/components/admin/Drawer", async () => {
       createElement("div", { "data-drawer-stand-in": "", "data-close-href": closeHref, "data-label": label }, children),
   };
 });
-vi.mock("@/server/actions/admin-content", () => ({ saveSession: vi.fn(), deleteSession: vi.fn() }));
+vi.mock("@/server/actions/admin-content", () => ({ createSessionAction: vi.fn(), setSessionStatusAction: vi.fn(), deleteSession: vi.fn() }));
 
 import CalendarAdminPage from "@/app/admin/(panel)/kalender/page";
 
@@ -402,5 +402,61 @@ describe("the list's address is carried to the add button and the drawer", () =>
     expect(rowOf(doc, s.tartu).hasAttribute("data-highlight")).toBe(true);
     expect(texts(doc, '[data-flash="added"]')).toEqual(["Toimumine lisatud."]);
     expect(texts(await open("kustutatud=1"), '[data-flash="deleted"]')).toEqual(["Toimumine kustutatud."]);
+  });
+
+  test("a new session's „Lisa toimumine“ goes on at ?id=<n>&lisatud=<n>: the words are in the drawer (the page behind it cannot be read), the row is highlighted", async () => {
+    const doc = await open(`linn=Tartu&id=${s.tartu}&lisatud=${s.tartu}`);
+    expect(texts(doc, '[data-flash="added"]')).toEqual(["Toimumine lisatud."]);
+    expect(doc.querySelector('[data-drawer-stand-in] [data-flash="added"]')).not.toBeNull();
+    expect(rowOf(doc, s.tartu).hasAttribute("data-highlight")).toBe(true);
+    // the drawer's close link drops it
+    expect(doc.querySelector("[data-drawer-stand-in]")!.getAttribute("data-close-href")).toBe("/admin/kalender?linn=Tartu");
+  });
+});
+
+describe("the drawer (B3, piece 3b Task 3): its header and counts are the database's (R-b)", () => {
+  test("a booked session: „05.12.2030 · Pärnu · 2/4 kinnitatud · ootenimekirjas 2“, the notice counts the registrations that are not cancelled, „Koolitus“ is locked, no delete", async () => {
+    const doc = await open(`id=${s.booked}`);
+    const drawer = doc.querySelector(`[data-drawer-stand-in] [data-session-drawer="${s.booked}"]`)!;
+    expect(drawer).not.toBeNull();
+    expect(texts(doc, "[data-session-head] h2")).toEqual(["Kulmude LAMI"]);
+    // 2 confirmed of 4 seats; the two open waitlist requests
+    expect(texts(doc, "[data-session-head] [data-line='wide']")).toEqual(["05.12.2030 · Pärnu · 2/4 kinnitatud · ootenimekirjas 2"]);
+    expect(texts(doc, "[data-session-head] [data-line='short']")).toEqual(["05.12.2030 · Pärnu · 2/4 · ootel 2"]);
+    expect(doc.querySelector("[data-session-protocols]")!.getAttribute("href")).toBe(`/admin/protokollid?sessioon=${s.booked}`);
+    // 2 confirmed + 2 awaiting (the held one and the one whose hold ended); the cancelled one is history
+    expect(texts(doc, "[data-session-booked]")).toEqual(["4 õpilast on registreerunud. Muudatusest neile kirja ei saadeta."]);
+    expect(doc.querySelector('select[name="courseId"]')!.hasAttribute("disabled")).toBe(true);
+    expect(texts(doc, "[data-course-locked]")).toEqual(["Toimumisel on registreeringuid, seega koolitust muuta ei saa."]);
+    expect(texts(doc, "[data-delete-refusal]")).toEqual(["Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“."]);
+    // the stored values in the fields, as typed (the start in Estonian time)
+    expect(["date", "time", "city", "capacity", "venue"].map((n) => doc.querySelector(`input[name="${n}"]`)!.getAttribute("value"))).toEqual([
+      "2030-12-05",
+      "10:00",
+      "Pärnu",
+      "4",
+      "Rüütli 12",
+    ]);
+    // the old drawer's words are gone
+    expect(doc.body.textContent).not.toContain("Registreerimisi:");
+    expect(doc.body.textContent).not.toContain("Salvesta toimumine");
+  });
+
+  test("a session nobody registered for: no notice, „Koolitus“ free, „Kustuta toimumine“; a cancelled one has „Tühistatud“ chosen", async () => {
+    const doc = await open(`id=${s.tartu}`);
+    expect(texts(doc, "[data-session-head] [data-line='wide']")).toEqual(["19.12.2030 · Tartu · 0/6 kinnitatud"]);
+    expect(doc.querySelector("[data-session-booked]")).toBeNull();
+    expect(doc.querySelector('select[name="courseId"]')!.hasAttribute("disabled")).toBe(false);
+    expect([...doc.querySelectorAll("[data-session-delete] button")].map((b) => b.textContent)).toEqual(["Kustuta toimumine"]);
+    const cancelled = await open(`id=${s.cancelled}`);
+    expect(cancelled.querySelector("[data-session-status] input[value='cancelled']")!.hasAttribute("checked")).toBe(true);
+  });
+
+  test("?id=uus: the new session's drawer, „Täida kohustuslikud väljad“ in its header, the contact courses with „—“ first", async () => {
+    const doc = await open(`linn=Tartu&id=uus`);
+    expect(doc.querySelector("[data-drawer-stand-in]")!.getAttribute("data-label")).toBe("Uus toimumine");
+    expect(texts(doc, "[data-new-session-line]")).toEqual(["Täida kohustuslikud väljad"]);
+    expect([...doc.querySelectorAll('select[name="courseId"] option')].map((o) => o.textContent)).toEqual(["—", "Kulmude LAMI", "Lash Lift", "Mustandkoolitus (Mustand)"]);
+    expect(doc.querySelector("[data-session-status]")).toBeNull();
   });
 });

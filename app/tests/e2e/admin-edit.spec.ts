@@ -1180,8 +1180,13 @@ test.describe("course editor", () => {
 
 test.describe("calendar", () => {
   const COURSE = { slug: "kulmumeistri-baaskoolitus", title: "Kulmumeistri baaskoolitus" };
+  /** The answer to the drawer's autosave of session `id` (POST api/admin/toimumine/<id>), with the status `status`. */
+  const sessionSaved = (page: Page, id: number, status = 200) =>
+    page.waitForResponse((r) => r.url().endsWith(`/api/admin/toimumine/${id}`) && r.request().method() === "POST" && r.status() === status);
+  const registrationsOf = (id: number) =>
+    onLocalDb(async (sql) => Number((await sql<{ n: number }[]>`select count(*)::int as n from registrations where course_session_id = ${id}`)[0].n));
 
-  test("add a session → it is on the public course page and calendar; edit (cancel) → 'Tühistatud'; delete → gone", async ({ page, context, visitorIp }, info) => {
+  test("add a session (the one explicit „Lisa toimumine“) → it autosaves, is on the public course page and calendar; cancelled at once → 'Tühistatud'; delete → gone", async ({ page, context, visitorIp }, info) => {
     const city = `${EDIT_CITY_PREFIX}${info.project.name} ${unique()}`;
     await signIn(page, context, visitorIp);
     await page.goto("/admin/kalender");
@@ -1191,33 +1196,58 @@ test.describe("calendar", () => {
     await page.locator("[data-add-session]").click();
     const dialog = page.getByRole("dialog", { name: "Uus toimumine" });
     await expect(dialog).toBeVisible();
+    // S3-P3-g: no save status before the session exists, no status choice (a new session is „Toimub“)
+    const line = dialog.locator("[data-new-session-line]");
+    await expect(line).toHaveText("Täida kohustuslikud väljad");
+    await expect(dialog.locator("[data-save-status]")).toHaveCount(0);
+    await expect(dialog.getByRole("radio")).toHaveCount(0);
 
     // nothing filled: every field says what is missing, the first one gets the focus
-    await dialog.getByLabel("Algus").fill("");
+    await dialog.getByLabel("Algus (Eesti aeg)").fill("");
     await dialog.getByRole("button", { name: "Lisa toimumine" }).click();
     await expect(dialog.getByLabel("Koolitus")).toHaveAttribute("aria-invalid", "true");
     await expect(dialog.getByLabel("Koolitus")).toBeFocused();
     for (const text of ["Vali koolitus.", "Sisesta kuupäev.", "Sisesta kellaaeg, näiteks 10:00.", "Sisesta linn."]) await expect(dialog.getByText(text)).toBeVisible();
+    expect(await storedSession(city)).toBeNull();
 
     await dialog.getByLabel("Koolitus").selectOption({ label: COURSE.title });
     const when = laterSaturday("11:30"); // after every sample session, whatever the day of the run (was 13.03.2027)
     await dialog.getByLabel("Kuupäev").fill(when.input);
-    await dialog.getByLabel("Algus").fill("11:30");
+    await dialog.getByLabel("Algus (Eesti aeg)").fill("11:30");
     await dialog.getByLabel("Linn").fill(city);
+    await expect(line).toHaveText("Vajuta „Lisa toimumine“.");
     await dialog.getByLabel("Toimumiskoht").fill("E2E saal");
     await dialog.getByLabel("Kohti").fill("5");
     await dialog.getByLabel("Keel").selectOption("ET / RU");
     await dialog.getByRole("button", { name: "Lisa toimumine" }).click();
-    await expect(page).toHaveURL(/\/admin\/kalender\?lisatud=\d+$/);
-    await expect(page.locator('[data-flash="added"]')).toHaveText("Toimumine lisatud.");
-    await expect(dialog).toBeHidden();
+    // the drawer stays open on the new session (?id=<n>&lisatud=<n>) and says it was added; the row behind it is highlighted
+    await expect(page).toHaveURL(/\/admin\/kalender\?id=(\d+)&lisatud=\1$/);
+    const stored = (await storedSession(city))!;
+    expect(stored.startsAt.toISOString()).toBe(when.at.toISOString()); // 11:30 Estonian time
+    expect(stored).toMatchObject({ capacity: 5, status: "scheduled", venue: "E2E saal" });
+    const edit = page.getByRole("dialog", { name: `Toimumine: ${COURSE.title}, ${when.shown}` });
+    await expect(edit).toBeVisible();
+    await expect(edit.locator('[data-flash="added"]')).toHaveText("Toimumine lisatud.");
+    await expect(edit.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+    await expect(edit.locator("[data-session-head] h2")).toHaveText(COURSE.title);
+    await expect(edit.locator("[data-line='wide']")).toHaveText(`${when.shown} · ${city} · 0/5 kinnitatud`);
+    await expect(edit.locator("[data-session-booked]")).toHaveCount(0);
     const row = page.locator("[data-session-row][data-highlight]");
     await expect(row).toContainText(city);
     await expect(row).toContainText(when.shown);
     await expect(row).toContainText("0 / 5"); // the seats as drawn: the figure and the bar
-    const stored = (await storedSession(city))!;
-    expect(stored.startsAt.toISOString()).toBe(when.at.toISOString()); // 11:30 Estonian time
-    expect(stored).toMatchObject({ capacity: 5, status: "scheduled", venue: "E2E saal" });
+
+    // it autosaves (README B3): „Algus“ changed and left is stored, no „Salvesta toimumine“; nobody to tell, so no „Muudetud …“
+    await expect(edit.getByRole("button", { name: "Salvesta toimumine" })).toHaveCount(0);
+    const timeSaved = sessionSaved(page, stored.id);
+    await edit.getByLabel("Algus (Eesti aeg)").fill("12:00");
+    await expect(edit.locator("[data-changed-hint]")).toHaveCount(0);
+    await edit.getByLabel("Algus (Eesti aeg)").blur();
+    await timeSaved;
+    await expect(edit.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+    expect((await storedSession(city))!.startsAt.toISOString()).toBe(laterSaturday("12:00").at.toISOString());
+    await edit.getByRole("button", { name: "Sulge" }).click();
+    await expect(page).toHaveURL(/\/admin\/kalender$/);
 
     // public: the course page offers it, the calendar lists it
     await page.goto(`/koolitused/${COURSE.slug}`);
@@ -1252,29 +1282,39 @@ test.describe("calendar", () => {
     await toolbar.getByRole("combobox", { name: "Koolitus" }).selectOption(String((await storedCourse(COURSE.slug)).id));
     await expect(page.locator("[data-session-row]")).toHaveCount(1);
 
-    // edit: cancelled, 3 seats. A click on the row away from its name link opens the drawer, and the link is still the keyboard's way in
+    // edit: 3 seats (committed when the field is left), then cancelled — nobody is booked, so at once, with no question. A click on the row away from
+    // its name link opens the drawer, and the link is still the keyboard's way in
     const link = page.getByRole("link", { name: `Muuda toimumist: ${COURSE.title}, ${when.shown}, ${city}` });
     await expect(link).toBeVisible();
     await page.locator("[data-session-row]").locator("td").first().click();
     await expect(page).toHaveURL((url) => url.searchParams.get("id") === String(stored.id) && url.searchParams.get("linn") === city);
-    const edit = page.getByRole("dialog", { name: `Toimumine: ${COURSE.title}, ${when.shown}` });
-    await expect(edit).toBeVisible();
-    await expect(edit.getByLabel("Kuupäev")).toHaveValue(when.input);
-    await expect(edit.getByLabel("Algus")).toHaveValue("11:30");
-    await edit.getByLabel("Kohti").fill("3");
-    await edit.getByRole("radio", { name: "Tühistatud" }).check();
-    await edit.getByRole("button", { name: "Salvesta toimumine" }).click();
-    await expect(edit.getByText("Toimumine salvestatud.")).toBeVisible();
+    const again = page.getByRole("dialog", { name: `Toimumine: ${COURSE.title}, ${when.shown}` });
+    await expect(again).toBeVisible();
+    await expect(again.getByLabel("Kuupäev")).toHaveValue(when.input);
+    await expect(again.getByLabel("Algus (Eesti aeg)")).toHaveValue("12:00");
+    const seatsSaved = sessionSaved(page, stored.id);
+    await again.getByLabel("Kohti").fill("3");
+    await again.getByLabel("Kohti").blur();
+    await seatsSaved;
+    await again.getByRole("radio", { name: "Tühistatud" }).check();
+    await expect(again.locator("[data-confirm-panel]")).toHaveCount(0);
+    await expect.poll(async () => (await storedSession(city))?.status).toBe("cancelled");
     expect(await storedSession(city)).toMatchObject({ capacity: 3, status: "cancelled" });
+    await expect(again.getByRole("radio", { name: "Tühistatud" })).toBeChecked();
+    await expect(again.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
     await page.goto("/koolituskalender");
     await expect(page.locator("[data-calendar-row]", { hasText: city })).toHaveAttribute("data-state", "cancelled");
 
-    // delete, after a confirmation
+    // delete (no registrations: the button), after a confirmation
     await page.goto(`/admin/kalender?id=${stored.id}`);
     await adminReady(page);
     const del = page.getByRole("dialog");
+    await expect(del.locator("[data-delete-refusal]")).toHaveCount(0);
     await del.getByRole("button", { name: "Kustuta toimumine" }).click();
-    await expect(del.getByText("Kas kustutan selle toimumise?")).toBeFocused();
+    const question = del.locator("[data-session-delete] [data-confirm-panel]");
+    await expect(question).toBeFocused();
+    await expect(question).toContainText("Kas kustutan selle toimumise?");
+    await expect(question).toContainText("Seda ei saa tagasi võtta.");
     await del.getByRole("button", { name: "Jah, kustuta" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender\?kustutatud=1$/);
     await expect(page.locator('[data-flash="deleted"]')).toHaveText("Toimumine kustutatud.");
@@ -1284,7 +1324,7 @@ test.describe("calendar", () => {
     await expect(page.locator("[data-session]", { hasText: city })).toHaveCount(0);
   });
 
-  test("a session with a registration cannot be deleted (cancel it instead)", async ({ page, context, visitorIp }, info) => {
+  test("a booked session: the notice, „Koolitus“ locked, no delete (the refusal text); „Tühistatud“ asks first and keeps the registrations; „Kohti“ below the confirmed is refused in the field", async ({ page, context, visitorIp }, info) => {
     const city = `${EDIT_CITY_PREFIX}${info.project.name} ${unique()}`;
     const id = await insertEditSession(COURSE.slug, city);
     await registerOnSession(id, info.project.name);
@@ -1293,24 +1333,130 @@ test.describe("calendar", () => {
     await page.goto(`/admin/kalender?aeg=moodunud&id=${id}`);
     await adminReady(page);
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(COURSE.title);
-    await expect(dialog.locator("[data-session-registrations]")).toHaveText("Registreerimisi: 0 kinnitatud, 1 ootab ettemaksu.");
-    // a contact course's session: one tap to its protocols (phase protocols)
+    await expect(dialog.locator("[data-session-head] h2")).toHaveText(COURSE.title);
+    await expect(dialog.locator("[data-session-booked]")).toHaveText("1 õpilane on registreerunud. Muudatusest talle kirja ei saadeta.");
+    await expect(dialog.locator("[data-line='wide']")).toContainText(`${city} · 0/4 kinnitatud`); // (it awaits its prepayment: booked, not confirmed)
+    // a contact course's session: one tap to its protocols (phase protocols), the drawer's first button
     await expect(dialog.locator("[data-session-protocols]")).toHaveText("Protokollid");
     await expect(dialog.locator("[data-session-protocols]")).toHaveAttribute("href", `/admin/protokollid?sessioon=${id}`);
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender\?aeg=moodunud$/);
+
     await page.goto(`/admin/kalender?id=${id}`);
     await adminReady(page);
-    await expect(dialog.locator("[data-session-registrations]")).toHaveText("Registreerimisi: 0 kinnitatud, 1 ootab ettemaksu.");
-    await dialog.getByRole("button", { name: "Kustuta toimumine" }).click();
-    await dialog.getByRole("button", { name: "Jah, kustuta" }).click();
-    await expect(dialog.getByRole("alert")).toContainText("Sellel toimumisel on registreerimisi");
-    expect(await storedSession(city)).not.toBeNull();
+    await expect(dialog.getByLabel("Koolitus")).toBeDisabled();
+    await expect(dialog.locator("[data-course-locked]")).toHaveText("Toimumisel on registreeringuid, seega koolitust muuta ei saa.");
+    await expect(dialog.getByRole("button", { name: "Kustuta toimumine" })).toHaveCount(0);
+    await expect(dialog.locator("[data-delete-refusal]")).toHaveText("Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.");
+
+    // „Tühistatud“ asks first; „Katkesta“ keeps „Toimub“; „Jah, tühista“ cancels and the registration stays; „Toimub“ puts it back with no question
+    await dialog.getByRole("radio", { name: "Tühistatud" }).check();
+    const panel = dialog.locator("[data-session-status] [data-confirm-panel]");
+    await expect(panel).toBeFocused();
+    await expect(panel).toContainText("Kas tühistan toimumise?");
+    await expect(panel).toContainText("1 registreering jääb alles; teavita õpilast ise.");
+    await panel.getByRole("button", { name: "Katkesta" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(dialog.getByRole("radio", { name: "Toimub" })).toBeChecked();
+    expect((await storedSession(city))!.status).toBe("scheduled");
+    await dialog.getByRole("radio", { name: "Tühistatud" }).check();
+    await panel.getByRole("button", { name: "Jah, tühista" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect.poll(async () => (await storedSession(city))?.status).toBe("cancelled");
+    await expect(dialog.getByRole("radio", { name: "Tühistatud" })).toBeChecked();
+    expect(await registrationsOf(id)).toBe(1);
+    await dialog.getByRole("radio", { name: "Toimub" }).check();
+    await expect(panel).toHaveCount(0);
+    await expect.poll(async () => (await storedSession(city))?.status).toBe("scheduled");
+    await expect(dialog.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+
+    // the list does not say „ootab ettemaksu“ any more (Dim 25.10: the seats as drawn), and neither does the drawer (none is drawn): 0 of 4 confirmed
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender$/);
-    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4"); // (the registration awaits its prepayment: confirmed 0 of 4; the list does not say „ootab ettemaksu“ any more, the drawer does)
+    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4");
     await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
+
+    // two confirmed: „Kohti“ 1 is refused in the field and nothing is stored; a changed date says to tell the two; 2 seats are fine
+    await registerOnSession(id, info.project.name);
+    await onLocalDb((sql) => sql`update registrations set status = 'confirmed' where course_session_id = ${id}`);
+    await page.goto(`/admin/kalender?id=${id}`);
+    await adminReady(page);
+    await expect(dialog.locator("[data-line='wide']")).toContainText(`${city} · 2/4 kinnitatud`);
+    await expect(dialog.locator("[data-session-booked]")).toHaveText("2 õpilast on registreerunud. Muudatusest neile kirja ei saadeta.");
+    const seats = dialog.getByLabel("Kohti");
+    await seats.fill("1");
+    await seats.blur();
+    await expect(seats).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.locator("[data-field='capacity'] [data-field-error]")).toHaveText("Kinnitatud on 2 — kohti ei saa olla vähem.");
+    await expect(dialog.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "invalid");
+    expect((await storedSession(city))!.capacity).toBe(4);
+    const date = dialog.getByLabel("Kuupäev");
+    const shown = await date.inputValue();
+    await date.fill(laterSaturday("10:00").input);
+    await expect(dialog.locator("[data-field='date'] [data-changed-hint]")).toHaveText("Muudetud — teavita 2 õpilast ise.");
+    await date.fill(shown);
+    await expect(dialog.locator("[data-changed-hint]")).toHaveCount(0);
+    const fine = sessionSaved(page, id);
+    await seats.fill("2");
+    await seats.blur();
+    await fine;
+    await expect(seats).not.toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+    expect((await storedSession(city))!.capacity).toBe(2);
+  });
+
+  test("the drawer at 375 × 812 (Part 4): full screen, nothing scrolls sideways, „Protokollid“ a bar before any field, one field per row, the status one track, 44 px targets", async ({ page, context, visitorIp }, info) => {
+    // a phone's check (its scrollbars overlay the page): a desktop window this narrow keeps a classic scrollbar's gutter (html `scrollbar-gutter:
+    // stable`), which is not what a phone shows
+    test.skip(!info.project.name.startsWith("mobile"), "a phone's layout: the mobile project");
+    const city = `${EDIT_CITY_PREFIX}${info.project.name} ${unique()}`;
+    const id = await insertEditSession(COURSE.slug, city);
+    await registerOnSession(id, info.project.name);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/kalender?id=${id}`);
+    await adminReady(page);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator("[data-session-drawer]")).toBeVisible();
+    // full screen (it slides in: measured once it is in place)
+    await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(0);
+    expect(Math.round((await dialog.boundingBox())!.width)).toBe(375);
+    expect(await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth)).toBe(true);
+    expect(await noOverflow(page)).toBe(true);
+    // the header's short line (Part 4) instead of the long one
+    await expect(dialog.locator("[data-line='short']")).toBeVisible();
+    await expect(dialog.locator("[data-line='wide']")).toBeHidden();
+    await expect(dialog.locator("[data-line='short']")).toHaveText(new RegExp(` · ${city} · 0/4$`));
+    const body = (await dialog.locator("[data-session-drawer]").boundingBox())!;
+    const protocols = (await dialog.locator("[data-session-protocols]").boundingBox())!;
+    expect(protocols.height).toBeGreaterThanOrEqual(48);
+    expect(Math.abs(protocols.width - body.width)).toBeLessThanOrEqual(1);
+    const box = async (label: string) => (await dialog.getByLabel(label, { exact: true }).boundingBox())!;
+    const [course, date, time, town, seats] = [await box("Koolitus"), await box("Kuupäev"), await box("Algus (Eesti aeg)"), await box("Linn"), await box("Kohti")];
+    expect(protocols.y + protocols.height).toBeLessThanOrEqual(course.y);
+    // one per row, each across the drawer
+    for (const [above, below] of [
+      [date, time],
+      [time, town],
+      [town, seats],
+    ])
+      expect(below.y).toBeGreaterThanOrEqual(above.y + above.height);
+    for (const f of [date, time, town, seats]) {
+      expect(Math.abs(f.x - body.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(f.width - body.width)).toBeLessThanOrEqual(1);
+      expect(f.height).toBeGreaterThanOrEqual(44);
+    }
+    // „Staatus“: one track of two halves side by side, each a 44 px target
+    const scheduled = (await dialog.locator("[data-session-status] label", { hasText: "Toimub" }).boundingBox())!;
+    const cancelled = (await dialog.locator("[data-session-status] label", { hasText: "Tühistatud" }).boundingBox())!;
+    expect(Math.abs(scheduled.y - cancelled.y)).toBeLessThanOrEqual(1);
+    expect(cancelled.x).toBeGreaterThan(scheduled.x);
+    for (const pill of [scheduled, cancelled]) expect(pill.height).toBeGreaterThanOrEqual(44);
+    const close = (await dialog.getByRole("button", { name: "Sulge" }).boundingBox())!;
+    expect([close.width, close.height].every((n) => n >= 44)).toBe(true);
+    // the chip stands left of ✕, clear of it
+    const chipBox = (await dialog.locator("[data-save-status]").boundingBox())!;
+    expect(chipBox.x + chipBox.width).toBeLessThanOrEqual(close.x);
   });
 
   test("a session row of a non-contact course: not in the public calendar; its drawer keeps its own course, never another", async ({ page, context, visitorIp }, info) => {
@@ -1325,13 +1471,17 @@ test.describe("calendar", () => {
     await page.goto(`/admin/kalender?id=${id}`);
     await adminReady(page);
     const dialog = page.getByRole("dialog", { name: new RegExp(`^Toimumine: ${online.title},`) });
-    await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(online.title);
+    await expect(dialog.locator("[data-session-head] h2")).toHaveText(online.title);
     await expect(dialog.locator("[data-session-protocols]")).toHaveCount(0); // protocols are for contact courses only
     const course = dialog.getByLabel("Koolitus");
     await expect(course).toHaveValue(String((await storedCourse(online.slug)).id)); // its own course, not the first contact course
+    const refused = sessionSaved(page, id, 400);
     await dialog.getByLabel("Kohti").fill("3");
-    await dialog.getByRole("button", { name: "Salvesta toimumine" }).click();
-    await expect(dialog.getByText("Vali koolitus.")).toBeVisible(); // saving it under an e-learning course is refused
+    await dialog.getByLabel("Kohti").blur();
+    await refused;
+    // saving it under an e-learning course is refused: said under „Koolitus“
+    await expect(dialog.locator("[data-field='courseId'] [data-field-error]")).toHaveText("Vali koolitus.");
+    await expect(dialog.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "invalid");
     expect(await storedSession(city)).toMatchObject({ capacity: 4 }); // and nothing moved or changed
   });
 });

@@ -90,15 +90,18 @@ type Checked = { ok: true; columns: Columns } | { ok: false; fields: Record<stri
 /**
  * `next` checked as the session it would make: domain/session-fields.ts sessionFieldProblems for the fields that are not `row`'s (every field of a new
  * session, `row` null), with `counts` (R-b, R-c), and the course must be a contact course (an e-course has no dates), on every save: a session row of an
- * e-course (one an older editor let in) saves nothing until it is under a contact course. The columns to store: a changed field as checked (text
- * trimmed, the start from the Estonian date and time), an unchanged one as it is stored.
+ * e-course (one an older editor let in) saves nothing until it is under a contact course. The course's type is read FOR SHARE (piece 3b Task 3): in the
+ * caller's transaction, after the session's lock when there is one (the registration's order, the session and then the course), it stays until the
+ * write commits — a type change (server/course-parts.ts, under the course's FOR UPDATE, then typeLocked counts its sessions) waits for it and counts the
+ * session, or it waits for the type change and reads the new type. The columns to store: a changed field as checked (text trimmed, the start from the
+ * Estonian date and time), an unchanged one as it is stored.
  */
-async function check(q: Q, next: SessionFields, row: CourseSession | null, counts: { confirmed: number; booked: number }): Promise<Checked> {
+async function check(tx: Tx, next: SessionFields, row: CourseSession | null, counts: { confirmed: number; booked: number }): Promise<Checked> {
   const stored = row ? fieldsOf(valueOf(row)) : null;
   const problems: Partial<Record<SessionField, SessionFieldError>> = sessionFieldProblems(next, { stored, ...counts });
   const changed = new Set(changedSessionFields(next, stored));
   if (!problems.courseId && next.courseId !== null) {
-    const [course] = await q.select({ type: courses.type }).from(courses).where(eq(courses.id, next.courseId));
+    const [course] = await tx.select({ type: courses.type }).from(courses).where(eq(courses.id, next.courseId)).for("share");
     if (course?.type !== "contact") problems.courseId = "course";
   }
   const fields = Object.fromEntries(Object.entries(problems).filter(([, code]) => code !== undefined)) as Record<string, string>;
@@ -183,12 +186,17 @@ export async function writeSession(db: Db, id: number, patch: Record<string, unk
   return done.answer;
 }
 
-/** Inserts a new session from `fields` after its checks (status „Toimub“): its row, or the refused fields. The caller revalidates. */
+/**
+ * Inserts a new session from `fields` after its checks (status „Toimub“), in one transaction with the course's FOR SHARE read (check): its row, or the
+ * refused fields. The caller revalidates.
+ */
 async function insertChecked(db: Db, fields: SessionFields): Promise<{ ok: true; row: CourseSession } | { ok: false; fields: Record<string, string> }> {
-  const checked = await check(db, fields, null, NONE);
-  if (!checked.ok) return checked;
-  const [row] = await db.insert(courseSessions).values({ ...checked.columns, status: "scheduled" }).returning();
-  return { ok: true, row };
+  return db.transaction(async (tx) => {
+    const checked = await check(tx, fields, null, NONE);
+    if (!checked.ok) return checked;
+    const [row] = await tx.insert(courseSessions).values({ ...checked.columns, status: "scheduled" }).returning();
+    return { ok: true as const, row };
+  });
 }
 
 /** „Lisa toimumine“'s answer: the new session's id and version (the drawer goes on autosaving from it), or the refused fields. */
@@ -242,31 +250,4 @@ export async function setSessionStatus(db: Db, id: number, status: SessionStatus
   });
   if (done.wrote) revalidatePublic({ kind: "sessions" });
   return done.answer;
-}
-
-// ---------- the old drawer's whole-row save (until piece 3b Task 3's drawer autosaves) ----------
-
-/**
- * The old drawer's „Lisa toimumine“ / „Salvesta toimumine“ (server/admin-content.ts saveSessionForm): the whole session at once, no version (the last
- * save wins, as before), through the same checks and, for a stored session, under its lock with the same rules (R-b, R-c), so no way around them is
- * left. `id` null: a new session („Toimub“; `status` is not read). The caller revalidates (the old action's run()).
- */
-export async function saveWholeSession(
-  db: Db,
-  id: number | null,
-  fields: SessionFields,
-  status: SessionStatus,
-): Promise<{ ok: true; id: number } | { ok: false; error: "notFound" } | { ok: false; error: "invalid"; fields: Record<string, string> }> {
-  if (id === null) {
-    const created = await insertChecked(db, fields);
-    return created.ok ? { ok: true, id: created.row.id } : { ok: false, error: "invalid", fields: created.fields };
-  }
-  return db.transaction(async (tx) => {
-    await lockSession(tx, id);
-    const row = await sessionRow(tx, id);
-    if (!row) return { ok: false as const, error: "notFound" as const };
-    const result = await changeLocked(tx, row, fields, status);
-    if (result !== "same" && !result.ok) return { ok: false as const, error: "invalid" as const, fields: result.fields };
-    return { ok: true as const, id };
-  });
 }

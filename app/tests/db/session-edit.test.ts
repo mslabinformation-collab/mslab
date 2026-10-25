@@ -34,6 +34,7 @@ vi.mock("@/server/public-cache", () => pub);
 import { POST as saveRoute } from "@/app/api/admin/toimumine/[id]/route";
 import { createSession, readSession, setSessionStatus, writeSession } from "@/server/session-edit";
 import { deleteSessionForm } from "@/server/admin-content";
+import { readCoursePart, writeCoursePart } from "@/server/course-parts";
 
 const MARIA = { email: "maria@example.test" };
 const NOW = new Date("2026-10-24T09:00:00Z");
@@ -372,6 +373,71 @@ describe("the session's lock (R-a, R-c): the same lock as the public registratio
     expect(ownLock).toBeGreaterThanOrEqual(0);
     expect(log.slice(ownLock + 1, updated).filter((q) => LOCK.test(q) || /^insert into "registrations"/.test(q))).toEqual([]);
     expect(log.filter((q) => LOCK.test(q))).toHaveLength(2);
+  });
+
+  // piece 3b Task 3 (carry): a course's type changes under its own row lock (server/course-parts.ts writeCoursePart → lockCourse, FOR UPDATE, then
+  // typeLocked counts its sessions). The session's new course is read FOR SHARE under the session's lock — the registration's order, the session and
+  // then the course — so a type change waits for the move to commit (and then counts the moved session), or the move waits for the type change (and
+  // then reads the new type): never a session under an e-course.
+  const COURSE_SHARE = /^select "type" from "courses" where "courses"\."id" = \$1 for share$/;
+
+  test("writeSession: a course change reads the new course's type FOR SHARE after the session's lock and before the write", async () => {
+    const log = await useLoggedDb();
+    const version = await versionNow();
+    log.length = 0;
+    expect(await write({ courseId: lift.id }, version)).toMatchObject({ ok: true });
+    expect(log[0]).toMatch(LOCK);
+    const share = log.findIndex((q) => COURSE_SHARE.test(q));
+    const updated = log.findIndex((q) => /^update "course_sessions"/.test(q));
+    expect(share, log.join("\n")).toBeGreaterThan(0);
+    expect(updated).toBeGreaterThan(share);
+  });
+
+  test("createSession: the course is read FOR SHARE in the same transaction as the insert", async () => {
+    const log = await useLoggedDb();
+    log.length = 0;
+    // (PGlite opens its transactions itself: drizzle's log has no BEGIN, so the transaction is the one db.transaction call)
+    const transaction = vi.spyOn(db, "transaction");
+    const input = { courseId: lift.id, date: "2027-06-05", time: "10:00", city: "Tartu", venue: "", language: "ET", capacity: "4" };
+    const created = await createSession(db, input, NOW);
+    expect(created).toMatchObject({ ok: true });
+    expect(transaction).toHaveBeenCalledOnce();
+    // the summer time is the right instant
+    expect((await row((created as { id: number }).id)).startsAt.toISOString()).toBe("2027-06-05T07:00:00.000Z");
+    const share = log.findIndex((q) => COURSE_SHARE.test(q));
+    const inserted = log.findIndex((q) => /^insert into "course_sessions"/.test(q));
+    expect(share, log.join("\n")).toBeGreaterThanOrEqual(0);
+    expect(inserted).toBeGreaterThan(share);
+  });
+
+  test("a course's type change and a session moved onto that course at the same moment: either one wins, never a session under an e-course", async () => {
+    const [spare] = await db.insert(courses).values({ ...base, slug: "varu", type: "contact", title: { et: "Varu" }, published: false, sort: 4 }).returning();
+    const version = await versionNow();
+    const basics = (await readCoursePart(db, spare.id, "basics"))!;
+    const [moved, typed] = await Promise.all([
+      writeSession(db, session.id, { courseId: spare.id }, version, MARIA, NOW),
+      writeCoursePart(db, spare.id, "basics", { type: "e_learning" }, basics.version, MARIA, NOW),
+    ]);
+    const [course] = await db.select().from(courses).where(eq(courses.id, spare.id));
+    if (moved.ok) {
+      expect((await row()).courseId).toBe(spare.id);
+      expect(typed).toEqual({ ok: false, error: "invalid", fields: { type: "typeLocked" } });
+      expect(course.type).toBe("contact");
+    } else {
+      expect(moved).toEqual({ ok: false, error: "invalid", fields: { courseId: "course" } });
+      expect(course.type).toBe("e_learning");
+      expect((await row()).courseId).toBe(lami.id);
+    }
+    // and each way round, one after the other
+    await db.update(courses).set({ type: "contact" }).where(eq(courses.id, spare.id));
+    await db.update(courseSessions).set({ courseId: lami.id }).where(eq(courseSessions.id, session.id));
+    const first = (await readCoursePart(db, spare.id, "basics"))!;
+    expect(await writeCoursePart(db, spare.id, "basics", { type: "e_learning" }, first.version, MARIA, NOW)).toMatchObject({ ok: true });
+    expect(await write({ courseId: spare.id })).toEqual({ ok: false, error: "invalid", fields: { courseId: "course" } });
+    await db.update(courses).set({ type: "contact" }).where(eq(courses.id, spare.id));
+    expect(await write({ courseId: spare.id })).toMatchObject({ ok: true });
+    const again = (await readCoursePart(db, spare.id, "basics"))!;
+    expect(await writeCoursePart(db, spare.id, "basics", { type: "e_learning" }, again.version, MARIA, NOW)).toEqual({ ok: false, error: "invalid", fields: { type: "typeLocked" } });
   });
 });
 

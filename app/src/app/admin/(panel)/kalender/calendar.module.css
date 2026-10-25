@@ -1,4 +1,4 @@
-/* The admin calendar (B3): the list's own pieces and the drawer. The table is the shared admin list (components/admin/list-table.module.css: its table and
+/* The admin calendar (B3): the list's own pieces (the drawer's are components/admin/SessionForm.module.css). The table is the shared admin list (components/admin/list-table.module.css: its table and
    name link, and ListRows makes the row a link), but its phone layout is this file's, whole. Part 3 draws four columns: the date with the weekday and the
    time under it | the course with „{linn} · {koht}“ under it | the seats with a small bar | the state.
 
@@ -110,21 +110,6 @@
 /* full: no seat is left (the „Täis“ state) */
 .bar[data-full] > span {
   background: var(--warn);
-}
-
-.drawer {
-  display: grid;
-  gap: 22px;
-}
-
-/* clear of the drawer's close button */
-.drawer > h2 {
-  padding-right: 56px;
-}
-
-/* "Protokollid" (phase protocols): a button of its own width, as in the registration's drawer, not the drawer's */
-.protocols {
-  justify-self: start;
 }
 
 /* The phone. At 760 px of the box and under the section loses its card (`.box .card` outweighs the shared `ui.card` whichever stylesheet comes last), and

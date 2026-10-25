@@ -34,7 +34,6 @@ import {
   upsertPage,
   upsertPost,
   upsertPracticePackage,
-  upsertSession,
 } from "@/db/queries/admin";
 
 const base = { level: "basic" as const, title: { et: "T" }, summary: { et: "" }, body: { et: "" } };
@@ -233,17 +232,6 @@ describe("admin queries", () => {
     await replaceCourseImages(db, c.id, []);
     got = await getCourseBySlug(db, "x");
     expect(got?.images).toEqual([]);
-  });
-
-  test("upsertSession inserts and updates by id", async () => {
-    const c = await upsertCourse(db, { ...base, slug: "x", type: "contact", published: true });
-    const s = await upsertSession(db, { courseId: c.id, startsAt: new Date("2026-11-14T08:00:00Z"), city: "Pärnu", capacity: 6 });
-    expect(s.capacity).toBe(6);
-    expect(s.status).toBe("scheduled");
-    const cancelled = await upsertSession(db, { id: s.id, courseId: c.id, startsAt: s.startsAt, city: "Pärnu", capacity: 6, status: "cancelled" });
-    expect(cancelled.id).toBe(s.id);
-    expect(cancelled.status).toBe("cancelled");
-    expect(await db.select().from(courseSessions)).toHaveLength(1);
   });
 
   test("requests: listed newest first, optionally by kind, and can be marked handled", async () => {

@@ -1881,16 +1881,30 @@ export const adminEt = {
     noCourses: "Kontaktkoolitusi pole. Lisa esmalt koolitus õppevormiga „Kontaktõpe“.",
     added: "Toimumine lisatud.",
     deleted: "Toimumine kustutatud.",
+    // The drawer (B3, piece 3b Task 3; README B3, P-7, P-8, P-2, S3-P3-g). Its fields autosave: „Salvesta toimumine“ is gone, „Lisa toimumine“ stays the
+    // explicit create of a new one (form.create).
     drawer: {
       newLabel: "Uus toimumine",
       editLabel: "Toimumine: {name}",
       notFound: "Seda toimumist ei leitud.",
+      // the header line „{dd.mm.yyyy} · {linn} · {k}/{cap} kinnitatud · ootenimekirjas {n}“, its parts joined with " · " and the waitlist's left out at 0
+      // (P-7); the phone's short form (Part 4) „… · {k}/{cap} · ootel {n}“. {k}: the confirmed registrations.
+      seats: "{k}/{cap} kinnitatud",
+      waitlist: "ootenimekirjas {n}",
+      seatsShort: "{k}/{cap}",
+      waitlistShort: "ootel {n}",
+      // the notice of a booked session; {n}: the registrations that are not cancelled (R-b); one is the nominative (P-8)
+      booked: "{n} õpilast on registreerunud. Muudatusest neile kirja ei saadeta.",
+      bookedOne: "1 õpilane on registreerunud. Muudatusest talle kirja ei saadeta.",
+      // SaveStatus „gone“ („Seda toimumist enam ei ole. …“, P-2) and the leave reason of a new one („Toimumist pole veel lisatud.“, S3-P3-g)
+      thing: "toimumist",
+      newThing: "Toimumist",
     },
     form: {
       course: "Koolitus",
       date: "Kuupäev",
-      time: "Algus",
-      timeHint: "Eesti aeg.",
+      // README B3: „Eesti aeg.“ moved into the label
+      time: "Algus (Eesti aeg)",
       city: "Linn",
       cityRequired: "Sisesta linn.",
       venue: "Toimumiskoht",
@@ -1900,16 +1914,24 @@ export const adminEt = {
       status: "Staatus",
       statusHint: "Tühistatud toimumine jääb avalikku kalendrisse märkega „Tühistatud“.",
       create: "Lisa toimumine",
-      save: "Salvesta toimumine",
-      saved: "Toimumine salvestatud.",
-      registrations: "Registreerimisi: {confirmed} kinnitatud, {awaiting} ootab ettemaksu.",
+      // the hint under „Kuupäev“ or „Algus“ changed on a booked session (README B3; the same words for n = 1, P-8); {n} as `drawer.booked`
+      changed: "Muudetud — teavita {n} õpilast ise.",
+    },
+    // „Tühistatud“ on a booked session (README B3; P-8): the ConfirmPanel's question and its line ({n} as `drawer.booked`)
+    cancel: {
+      question: "Kas tühistan toimumise?",
+      line: "{n} registreeringut jäävad alles; teavita õpilasi ise.",
+      lineOne: "1 registreering jääb alles; teavita õpilast ise.",
+      yes: "Jah, tühista",
     },
     remove: {
       button: "Kustuta toimumine",
-      confirm: "Kas kustutan selle toimumise? Seda ei saa tagasi võtta.",
+      // P-7: the question and its line apart (P2T P-13), „Jah, kustuta“ / „Katkesta“
+      question: "Kas kustutan selle toimumise?",
+      line: "Seda ei saa tagasi võtta.",
       yes: "Jah, kustuta",
-      no: "Ei",
-      inUse: "Sellel toimumisel on registreerimisi, seda ei saa kustutada. Märgi see hoopis „Tühistatud“: avalik leht näitab siis, et see jääb ära.",
+      // README B3 (strings.md D12, W2): in place of the button once the session has registrations (cancelled ones too, R-b)
+      inUse: "Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.",
     },
   },
 

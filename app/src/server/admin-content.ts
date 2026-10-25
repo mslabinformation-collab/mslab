@@ -7,12 +7,10 @@ import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
 import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft, type CourseType, type DraftImage, type TestDraft } from "@/domain/course-editor";
 import { checkStages } from "@/domain/protocols";
-import type { SessionFields } from "@/domain/session-fields";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 import { toStorable } from "@/lib/to-storable";
 import { Check, field, invalid, isStorableImageKey, type EditResult, type FieldError, type FieldPlace } from "./edit-check";
-import { saveWholeSession } from "./session-edit";
 
 // The content editors' form handling (courses, calendar sessions). Callers have already checked the admin session
 // (server/actions/admin-content.ts wraps each in adminAction); these take a Db and run without Next.js
@@ -317,38 +315,11 @@ export async function moveCourseRequest(db: Db, input: unknown): Promise<EditRes
 
 // ---------- calendar ----------
 
-const SESSION_STATUS = z.enum(["scheduled", "cancelled"]);
-
 /**
- * The old drawer's session form (until piece 3b Task 3's drawer autosaves on api/admin/toimumine/<id> and creates with server/session-edit.ts
- * createSession): id (empty for a new one), courseId (a contact course), date (YYYY-MM-DD) and time (HH:MM) in Estonian time, city, venue, language
- * (ET | RU | ET / RU), capacity (1–99), status (scheduled | cancelled). A new session is the explicit create; a stored one is saved whole through
- * session-edit.ts saveWholeSession: the same checks and, under the session's lock, the same rules as the autosave („Kohti“ never fewer than the
- * confirmed, `capacityBelow`; no other course once anyone is booked, `courseLocked`; rulings R-b, R-c).
+ * „Kustuta toimumine“ (the Kalender drawer offers it only without registrations, README B3): field id. Refused (inUse) when registrations point to the
+ * session, cancelled ones too (they stay as history, R-b). A session's fields autosave and its status is instant (server/session-edit.ts); a new one is the
+ * explicit createSession.
  */
-export async function saveSessionForm(db: Db, formData: FormData): Promise<EditResult> {
-  const rawId = field(formData, "id") ?? "";
-  const sessionId = rawId === "" ? null : id.safeParse(rawId);
-  if (sessionId && !sessionId.success) return { ok: false, error: "invalid" };
-  const status = SESSION_STATUS.safeParse(field(formData, "status"));
-  if (!status.success) return { ok: false, error: "invalid" };
-  const courseId = id.safeParse(field(formData, "courseId"));
-  const text = (name: string) => toStorable(field(formData, name) ?? "");
-  const fields: SessionFields = {
-    courseId: courseId.success ? courseId.data : null,
-    date: text("date"),
-    time: text("time"),
-    city: text("city"),
-    venue: text("venue"),
-    language: text("language"),
-    capacity: text("capacity"),
-  };
-  const saved = await saveWholeSession(db, sessionId ? sessionId.data : null, fields, status.data);
-  if (!saved.ok) return saved.error === "notFound" ? { ok: false, error: "notFound" } : invalid(saved.fields as Record<string, FieldError>);
-  return { ok: true, id: saved.id, created: !sessionId };
-}
-
-/** "Kustuta toimumine": field id. Refused (inUse) when registrations point to the session. */
 export async function deleteSessionForm(db: Db, formData: FormData): Promise<EditResult> {
   const session = id.safeParse(field(formData, "id"));
   if (!session.success) return { ok: false, error: "invalid" };

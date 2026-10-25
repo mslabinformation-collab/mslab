@@ -381,12 +381,6 @@ export async function listSessionCities(db: Db): Promise<string[]> {
   return rows.map((r) => r.city).sort(collator.compare);
 }
 
-/** One session, or null. */
-export async function getSession(db: Db, id: number): Promise<CourseSession | null> {
-  const [row] = await db.select().from(courseSessions).where(eq(courseSessions.id, id)).limit(1);
-  return row ?? null;
-}
-
 /** Contact courses (the only ones with sessions), drafts included, in the public order. */
 export async function listContactCourses(db: Db): Promise<Pick<Course, "id" | "title" | "published">[]> {
   return db
@@ -427,16 +421,6 @@ export async function deleteUnusedSession(db: Db, id: number): Promise<"deleted"
     await tx.delete(courseSessions).where(eq(courseSessions.id, id));
     return "deleted";
   });
-}
-
-export async function upsertSession(db: Db, input: SessionInput): Promise<CourseSession> {
-  const { id, ...fields } = input;
-  if (id != null) {
-    const [row] = await db.update(courseSessions).set(fields).where(eq(courseSessions.id, id)).returning();
-    return required(row, "Session", id);
-  }
-  const [row] = await db.insert(courseSessions).values(fields).returning();
-  return row;
 }
 
 // ---------- registrations and requests ----------

@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { createCourseForm, deleteSessionForm, moveCourseRequest, saveSessionForm, type EditResult } from "../admin-content";
+import { createCourseForm, deleteSessionForm, moveCourseRequest, type EditResult } from "../admin-content";
 import { adminAction } from "../auth";
 import { parseSwitch, switchCoursePublished, switchCourseSample, type SwitchResult } from "../course-parts";
 import { logFailure } from "../log";
@@ -75,17 +75,6 @@ export const setCoursePublished = adminAction(async (_admin, input: unknown) => 
 export const setCourseSample = adminAction(async (_admin, input: unknown) => runSwitch("course sample switch", input, switchCourseSample));
 
 /**
- * The old calendar drawer's "Salvesta" / "Lisa toimumine" (until piece 3b Task 3's drawer, which autosaves and creates with createSessionAction): the
- * whole session, through the same checks and rules as the autosave (server/session-edit.ts saveWholeSession). A new session closes the drawer and is
- * highlighted in the list.
- */
-export const saveSession = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
-  const result = await run("session save", { kind: "sessions" }, (db) => saveSessionForm(db, formData));
-  if (result.ok && result.created) redirect(`/admin/kalender?lisatud=${result.id}`);
-  return result;
-});
-
-/**
  * The Kalender drawer's „Lisa toimumine“ (piece 3b, Task 2; README B3, S3-P3-g: the one explicit create): `{ courseId, date, time, city, venue, language,
  * capacity }`. Answers the new session's id and version, so the drawer stays open, goes on at `?id=<n>` and autosaves (api/admin/toimumine/<id>);
  * createSession revalidates the public pages once; the open list is refreshed.
@@ -119,7 +108,7 @@ export const setSessionStatusAction = adminAction(async (_admin, input: unknown)
   }
 });
 
-/** Calendar drawer "Kustuta toimumine": field id. Back to the list with a notice. */
+/** The Kalender drawer's „Kustuta toimumine“ (only without registrations): field id. Back to the list with a notice. */
 export const deleteSession = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
   const result = await run("session delete", { kind: "sessions" }, (db) => deleteSessionForm(db, formData));
   if (result.ok) redirect(`/admin/kalender?kustutatud=1`);
