@@ -8,6 +8,7 @@ The switches below are **Vercel environment variables** (Project → Settings �
 - [x] Done 08.10.2026: Vercel (team `ms-lab`, project `mslab`, its Git integration with `mslabinformation-collab/mslab`, the domains and the variables), Cloudflare (the R2 bucket `mslab-media`), Railway (project `mslab`), Resend (`send.mslab.ee`) and Bunny (library 773592) are Maria's; the data was copied (a Postgres dump; the old bucket was empty). The review comments live in Postgres (`kv_entries`).
 - [x] Done 08.10.2026: `SITE_URL` is https://mslab.ee, and `mslab.ee` and `www.mslab.ee` are on the Vercel project (`docs/deploy.md` section 4).
 - [ ] Public launch: delete `SITE_GATE` in Production of Maria's Vercel project and redeploy (the coming-soon page goes; `PREVIEW_SECRET` may stay).
+- [ ] Right after the public launch: `node tools/cache-smoke.mjs` (`docs/deploy.md` section 3). While the gate was on, part C (the client account: shells from the cache, `/api/konto/me` 401 `private, no-store`, a query on a shell a 303) reported "not checked"; it runs for real the first time now, and A and B measure the real pages instead of the coming-soon page.
 - [ ] Before the public launch (phase 2c), still open from the final review of the branch:
   - the password inputs of Minu andmed (`PasswordSection`) and the login page are controlled React inputs; make them uncontrolled (read at submit) as defence in depth, so a password never sits in React state;
   - asking a fresh e-mail code before a password is set or changed (design idea, the owner decides; today the session alone is enough, and the change is mailed to her);
@@ -366,3 +367,8 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - **A rare false „Muudeti teises aknas“** can show after the server stalled for about 10 seconds during a save, because the editor then reads the page again and may meet a save made meanwhile; the text is kept and „Taasta minu tekst“ puts it back.
   - **The preview bars are Estonian on the Russian course page too** (they are the admin's, and only a signed-in admin in the preview ever sees them).
   - **The draft-mode cookie of a preview** stays in the browser when the session merely expires, until „Lõpeta eelvaade“, „Vaata kodulehte“, a logout or closing the browser; it shows nobody a draft (no live session), it only makes that browser's public pages uncached.
+
+## 23. The test page's Automaattest (25.10)
+
+- [ ] **Before the public launch, retire the automatic tester** (owner: Dim): take its address out of `ADMIN_EMAILS` and its line out of `ADMIN_NAMES`, rotate `PREVIEW_SECRET` while the gate is still on, redeploy (`docs/deploy.md` section 15, item 7). Its answers on the test page stay as a record, or clear them with the one statement there.
+- [ ] **Delete its test data by exact address** before Maria sets „Järgmine number“: the registrations, accounts and subscribers of the `+proov` aliases it used, and the sample course „Proov (näidis)“ if it created one (the addresses are listed in its results).

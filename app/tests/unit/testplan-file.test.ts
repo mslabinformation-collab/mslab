@@ -976,3 +976,24 @@ describe("the review tools' checks (22.10)", () => {
     expect(text).not.toContain("sisselogimise lehel");
   });
 });
+
+// Dim 25.10: a third tester, „Automaattest“, whose answers stay apart from Maria's and Dim's: Dim sees each as a quiet line under the check.
+describe("the Automaattest check (Dim 25.10)", () => {
+  const t = adminEt.testplan;
+
+  test("a new check of its own: Dim's, on a computer, writing nothing, marked new since the deploy, in Haldus", () => {
+    const check = plan.items.find((c) => c.id === "testimine-automaattest");
+    expect(check, "testimine-automaattest").toBeDefined();
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    expect(markedSince(check!.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-26T00:00:00.000Z")).toBeNull(); // a new check reopens nothing
+  });
+
+  test("it quotes the page's words: the „Kes“ choice, the quiet line with its status words, the overtaken answer and the own answer's line", () => {
+    const check = plan.items.find((c) => c.id === "testimine-automaattest")!;
+    const text = [...check.steps, ...check.expect].join("\n");
+    for (const word of [`„${t.who.label}“`, `„${t.who.auto}“`, `„${t.who.all}“`, `„${t.skip}“`, `„${t.who.auto}: ${t.ok} · …“`, `„${t.bad}“`, `„${t.mark.redo}“`, "„Dim · … · …“"])
+      expect(text, word).toContain(word);
+    expect(text).toContain(`„${t.who.auto}: ${t.overtaken.replace(" {status}", "")}“`);
+  });
+});

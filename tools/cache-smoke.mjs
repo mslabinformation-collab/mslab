@@ -13,9 +13,14 @@
 //    - /konto/sisene?viga=link: a 303 to the same path with the parameter moved into the fragment (#viga=link: nothing left in the
 //      query, no other host), cache-control no-store.
 //    Against a local `next start` (no Vercel CDN in front) the cache is read from x-nextjs-cache when x-vercel-cache is missing.
-// The script exits with 1 when anything failed.
+// The coming-soon gate (SITE_GATE, src/middleware.ts): while it is on, which it is on mslab.ee until the launch, every page is the one
+// coming-soon page and a script's call to an /api address is a 404 {"ok":false,"error":"not_found"}. The script asks /api/konto/me
+// once first; when it gets that answer it says so, reports A and B as the coming-soon page's cache, and does not check C (the account
+// is not served: its answers would be the gate's, "6 errors" about routes nobody changed). C needs the gate off: the site after the
+// launch, or a local production build (docs/deploy.md section 3).
+// The script exits with 1 when anything failed. A part that was not checked is not a failure; the last line says so.
 //
-// It is a check to run once after a deployment, not a load test: 109 requests in all.
+// It is a check to run once after a deployment, not a load test: 110 requests in all.
 
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith("--only="));
@@ -102,8 +107,25 @@ const FROM_CACHE = new Set(["HIT", "PRERENDER", "STALE"]);
 /** How an answer was served: Vercel's CDN header, else (a local `next start`) Next's own. */
 const cacheOf = (res) => (res.headers.get("x-vercel-cache") ?? res.headers.get("x-nextjs-cache") ?? "-").toUpperCase();
 
+/**
+ * Is the site behind the coming-soon gate? The gate answers a script's call to /api/konto/me with 404 and `error: "not_found"`
+ * (src/middleware.ts); the account's own router answers 401 here, and its 404 for an unknown address has no `error`.
+ */
+async function behindGate() {
+  try {
+    const res = await fetch(base + "/api/konto/me", { method: "GET", redirect: "manual", headers: { "user-agent": "mslab-cache-smoke" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const body = await res.json().catch(() => null);
+    return res.status === 404 && body?.error === "not_found";
+  } catch {
+    return false;
+  }
+}
+
+let probes = 0;
+
 /** One GET of part C, never followed: the status and the headers that matter, or the error. */
 async function probe(path) {
+  probes++;
   try {
     const res = await fetch(base + path, { method: "GET", redirect: "manual", headers: { "user-agent": "mslab-cache-smoke" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     await res.arrayBuffer();
@@ -147,6 +169,14 @@ async function account() {
 
 console.log(`cache smoke test against ${base} (${new Date().toISOString()}), parts ${[...parts].sort().join(", ")}`);
 
+const gated = await behindGate();
+if (gated) {
+  const effects = [];
+  if (parts.has("A") || parts.has("B")) effects.push("A and B measure its cache only");
+  if (parts.has("C")) effects.push("C (the client account) is not checked: run it once the gate is off (the launch) or against a local production build");
+  console.log(`NOTE: ${base} is behind the coming-soon gate (SITE_GATE): every page is the one coming-soon page, so ${effects.join(", and ")}`);
+}
+
 let failed = 0;
 const ab = [];
 if (parts.has("A")) {
@@ -166,11 +196,18 @@ if (parts.has("B")) {
   ab.push(...parallel);
 }
 if (ab.length) console.log(`\nx-vercel-cache over the ${ab.length} requests of A and B: ${JSON.stringify(count(ab))}`);
+const notChecked = [];
 if (parts.has("C")) {
-  const problems = await account();
-  console.log(`\nC. the client account: 17 requests, ${problems.length} errors`);
-  for (const p of problems) console.log(`  ERROR ${p}`);
-  failed += problems.length;
+  if (gated) {
+    console.log("\nC. the client account: NOT CHECKED (the coming-soon gate answers every address)");
+    notChecked.push("C");
+  } else {
+    const problems = await account();
+    console.log(`\nC. the client account: ${probes} requests, ${problems.length} errors`);
+    for (const p of problems) console.log(`  ERROR ${p}`);
+    failed += problems.length;
+  }
 }
-console.log(failed === 0 ? "PASS: 0 errors" : `FAIL: ${failed} errors`);
+const unchecked = notChecked.length ? ` (part ${notChecked.join(", ")} not checked: the site is behind the coming-soon gate)` : "";
+console.log(failed === 0 ? `PASS: 0 errors${unchecked}` : `FAIL: ${failed} errors${unchecked}`);
 process.exit(failed === 0 ? 0 : 1);

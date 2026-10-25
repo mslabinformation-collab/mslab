@@ -4,6 +4,13 @@
 // browser too, on iOS Safari before 16.4 as well: no lookbehind here (tests/unit/old-safari.test.ts), and no import of anything server-only.
 
 export type Who = "maria" | "dim" | "koos";
+/**
+ * Who the signed-in admin tests as (spec D10): Maria, Dim, or (Dim 25.10) „Automaattest“, an automatic tester on the staging site whose answers
+ * are kept apart (`AnswersDoc.auto`) and never count as Maria's or Dim's.
+ */
+export type Tester = "maria" | "dim" | "auto";
+/** Which map of the answers doc a save goes into: the admins' shared `answers`, or Automaattest's own `auto` (Dim 25.10). */
+export type Side = "answers" | "auto";
 export type Device = "telefon" | "tahvel" | "arvuti" | "any";
 export type Mark = "redo" | "reworded" | "new";
 /** An area of the plan; `checks: false` is a notes-only area ("Enne alustamist", "Koristamine"): it takes no check. */
@@ -29,7 +36,11 @@ export type TestPlan = { version: 1; marked: string; areas: TestArea[]; items: T
 export type Status = "ok" | "bad" | "skip";
 /** An answer as stored (the `settings` key testplan_answers). `at` and `pinged` are server instants; `by` is the session's admin e-mail and never leaves the server. */
 export type StoredAnswer = { status: Status; note: string; at: string; by: string; pinged?: string; notePinged?: true };
-export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer> };
+/**
+ * The stored answers. `answers` are Maria's and Dim's (and any other admin's), as they always were; `auto` (Dim 25.10, optional: a doc
+ * written before it has none) holds Automaattest's answers, of the same shape, apart. A save goes into one map and leaves the other as it is.
+ */
+export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer>; auto?: Record<string, StoredAnswer> };
 /** An answer as the device sends it. `clientAt` only orders several unsent presses of one check on the device; the server stamps `at` itself. */
 export type IncomingAnswer = { status: Status; note: string; clientAt?: string };
 /** `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both: an open check has no valid answer. */
@@ -38,9 +49,9 @@ export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnsw
  * A Telegram message to send: the first for a new failure ("bad"), the second for the first note of an answer, a failure's or (Dim 22.10) an OK's
  * or a Jäta vahele's ("note"). `oldNote`: the new failure's note is the one the answer before it already had (the page sends a check's note as it
  * stands with a press, so a Viga pressed on an OK "Tahvlis korras" carries that note along). It is not this failure's: the first message says there
- * is no note yet, and the note typed next is the second.
+ * is no note yet, and the note typed next is the second. `auto`: the answer is Automaattest's, in the doc's `auto` (Dim 25.10).
  */
-export type Ping = { id: string; kind: "bad" | "note"; oldNote?: true };
+export type Ping = { id: string; kind: "bad" | "note"; oldNote?: true; auto?: true };
 
 /** A note holds at most this many characters, counted in code points after trimming. */
 export const NOTE_MAX = 1000;
@@ -72,6 +83,16 @@ const wordCount = (line: string): number => line.trim().split(/\s+/).length;
  */
 export const answerOf = (answers: Record<string, StoredAnswer>, id: string): StoredAnswer | undefined =>
   Object.prototype.hasOwnProperty.call(answers, id) ? answers[id] : undefined;
+
+/** The map a tester's saves go into (Dim 25.10): Automaattest's `auto`, everybody else's `answers`. */
+export const sideOf = (tester: Tester | null): Side => (tester === "auto" ? "auto" : "answers");
+/** One map of the doc (`auto` is empty when the doc has none). */
+export const answersIn = (doc: AnswersDoc, side: Side): Record<string, StoredAnswer> => (side === "auto" ? (doc.auto ?? {}) : doc.answers);
+/** The doc with one map replaced and the other kept as it is (a doc without `auto` gets none unless the map replaced is `auto`). */
+function withAnswersIn(doc: AnswersDoc, side: Side, map: Record<string, StoredAnswer>): AnswersDoc {
+  if (side === "auto") return { v: 1, answers: doc.answers, auto: map };
+  return doc.auto ? { v: 1, answers: map, auto: doc.auto } : { v: 1, answers: map };
+}
 
 /** The problems of one line of a check (a step, an expect line or the "why"): empty, no final full stop, too many words. */
 function lineProblems(where: string, line: unknown): string[] {
@@ -210,24 +231,30 @@ export function cleanNote(raw: unknown): string {
   return Array.from(raw.trim()).slice(0, NOTE_MAX).join("").trimEnd();
 }
 
+/** The good entries of one stored map (readAnswersDoc). */
+function readEntries(map: Record<string, unknown>): Record<string, StoredAnswer> {
+  const entries: [string, StoredAnswer][] = [];
+  for (const [id, raw] of Object.entries(map)) {
+    if (!isObject(raw) || !isStatus(raw.status) || !isInstant(raw.at)) continue;
+    const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at: raw.at, by: typeof raw.by === "string" ? raw.by : "" };
+    if (isInstant(raw.pinged)) entry.pinged = raw.pinged;
+    if (raw.notePinged === true) entry.notePinged = true;
+    entries.push([id, entry]);
+  }
+  // (fromEntries, not assignment: an id called "__proto__" is an ordinary key)
+  return Object.fromEntries(entries);
+}
+
 /**
  * The stored `testplan_answers` value read defensively (jsonb: anything): a doc of version 1 with its good entries. An entry is kept when it
  * has a status and a valid `at`; its note is cleaned, a missing `by` is "", and a `pinged` that is no instant or a `notePinged` that is not
- * true is left out. Anything else, the whole value of another version included, is an empty doc. Always a copy.
+ * true is left out. Automaattest's `auto` (Dim 25.10) is read by the same rules when it is an object; a doc without one has none. Anything
+ * else, the whole value of another version included, is an empty doc. Always a copy.
  */
 export function readAnswersDoc(value: unknown): AnswersDoc {
-  const entries: [string, StoredAnswer][] = [];
-  if (isObject(value) && value.v === 1 && isObject(value.answers)) {
-    for (const [id, raw] of Object.entries(value.answers)) {
-      if (!isObject(raw) || !isStatus(raw.status) || !isInstant(raw.at)) continue;
-      const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at: raw.at, by: typeof raw.by === "string" ? raw.by : "" };
-      if (isInstant(raw.pinged)) entry.pinged = raw.pinged;
-      if (raw.notePinged === true) entry.notePinged = true;
-      entries.push([id, entry]);
-    }
-  }
-  // (fromEntries, not assignment: an id called "__proto__" is an ordinary key)
-  return { v: 1, answers: Object.fromEntries(entries) };
+  if (!isObject(value) || value.v !== 1 || !isObject(value.answers)) return { v: 1, answers: {} };
+  const answers = readEntries(value.answers);
+  return isObject(value.auto) ? { v: 1, answers, auto: readEntries(value.auto) } : { v: 1, answers };
 }
 
 /**
@@ -240,6 +267,8 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
  * `buildAt` (required) is what a "deploy" mark reads as (appliesAt): pass the running build's instant, TESTPLAN_BUILD_AT. It has no default
  * on purpose. A guess such as `now` would make every stored failure of a check marked "deploy" older than its mark, so each save of the same
  * failure would count as a new one and send the first Telegram message again (a message per pause in typing a note). Pure: `stored` is not edited.
+ * `side` (Dim 25.10) is the map the save goes into, `sideOf` the session's tester: Automaattest's saves write `auto` only, everybody else's
+ * `answers` only; the other map is kept as it is, and the stored answer a merge compares with is the one of the same map.
  */
 export function mergeAnswers(
   stored: AnswersDoc,
@@ -248,16 +277,18 @@ export function mergeAnswers(
   by: string,
   now: Date,
   buildAt: string,
+  side: Side = "answers",
 ): { doc: AnswersDoc; changed: string[] } {
   const items = new Map(plan.items.map((item) => [item.id, item]));
-  const answers = { ...stored.answers };
+  const before = answersIn(stored, side);
+  const answers = { ...before };
   const changed: string[] = [];
   const at = now.toISOString();
   for (const [id, raw] of Object.entries(incoming)) {
     const item = items.get(id);
     if (!item || !isObject(raw) || !isStatus(raw.status)) continue;
     const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at, by };
-    const prev = answerOf(stored.answers, id);
+    const prev = answerOf(before, id);
     if (prev && prev.status === entry.status && checkState(item, prev, plan, buildAt).overtaken === null) {
       if (prev.pinged !== undefined) entry.pinged = prev.pinged;
       if (prev.notePinged) entry.notePinged = true;
@@ -265,7 +296,7 @@ export function mergeAnswers(
     answers[id] = entry;
     changed.push(id);
   }
-  return { doc: { v: 1, answers }, changed };
+  return { doc: withAnswersIn(stored, side, answers), changed };
 }
 
 /**
@@ -278,17 +309,23 @@ export function mergeAnswers(
  *   sent as this answer's, however often it is saved again). pingText shows the answer in it.
  * Nothing for an answer with no note, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
  * decided which answer is the same one, and `after` carries what it decided.
+ * `side` (Dim 25.10) is the map the save went into. Automaattest's (`auto`) pings are marked `auto`, and only its Viga pings, the first
+ * message and that Viga's first note: its OK and its Jäta vahele send nothing, with a note or without (an automatic run notes every check).
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[], plan: TestPlan, _buildAt: string): Ping[] {
+export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[], plan: TestPlan, _buildAt: string, side: Side = "answers"): Ping[] {
   const known = new Set(plan.items.map((item) => item.id));
+  const was = answersIn(before, side);
+  const now = answersIn(after, side);
+  const mark = side === "auto" ? { auto: true as const } : {};
   const pings: Ping[] = [];
   for (const id of changed) {
-    const answer = answerOf(after.answers, id);
+    const answer = answerOf(now, id);
     if (!answer || !known.has(id)) continue;
-    const noteBefore = answerOf(before.answers, id)?.note;
-    if (answer.status === "bad" && answer.pinged === undefined) pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true } : { id, kind: "bad" });
-    else if (!answer.notePinged && answer.note !== "" && answer.note !== noteBefore) pings.push({ id, kind: "note" });
+    if (side === "auto" && answer.status !== "bad") continue;
+    const noteBefore = answerOf(was, id)?.note;
+    if (answer.status === "bad" && answer.pinged === undefined)
+      pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true, ...mark } : { id, kind: "bad", ...mark });
+    else if (!answer.notePinged && answer.note !== "" && answer.note !== noteBefore) pings.push({ id, kind: "note", ...mark });
   }
   return pings;
 }
@@ -297,34 +334,43 @@ export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[
  * The doc with the pings recorded as sent. The server records them when it stores the save, before anything is sent (the sends go after the
  * commit), and a send that fails is logged and never tried again (spec D6, docs/deploy.md section 15.4: Dim reads the page): the first message
  * sets `pinged` (the instant of the first message, kept if there is one) and, when the answer has a note of its own (not `oldNote`),
- * `notePinged` too (the first message carried it); the second sets `notePinged`. A copy; an id the doc does not hold is skipped.
+ * `notePinged` too (the first message carried it); the second sets `notePinged`. A copy; an id the doc does not hold is skipped. A ping marked
+ * `auto` is recorded in Automaattest's `auto`, any other in `answers` (Dim 25.10).
  */
 export function markPinged(doc: AnswersDoc, pings: Ping[], now: Date): AnswersDoc {
   const answers = { ...doc.answers };
+  const auto = doc.auto ? { ...doc.auto } : undefined;
   const at = now.toISOString();
-  for (const { id, kind, oldNote } of pings) {
-    const answer = answerOf(answers, id);
-    if (!answer) continue;
-    answers[id] =
+  for (const { id, kind, oldNote, auto: isAuto } of pings) {
+    const map = isAuto ? auto : answers;
+    const answer = map ? answerOf(map, id) : undefined;
+    if (!map || !answer) continue;
+    map[id] =
       kind === "bad"
         ? { ...answer, pinged: answer.pinged ?? at, ...(answer.note !== "" && !oldNote ? { notePinged: true as const } : {}) }
         : { ...answer, notePinged: true };
   }
-  return { v: 1, answers };
+  return auto ? { v: 1, answers, auto } : { v: 1, answers };
 }
+
+/** The name in ADMIN_NAMES that makes an admin the automatic tester (Dim 25.10), compared lower-cased as the name's start. */
+const AUTO_NAME = "automaattest";
 
 /**
  * Which tester the signed-in admin is (spec D10): the admin's name in ADMIN_NAMES ("<address>=<name>,…", the same parse as
- * server/auth.ts adminFirstName, which this module cannot import: the page loads it), its first word lower-cased, "maria" or "dim".
+ * server/auth.ts adminFirstName, which this module cannot import: the page loads it), its first word lower-cased, "maria" or "dim"; or
+ * (Dim 25.10) "auto" when the name starts with „Automaattest“ (in any case): the automatic tester, whose answers are kept apart.
  * An unlisted address or any other name is null: that admin sees every check as "Kõik".
  */
-export function testerOf(email: string, adminNames: string | undefined): Exclude<Who, "koos"> | null {
+export function testerOf(email: string, adminNames: string | undefined): Tester | null {
   const wanted = email.trim().toLowerCase();
   if (!wanted) return null;
   for (const entry of (adminNames ?? "").split(",")) {
     const at = entry.lastIndexOf("=");
     if (at > 0 && entry.slice(0, at).trim().toLowerCase() === wanted) {
-      const first = entry.slice(at + 1).trim().split(/\s+/)[0].toLowerCase();
+      const name = entry.slice(at + 1).trim().toLowerCase();
+      if (name.startsWith(AUTO_NAME)) return "auto";
+      const first = name.split(/\s+/)[0];
       return first === "maria" || first === "dim" ? first : null;
     }
   }
@@ -334,7 +380,8 @@ export function testerOf(email: string, adminNames: string | undefined): Exclude
 /**
  * The header's and the Avaleht card's numbers (spec §4, §5) over the plan's own checks (answers to other ids are ignored). `who` narrows them
  * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (OK or Jäta vahele, still
- * valid), open or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry an overtaken answer.
+ * valid), open or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry an overtaken answer. It reads the
+ * doc's `answers` only: Automaattest's `auto` never counts for Maria or Dim (Dim 25.10; its own numbers are its map passed as `answers`).
  */
 export function planCounts(
   plan: TestPlan,
@@ -360,15 +407,17 @@ export function planCounts(
 /**
  * The standing „Viga“ answers `email` gave (the menu badge of Testimine, admin UX pass B6): the plan's checks whose valid answer is Viga and was
  * given by that admin (`by` is the session's address, compared without regard to case). A Viga a redo has since reopened is open again and does not
- * count; neither does an answer to a check the plan no longer has.
+ * count; neither does an answer to a check the plan no longer has. Both maps are read (Dim 25.10): Automaattest's own Vead are in `auto`, so its
+ * badge counts them, and Maria's and Dim's, whose addresses are never in `auto`, stay as they were.
  */
 export function ownFaults(plan: TestPlan, doc: AnswersDoc, buildAt: string, email: string): number {
   const me = email.trim().toLowerCase();
   if (!me) return 0;
   let n = 0;
-  for (const item of plan.items) {
-    const { state, answer } = checkState(item, answerOf(doc.answers, item.id), plan, buildAt);
-    if (state === "failed" && answer !== null && answer.by.trim().toLowerCase() === me) n++;
-  }
+  for (const map of [doc.answers, doc.auto ?? {}])
+    for (const item of plan.items) {
+      const { state, answer } = checkState(item, answerOf(map, item.id), plan, buildAt);
+      if (state === "failed" && answer !== null && answer.by.trim().toLowerCase() === me) n++;
+    }
   return n;
 }

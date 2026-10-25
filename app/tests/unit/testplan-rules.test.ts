@@ -616,3 +616,125 @@ describe("ownFaults: the number on Testimine's menu badge (admin UX pass, B6)", 
     expect(ownFaults(PLAN, answers, BUILD, ME)).toBe(1);
   });
 });
+
+// Dim 25.10: a third tester, „Automaattest“ (an automatic tester on the staging site), whose answers never count as Maria's or Dim's. They are kept
+// in the doc's own `auto` map, with the same answer shape; Maria's and Dim's stay in `answers` exactly as before.
+describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", () => {
+  const AUTO = "auto@x.test";
+  const NAMES = `m@x.test=Maria Sosnina,d@x.test=Dim,${AUTO}=Automaattest`;
+  const NOW = new Date("2026-10-25T10:00:00.000Z");
+  const withAuto = (answers: Record<string, StoredAnswer>, auto: Record<string, StoredAnswer>): AnswersDoc => ({ v: 1, answers, auto });
+
+  test.each([
+    { name: "the name Automaattest", email: AUTO, names: NAMES, expected: "auto" },
+    { name: "the name in any case", email: AUTO, names: `${AUTO}=automaattest`, expected: "auto" },
+    { name: "a name that starts with it", email: AUTO, names: `${AUTO}=Automaattest 2`, expected: "auto" },
+    { name: "...written as one word with more after it", email: AUTO, names: `${AUTO}=AUTOMAATTEST2`, expected: "auto" },
+    { name: "Automaattest as a later word does not count", email: "k@x.test", names: "k@x.test=Kati Automaattest", expected: null },
+    { name: "Maria stays Maria", email: "m@x.test", names: NAMES, expected: "maria" },
+    { name: "Dim stays Dim", email: "d@x.test", names: NAMES, expected: "dim" },
+  ])("testerOf: $name", ({ email, names, expected }) => {
+    expect(testerOf(email, names)).toBe(expected);
+  });
+
+  test("a save into `auto` writes only `auto`: Maria's and Dim's answers are left exactly as they were", () => {
+    const stored = doc({ "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { by: "m@x.test", note: "hea", notePinged: true }) });
+    const { doc: merged, changed } = mergeAnswers(stored, { "maria-1": inc("bad", "katki"), "dim-1": inc("ok") }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(changed).toEqual(["maria-1", "dim-1"]);
+    expect(merged.answers).toEqual(stored.answers);
+    expect(merged.auto).toEqual({
+      "maria-1": { status: "bad", note: "katki", at: NOW.toISOString(), by: AUTO },
+      "dim-1": { status: "ok", note: "", at: NOW.toISOString(), by: AUTO },
+    });
+    expect(stored).toEqual(doc({ "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { by: "m@x.test", note: "hea", notePinged: true }) })); // (not edited in place)
+  });
+
+  test("a save by Maria or Dim never touches `auto`, and an Automaattest answer's ping records do not carry over into hers", () => {
+    const auto = { "maria-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO, note: "katki", pinged: "2026-10-24T10:00:00.000Z", notePinged: true }) };
+    const stored = withAuto({}, auto);
+    const { doc: merged } = mergeAnswers(stored, { "maria-1": inc("bad") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(merged.auto).toEqual(auto);
+    expect(merged.answers["maria-1"]).toEqual({ status: "bad", note: "", at: NOW.toISOString(), by: "m@x.test" });
+    // ...so her Viga is a new failure of her own, announced as hers
+    expect(pingsFor(stored, merged, ["maria-1"], PLAN, BUILD)).toEqual([{ id: "maria-1", kind: "bad" }]);
+  });
+
+  test("an old doc without `auto`: a save by Maria adds none; a save into `auto` starts it", () => {
+    const shared = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(Object.keys(shared.doc)).toEqual(["v", "answers"]);
+    const auto = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(auto.doc).toEqual({ v: 1, answers: {}, auto: { "maria-1": { status: "ok", note: "", at: NOW.toISOString(), by: AUTO } } });
+  });
+
+  test("planCounts for Maria, Dim and everybody ignore `auto`; ownFaults counts each admin's own standing Vead, Automaattest's in `auto`", () => {
+    const shared = { "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { by: "m@x.test" }) };
+    const auto = {
+      "maria-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }),
+      "dim-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }),
+      "koos-1": answer("ok", "2026-10-24T10:00:00.000Z", { by: AUTO }),
+    };
+    for (const who of [null, "maria", "dim"] as const) expect(planCounts(PLAN, withAuto(shared, auto), BUILD, who), String(who)).toEqual(planCounts(PLAN, doc(shared), BUILD, who));
+    expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, "m@x.test")).toBe(0);
+    expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, AUTO)).toBe(2);
+  });
+
+  test("the mark rule holds for Automaattest's answers: a redo after its Viga reopens the check, and a Viga after the redo is a new failure", () => {
+    // dim-1 is a redo marked 20.10
+    const save = (stored: AnswersDoc, status: Status, note: string, at: string) => {
+      const now = new Date(at);
+      const merged = mergeAnswers(stored, { "dim-1": inc(status, note) }, PLAN, AUTO, now, BUILD, "auto");
+      const pings = pingsFor(stored, merged.doc, merged.changed, PLAN, BUILD, "auto");
+      return { pings, recorded: markPinged(merged.doc, pings, now) };
+    };
+    const early = save(doc(), "bad", "", "2026-10-19T10:00:00.000Z");
+    expect(early.pings).toEqual([{ id: "dim-1", kind: "bad", auto: true }]);
+    const st = checkState(PLAN.items[1], early.recorded.auto!["dim-1"], PLAN, BUILD);
+    expect([st.state, st.answer, st.overtaken?.status]).toEqual(["open", null, "bad"]);
+    const late = save(early.recorded, "bad", "", "2026-10-21T10:00:00.000Z");
+    expect(late.pings).toEqual([{ id: "dim-1", kind: "bad", auto: true }]);
+    expect(late.recorded.auto!["dim-1"].pinged).toBe("2026-10-21T10:00:00.000Z");
+    expect(late.recorded.answers).toEqual({});
+  });
+
+  test("its pings: a Viga, then that Viga's first note, each once and marked `auto`; an OK or a Jäta vahele sends nothing, even with a note", () => {
+    const save = (stored: AnswersDoc, id: string, status: Status, note: string, at: string) => {
+      const now = new Date(at);
+      const merged = mergeAnswers(stored, { [id]: inc(status, note) }, PLAN, AUTO, now, BUILD, "auto");
+      const pings = pingsFor(stored, merged.doc, merged.changed, PLAN, BUILD, "auto");
+      return { pings, recorded: markPinged(merged.doc, pings, now) };
+    };
+    const s1 = save(doc(), "maria-1", "bad", "", "2026-10-25T10:00:00.000Z");
+    expect(s1.pings).toEqual([{ id: "maria-1", kind: "bad", auto: true }]);
+    const s2 = save(s1.recorded, "maria-1", "bad", "nupp puudub", "2026-10-25T10:01:00.000Z");
+    expect(s2.pings).toEqual([{ id: "maria-1", kind: "note", auto: true }]);
+    expect(s2.recorded.auto!["maria-1"]).toMatchObject({ pinged: "2026-10-25T10:00:00.000Z", notePinged: true });
+    expect(save(s2.recorded, "maria-1", "bad", "nupp puudub ikka", "2026-10-25T10:02:00.000Z").pings).toEqual([]);
+    // an OK and a Jäta vahele, with a note or without
+    const ok = save(doc(), "maria-2", "ok", "", "2026-10-25T10:00:00.000Z");
+    expect(ok.pings).toEqual([]);
+    expect(save(ok.recorded, "maria-2", "ok", "korras", "2026-10-25T10:01:00.000Z").pings).toEqual([]);
+    expect(save(doc(), "dim-1", "skip", "hiljem", "2026-10-25T10:00:00.000Z").pings).toEqual([]);
+  });
+
+  test("markPinged records a ping marked `auto` in `auto` only, and one without the mark in `answers` only", () => {
+    const one = answer("bad", NOW.toISOString(), { note: "katki" });
+    const both = withAuto({ "maria-1": { ...one, by: "m@x.test" } }, { "maria-1": { ...one, by: AUTO } });
+    const auto = markPinged(both, [{ id: "maria-1", kind: "bad", auto: true }], NOW);
+    expect(auto.answers).toEqual(both.answers);
+    expect(auto.auto!["maria-1"]).toEqual({ ...one, by: AUTO, pinged: NOW.toISOString(), notePinged: true });
+    const shared = markPinged(both, [{ id: "maria-1", kind: "bad" }], NOW);
+    expect(shared.auto).toEqual(both.auto);
+    expect(shared.answers["maria-1"].pinged).toBe(NOW.toISOString());
+    // a doc without `auto` gets none from a ping marked `auto`
+    expect(markPinged(doc(both.answers), [{ id: "maria-1", kind: "bad", auto: true }], NOW)).toEqual(doc(both.answers));
+  });
+
+  test("readAnswersDoc reads `auto` by the same rules as `answers`; a doc without it has none, and one that is not an object is dropped", () => {
+    const good = { status: "bad", note: " katki ", at: "2026-10-25T10:00:00.000Z", by: AUTO, pinged: "2026-10-25T10:00:00.000Z" };
+    const read = readAnswersDoc({ v: 1, answers: {}, auto: { "maria-1": good, "maria-2": { ...good, status: "maybe" } } });
+    expect(read).toEqual({ v: 1, answers: {}, auto: { "maria-1": { ...good, note: "katki" } } });
+    expect(Object.keys(readAnswersDoc({ v: 1, answers: {} }))).toEqual(["v", "answers"]);
+    expect(Object.keys(readAnswersDoc({ v: 1, answers: {}, auto: [good] }))).toEqual(["v", "answers"]);
+    expect(Object.keys(readAnswersDoc({ v: 1, answers: {}, auto: null }))).toEqual(["v", "answers"]);
+  });
+});
