@@ -361,6 +361,8 @@ The acceptance walk of the site, written down (phase 4 piece 1, spec `docs/super
    - **Telegram:** its Viga sends the first message, and that Viga's first note the second, as in item 4 with „(Automaattest)“ as the name. Its „OK“ and „Jäta vahele“ send nothing, with a note or without.
    - **Rollback** to code from before 25.10: the older code reads the row and ignores `auto`, so Maria's and Dim's answers are untouched; but its first save writes the row back without `auto` (Automaattest's answers are gone), and it takes Automaattest for an ordinary admin, whose saves would land in the shared `answers` as if Maria's or Dim's. So before rolling back, stop the automatic tester and take its address out of `ADMIN_EMAILS` (redeploy); to keep its answers, read the row on Railway first (section 6) and keep a copy of `auto`.
    - **To clear its answers only** (Railway, section 6; read the row first): `UPDATE settings SET value = value - 'auto' WHERE key = 'testplan_answers';`.
+   - **Its own browser profile.** Unsent presses wait in the browser (`localStorage`, not per account) and are sent by whichever admin opens the page next, into that admin's answers. So the automatic tester never shares a browser profile with Maria or Dim.
+   - **Before the public launch** retire it: take its address out of `ADMIN_EMAILS` and its name out of `ADMIN_NAMES` (redeploy), and, while the coming-soon gate is still on, rotate `PREVIEW_SECRET` as for any admin who leaves (above): it could press „Vaata kodulehte“ and holds a valid preview cookie.
 
 ## 16. Invoices („Arved“)
 
