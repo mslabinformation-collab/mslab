@@ -52,6 +52,8 @@ let container: HTMLDivElement;
 let root: Root;
 /** What the API holds, and what it was asked. */
 let server: Record<string, PageAnswer> | null;
+/** Automaattest's answers as the API gives them, apart (Dim 25.10). */
+let autoServer: Record<string, PageAnswer>;
 let getReply: () => Response | Promise<Response>;
 let putReply: (body: { answers: Record<string, { status: PageAnswer["status"]; note: string }> }) => Promise<Response>;
 const calls: { method: string; body?: { answers: Record<string, { status: PageAnswer["status"]; note: string }> } }[] = [];
@@ -78,10 +80,11 @@ const state = (id: string) => check(id).getAttribute("data-check-state");
 const pressed = (id: string) => $$(`[data-check="${id}"] [data-answer][aria-pressed="true"]`).map((b) => b.getAttribute("data-answer"));
 const status = () => $("[data-save-status]")!.textContent;
 
-type Props = { initial?: Record<string, PageAnswer> | null; you?: { name: string; tester: "maria" | "dim" | null } };
-const show = async ({ initial = SERVER, you = MARIA }: Props = {}) => {
+type Props = { initial?: Record<string, PageAnswer> | null; auto?: Record<string, PageAnswer>; you?: { name: string; tester: "maria" | "dim" | "auto" | null } };
+const show = async ({ initial = SERVER, auto, you = MARIA }: Props = {}) => {
   server = initial === null ? null : { ...initial };
-  await act(async () => root.render(createElement(TestPlan, { plan: PLAN, initial, you, buildAt: BUILD_AT })));
+  autoServer = { ...(auto ?? {}) };
+  await act(async () => root.render(createElement(TestPlan, { plan: PLAN, initial, auto, you, buildAt: BUILD_AT })));
   await settle();
 };
 /** The view the device remembers (`who` is what the "Kes" filter shows). */
@@ -98,7 +101,9 @@ beforeEach(() => {
   localStorage.clear();
   calls.length = 0;
   server = { ...SERVER };
-  getReply = () => (server ? json({ ok: true, plan: PLAN, answers: server, you: MARIA }) : json({ ok: false, error: "unavailable", plan: PLAN, answers: null, you: MARIA }, 503));
+  autoServer = {};
+  getReply = () =>
+    server ? json({ ok: true, plan: PLAN, answers: server, auto: autoServer, you: MARIA }) : json({ ok: false, error: "unavailable", plan: PLAN, answers: null, you: MARIA }, 503);
   putReply = async (body) => {
     server = { ...(server ?? {}) };
     for (const [id, a] of Object.entries(body.answers)) server[id] = { status: a.status, note: a.note, at: "2026-10-16T12:00:00.000Z", byName: "Maria" };
@@ -581,6 +586,93 @@ describe("a tap while the page is still loading", () => {
       box.remove();
       globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     }
+  });
+});
+
+// Dim 25.10: a third tester, „Automaattest“, whose answers never count as Maria's or Dim's. Maria and Dim see each of its answers as one quiet line
+// under the check; the Automaattest session answers in its own right and sees every check.
+describe("Automaattest (Dim 25.10)", () => {
+  const AUTO_ANSWERS: Record<string, PageAnswer> = {
+    "a1-redo": answer("bad", "2026-10-14T10:00:00.000Z", "Automaattest"), // before its redo's instant (15.10)
+    "a1-fail": answer("ok", "2026-10-16T12:06:00.000Z", "Automaattest"),
+    "a1-plain": answer("ok", "2026-10-16T12:05:00.000Z", "Automaattest", "Kõik sammud läbitud."),
+  };
+  const AUTO_YOU = { name: "Automaattest", tester: "auto" as const };
+  const autoLine = (id: string) => check(id).querySelector("[data-check-auto]")?.textContent ?? null;
+  const autoNote = (id: string) => check(id).querySelector("[data-check-auto-note]")?.textContent ?? null;
+
+  test("for Maria: one quiet line „Automaattest: OK · 16.10 15:05“ under each check it answered, with its note; her own answers and counts are as without it", async () => {
+    // (the page's own numbers, states and last answers: what Automaattest's answers must leave as they are)
+    const seen = () => ({ progress: $("[data-progress]")!.textContent, states: ids().map((id) => state(id!)), last: $$("[data-check-last]").map((p) => p.textContent) });
+    await showAll();
+    await openAll();
+    const without = seen();
+    await act(async () => root.unmount());
+    root = createRoot(container);
+
+    await showAll({ auto: AUTO_ANSWERS });
+    await openAll();
+    expect(autoLine("a1-plain")).toBe("Automaattest: OK · 16.10 15:05");
+    expect(autoNote("a1-plain")).toBe("Kõik sammud läbitud.");
+    expect(autoLine("a1-fail")).toBe("Automaattest: OK · 16.10 15:06");
+    expect(autoNote("a1-fail")).toBeNull();
+    expect(autoLine("a0-done")).toBeNull();
+    // never her answer: a1-plain stays open with no button pressed, a1-fail stays her Viga
+    expect(state("a1-plain")).toBe("open");
+    expect(pressed("a1-plain")).toEqual([]);
+    expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
+    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull();
+    expect(state("a1-fail")).toBe("failed");
+    expect(check("a1-fail").querySelector("[data-check-last]")!.textContent).toBe("Dim · 16.10 14:05 · Viga");
+    expect(seen()).toEqual(without);
+  });
+
+  test("an answer a redo has overtaken shows as one from before the change, in the page's own words", async () => {
+    await showAll({ auto: AUTO_ANSWERS });
+    await openAll();
+    expect(autoLine("a1-redo")).toBe("Automaattest: Varasem vastus (enne muudatust): Viga · 14.10 13:00");
+  });
+
+  test("Maria's press on a check Automaattest answered saves her answer only, and its line stays", async () => {
+    await showAll({ auto: AUTO_ANSWERS });
+    await openAll();
+    await click(check("a1-plain").querySelector('[data-answer="skip"]')!);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "skip", note: "" } } }]);
+    expect(state("a1-plain")).toBe("done");
+    expect(autoLine("a1-plain")).toBe("Automaattest: OK · 16.10 15:05");
+    expect((check("a1-plain").querySelector("[data-check-note]") as HTMLTextAreaElement).value).toBe(""); // (its note is not hers)
+  });
+
+  test("the 'Kes' choice „Automaattest“ shows the checks Automaattest answered and nothing else, and is kept on the device", async () => {
+    await showAll({ auto: AUTO_ANSWERS });
+    const pill = $('[data-who="auto"]')!;
+    expect(pill.textContent).toBe("Automaattest");
+    expect($$("[data-who]").map((b) => b.textContent)).toEqual(["Kõik", "Maria", "Dim", "Koos", "Automaattest"]);
+    await click(pill);
+    expect(pill.getAttribute("aria-pressed")).toBe("true");
+    await openAll();
+    expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain"]);
+    expect(JSON.parse(localStorage.getItem("mslab-testplan-view")!)).toEqual({ filter: "all", who: "auto" });
+  });
+
+  test("the Automaattest session sees every check (Kes: Kõik) as „Sina: Automaattest“, its own answers as the checks' answers and no quiet line; a press saves its answer", async () => {
+    await show({ initial: AUTO_ANSWERS, auto: AUTO_ANSWERS, you: AUTO_YOU });
+    expect($('[data-who="all"]')!.getAttribute("aria-pressed")).toBe("true");
+    expect($("[data-you]")!.textContent).toBe("Sina: Automaattest");
+    await openAll();
+    expect(ids()).toEqual(["a0-done", "a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
+    // its own: a1-fail and a1-plain done, a1-redo open over its overtaken Viga, the rest open
+    expect($("[data-progress]")!.textContent).toBe("2 / 6 tehtud · 0 viga · 1 uuesti testida");
+    expect($$("[data-check-auto]")).toEqual([]);
+    expect(pressed("a1-plain")).toEqual(["ok"]);
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Automaattest · 16.10 15:05 · OK");
+    expect(check("a1-redo").querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): Viga");
+    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "bad", note: "Kõik sammud läbitud." } } }]);
+    // its „Kes: Automaattest“ is the checks it answered
+    await click($('[data-who="auto"]')!);
+    await openAll();
+    expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain"]);
   });
 });
 

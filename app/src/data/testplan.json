@@ -2015,6 +2015,33 @@
       "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
+      "id": "testimine-automaattest",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Automaattesti vastused eraldi",
+      "href": "/admin/testimine",
+      "steps": [
+        "Ava halduses „Testimine“ ja vajuta rea „Kes“ juures „Automaattest“.",
+        "Kui ühtegi kontrolli pole näha, vali „Kes“ juures „Kõik“ ja vajuta selle kontrolli juures „Jäta vahele“.",
+        "Muidu ava mõni ala ja vaata ühe kontrolli nuppude all olevaid ridu.",
+        "Vajuta rea „Kes“ juures „Kõik“ ja vasta siis sellele kontrollile."
+      ],
+      "expect": [
+        "Valik „Automaattest“ näitab ainult kontrolle, millele automaattest on vastanud.",
+        "Kontrolli all on rida „Automaattest: OK · …“ (või „Viga“, „Jäta vahele“) koos kuupäevaga.",
+        "Kui automaattest kirjutas märkuse, on see selle rea all.",
+        "Kui sa pole sellele kontrollile ise vastanud, ei ole ükski nupp vajutatud.",
+        "Kui oled vastanud, on sinu nupp vajutatud ja rida „Dim · … · …“ alles.",
+        "Kui kontroll märgiti pärast vastust „Uuesti testida“, algab rida „Automaattest: Varasem vastus (enne muudatust):“."
+      ],
+      "why": "Automaattesti vastused ei tohi kunagi lugeda Maria ega Dimi vastuseks.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-lahkumine-salvestamata",
       "area": "haldus",
       "who": "dim",

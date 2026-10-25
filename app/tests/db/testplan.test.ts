@@ -9,7 +9,7 @@ import { settings } from "@/db/schema";
 import type { AnswersDoc, StoredAnswer, TestPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { pingText, readAnswers, saveAnswers, testplanBuildAt, testplanCard, toPageAnswers } from "@/server/testplan";
+import { ownFaultCount, pageView, pingText, readAnswers, saveAnswers, testplanBuildAt, testplanCard, toPageAnswers } from "@/server/testplan";
 import { makeTestDb } from "./helpers";
 
 // The test page's server side (phase 4, piece 1, spec D4, D6, D10, §5): the answers are one `settings` row, merged under its lock;
@@ -36,7 +36,9 @@ vi.mock("@/data/testplan.json", () => ({ default: FIXTURE }));
 const PLAN = FIXTURE as unknown as TestPlan;
 const MARIA = "maria@example.test";
 const DIM = "dim@example.test";
-const NAMES = `${MARIA}=Maria Sosnina,${DIM}=Dim`;
+/** The automatic tester (Dim 25.10): its answers are kept apart, in the doc's `auto`. */
+const AUTO = "auto@example.test";
+const NAMES = `${MARIA}=Maria Sosnina,${DIM}=Dim,${AUTO}=Automaattest`;
 const T1 = new Date("2026-10-17T10:00:00.000Z");
 const T2 = new Date("2026-10-17T10:05:00.000Z");
 const T3 = new Date("2026-10-17T10:10:00.000Z");
@@ -74,7 +76,7 @@ describe("saveAnswers", () => {
     expect(await rowOf(db)).toBeNull();
 
     // (Dim 22.10: the first note on an OK is announced, so the row records it as sent)
-    const saved = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "  hea  " } }), T1);
+    const saved = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "  hea  " } }), T1, NAMES);
     expect(saved).toEqual({ ok: true, doc: doc({ "maria-1": answer("ok", { note: "hea", notePinged: true }) }), pings: [{ id: "maria-1", kind: "note" }] });
     expect(await readAnswers(db)).toEqual(doc({ "maria-1": answer("ok", { note: "hea", notePinged: true }) }));
     expect(await rowOf(db)).toEqual({ v: 1, answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA, notePinged: true } } });
@@ -82,8 +84,8 @@ describe("saveAnswers", () => {
 
   test("two saves at once, of different checks, both survive", async () => {
     const [a, b] = await Promise.all([
-      saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1),
-      saveAnswers(db, DIM, body({ "dim-1": { status: "skip", note: "hiljem" } }), T2),
+      saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1, NAMES),
+      saveAnswers(db, DIM, body({ "dim-1": { status: "skip", note: "hiljem" } }), T2, NAMES),
     ]);
     expect([a.ok, b.ok]).toEqual([true, true]);
     const stored = await readAnswers(db);
@@ -99,7 +101,7 @@ describe("saveAnswers", () => {
     await migrate(logged, { migrationsFolder: "./drizzle" });
     log.length = 0; // the migrations are not of interest
 
-    await saveAnswers(logged, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1);
+    await saveAnswers(logged, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1, NAMES);
     const at = (pattern: RegExp) => log.findIndex((q) => pattern.test(q));
     const insert = at(/^insert into "settings"[\s\S]*on conflict do nothing/i);
     const lock = at(/^select [\s\S]* from "settings" [\s\S]*for update/i);
@@ -109,7 +111,7 @@ describe("saveAnswers", () => {
     expect(lock).toBeLessThan(write);
     // a second save takes the lock on the row that is there and writes on top of it
     log.length = 0;
-    await saveAnswers(logged, DIM, body({ "dim-1": { status: "ok" } }), T2);
+    await saveAnswers(logged, DIM, body({ "dim-1": { status: "ok" } }), T2, NAMES);
     expect(log.some((q) => /^select [\s\S]* from "settings" [\s\S]*for update/i.test(q))).toBe(true);
     expect(Object.keys((await readAnswers(logged)).answers).sort()).toEqual(["dim-1", "maria-1"]);
   });
@@ -117,21 +119,21 @@ describe("saveAnswers", () => {
   test("the insert, the lock and the write are one transaction: a write that fails leaves no row behind", async () => {
     await db.execute(sql.raw(`create function testplan_refuse() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$`));
     await db.execute(sql.raw(`create trigger testplan_refuse before update on settings for each row execute function testplan_refuse()`));
-    await expect(saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1)).rejects.toThrow();
+    await expect(saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1, NAMES)).rejects.toThrow();
     expect(await rowOf(db)).toBeNull();
     expect(vi.mocked(console.info)).not.toHaveBeenCalled(); // and no log line for a save that did not happen
   });
 
   test("the same check saved twice: the second save, with the later now, wins (status, note, at, by)", async () => {
-    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1);
-    await saveAnswers(db, DIM, body({ "maria-1": { status: "ok", note: "korras" } }), T2);
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1, NAMES);
+    await saveAnswers(db, DIM, body({ "maria-1": { status: "ok", note: "korras" } }), T2, NAMES);
     // (the OK's first note was announced: Dim 22.10)
     expect((await readAnswers(db)).answers["maria-1"]).toEqual({ status: "ok", note: "korras", at: T2.toISOString(), by: DIM, notePinged: true });
   });
 
   test("an id outside the plan is not stored (the rest of the save is), and answers kept for ids outside the plan are left alone", async () => {
     await db.insert(settings).values({ key: "testplan_answers", value: doc({ vana: answer("ok") }) });
-    const saved = await saveAnswers(db, MARIA, body({ ghost: { status: "bad", note: "x" }, "maria-1": { status: "ok" } }), T2);
+    const saved = await saveAnswers(db, MARIA, body({ ghost: { status: "bad", note: "x" }, "maria-1": { status: "ok" } }), T2, NAMES);
     expect(saved.ok).toBe(true);
     const stored = await readAnswers(db);
     expect(Object.keys(stored.answers).sort()).toEqual(["maria-1", "vana"]);
@@ -140,19 +142,19 @@ describe("saveAnswers", () => {
 
   test("the body: `clientAt` is ignored (the server stamps `at`), `by` is the session's, a long note is cut at 1000 characters", async () => {
     const crafted = { answers: { "maria-1": { status: "ok", note: "x".repeat(1500), clientAt: "2001-01-01T00:00:00.000Z", at: "2001-01-01T00:00:00.000Z", by: "someone@example.test" } } };
-    await saveAnswers(db, DIM, crafted, T1);
+    await saveAnswers(db, DIM, crafted, T1, NAMES);
     const stored = (await readAnswers(db)).answers["maria-1"];
     expect(stored).toMatchObject({ status: "ok", at: T1.toISOString(), by: DIM });
     expect(Array.from(stored.note)).toHaveLength(1000);
   });
 
   test("300 ids are fine, and no answers at all is a save of nothing (the stored answers come back as they are)", async () => {
-    expect((await saveAnswers(db, MARIA, { answers: AT_LIMIT }, T1)).ok).toBe(true);
-    expect(await saveAnswers(db, MARIA, { answers: {} }, T2)).toEqual({ ok: true, doc: doc(), pings: [] });
+    expect((await saveAnswers(db, MARIA, { answers: AT_LIMIT }, T1, NAMES)).ok).toBe(true);
+    expect(await saveAnswers(db, MARIA, { answers: {} }, T2, NAMES)).toEqual({ ok: true, doc: doc(), pings: [] });
   });
 
   test("the log line of a save carries counts only", async () => {
-    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "hirmus saladus" }, "maria-2": { status: "ok" }, ghost: { status: "ok" } }), T1);
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "hirmus saladus" }, "maria-2": { status: "ok" }, ghost: { status: "ok" } }), T1, NAMES);
     const lines = vi.mocked(console.info).mock.calls.flat().map(String);
     expect(lines).toEqual(["[testplan] saved 2 answers, 1 messages"]);
   });
@@ -183,7 +185,7 @@ describe("saveAnswers: a bad body", () => {
     { name: "one good answer and one bad: nothing is saved", value: { answers: { "maria-1": { status: "ok", note: "" }, "maria-2": { status: "nope", note: "" } } } },
     { name: "more than 300 ids", value: { answers: TOO_MANY } },
   ])("is invalid and stores nothing: $name", async ({ value }) => {
-    expect(await saveAnswers(db, MARIA, value, T1)).toEqual({ ok: false, error: "invalid" });
+    expect(await saveAnswers(db, MARIA, value, T1, NAMES)).toEqual({ ok: false, error: "invalid" });
     expect(await rowOf(db)).toBeNull();
   });
 });
@@ -193,48 +195,48 @@ describe("the Telegram sequence of a failure, through saveAnswers", () => {
   const stored = async (id: string) => (await readAnswers(db)).answers[id];
 
   test("Viga without a note → [bad]; then a note → [note]; then another note → []", async () => {
-    const first = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T1);
+    const first = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T1, NAMES);
     expect(first.ok && first.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
     expect(await stored("maria-1")).toEqual({ status: "bad", note: "", at: T1.toISOString(), by: MARIA, pinged: T1.toISOString() });
 
-    const second = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "nupp ei tööta" } }), T2);
+    const second = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "nupp ei tööta" } }), T2, NAMES);
     expect(second.ok && second.pings).toEqual([{ id: "maria-1", kind: "note" }]);
     expect(await stored("maria-1")).toEqual({ status: "bad", note: "nupp ei tööta", at: T2.toISOString(), by: MARIA, pinged: T1.toISOString(), notePinged: true });
 
-    const third = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "nupp ei tööta telefonis" } }), T3);
+    const third = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "nupp ei tööta telefonis" } }), T3, NAMES);
     expect(third.ok && third.pings).toEqual([]);
     expect(await stored("maria-1")).toEqual({ status: "bad", note: "nupp ei tööta telefonis", at: T3.toISOString(), by: MARIA, pinged: T1.toISOString(), notePinged: true });
   });
 
   test("Viga that already has a note → [bad] only (its text carries the note), then nothing more", async () => {
-    const first = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1);
+    const first = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1, NAMES);
     expect(first.ok && first.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
     expect(await stored("maria-1")).toMatchObject({ pinged: T1.toISOString(), notePinged: true });
-    const again = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki ikka" } }), T2);
+    const again = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki ikka" } }), T2, NAMES);
     expect(again.ok && again.pings).toEqual([]);
   });
 
   test("OK and Jäta vahele without a note send nothing; a Viga after an OK is a new failure and sends its own", async () => {
-    const ok = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1);
+    const ok = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1, NAMES);
     expect(ok.ok && ok.pings).toEqual([]);
-    const bad = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T2);
+    const bad = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T2, NAMES);
     expect(bad.ok && bad.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
   });
 
   test("the first note on an OK or a Jäta vahele is one message, once (Dim 22.10)", async () => {
-    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1);
-    const noted = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras" }, "maria-2": { status: "skip", note: "hiljem" } }), T2);
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1, NAMES);
+    const noted = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras" }, "maria-2": { status: "skip", note: "hiljem" } }), T2, NAMES);
     expect(noted.ok && noted.pings).toEqual([{ id: "maria-1", kind: "note" }, { id: "maria-2", kind: "note" }]);
     expect(await stored("maria-1")).toEqual({ status: "ok", note: "korras", at: T2.toISOString(), by: MARIA, notePinged: true });
-    const more = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras, tahvlis ka" }, "maria-2": { status: "skip", note: "hiljem, kui saab" } }), T3);
+    const more = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras, tahvlis ka" }, "maria-2": { status: "skip", note: "hiljem, kui saab" } }), T3, NAMES);
     expect(more.ok && more.pings).toEqual([]);
     expect(await stored("maria-2")).toEqual({ status: "skip", note: "hiljem, kui saab", at: T3.toISOString(), by: MARIA, notePinged: true });
   });
 
   test("a Viga that is taken back (OK) and comes again is a new failure and earns its first message again", async () => {
-    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1);
-    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T2);
-    const again = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T3);
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1, NAMES);
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T2, NAMES);
+    const again = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T3, NAMES);
     expect(again.ok && again.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
     expect(await stored("maria-1")).toEqual({ status: "bad", note: "", at: T3.toISOString(), by: MARIA, pinged: T3.toISOString() });
   });
@@ -336,7 +338,7 @@ describe("toPageAnswers", () => {
 
 describe("testplanCard", () => {
   freshDb();
-  const save = (email: string, answers: Record<string, { status: string }>, now = T1) => saveAnswers(db, email, body(answers), now);
+  const save = (email: string, answers: Record<string, { status: string }>, now = T1) => saveAnswers(db, email, body(answers), now, NAMES);
 
   test("for Maria it counts her checks and the shared ones; Dim's are not hers", async () => {
     expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 3, bad: 0 }); // maria-1, maria-2, koos-1
@@ -366,6 +368,81 @@ describe("testplanCard", () => {
     expect(await testplanCard(db, MARIA, undefined)).toEqual({ open: 4, bad: 0 });
     await save(MARIA, { "dim-1": { status: "bad" } });
     expect(await testplanCard(db, "other@example.test", NAMES)).toEqual({ open: 3, bad: 1 });
+  });
+});
+
+// Dim 25.10: a third tester, „Automaattest“, whose answers stay apart from Maria's and Dim's: the same row, its own map `auto`.
+describe("Automaattest's answers stay apart (Dim 25.10)", () => {
+  freshDb();
+
+  test("a save as Automaattest, then as Maria, on the same check keeps both, each in its own map; and Automaattest again leaves hers", async () => {
+    const auto = await saveAnswers(db, AUTO, body({ "maria-1": { status: "bad", note: "nupp puudub" } }), T1, NAMES);
+    expect(auto.ok && auto.pings).toEqual([{ id: "maria-1", kind: "bad", auto: true }]);
+    const maria = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T2, NAMES);
+    expect(maria.ok && maria.pings).toEqual([]);
+    expect(await rowOf(db)).toEqual({
+      v: 1,
+      answers: { "maria-1": { status: "ok", note: "", at: T2.toISOString(), by: MARIA } },
+      auto: { "maria-1": { status: "bad", note: "nupp puudub", at: T1.toISOString(), by: AUTO, pinged: T1.toISOString(), notePinged: true } },
+    });
+    await saveAnswers(db, AUTO, body({ "maria-1": { status: "ok" } }), T3, NAMES);
+    const stored = await readAnswers(db);
+    expect(stored.answers).toEqual({ "maria-1": { status: "ok", note: "", at: T2.toISOString(), by: MARIA } });
+    expect(stored.auto).toEqual({ "maria-1": { status: "ok", note: "", at: T3.toISOString(), by: AUTO } });
+  });
+
+  test("an old row without `auto` reads as before, and a save by Maria or Dim writes no `auto` into it", async () => {
+    await db.insert(settings).values({ key: "testplan_answers", value: { v: 1, answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA } } } });
+    expect(await readAnswers(db)).toEqual(doc({ "maria-1": answer("ok", { note: "hea" }) }));
+    await saveAnswers(db, DIM, body({ "dim-1": { status: "skip" } }), T2, NAMES);
+    expect(Object.keys((await rowOf(db)) as object)).toEqual(["v", "answers"]);
+    expect(Object.keys((await readAnswers(db)).answers).sort()).toEqual(["dim-1", "maria-1"]);
+  });
+
+  test("Maria's and Dim's Ülevaade cards and menu badges are the same with Automaattest's answers as without; its own card counts its answers over the plan", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "koos-1": { status: "bad" } }), T1, NAMES);
+    const before = [await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)];
+    expect(before).toEqual([{ open: 1, bad: 1 }, { open: 1, bad: 1 }, 1, 0]);
+    await saveAnswers(db, AUTO, body({ "maria-1": { status: "bad" }, "maria-2": { status: "ok" }, "dim-1": { status: "bad" }, "koos-1": { status: "ok" } }), T2, NAMES);
+    expect([await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)]).toEqual(before);
+    expect(await testplanCard(db, AUTO, NAMES)).toEqual({ open: 0, bad: 2 });
+    expect(await ownFaultCount(db, AUTO)).toBe(2);
+  });
+
+  test("its OK or Jäta vahele sends nothing, even with a note; its Viga's first note is the second message, once", async () => {
+    const quiet = await saveAnswers(db, AUTO, body({ "maria-1": { status: "ok", note: "korras" }, "maria-2": { status: "skip", note: "hiljem" } }), T1, NAMES);
+    expect(quiet.ok && quiet.pings).toEqual([]);
+    expect(await saveAnswers(db, AUTO, body({ "dim-1": { status: "bad" } }), T1, NAMES)).toMatchObject({ pings: [{ id: "dim-1", kind: "bad", auto: true }] });
+    expect(await saveAnswers(db, AUTO, body({ "dim-1": { status: "bad", note: "makse jäi ootele" } }), T2, NAMES)).toMatchObject({ pings: [{ id: "dim-1", kind: "note", auto: true }] });
+    expect(await saveAnswers(db, AUTO, body({ "dim-1": { status: "bad", note: "makse jäi ootele, ka teisel korral" } }), T3, NAMES)).toMatchObject({ pings: [] });
+  });
+
+  test("pingText names Automaattest and reads its answer from `auto`, never Maria's on the same check", () => {
+    const both: AnswersDoc = {
+      v: 1,
+      answers: { "maria-1": answer("ok", { note: "Maria märkus" }) },
+      auto: { "maria-1": answer("bad", { note: "nupp puudub", by: AUTO }) },
+    };
+    expect(pingText({ id: "maria-1", kind: "bad", auto: true }, PLAN, both, NAMES, "https://mslab.ee")).toBe(
+      "Testimine — Viga: Avaleht telefonis (Automaattest)\nnupp puudub\nhttps://mslab.ee/admin/testimine#maria-1",
+    );
+    expect(pingText({ id: "maria-1", kind: "note", auto: true }, PLAN, both, NAMES, "https://mslab.ee")).toBe(
+      "Testimine — Märkus: Avaleht telefonis (Automaattest) · Viga\nnupp puudub\nhttps://mslab.ee/admin/testimine#maria-1",
+    );
+  });
+
+  test("pageView: Maria, Dim and any other admin get the shared answers, with Automaattest's apart in `auto`; Automaattest gets its own as its answers", () => {
+    const both: AnswersDoc = {
+      v: 1,
+      answers: { "maria-1": answer("ok", { note: "hea" }) },
+      auto: { "maria-1": answer("bad", { note: "nupp puudub", by: AUTO }), vana: answer("ok", { by: AUTO }) },
+    };
+    const shared = { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), byName: "Maria" } };
+    const auto = { "maria-1": { status: "bad", note: "nupp puudub", at: T1.toISOString(), byName: "Automaattest" } };
+    for (const tester of ["maria", "dim", null] as const) expect(pageView(both, PLAN, NAMES, tester), String(tester)).toEqual({ answers: shared, auto });
+    expect(pageView(both, PLAN, NAMES, "auto")).toEqual({ answers: auto, auto });
+    expect(pageView(doc(), PLAN, NAMES, "maria")).toEqual({ answers: {}, auto: {} });
+    expect(JSON.stringify(pageView(both, PLAN, NAMES, "maria"))).not.toContain("@");
   });
 });
 

@@ -97,12 +97,12 @@ describe("without a session, or from another site", () => {
 });
 
 describe("GET", () => {
-  test("{ ok, plan, answers, you }, never cached", async () => {
+  test("{ ok, plan, answers, auto, you }, never cached", async () => {
     await signIn();
     const res = await get();
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ ok: true, plan: FIXTURE, answers: {}, you: { name: "Maria", tester: "maria" } });
+    expect(await res.json()).toEqual({ ok: true, plan: FIXTURE, answers: {}, auto: {}, you: { name: "Maria", tester: "maria" } });
   });
 
   test("everybody's answers as the page gets them: with the answerer's first name, never an address", async () => {
@@ -128,6 +128,50 @@ describe("GET", () => {
     vi.stubEnv("ADMIN_EMAILS", `${MARIA},${DIM},kati@example.test`);
     await signIn("kati@example.test");
     expect(((await (await get()).json()) as { you: unknown }).you).toEqual({ name: "", tester: null });
+  });
+});
+
+// Dim 25.10: a third tester, „Automaattest“ (its address in ADMIN_EMAILS, `<address>=Automaattest` in ADMIN_NAMES), whose answers stay apart.
+describe("Automaattest", () => {
+  const AUTO = "auto@example.test";
+  beforeEach(() => {
+    vi.stubEnv("ADMIN_EMAILS", `${MARIA},${DIM},${AUTO}`);
+    vi.stubEnv("ADMIN_NAMES", `${MARIA}=Maria Sosnina,${DIM}=Dim,${AUTO}=Automaattest`);
+  });
+
+  test("its PUT is stored in `auto` and comes back as its own answers; Maria's answers and her GET are as before, with its answers apart in `auto`", async () => {
+    await signIn(MARIA);
+    await put({ answers: { "maria-1": { status: "ok", note: "" } } });
+    await signIn(AUTO);
+    expect(((await (await get()).json()) as { you: unknown }).you).toEqual({ name: "Automaattest", tester: "auto" });
+    const res = await put({ answers: { "maria-1": { status: "skip", note: "" }, "dim-1": { status: "ok", note: "" } } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      answers: { "maria-1": { status: "skip", byName: "Automaattest" }, "dim-1": { status: "ok", byName: "Automaattest" } },
+    });
+    const row = (await stored()) as unknown as { answers: Record<string, { status: string; by: string }>; auto: Record<string, { status: string; by: string }> };
+    expect(row.answers).toEqual({ "maria-1": expect.objectContaining({ status: "ok", by: MARIA }) });
+    expect(row.auto).toEqual({ "maria-1": expect.objectContaining({ status: "skip", by: AUTO }), "dim-1": expect.objectContaining({ status: "ok", by: AUTO }) });
+
+    await signIn(MARIA);
+    const text = await (await get()).text();
+    expect(JSON.parse(text)).toMatchObject({
+      answers: { "maria-1": { status: "ok", byName: "Maria" } },
+      auto: { "maria-1": { status: "skip", byName: "Automaattest" }, "dim-1": { status: "ok", byName: "Automaattest" } },
+      you: { name: "Maria", tester: "maria" },
+    });
+    expect(Object.keys((JSON.parse(text) as { answers: object }).answers)).toEqual(["maria-1"]);
+    expect(text).not.toContain("@");
+  });
+
+  test("its Viga is sent to Telegram as Automaattest's; its OK with a note sends nothing", async () => {
+    await signIn(AUTO);
+    await put({ answers: { "maria-1": { status: "ok", note: "korras" } } });
+    expect(state.later).toEqual([]);
+    await put({ answers: { "maria-2": { status: "bad", note: "pilt puudub" } } });
+    await runLater();
+    expect(vi.mocked(sendTelegram).mock.calls.map((c) => c[1])).toEqual(["Testimine — Viga: Kursuse leht (Automaattest)\npilt puudub\nhttps://site.example.test/admin/testimine#maria-2"]);
   });
 });
 

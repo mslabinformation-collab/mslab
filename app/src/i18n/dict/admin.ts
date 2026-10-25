@@ -2321,11 +2321,13 @@ export const adminEt = {
   // The test page (phase 4, piece 1): /admin/testimine, the checks Maria and Dim answer. `tg` is the Telegram text of a Viga and of its first note
   // (server/testplan.ts pingText); since Dim 22.10 the first note of any answer (an OK's and a Jäta vahele's too) is a `tg.note`, which shows the answer
   // ({status}, in the button's words). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
+  // `who.auto` (Dim 25.10) is the automatic tester whose answers stay apart: the „Kes“ choice, and the name of the quiet line under a check,
+  // "Automaattest: {status} · dd.mm HH:MM" (TestPlan.tsx puts it together from these words and `overtaken`; no other text of its own).
   testplan: {
     title: "Testimine",
     progress: "{done} / {total} tehtud · {bad} viga · {redo} uuesti testida",
     filter: { all: "Kõik", open: "Avatud", bad: "Vead", changed: "Muudetud" },
-    who: { label: "Kes", all: "Kõik", maria: "Maria", dim: "Dim", koos: "Koos" },
+    who: { label: "Kes", all: "Kõik", maria: "Maria", dim: "Dim", koos: "Koos", auto: "Automaattest" },
     you: "Sina: {name}",
     refresh: "Värskenda",
     open: "Ava",

@@ -4,8 +4,8 @@ import type { Db } from "@/db/client";
 import { settings } from "@/db/schema";
 import planFile from "@/data/testplan.json";
 import {
-  answerOf, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, testerOf,
-  type AnswersDoc, type IncomingAnswer, type Ping, type Status, type TestPlan,
+  answerOf, answersIn, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sideOf, testerOf,
+  type AnswersDoc, type IncomingAnswer, type Ping, type Status, type Tester, type TestPlan,
 } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -14,6 +14,8 @@ import { adminFirstName } from "./auth";
 // The test page's server side (phase 4, piece 1, spec D4, D6, D10, §5): the answers are ONE `settings` row (key testplan_answers, no migration),
 // merged under the row's lock; a failure ("Viga") and the first note on any answer earn their Telegram texts. The rules themselves (the merge, the pings, the counts) are the
 // pure domain/testplan.ts. The admin session is checked by the callers (app/api/admin/testplan withAdmin, the admin pages).
+// Dim 25.10: the automatic tester „Automaattest“ (its name in ADMIN_NAMES) answers into the same row's own map `auto`, never into `answers`:
+// Maria and Dim see its answers apart, and its answers never count as theirs.
 // Logs carry counts and ids only: never a note, an e-mail address or a name.
 
 /** The `settings` key of the answers. */
@@ -48,8 +50,11 @@ const firstName = (email: string, names: string | undefined): string => adminFir
 /** Who answered, for a person to read: the first name, or "admin". */
 const answererName = (email: string, names: string | undefined): string => firstName(email, names) || "admin";
 
-/** Who the signed-in admin is for the page (spec D10): the first name and the tester ("maria" or "dim"; null: any other admin sees every check as "Kõik"). */
-export function testplanYou(email: string, names: string | undefined): { name: string; tester: "maria" | "dim" | null } {
+/**
+ * Who the signed-in admin is for the page (spec D10): the first name and the tester ("maria" or "dim"; "auto" for Automaattest, Dim 25.10, which
+ * sees every check and answers into its own map; null: any other admin sees every check as "Kõik").
+ */
+export function testplanYou(email: string, names: string | undefined): { name: string; tester: Tester | null } {
   return { name: firstName(email, names), tester: testerOf(email, names) };
 }
 
@@ -66,6 +71,16 @@ export function toPageAnswers(doc: AnswersDoc, plan: TestPlan, names: string | u
     if (stored) entries.push([id, { status: stored.status, note: stored.note, at: stored.at, byName: answererName(stored.by, names) }]);
   }
   return Object.fromEntries(entries);
+}
+
+/**
+ * The answers the page of `tester` gets (Dim 25.10): `answers`, the ones it shows as the checks' answers and edits (Automaattest's own `auto` for
+ * Automaattest; the shared `answers` for Maria, Dim and any other admin), and `auto`, Automaattest's, which Maria's and Dim's page shows as a
+ * quiet line under each check and its „Kes“ choice „Automaattest“ filters by. Both in the page's form (toPageAnswers).
+ */
+export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefined, tester: Tester | null): { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer> } {
+  const auto = toPageAnswers({ v: 1, answers: answersIn(doc, "auto") }, plan, names);
+  return { answers: tester === "auto" ? auto : toPageAnswers(doc, plan, names), auto };
 }
 
 /**
@@ -91,22 +106,26 @@ function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
  * once take turns and each merges into what the other wrote; the stored answers are read, the save merged in (`by` the session's e-mail, `at`
  * `now`), the Telegram messages it earns worked out and recorded as sent, and the row written back. The messages are returned, not sent: the caller
  * sends them once the transaction has committed, and a failed send never changes the answer.
+ * `names` is ADMIN_NAMES (Dim 25.10): the session's admin named „Automaattest…“ there saves into the row's `auto`, never into `answers`; every
+ * other admin's save goes into `answers` and leaves `auto` as it is.
  */
 export async function saveAnswers(
   db: Db,
   email: string,
   incoming: unknown,
   now: Date,
+  names: string | undefined,
 ): Promise<{ ok: true; doc: AnswersDoc; pings: Ping[] } | { ok: false; error: "invalid" }> {
   const answers = parseBody(incoming);
   if (!answers) return { ok: false, error: "invalid" };
   const buildAt = testplanBuildAt();
+  const side = sideOf(testerOf(email, names));
   const saved = await db.transaction(async (tx) => {
     await tx.insert(settings).values({ key: KEY, value: EMPTY }).onConflictDoNothing();
     const [row] = await tx.select({ value: settings.value }).from(settings).where(eq(settings.key, KEY)).for("update");
     const stored = readAnswersDoc(row?.value);
-    const { doc: merged, changed } = mergeAnswers(stored, answers, testPlan, email, now, buildAt);
-    const pings = pingsFor(stored, merged, changed, testPlan, buildAt);
+    const { doc: merged, changed } = mergeAnswers(stored, answers, testPlan, email, now, buildAt, side);
+    const pings = pingsFor(stored, merged, changed, testPlan, buildAt, side);
     const doc = markPinged(merged, pings, now);
     await tx.update(settings).set({ value: doc }).where(eq(settings.key, KEY));
     return { doc, pings, saved: changed.length };
@@ -119,12 +138,13 @@ export async function saveAnswers(
  * The Telegram text of a ping (spec D6): `tg.bad` for a new failure, `tg.note` for the first note of an answer (Dim 22.10: of any answer, with the
  * answer shown in the button's words: Viga, OK or Jäta vahele). The check's title, the answerer's first name (from ADMIN_NAMES, else "admin";
  * never the address), the note's first PING_NOTE_MAX characters (or `tg.noNote`, also for a failure whose note is the answer before it's:
- * `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`.
+ * `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`. A ping marked `auto` is of Automaattest's answer, read from the doc's
+ * `auto` (Dim 25.10): its name in ADMIN_NAMES, „Automaattest“, is the name in the text.
  */
 export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: string | undefined, base: string): string {
   const t = adminEt.testplan;
   const item = plan.items.find((i) => i.id === ping.id);
-  const stored = answerOf(doc.answers, ping.id);
+  const stored = answerOf(answersIn(doc, ping.auto ? "auto" : "answers"), ping.id);
   const note = ping.oldNote ? "" : Array.from(stored?.note ?? "").slice(0, PING_NOTE_MAX).join("");
   // (an id the doc does not hold has no answer to show: the message goes without the " · {status}" part)
   const template = ping.kind === "bad" ? t.tg.bad : stored ? t.tg.note : t.tg.note.replace(" · {status}", "");
@@ -139,10 +159,16 @@ export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: str
 
 /**
  * The Avaleht card's numbers (spec §5): the open and failed checks of the signed-in admin's own tester (Maria: hers and the shared ones; Dim:
- * his and the shared ones; any other admin: all), or null when none is open or failed (the card is then not shown).
+ * his and the shared ones; any other admin: all), or null when none is open or failed (the card is then not shown). Maria's, Dim's and any
+ * other admin's count the shared answers only; Automaattest's (Dim 25.10) counts its own answers over the whole plan.
  */
 export async function testplanCard(db: Db, email: string, names: string | undefined): Promise<{ open: number; bad: number } | null> {
-  const { open, bad } = planCounts(testPlan, await readAnswers(db), testplanBuildAt(), testerOf(email, names));
+  const tester = testerOf(email, names);
+  const doc = await readAnswers(db);
+  const { open, bad } =
+    tester === "auto"
+      ? planCounts(testPlan, { v: 1, answers: answersIn(doc, "auto") }, testplanBuildAt(), null)
+      : planCounts(testPlan, doc, testplanBuildAt(), tester);
   return open + bad === 0 ? null : { open, bad };
 }
 

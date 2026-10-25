@@ -370,6 +370,25 @@
   font-weight: 600;
 }
 
+/* Automaattest's answer (Dim 25.10): one quiet line, apart from the tester's own answer, its note under it */
+.auto {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.auto p {
+  margin: 0;
+}
+
+.auto .autoNote {
+  margin-top: 2px;
+  white-space: pre-line;
+}
+
 @media (max-width: 640px) {
   .progress {
     font-size: 22px;

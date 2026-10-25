@@ -58,6 +58,12 @@ Every phase after this one changes behaviour that some checks describe. So the p
   - **Contact-course checks.** They register on a real future session with free seats, and the last check of area 4 cancels the registration.
   - **Side effects.** While a test registration stands it takes a seat. Each one sends Maria's real inbox its notice. That is expected and is itself checked.
 - **D10. Who is who** (my call). The session's admin is matched to `maria` or `dim` by the first word of their name in `ADMIN_NAMES` (case-insensitive), which already names Dim and Maria. An admin whose name matches neither sees and counts every check as "Kõik", with no "Sina: …" line.
+  - **Dim 25.10: a third tester, „Automaattest“.** An automatic tester runs checks on the staging site, and its answers must never count as Maria's or Dim's. An admin whose name in `ADMIN_NAMES` starts with „Automaattest“ (case-insensitive) is the tester `auto`; Dim adds its address to `ADMIN_EMAILS` and `<address>=Automaattest` to `ADMIN_NAMES` in Vercel, and it signs in with the ordinary magic link.
+  - Its answers go into the row's own map `auto` (D4's answer shape, the same lock); its saves never write `answers`, and Maria's and Dim's never write `auto`. Old rows without `auto` read as before.
+  - Its own page shows every check ("Kõik"), with "Sina: Automaattest", and its own answers, counts, card and badge.
+  - Maria and Dim keep their answers and numbers exactly as before. Under each check it answered they see one quiet line „Automaattest: {status} · dd.mm HH:MM“ (the button's words), its note under it; an answer a `redo` has overtaken reads „Automaattest: Varasem vastus (enne muudatust): {status} · …“. The „Kes“ filter gains „Automaattest“: the checks it answered.
+  - Its Viga pings as in D6 with „(Automaattest)“ as the name, and so does that Viga's first note; its OK and Jäta vahele send nothing, with a note or without.
+  - A rollback to older code ignores `auto` on reading but drops it on the first save, and takes Automaattest for an ordinary admin: `docs/deploy.md` section 15 item 7 says what to do first.
 - **D8. Before the launch, the coming-soon gate is up.** "Enne alustamist" says: sign in to the admin on the same device and press "Vaata kodulehte". That device then sees the site and the account pages. The checks never ask the tester to work around the gate any other way.
 
 ## 3. The plan file
