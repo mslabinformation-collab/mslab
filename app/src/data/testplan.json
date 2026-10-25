@@ -2567,8 +2567,8 @@
         "Ava halduses „Kalender“ ja sama kuupäeva rida."
       ],
       "expect": [
-        "Halduse real on Proov 1 arvestatud kinnitatute hulka, näiteks „1/4“ või „1 / 4 kinnitatud“.",
-        "Avaliku kalendri vabade kohtade arv on sama mis halduse „Vabu kohti“.",
+        "Halduse real on Proov 1 arvestatud kinnitatute hulka, näiteks „1 / 4“ arvutis ja „1/4“ telefonis.",
+        "Avalikus kalendris on vabu kohti sama palju, kui halduse real on teine arv miinus esimene.",
         "Kui number pole veel muutunud, on see õige 5 minuti pärast."
       ],
       "why": "Täis kuupäevale ei tohi rohkem registreerida.",

@@ -177,52 +177,62 @@
   border-color: var(--ink);
 }
 
-/* A select with a `short` word (Kalender's city: Part 4 draws „Linn ▾“, a pill in the pill row). Above a phone the wrapper takes no box and the pill
-   is not drawn, so the select is the select of every other list. On a phone the select lies over the pill, invisible and as big as it: a tap opens the
-   same list, the pill says the word, or the city once one is chosen (ink, as the current pill of a row). It must stay the last rule of this file
-   (tests/unit/list-toolbar-dom.test.ts reads it). */
+/* A select with a `short` word (Kalender's city: Part 4 draws „Tulevased 5 | Möödunud 3 | Linn ▾“, a pill in the pill row). The toolbar draws it twice: the
+   field above the pills (`.selectField`) and the phone's copy in the first pill row (`.selectBox`, `display: none` above a phone). On a phone the field is
+   `display: none` and the copy is the pill: the select lies over it, invisible and as big as it, so a tap opens the same list, the pill says the word, or the
+   city once one is chosen (ink, as the current pill of a row). `display: none` takes the hidden one out of the accessibility tree and the tab order. */
 .selectBox {
-  display: contents;
-}
-
-.selectPill {
   display: none;
 }
 
+.selectPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 16px;
+  border: 1px solid #cfc6ca;
+  border-radius: 99px;
+  background: #fff;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.selectPill::after {
+  content: "\25BE";
+}
+
+.selectPill[data-chosen] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
 @media (max-width: 640px) {
+  .selectField {
+    display: none;
+  }
+
+  /* the row that holds the city pill is Part 4's: 12 px pills with 14 px inside, so that "Tulevased 5 | Möödunud 3 | Linn ▾" is one line on a 375 px phone */
+  .pills[data-with-select] {
+    gap: 6px;
+  }
+
+  .pills[data-with-select] a {
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
   .selectBox {
     position: relative;
     display: inline-flex;
     flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
-  }
-
-  .selectPill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    min-height: 44px;
-    max-width: 100%;
-    padding: 0 16px;
-    border: 1px solid #cfc6ca;
-    border-radius: 99px;
-    background: #fff;
-    color: var(--ink);
-    font: 600 12px/1.2 var(--font-body);
-    white-space: nowrap;
-    overflow: hidden;
-  }
-
-  .selectPill::after {
-    content: "\25BE";
-  }
-
-  .selectPill[data-chosen] {
-    border-color: var(--ink);
-    background: var(--ink);
-    color: #fff;
   }
 
   .selectBox select {

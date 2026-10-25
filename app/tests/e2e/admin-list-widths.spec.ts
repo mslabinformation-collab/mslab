@@ -131,17 +131,18 @@ test("every list that uses the shared table keeps all its columns inside its car
 });
 
 // Kalender (B3, piece 3b Task 1) is the shared list table with four columns (date and weekday | course and place | seats with a bar | state). Its own session
-// is the widest row there is: a draft course's (the „Mustand“ tag beside the name), one student confirmed, one awaiting her prepayment and one on the waitlist (the
-// seats cell's longest line). From 1180 to 1440 px the four cells of the row are side by side inside the card; from 880 down (a card under 761 px) the row is a
-// card; and the page never scrolls sideways. On a phone (375, 390 and 640 px) the card reads as Part 4 draws it: the day over the short month, the course, the
-// place, the seat bar with „{k}/{cap}“ and the seats line under it (no state tag, no long figure), and the city select is a 44 px pill with the select itself over it.
+// is a draft course's (the „Mustand“ tag beside the name) with one student confirmed („1 / 6“). From 1180 to 1440 px the four cells of the row are side by side inside the section's card; from 880 the table stays inside it; and
+// the page never scrolls sideways. On a phone (640, 390 and 375 px; the box is 760 px or less, calendar.module.css .box) the section has no card and each session is a
+// white card of its own as Part 4 draws it (18 px radius, 14 px 16 px inside, 12 px apart): the day over the short month, the course, the place, the seat bar with
+// „{k}/{cap}“ (no state tag, no table figure; the seats are the figure and the bar, nothing else: Dim, 25.10). The city select is the pill „Linn ▾“ in the pill row, 44 px, with the select itself over
+// it, and the field above the pills is not drawn: one combobox named „Linn“ is in the accessibility tree.
 test("Kalender keeps its cells inside its card from 880 to 1440 px, and each session is a phone card with the city as a pill from 640 px down", async ({ page, context, visitorIp, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   info.setTimeout(info.timeout + 120_000);
   const email = clientEmail("kalender", runName(info));
   made.add(email);
   await removeClientRows(email);
-  const fx = await insertAccountFixtures(email, { name: `Liis Kalender ${info.project.name}`, cards: ["confirmed", "awaiting", "waitlist"] });
+  const fx = await insertAccountFixtures(email, { name: `Liis Kalender ${info.project.name}`, cards: ["confirmed"] });
   await signInAsAdmin(page, context, visitorIp, created);
   const row = `tr[data-session-row="${fx.session.id}"]`;
   const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -157,9 +158,20 @@ test("Kalender keeps its cells inside its card from 880 to 1440 px, and each ses
     expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-1);
     expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-1);
     expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
-    // above a phone the city select is the plain select, and the pill is not drawn
+    // above a phone the city select is the plain select above the pills, and the phone's copy in the pill row is not drawn: one combobox named „Linn“ in the
+    // accessibility tree and the tab order, outside the pill row
     await expect(page.locator("[data-scope-pill]"), `${where}: no pill`).toBeHidden();
-    await expect(page.getByLabel("Linn", { exact: true }), `${where}: the city select`).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Linn" }), `${where}: one city select`).toHaveCount(1);
+    expect(await page.getByRole("combobox", { name: "Linn" }).evaluate((el) => el.closest("nav") === null), `${where}: the city select is above the pills`).toBe(true);
+    // the section keeps its card (white, padded, rounded) and the rows are the table's own, no cards
+    const chrome = await page.locator(row).evaluate((tr) => {
+      const sc = getComputedStyle(tr.closest("section")!);
+      const rc = getComputedStyle(tr);
+      return { card: { background: sc.backgroundColor, padding: sc.paddingLeft, radius: sc.borderTopLeftRadius }, row: { background: rc.backgroundColor, radius: rc.borderTopLeftRadius } };
+    });
+    expect(chrome.card.background, `${where}: the section's own card`).toBe("rgb(255, 255, 255)");
+    expect(chrome.card.padding, `${where}: the section's own card`).not.toBe("0px");
+    expect(chrome.row, `${where}: no card of the row's own`).toEqual({ background: "rgba(0, 0, 0, 0)", radius: "0px" });
     if (TABLE_WIDTHS.includes(width)) {
       expect(f.display, `${where}: a table, not the stack of rows`).toBe("table");
       expect(f.rowCells, `${where}: 4 cells in a row`).toBe(4);
@@ -190,36 +202,64 @@ test("Kalender keeps its cells inside its card from 880 to 1440 px, and each ses
         short: box("[data-seats-short]"),
         long: box("[data-session-seats]"),
         state: box("[data-session-state]"),
-        more: box("[data-seats-more]"),
         shortText: tr.querySelector("[data-seats-short]")?.textContent ?? "",
       };
     });
     const where = `/admin/kalender at ${width} px`;
+    // separate white cards on the grey canvas (Part 4, as Koolitused draws its rows): the section has no card of its own and is as wide as its box, each row is
+    // a white card of 18 px radius with 14 px 16 px inside, and 12 px between one card and the next
+    const cards = await page.locator("[data-session-row]").evaluateAll((trs) => {
+      const section = trs[0].closest("section")!;
+      const sc = getComputedStyle(section);
+      return {
+        section: { background: sc.backgroundColor, border: sc.borderTopWidth, padding: sc.paddingLeft, radius: sc.borderTopLeftRadius },
+        width: section.getBoundingClientRect().width,
+        box: section.parentElement!.getBoundingClientRect().width,
+        rows: trs.slice(0, 4).map((tr) => {
+          const cs = getComputedStyle(tr);
+          const r = tr.getBoundingClientRect();
+          return { background: cs.backgroundColor, radius: cs.borderTopLeftRadius, padding: `${cs.paddingTop} ${cs.paddingLeft}`, border: cs.borderBottomWidth, top: r.top, bottom: r.bottom };
+        }),
+      };
+    });
+    expect(cards.section, `${where}: no card of the section's own`).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", padding: "0px", radius: "0px" });
+    expect(Math.abs(cards.width - cards.box), `${where}: the cards use the box's whole width`).toBeLessThanOrEqual(1);
+    expect(cards.rows.length, `${where}: at least two sessions to tell cards apart`).toBeGreaterThanOrEqual(2);
+    for (const [i, c] of cards.rows.entries()) {
+      expect(c, `${where}: row ${i + 1} is a white card`).toMatchObject({ background: "rgb(255, 255, 255)", radius: "18px", padding: "14px 16px", border: "0px" });
+      if (i > 0) expect(Math.abs(c.top - cards.rows[i - 1].bottom - 12), `${where}: 12 px between card ${i} and card ${i + 1}`).toBeLessThanOrEqual(1);
+    }
     // the day block at the left, over both lines; the course, the place and the bar in the column beside it
     expect(m.day!.width, `${where}: the day block is drawn`).toBeGreaterThan(0);
     expect(m.day!.right, `${where}: the day at the left of the course`).toBeLessThanOrEqual(m.link!.left + 1);
     expect(m.month!.top, `${where}: the month under the day`).toBeGreaterThan(m.day!.top);
     expect(m.place!.top, `${where}: the place under the course`).toBeGreaterThanOrEqual(m.link!.top);
     expect(m.bar!.top, `${where}: the seat bar under the place`).toBeGreaterThanOrEqual(m.place!.bottom - 1);
-    expect(m.bar!.width, `${where}: the bar takes what the figure leaves (a 5 px line across the card)`).toBeGreaterThan(m.row.right - m.row.left - 56 - 12 - 60);
+    expect(m.bar!.width, `${where}: the bar takes what the figure leaves (a 5 px line across the card)`).toBeGreaterThan(m.row.right - m.row.left - 56 - 12 - 32 - 8 - 40);
     expect(m.bar!.height, `${where}: the bar is a thin line`).toBeLessThanOrEqual(6);
     expect(m.short!.left, `${where}: „{k}/{cap}“ beside the bar`).toBeGreaterThanOrEqual(m.bar!.right - 1);
     expect(m.shortText, `${where}: the short figure`).toBe("1/6");
-    // what the card leaves out is not drawn: the long figure and the state tag; the line of free seats, seats awaiting their prepayment and the waitlist stays, under the bar
+    // what the card leaves out is not drawn: the table's figure and the state tag
     for (const gone of [m.long, m.state]) expect(gone === null || gone.width === 0, `${where}: left out of the card`).toBe(true);
-    expect(m.more!.width, `${where}: the seats line is drawn`).toBeGreaterThan(0);
-    expect(m.more!.top, `${where}: the seats line under the bar`).toBeGreaterThanOrEqual(m.bar!.bottom - 1);
-    for (const part of [m.day, m.link, m.place, m.bar, m.short, m.more]) expect(part!.right, `${where}: inside the card`).toBeLessThanOrEqual(m.row.right + 1);
+    for (const part of [m.day, m.link, m.place, m.bar, m.short]) expect(part!.right, `${where}: inside the card`).toBeLessThanOrEqual(m.row.right + 1);
     expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
 
-    // the city select is a pill: 44 px tall, with the select over it, the word „Linn“ until a city is chosen
+    // the city select is a pill in the pill row (`Tulevased 5 | Möödunud 3 | Linn ▾`, one line at each width): 44 px tall, with the
+    // select over it, the word „Linn“ until a city is chosen; the field above the pills is not drawn, so one combobox named „Linn“ is in the accessibility tree
+    // and the tab order, and it is the one in the pill row
+    const city = page.getByRole("combobox", { name: "Linn" });
+    await expect(city, `${where}: one city select`).toHaveCount(1);
+    expect(await city.evaluate((el) => el.closest("nav[data-list-pill-row]") !== null), `${where}: the city select is in the pill row`).toBe(true);
     const pill = page.locator("[data-scope-pill]");
     await expect(pill, `${where}: the pill`).toHaveText("Linn");
-    const [p, s] = await Promise.all([pill.boundingBox(), page.getByLabel("Linn", { exact: true }).boundingBox()]);
+    const line = await page.locator("nav[data-list-pill-row]").evaluate((nav) => ({ nav: Math.round(nav.getBoundingClientRect().width), items: [...nav.children].map((c) => Math.round(c.getBoundingClientRect().width)), tops: [...nav.children].map((c) => Math.round(c.getBoundingClientRect().top)) }));
+    expect(line.tops.length, `${where}: two pills and the city`).toBe(3);
+    expect(Math.max(...line.tops) - Math.min(...line.tops), `${where}: Tulevased, Möödunud and Linn on one line (${JSON.stringify(line)})`).toBeLessThanOrEqual(4);
+    const [p, s] = await Promise.all([pill.boundingBox(), city.boundingBox()]);
     expect(p!.height, `${where}: the pill is a 44 px target`).toBeGreaterThanOrEqual(44);
     expect(Math.abs(p!.x - s!.x) + Math.abs(p!.y - s!.y) + Math.abs(p!.width - s!.width) + Math.abs(p!.height - s!.height), `${where}: the select lies over the pill`).toBeLessThanOrEqual(2);
     expect(p!.x + p!.width, `${where}: the pill inside the screen`).toBeLessThanOrEqual(width);
-    await page.getByLabel("Linn", { exact: true }).selectOption("Pärnu");
+    await city.selectOption("Pärnu");
     await expect(pill, `${where}: the chosen city`).toHaveText("Pärnu");
     await expect(page).toHaveURL((url) => url.searchParams.get("linn") === "Pärnu");
     await expect(page.locator(row), `${where}: the row stays in its city`).toBeVisible();

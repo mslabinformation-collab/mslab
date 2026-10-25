@@ -1,9 +1,19 @@
-/* The admin calendar (B3): the list's own pieces (the table itself is the shared admin list, components/admin/list-table.module.css, whose card, table and
-   name link the page uses) and the drawer. Part 3 draws four columns: the date with the weekday and the time under it | the course with
-   „{linn} · {koht}“ under it | the seats with a small bar | the state. Below 760 px of the card (the shared switch) each row is a card, as the Part 4 phone
-   mock-up draws it: the day over the short month at the left, and at the right the course, the place (a cancelled session: „{linn} · tühistatud“, and no
-   state tag) and the seat bar with „{k}/{cap}“; the mock-up draws no seats line, and the one the table has stays under the bar (a phone has no other place
-   for it). Colours from tokens.css only. */
+/* The admin calendar (B3): the list's own pieces and the drawer. The table is the shared admin list (components/admin/list-table.module.css: its table and
+   name link, and ListRows makes the row a link), but its phone layout is this file's, whole. Part 3 draws four columns: the date with the weekday and the
+   time under it | the course with „{linn} · {koht}“ under it | the seats with a small bar | the state.
+
+   `.box` is the container the layouts switch on, as courses.module.css `.box` is for Koolitused: the card's whole width, not its content (an element cannot
+   be restyled by a query on its own size, and on a phone the section's card has to go: Part 4 draws each session as a white card of its own, 18 px radius, 14 px
+   16 px inside, 12 px apart on the grey canvas). The section is not a container itself (the shared list table's `.card` is), so the shared phone rules of the
+   list table (its label rows, `@container (max-width: 760px)`) are keyed on `.box` here too and switch at the same width as this file's, which then take
+   the cell and the row over again (`table.list …` outweighs them whichever stylesheet comes last). Without container queries (an old iPad) none of it
+   applies: the plain table in the section's card.
+
+   A card: the day over the short month at the left, and at the right the course, the place (a cancelled session: „{linn} · tühistatud“, and no state tag) and the
+   seat bar with „{k}/{cap}“. The seats are the figure and the bar, nothing else, in both layouts (Dim, 25.10). Colours from tokens.css only. */
+.box {
+  container-type: inline-size;
+}
 
 .count {
   margin-bottom: 6px;
@@ -117,19 +127,43 @@
   justify-self: start;
 }
 
-/* The card. The selectors say `table.list` so that they outweigh the shared label-row rules of the same container query (list-table.module.css
-   `.table td`, `.table td:first-child`), whichever stylesheet comes first. The row is a two-column grid: the date block at the left over both lines, the
-   course and the place at the right, the seats under them; the state tag is left out (the seat bar and „tühistatud“ say it). The full date, the
-   weekday and the time stay in the page for the screen reader, clipped (as the shared table clips its header row). */
+/* The phone. At 760 px of the box and under the section loses its card (`.box .card` outweighs the shared `ui.card` whichever stylesheet comes last), and
+   its rows are the cards. The selectors say `table.list` so that they outweigh the shared label-row rules of the same query (list-table.module.css `.table tr`,
+   `.table td`, `.table td:first-child`), whichever stylesheet comes first, and every property those set is set again here. The row is a two-column grid: the date
+   block at the left over both lines, the course and the place at the right, the seats under them; the state tag is left out (the seat bar and „tühistatud“ say
+   it). The full date, the weekday and the time stay in the page for the screen reader, clipped (as the shared table clips its header row). */
 @container (max-width: 760px) {
+  .box .card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .box .count {
+    margin-bottom: 12px;
+  }
+
+  /* a white card of its own on the grey canvas (Part 4: #fff, 18 px radius, 14 px 16 px inside, 12 px between) */
   table.list tr {
     display: grid;
     grid-template-columns: 56px minmax(0, 1fr);
     grid-template-areas:
       "day course"
       "day seats";
-    gap: 6px 12px;
+    gap: 4px 12px;
     align-items: center;
+    box-sizing: border-box;
+    width: auto;
+    margin: 0 0 12px;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 18px;
+    background: #fff;
+  }
+
+  table.list tr:last-child {
+    margin-bottom: 0;
   }
 
   /* (`justify-items: stretch`: the shared label rows leave `start` on the cell, and a browser that aligns the children of a block by it would shrink
@@ -140,6 +174,7 @@
     width: auto;
     min-width: 0;
     padding: 0;
+    border: 0;
     justify-items: stretch;
   }
 
@@ -199,13 +234,11 @@
     grid-area: seats;
   }
 
-  /* the bar with „{k}/{cap}“ at its right (the long figure is left out); the line of free seats, seats awaiting their prepayment and the waitlist stays,
-     under them: it is what a phone has no other place for */
+  /* the bar with „{k}/{cap}“ at its right (the figure of the table, „{k} / {cap}“, is left out) */
   table.list .seats {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 4px 8px;
+    gap: 8px;
   }
 
   table.list .seatsLong {
@@ -221,15 +254,15 @@
     max-width: none;
   }
 
-  table.list .more {
-    flex: 0 0 100%;
-  }
-
   table.list td.statusCell {
     display: none;
   }
 
-  /* the row's tint: a highlighted or open row is the card's own */
+  /* the row's tint: the session whose drawer is open, or the one just added, is the card's own colour */
+  table.list tr.selected {
+    background: var(--row-highlight);
+  }
+
   table.list tr.added {
     background: var(--first);
   }

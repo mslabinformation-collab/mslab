@@ -5,6 +5,7 @@ import type { Db } from "@/db/client";
 import { eq } from "drizzle-orm";
 import { courses, courseSessions, registrations, requests } from "@/db/schema";
 import listTable from "@/components/admin/list-table.module.css";
+import styles from "@/app/admin/(panel)/kalender/calendar.module.css";
 import { makeTestDb } from "./helpers";
 
 // Admin UX pass, piece 3b, Task 1 (B3 Kalender, the list): the page rendered from a real (PGlite) database to HTML. The toolbar (no search field; the
@@ -129,9 +130,22 @@ describe("the toolbar", () => {
     expect(doc.querySelector('form[role="search"]')).toBeNull();
     expect(doc.querySelector("input")).toBeNull();
     expect(seen.toolbar!.placeholder).toBeUndefined();
-    expect([...doc.querySelectorAll("[data-list-toolbar] select")].map((e) => e.getAttribute("aria-label"))).toEqual(["Koolitus", "Linn"]);
-    const order = [...doc.querySelectorAll("[data-list-toolbar] select, [data-list-toolbar] nav")].map((e) => e.tagName.toLowerCase());
+    const field = doc.querySelector("[data-list-toolbar] > div:first-child")!; // the row above the pills
+    expect([...field.querySelectorAll("select")].map((e) => e.getAttribute("aria-label"))).toEqual(["Koolitus", "Linn"]);
+    const order = [...doc.querySelectorAll("[data-list-toolbar] > div:first-child select, [data-list-toolbar] nav")].map((e) => e.tagName.toLowerCase());
     expect(order).toEqual(["select", "select", "nav"]);
+  });
+
+  test("on a phone the city is in the pill row: „Tulevased 5 | Möödunud 3 | Linn ▾“ — the nav holds the two pills and the city's phone copy, which says „Linn“, and the course has none", async () => {
+    const doc = await open();
+    const nav = doc.querySelector("nav[data-list-pill-row]")!;
+    expect([...nav.children].map((c) => c.tagName.toLowerCase())).toEqual(["a", "a", "span"]);
+    expect([...nav.querySelectorAll("select")].map((e) => e.getAttribute("aria-label"))).toEqual(["Linn"]);
+    expect(nav.querySelector("[data-scope-pill]")!.textContent).toBe("Linn");
+    expect([...nav.querySelectorAll("select option")].map((o) => o.textContent)).toEqual(["Kõik linnad", "Pärnu", "Tallinn", "Tartu"]);
+    const chosen = await open(`linn=Tartu`);
+    expect(chosen.querySelector("nav[data-list-pill-row] [data-scope-pill]")!.textContent).toBe("Tartu");
+    expect(chosen.querySelector("nav[data-list-pill-row] select option[selected]")!.getAttribute("value")).toBe("Tartu");
   });
 
   test("the course select: „Kõik koolitused“ and each contact course, drafts too, in the public order; the city select: „Kõik linnad“ and each city once", async () => {
@@ -239,10 +253,14 @@ describe("the list", () => {
     expect(rowOf(doc, s.booked).querySelectorAll("td")).toHaveLength(4);
   });
 
-  test("the shared list table: the card, the table and the row's name link are the list table's, so ListRows can forward a click on the row", async () => {
+  test("the shared list table: the table and the row's name link are the list table's, so ListRows can forward a click on the row; the box is the container of the phone layout, and the section inside it is no container (the shared table's own switch is not in play)", async () => {
     const doc = await open();
-    expect(doc.querySelector("section")!.classList.contains(listTable.card)).toBe(true);
+    const section = doc.querySelector("section")!;
+    expect(section.parentElement!.classList.contains(styles.box)).toBe(true);
+    expect(section.classList.contains(styles.card)).toBe(true);
+    expect(section.classList.contains(listTable.card)).toBe(false);
     expect(doc.querySelector("table")!.classList.contains(listTable.table)).toBe(true);
+    expect(doc.querySelector("table")!.classList.contains(styles.list)).toBe(true);
     for (const id of [s.draft, s.booked, s.cancelled, s.tartu]) expect(rowOf(doc, id).querySelectorAll(`a.${listTable.name}`)).toHaveLength(1);
     // the table sits in ListRows' wrapper
     expect(doc.querySelector("table")!.parentElement!.classList.contains(listTable.rows)).toBe(true);
@@ -252,7 +270,7 @@ describe("the list", () => {
     const row = rowOf(await open(), s.booked);
     const cells = [...row.querySelectorAll("td")];
     expect(cells[0].querySelector("strong")!.textContent).toBe("05.12.2030");
-    expect(cells[0].querySelector("strong + span")!.textContent).toBe("neljapäev · 10:00");
+    expect(cells[0].querySelector("strong + span")!.textContent).toBe("neljapäev 10:00"); // as Part 3 draws it: „laupäev 10:00“
     const link = cells[1].querySelector("a")!;
     expect(link.textContent).toBe("Kulmude LAMI");
     expect(link.id).toBe(`session-${s.booked}`);
@@ -262,16 +280,17 @@ describe("the list", () => {
     expect(cells[3].textContent).toBe("Toimub"); // 2 confirmed and 1 live hold of 4: a seat is left
   });
 
-  test("the seats: „{confirmed} / {capacity} kinnitatud“ with a bar, then free seats, the ones awaiting their prepayment and the waitlist", async () => {
+  test("the seats are the figure and the bar, as drawn (Dim, 25.10): „3 / 4“ on the table, „4/4“ on the phone card; no „kinnitatud“, no free seats, no „ootab ettemaksu“, no waitlist", async () => {
     const doc = await open();
     const seats = (id: number) => rowOf(doc, id).querySelectorAll("td")[2];
-    expect(seats(s.booked).querySelector("[data-session-seats]")!.textContent).toBe("2 / 4 kinnitatud");
+    expect(seats(s.booked).querySelector("[data-session-seats]")!.textContent).toBe("2 / 4");
     expect(seats(s.booked).querySelector("[data-seats-short]")!.textContent).toBe("2/4"); // the phone card's figure
-    expect(texts(doc, `tr[data-session-row="${s.booked}"] [data-seats-more]`)).toEqual(["Vabu kohti 1 · 2 ootab ettemaksu · Ootenimekirjas 2"]);
-    expect(seats(s.tartu).querySelector("[data-session-seats]")!.textContent).toBe("0 / 6 kinnitatud");
-    expect(texts(doc, `tr[data-session-row="${s.tartu}"] [data-seats-more]`)).toEqual(["Vabu kohti 6"]);
-    // a cancelled session offers no free seats, and with nothing awaiting or waiting there is no line at all
-    expect(texts(doc, `tr[data-session-row="${s.cancelled}"] [data-seats-more]`)).toEqual([]);
+    expect(seats(s.tartu).querySelector("[data-session-seats]")!.textContent).toBe("0 / 6");
+    expect(seats(s.tartu).querySelector("[data-seats-short]")!.textContent).toBe("0/6");
+    // the whole cell is the two figures and the bar: the session with 2 confirmed, 2 awaiting and 2 on the waitlist says none of it
+    expect(seats(s.booked).textContent).toBe("2 / 42/4");
+    for (const id of [s.draft, s.booked, s.cancelled, s.tartu]) expect(rowOf(doc, id).textContent).not.toMatch(/kinnitatud|ootab ettemaksu|Vabu kohti|Ootenimekirjas/);
+    expect(doc.querySelector("[data-seats-more]")).toBeNull();
   });
 
   test("the bar fills with the confirmed seats; it is the warning colour when the session is full", async () => {

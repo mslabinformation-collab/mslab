@@ -58,9 +58,11 @@ function stateTag(s: AdminSessionRow): { text: string; cls: string } {
  * course select, city select and the pills „Tulevased“ / „Möödunud“ with their counts (no search: the two selects are the filters). The table is the
  * shared list table and each row is a link as a whole (ListRows): the course is the real Link, a click anywhere else on the row is forwarded to it. A
  * row opens the session form in a drawer (?id=<n>), „Lisa toimumine +“ the empty one (?id=uus); a saved new session closes it and is highlighted
- * (?lisatud=<n>). Part 3 draws four columns (date and weekday | course and place | seats with a bar | state); below 760 px of the card (Part 4) each row
- * is a card: the day over the month, the course, „{linn} · {koht}“ („{linn} · tühistatud“ of a cancelled session), the seat bar with „{k}/{cap}“ and, under
- * it, the line of free seats, seats awaiting their prepayment and the waitlist (a phone has no other place for it).
+ * (?lisatud=<n>). Part 3 draws four columns (date and weekday | course and place | seats with a bar | state); below 760 px of the box (calendar.module.css
+ * `.box`, as courses.module.css is for Koolitused; Part 4) the section loses its card and each row is a white card of its own: the day over the month, the
+ * course, „{linn} · {koht}“ („{linn} · tühistatud“ of a cancelled session), the seat bar with „{k}/{cap}“. The seats are only the figure („3 / 4“,
+ * on a phone „4/4“) and the bar, as Part 3 and Part 4 draw them (Dim, 25.10): the list no longer says „kinnitatud“, „Vabu kohti“, „ootab ettemaksu“ or
+ * „Ootenimekirjas“ (the drawer's header and notice, Task 3, carry the waitlist and the registrations).
  */
 export default async function CalendarAdminPage({ searchParams }: Props) {
   await requireAdmin();
@@ -191,121 +193,111 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
 
         <ListToolbar scopes={scopes} pillRows={[{ label: t.whenLabel, pills }]} />
 
-        <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
-          <p className={`${ui.muted} ${ui.small} ${styles.count}`} data-calendar-count="">
-            {fill(t.count, { n: sessions.length })}
-          </p>
-          {sessions.length === 0 ? (
-            filtered ? (
-              <ListEmpty things={t.things} filtered clearHref={href({ ...view, koolitus: null, linn: null })} />
+        <div className={styles.box}>
+          <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
+            <p className={`${ui.muted} ${ui.small} ${styles.count}`} data-calendar-count="">
+              {fill(t.count, { n: sessions.length })}
+            </p>
+            {sessions.length === 0 ? (
+              filtered ? (
+                <ListEmpty things={t.things} filtered clearHref={href({ ...view, koolitus: null, linn: null })} />
+              ) : (
+                <p className={ui.empty} data-calendar-empty="">
+                  {view.past ? t.emptyPast : t.empty}
+                </p>
+              )
             ) : (
-              <p className={ui.empty} data-calendar-empty="">
-                {view.past ? t.emptyPast : t.empty}
-              </p>
-            )
-          ) : (
-            <ListRows>
-              <table className={`${ui.table} ${listTable.table} ${styles.list}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t.col.date}</th>
-                    <th scope="col">{t.col.course}</th>
-                    <th scope="col">{t.col.seats}</th>
-                    <th scope="col">{t.col.status}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((s) => {
-                    const name = pick(s.course.title, "et");
-                    const state = stateTag(s);
-                    const cancelled = s.status === "cancelled";
-                    const full = !cancelled && seatsLeft(s.capacity, s.taken) === 0;
-                    const day = formatDayShortMonth(s.startsAt, "et");
-                    const filled = s.capacity > 0 ? Math.min(100, Math.round((s.confirmed / s.capacity) * 100)) : 0;
-                    const more = [
-                      cancelled ? "" : fill(t.left, { n: seatsLeft(s.capacity, s.taken) }),
-                      s.awaiting ? fill(t.awaiting, { n: s.awaiting }) : "",
-                      s.waitlist ? fill(t.waitlist, { n: s.waitlist }) : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    return (
-                      <tr
-                        key={s.id}
-                        data-session-row={s.id}
-                        data-highlight={added === s.id ? "" : undefined}
-                        className={added === s.id ? styles.added : s.id === openId ? styles.selected : undefined}
-                      >
-                        <td data-label={t.col.date} className={`${ui.nowrap} ${styles.dateCell}`}>
-                          <span className={styles.when}>
-                            <strong>{formatDate(s.startsAt, "et")}</strong>
-                            <span className={`${ui.muted} ${styles.sub}`}>
-                              {formatWeekday(s.startsAt, "et")} · {formatTime(s.startsAt, "et")}
+              <ListRows>
+                <table className={`${ui.table} ${listTable.table} ${styles.list}`}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t.col.date}</th>
+                      <th scope="col">{t.col.course}</th>
+                      <th scope="col">{t.col.seats}</th>
+                      <th scope="col">{t.col.status}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessions.map((s) => {
+                      const name = pick(s.course.title, "et");
+                      const state = stateTag(s);
+                      const cancelled = s.status === "cancelled";
+                      const full = !cancelled && seatsLeft(s.capacity, s.taken) === 0;
+                      const day = formatDayShortMonth(s.startsAt, "et");
+                      const filled = s.capacity > 0 ? Math.min(100, Math.round((s.confirmed / s.capacity) * 100)) : 0;
+                      return (
+                        <tr
+                          key={s.id}
+                          data-session-row={s.id}
+                          data-highlight={added === s.id ? "" : undefined}
+                          className={added === s.id ? styles.added : s.id === openId ? styles.selected : undefined}
+                        >
+                          <td data-label={t.col.date} className={`${ui.nowrap} ${styles.dateCell}`}>
+                            <span className={styles.when}>
+                              <strong>{formatDate(s.startsAt, "et")}</strong>
+                              <span className={`${ui.muted} ${styles.sub}`}>
+                                {formatWeekday(s.startsAt, "et")} {formatTime(s.startsAt, "et")}
+                              </span>
                             </span>
-                          </span>
-                          {/* the phone card's date (the full one above stays for the screen reader) */}
-                          <span className={styles.day} data-session-day="" aria-hidden="true">
-                            <b>{day.day}</b>
-                            <span>{day.month}</span>
-                          </span>
-                        </td>
-                        <td data-label={t.col.course} className={styles.courseCell}>
-                          <span className={styles.courseLine}>
-                            <Link
-                              id={`session-${s.id}`}
-                              className={listTable.name}
-                              href={href(view, s.id)}
-                              scroll={false}
-                              aria-label={fill(t.edit, { name: `${name}, ${formatDate(s.startsAt, "et")}, ${s.city}` })}
-                            >
-                              {name}
-                            </Link>
-                            {!s.course.published && (
-                              <span className={`${ui.tag} ${ui.warn}`} title={t.draftTitle}>
-                                {t.draft}
+                            {/* the phone card's date (the full one above stays for the screen reader) */}
+                            <span className={styles.day} data-session-day="" aria-hidden="true">
+                              <b>{day.day}</b>
+                              <span>{day.month}</span>
+                            </span>
+                          </td>
+                          <td data-label={t.col.course} className={styles.courseCell}>
+                            <span className={styles.courseLine}>
+                              <Link
+                                id={`session-${s.id}`}
+                                className={listTable.name}
+                                href={href(view, s.id)}
+                                scroll={false}
+                                aria-label={fill(t.edit, { name: `${name}, ${formatDate(s.startsAt, "et")}, ${s.city}` })}
+                              >
+                                {name}
+                              </Link>
+                              {!s.course.published && (
+                                <span className={`${ui.tag} ${ui.warn}`} title={t.draftTitle}>
+                                  {t.draft}
+                                </span>
+                              )}
+                            </span>
+                            <span className={cancelled ? `${styles.place} ${styles.placeApart}` : styles.place} data-session-place="">
+                              {[s.city, s.venue].filter(Boolean).join(" · ")}
+                            </span>
+                            {cancelled && (
+                              <span className={styles.placeCancelled} data-session-place-cancelled="">
+                                {s.city} · {t.cancelledShort}
                               </span>
                             )}
-                          </span>
-                          <span className={cancelled ? `${styles.place} ${styles.placeApart}` : styles.place} data-session-place="">
-                            {[s.city, s.venue].filter(Boolean).join(" · ")}
-                          </span>
-                          {cancelled && (
-                            <span className={styles.placeCancelled} data-session-place-cancelled="">
-                              {s.city} · {t.cancelledShort}
-                            </span>
-                          )}
-                        </td>
-                        <td data-label={t.col.seats} className={styles.seatsCell}>
-                          <span className={styles.seats}>
-                            <span className={styles.seatsLong} data-session-seats="">
-                              {fill(t.seats, { confirmed: s.confirmed, capacity: s.capacity })}
-                            </span>
-                            <span className={styles.bar} data-seats-bar="" data-full={full ? "" : undefined} aria-hidden="true">
-                              <span style={{ width: `${filled}%` }} />
-                            </span>
-                            <span className={styles.seatsShort} data-seats-short="">
-                              {s.confirmed}/{s.capacity}
-                            </span>
-                            {more && (
-                              <span className={`${ui.muted} ${styles.sub} ${styles.more}`} data-seats-more="">
-                                {more}
+                          </td>
+                          <td data-label={t.col.seats} className={styles.seatsCell}>
+                            <span className={styles.seats}>
+                              <span className={styles.seatsLong} data-session-seats="">
+                                {s.confirmed} / {s.capacity}
                               </span>
-                            )}
-                          </span>
-                        </td>
-                        <td data-label={t.col.status} className={styles.statusCell}>
-                          <span className={`${ui.tag} ${state.cls}`} data-session-state="">
-                            {state.text}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </ListRows>
-          )}
-        </section>
+                              <span className={styles.bar} data-seats-bar="" data-full={full ? "" : undefined} aria-hidden="true">
+                                <span style={{ width: `${filled}%` }} />
+                              </span>
+                              <span className={styles.seatsShort} data-seats-short="">
+                                {s.confirmed}/{s.capacity}
+                              </span>
+                            </span>
+                          </td>
+                          <td data-label={t.col.status} className={styles.statusCell}>
+                            <span className={`${ui.tag} ${state.cls}`} data-session-state="">
+                              {state.text}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </ListRows>
+            )}
+          </section>
+        </div>
       </div>
       {drawer}
     </>

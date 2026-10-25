@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withListParams } from "@/components/admin/list-params";
 import { ListToolbar } from "@/components/admin/ListToolbar";
+import toolbarStyles from "@/components/admin/ListToolbar.module.css";
 import { ListEmpty } from "@/components/admin/ListStates";
 import { adminEt } from "@/i18n/dict/admin";
 
@@ -703,16 +704,64 @@ describe("ListToolbar: several selects (B3 Kalender: the course and the city)", 
     expect(router.replace).toHaveBeenCalledWith("/admin/kalender?koolitus=5", { scroll: false });
   });
 
-  it("a select with a `short` word is a pill on a phone: the word while nothing is chosen, the choice after it; the select keeps its name and the pill is not read twice", async () => {
-    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city] });
-    const pill = () => $("[data-scope-pill]");
-    expect(container.querySelectorAll("[data-scope-pill]")).toHaveLength(1); // the course select has no `short`
+  // Part 4 draws „Tulevased 5 | Möödunud 3 | Linn ▾“ on one row: a select with a `short` word has a second, phone-only copy in the first pill row. CSS shows one of
+  // the two at a time (display: none takes the other out of the accessibility tree and the tab order); happy-dom has no CSS, so both are in the DOM here and the
+  // stylesheet test below holds the rules.
+  const pillRow: NonNullable<Props["pillRows"]>[number] = {
+    label: "Aeg",
+    pills: [
+      { href: "/admin/kalender", label: "Tulevased", count: 5, current: true },
+      { href: "/admin/kalender?aeg=moodunud", label: "Möödunud", count: 3, current: false },
+    ],
+  };
+  const phoneCopy = () => $("nav [data-scope-phone] select") as HTMLSelectElement;
+  const pill = () => $("[data-scope-pill]");
+  const chooseInCopy = (value: string) =>
+    act(async () => {
+      phoneCopy().value = value;
+      phoneCopy().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+  it("a select with a `short` word has a phone copy inside the first pill row, after the pills; the field above the pills is the same select and is the one hidden on a phone", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city], pillRows: [pillRow] });
+    expect(selects().map((s) => s.getAttribute("aria-label"))).toEqual(["Koolitus", "Linn", "Linn"]); // the course (no `short`), the city field, the city's phone copy
+    const nav = $("nav[data-list-pill-row]")!;
+    expect(nav.contains(phoneCopy())).toBe(true);
+    expect(nav.contains(selects()[1])).toBe(false);
+    expect(Array.from(nav.children).map((c) => c.tagName.toLowerCase())).toEqual(["a", "a", "span"]); // Tulevased, Möödunud, then the pill
+    expect(container.querySelectorAll("[data-scope-pill]")).toHaveLength(1);
     expect(pill()!.textContent).toBe("Linn");
     expect(pill()!.getAttribute("aria-hidden")).toBe("true");
-    expect(pill()!.parentElement!.contains(selects()[1])).toBe(true); // the pill and its select are one control
-    await choose(1, "Tallinn");
+    expect(pill()!.parentElement!.contains(phoneCopy())).toBe(true); // the pill and its select are one control
+    expect(Array.from(phoneCopy().options).map((o) => o.textContent)).toEqual(["Kõik linnad", "Pärnu", "Tallinn"]);
+    // only the field has the class that hides it on a phone
+    expect(selects().map((s) => s.classList.contains(toolbarStyles.selectField))).toEqual([false, true, false]);
+  });
+
+  it("a choice in the phone copy goes to the option's address, and the field shows it at once; and the other way", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city], pillRows: [pillRow] });
+    await chooseInCopy("Tallinn");
+    expect(router.replace).toHaveBeenLastCalledWith("/admin/kalender?linn=Tallinn", { scroll: false });
+    expect(selects()[1].value).toBe("Tallinn");
     expect(pill()!.textContent).toBe("Tallinn"); // at once, while the address is still on its way
-    expect(selects()[1].getAttribute("aria-label")).toBe("Linn");
+    await choose(1, "Pärnu"); // the field above the pills
+    expect(router.replace).toHaveBeenLastCalledWith("/admin/kalender?linn=P%C3%A4rnu", { scroll: false });
+    expect(phoneCopy().value).toBe("Pärnu");
+    expect(pill()!.textContent).toBe("Pärnu");
+  });
+
+  it("a choice in the phone copy made before the course's address has arrived carries the course too", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city], pillRows: [pillRow] });
+    await choose(0, "3");
+    await chooseInCopy("Pärnu");
+    expect(router.replace).toHaveBeenNthCalledWith(2, "/admin/kalender?linn=P%C3%A4rnu&koolitus=3", { scroll: false });
+  });
+
+  it("the pill says the word while nothing is chosen and the choice after it (ink), and follows the address (Back)", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city], pillRows: [pillRow] });
+    expect(pill()!.textContent).toBe("Linn");
+    expect(pill()!.hasAttribute("data-chosen")).toBe(false);
+    await choose(1, "Tallinn");
     props = { ...props, scopes: [course, { ...city, value: "Tallinn" }] };
     await go("/admin/kalender?linn=Tallinn"); // the address arrives
     expect(pill()!.textContent).toBe("Tallinn");
@@ -720,16 +769,36 @@ describe("ListToolbar: several selects (B3 Kalender: the course and the city)", 
     props = { ...props, scopes: [course, { ...city, value: "" }] };
     await go("/admin/kalender"); // Back
     expect(pill()!.textContent).toBe("Linn");
+    expect(phoneCopy().value).toBe("");
+    expect(selects()[1].value).toBe("");
     expect(pill()!.hasAttribute("data-chosen")).toBe(false);
   });
 
-  it("the stylesheet: the pill is not drawn above a phone; on a phone it is a 44 px pill with the select over it", () => {
+  it("only the first pill row gets the copy; with no pill row the select stays one plain field (nothing to hide on a phone); a select without `short` never has a copy", async () => {
+    const second: NonNullable<Props["pillRows"]>[number] = { label: "Vorm", pills: [{ href: "/admin/kalender?vorm=e", label: "E-õpe", current: false }] };
+    await show("/admin/kalender", { placeholder: undefined, scopes: [city], pillRows: [pillRow, second] });
+    expect(Array.from(container.querySelectorAll("nav")).map((n) => n.querySelectorAll("select").length)).toEqual([1, 0]);
+    await show("/admin/kalender", { placeholder: undefined, scopes: [city] });
+    expect(selects()).toHaveLength(1);
+    expect($("[data-scope-phone]")).toBeNull();
+    expect(selects()[0].classList.contains(toolbarStyles.selectField)).toBe(false); // (not hidden on a phone: there is no copy to take its place)
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course], pillRows: [pillRow] });
+    expect(selects()).toHaveLength(1);
+    expect($("[data-scope-phone]")).toBeNull();
+  });
+
+  it("the stylesheet: above a phone the copy is not drawn; on a phone the field is not, and the copy is a 44 px pill with the select over it", () => {
     const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(/\.selectPill \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/display:\s*none;/);
-    const phone = /@media \(max-width: 640px\) \{([\s\S]*)\n\}\s*$/.exec(css)?.[1] ?? "";
-    expect(phone).toMatch(/\.selectBox \{[^}]*position:\s*relative;/);
-    expect(phone).toMatch(/\.selectPill \{[^}]*min-height:\s*44px;[^}]*border-radius:\s*99px;/);
+    // (the phone block is found by its media query, wherever it is in the file: it ends at the first closing brace at the start of a line)
+    const phone = /@media \(max-width: 640px\) \{\r?\n([\s\S]*?)\r?\n\}/.exec(css)?.[1] ?? "";
+    expect(phone).not.toBe("");
+    expect(/\.selectBox \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/display:\s*none;/); // the base rule: no copy
+    expect(phone).toMatch(/\.selectField \{[^}]*display:\s*none;/);
+    expect(phone).toMatch(/\.selectBox \{[^}]*position:\s*relative;[^}]*display:\s*inline-flex;/);
     expect(phone).toMatch(/\.selectBox select \{[^}]*opacity:\s*0;/);
+    const pillRule = /\.selectPill \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(pillRule).toMatch(/min-height:\s*44px;/);
+    expect(pillRule).toMatch(/border-radius:\s*99px;/);
   });
 });
 

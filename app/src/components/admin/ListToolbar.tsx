@@ -25,8 +25,10 @@ export type ListPillRow = { label: string; pills: ListPill[]; tone?: "light" };
  * - `params`: the query parameters this select sets (Kalender's course select `["koolitus"]`, its city select `["linn"]`). Only needed with several
  *   selects: a choice made while another select's replace is still on its way takes that select's parameters from the address the list is heading
  *   for, not from its own option's address (the page built that before the other choice).
- * - `short`: on a phone (up to 640 px) the select is drawn as a 44 px pill, as Part 4 draws Kalender's „Linn ▾“: this word while nothing is chosen,
- *   the chosen option's label after it. The select itself stays, invisible over the pill: it keeps its name and opens the same list.
+ * - `short`: on a phone (up to 640 px) the select is a pill in the first pill row, as Part 4 draws Kalender's „Tulevased 5 | Möödunud 3 | Linn ▾“: this
+ *   word while nothing is chosen, the chosen option's label after it. The toolbar renders a second, phone-only copy of the select there (a 44 px pill with
+ *   the select itself invisible over it) and hides the field above the pills on a phone, and the phone copy above it: one of the two is drawn at a time, so
+ *   one is in the accessibility tree and the tab order. Both say the same and go to the same address. A list with no pill row keeps the plain field.
  */
 export type ListScope = {
   label: string;
@@ -82,6 +84,7 @@ export function ListToolbar({
   const committed = addressOf(pathname, params);
   const urlQuery = parseSearch(params.get("otsi") ?? undefined);
   const selects = [...(scope ? [scope] : []), ...(scopes ?? [])];
+  const [valueOf, choose] = useChoices(selects);
 
   const [text, setText] = useState(urlQuery);
   const input = useRef<HTMLInputElement>(null);
@@ -149,6 +152,13 @@ export function ListToolbar({
   };
 
   const rows = (pillRows ?? []).filter((row) => row.pills.length > 0);
+  /** A choice in select `s`: shown at once, and the page address of the option is gone to. */
+  const pick = (s: ListScope) => (option: ListScope["options"][number]) => {
+    choose(s, option.value);
+    goTo(option.href, s);
+  };
+  // a select with a `short` word has a phone copy in the first pill row (there is none without one: then it stays the plain select)
+  const phoneSelects = rows.length > 0 ? selects.filter((s) => s.short !== undefined) : [];
   return (
     <div className={styles.toolbar} data-list-toolbar="">
       {(placeholder !== undefined || selects.length > 0) && (
@@ -198,7 +208,7 @@ export function ListToolbar({
           )}
           {/* a search still waiting for its 300 ms goes with the choice */}
           {selects.map((s) => (
-            <ScopeSelect key={s.label} scope={s} onChoose={(href) => goTo(href, s)} />
+            <ScopeSelect key={s.label} scope={s} value={valueOf(s)} onPick={pick(s)} hiddenOnPhone={phoneSelects.includes(s)} />
           ))}
         </div>
       )}
@@ -206,7 +216,7 @@ export function ListToolbar({
       {rows.length > 0 && (
         <div className={styles.pillRows} data-list-pills="">
           {rows.map((row, i) => (
-            <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="" data-tone={row.tone}>
+            <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="" data-tone={row.tone} data-with-select={i === 0 && phoneSelects.length > 0 ? "" : undefined}>
               {row.pills.map((p) => (
                 // a search still waiting is dropped at the click: sent after it, it would take the pill's navigation away
                 <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined} onClick={cancel}>
@@ -214,6 +224,7 @@ export function ListToolbar({
                   {p.count !== undefined && <span className={ui.pillCount}>{p.count}</span>}
                 </Link>
               ))}
+              {i === 0 && phoneSelects.map((s) => <ScopeSelect key={`phone-${s.label}`} scope={s} value={valueOf(s)} onPick={pick(s)} phone />)}
             </nav>
           ))}
         </div>
@@ -229,27 +240,50 @@ export function ListToolbar({
 }
 
 /**
- * A scope select. It shows the choice at once, while the address is still on its way, and follows the address when that changes. `onChoose` gets
- * the chosen option's own address. With a `short` word it is also a pill on a phone (see {@link ListScope}).
+ * What each scope select shows: the choice just made (at once, while the address is still on its way), by the select's label. It follows the address
+ * when that changes (Back, a link): the value the page gives a select is its choice again. One state for the toolbar, because a `short` select is drawn
+ * twice (the field above the pills and the phone's pill in the pill row) and the two always say the same.
  */
-function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: string) => void }) {
-  const [chosen, setChosen] = useState(scope.value);
-  const [shown, setShown] = useState(scope.value);
-  if (shown !== scope.value) {
-    // the address changed (Back, a link): show it (state adjusted while rendering, as react.dev advises, not in an effect)
-    setShown(scope.value);
-    setChosen(scope.value);
+function useChoices(selects: ListScope[]): [(scope: ListScope) => string, (scope: ListScope, value: string) => void] {
+  const initial = () => Object.fromEntries(selects.map((s) => [s.label, s.value]));
+  const [chosen, setChosen] = useState<Record<string, string>>(initial);
+  const [seen, setSeen] = useState<Record<string, string>>(initial);
+  const moved = selects.filter((s) => seen[s.label] !== s.value);
+  if (moved.length > 0) {
+    // the address changed: show it (state adjusted while rendering, as react.dev advises, not in an effect)
+    const now = Object.fromEntries(moved.map((s) => [s.label, s.value]));
+    setSeen({ ...seen, ...now });
+    setChosen({ ...chosen, ...now });
   }
+  return [(scope) => chosen[scope.label] ?? scope.value, (scope, value) => setChosen((c) => ({ ...c, [scope.label]: value }))];
+}
+
+/**
+ * A scope select with the choice it shows (`value`); `onPick` gets the option chosen. `phone` is the phone's copy of a `short` select (see
+ * {@link ListScope}): the select itself, invisible over a 44 px pill that says the word or the choice; `hiddenOnPhone` is the field that copy replaces on a phone
+ * (CSS shows one of the two at a time, so only one is in the accessibility tree and the tab order).
+ */
+function ScopeSelect({
+  scope,
+  value,
+  onPick,
+  phone,
+  hiddenOnPhone,
+}: {
+  scope: ListScope;
+  value: string;
+  onPick: (option: ListScope["options"][number]) => void;
+  phone?: boolean;
+  hiddenOnPhone?: boolean;
+}) {
   const select = (
     <select
-      className={styles.select}
+      className={hiddenOnPhone ? `${styles.select} ${styles.selectField}` : styles.select}
       aria-label={scope.label}
-      value={chosen}
+      value={value}
       onChange={(e) => {
         const option = scope.options.find((o) => o.value === e.target.value);
-        if (!option) return;
-        setChosen(option.value);
-        onChoose(option.href);
+        if (option) onPick(option);
       }}
     >
       {scope.options.map((o) => (
@@ -259,11 +293,11 @@ function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: s
       ))}
     </select>
   );
-  if (scope.short === undefined) return select;
-  const picked = chosen === "" ? undefined : scope.options.find((o) => o.value === chosen);
+  if (!phone) return select;
+  const picked = value === "" ? undefined : scope.options.find((o) => o.value === value);
   return (
-    <span className={styles.selectBox}>
-      {/* (the select is the control; the pill only draws it on a phone, and is not read a second time) */}
+    <span className={styles.selectBox} data-scope-phone="">
+      {/* (the select is the control; the pill only draws it, and is not read a second time) */}
       <span className={styles.selectPill} data-scope-pill="" data-chosen={picked ? "" : undefined} aria-hidden="true">
         {picked ? picked.label : scope.short}
       </span>

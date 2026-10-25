@@ -1214,7 +1214,7 @@ test.describe("calendar", () => {
     const row = page.locator("[data-session-row][data-highlight]");
     await expect(row).toContainText(city);
     await expect(row).toContainText(when.shown);
-    await expect(row).toContainText("0 / 5 kinnitatud");
+    await expect(row).toContainText("0 / 5"); // the seats as drawn: the figure and the bar
     const stored = (await storedSession(city))!;
     expect(stored.startsAt.toISOString()).toBe(when.at.toISOString()); // 11:30 Estonian time
     expect(stored).toMatchObject({ capacity: 5, status: "scheduled", venue: "E2E saal" });
@@ -1236,9 +1236,9 @@ test.describe("calendar", () => {
     await adminReady(page);
     const toolbar = page.locator("[data-list-toolbar]");
     await expect(toolbar.locator("input")).toHaveCount(0);
-    await expect(toolbar.getByLabel("Koolitus", { exact: true })).toHaveValue("");
-    await expect(toolbar.getByLabel("Linn", { exact: true })).toHaveValue("");
-    await toolbar.getByLabel("Linn", { exact: true }).selectOption(city);
+    await expect(toolbar.getByRole("combobox", { name: "Koolitus" })).toHaveValue("");
+    await expect(toolbar.getByRole("combobox", { name: "Linn" })).toHaveValue("");
+    await toolbar.getByRole("combobox", { name: "Linn" }).selectOption(city);
     await expect(page).toHaveURL((url) => url.pathname === "/admin/kalender" && url.searchParams.get("linn") === city);
     const timePills = page.getByRole("navigation", { name: "Aeg" });
     await expect(timePills.getByRole("link", { name: /^Tulevased/ })).toHaveText("Tulevased1");
@@ -1246,10 +1246,10 @@ test.describe("calendar", () => {
     await expect(page.locator("[data-session-row]")).toHaveCount(1);
     await expect(page.locator("[data-calendar-count]")).toHaveText("Toimumisi: 1");
     expect(await noOverflow(page)).toBe(true);
-    await toolbar.getByLabel("Koolitus", { exact: true }).selectOption({ label: "Lash Lift BOTOX baaskoolitus" }); // another course: nothing in this city
+    await toolbar.getByRole("combobox", { name: "Koolitus" }).selectOption({ label: "Lash Lift BOTOX baaskoolitus" }); // another course: nothing in this city
     await expect(page.locator("[data-list-empty]")).toContainText("Selle valikuga toimumisi pole.");
     await expect(timePills.getByRole("link", { name: /^Tulevased/ })).toHaveText("Tulevased0");
-    await toolbar.getByLabel("Koolitus", { exact: true }).selectOption(String((await storedCourse(COURSE.slug)).id));
+    await toolbar.getByRole("combobox", { name: "Koolitus" }).selectOption(String((await storedCourse(COURSE.slug)).id));
     await expect(page.locator("[data-session-row]")).toHaveCount(1);
 
     // edit: cancelled, 3 seats. A click on the row away from its name link opens the drawer, and the link is still the keyboard's way in
@@ -1309,7 +1309,8 @@ test.describe("calendar", () => {
     expect(await storedSession(city)).not.toBeNull();
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender$/);
-    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("1 ootab ettemaksu");
+    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4"); // (the registration awaits its prepayment: confirmed 0 of 4; the list does not say „ootab ettemaksu“ any more, the drawer does)
+    await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
   });
 
   test("a session row of a non-contact course: not in the public calendar; its drawer keeps its own course, never another", async ({ page, context, visitorIp }, info) => {
