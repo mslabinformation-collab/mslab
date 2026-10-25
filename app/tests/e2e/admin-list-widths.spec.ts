@@ -130,6 +130,103 @@ test("every list that uses the shared table keeps all its columns inside its car
   }
 });
 
+// Kalender (B3, piece 3b Task 1) is the shared list table with four columns (date and weekday | course and place | seats with a bar | state). Its own session
+// is the widest row there is: a draft course's (the „Mustand“ tag beside the name), one student confirmed, one awaiting her prepayment and one on the waitlist (the
+// seats cell's longest line). From 1180 to 1440 px the four cells of the row are side by side inside the card; from 880 down (a card under 761 px) the row is a
+// card; and the page never scrolls sideways. On a phone (375, 390 and 640 px) the card reads as Part 4 draws it: the day over the short month, the course, the
+// place, the seat bar with „{k}/{cap}“ and the seats line under it (no state tag, no long figure), and the city select is a 44 px pill with the select itself over it.
+test("Kalender keeps its cells inside its card from 880 to 1440 px, and each session is a phone card with the city as a pill from 640 px down", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  info.setTimeout(info.timeout + 120_000);
+  const email = clientEmail("kalender", runName(info));
+  made.add(email);
+  await removeClientRows(email);
+  const fx = await insertAccountFixtures(email, { name: `Liis Kalender ${info.project.name}`, cards: ["confirmed", "awaiting", "waitlist"] });
+  await signInAsAdmin(page, context, visitorIp, created);
+  const row = `tr[data-session-row="${fx.session.id}"]`;
+  const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+  for (const width of [...WIDTHS, 1366, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/admin/kalender");
+    await adminReady(page);
+    await expect(page.locator(row), `${width} px: the seeded row`).toBeVisible();
+    const f = await fit(page, row);
+    const where = `/admin/kalender at ${width} px (${f.display}, card ${Math.round(f.inner)} px)`;
+    expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 1);
+    expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-1);
+    expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-1);
+    expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+    // above a phone the city select is the plain select, and the pill is not drawn
+    await expect(page.locator("[data-scope-pill]"), `${where}: no pill`).toBeHidden();
+    await expect(page.getByLabel("Linn", { exact: true }), `${where}: the city select`).toBeVisible();
+    if (TABLE_WIDTHS.includes(width)) {
+      expect(f.display, `${where}: a table, not the stack of rows`).toBe("table");
+      expect(f.rowCells, `${where}: 4 cells in a row`).toBe(4);
+      expect(f.sameTop, `${where}: the cells start on one line`).toBe(true);
+    }
+  }
+
+  for (const width of [640, 390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/admin/kalender");
+    await adminReady(page);
+    const card = page.locator(row);
+    await expect(card, `${width} px: the card`).toBeVisible();
+    const m = await card.evaluate((tr) => {
+      const box = (selector: string) => {
+        const el = tr.querySelector(selector);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      return {
+        row: tr.getBoundingClientRect().toJSON() as { left: number; right: number; top: number; bottom: number },
+        day: box("[data-session-day]"),
+        month: box("[data-session-day] > span"),
+        link: box("a"),
+        place: box("[data-session-place]"),
+        bar: box("[data-seats-bar]"),
+        short: box("[data-seats-short]"),
+        long: box("[data-session-seats]"),
+        state: box("[data-session-state]"),
+        more: box("[data-seats-more]"),
+        shortText: tr.querySelector("[data-seats-short]")?.textContent ?? "",
+      };
+    });
+    const where = `/admin/kalender at ${width} px`;
+    // the day block at the left, over both lines; the course, the place and the bar in the column beside it
+    expect(m.day!.width, `${where}: the day block is drawn`).toBeGreaterThan(0);
+    expect(m.day!.right, `${where}: the day at the left of the course`).toBeLessThanOrEqual(m.link!.left + 1);
+    expect(m.month!.top, `${where}: the month under the day`).toBeGreaterThan(m.day!.top);
+    expect(m.place!.top, `${where}: the place under the course`).toBeGreaterThanOrEqual(m.link!.top);
+    expect(m.bar!.top, `${where}: the seat bar under the place`).toBeGreaterThanOrEqual(m.place!.bottom - 1);
+    expect(m.bar!.width, `${where}: the bar takes what the figure leaves (a 5 px line across the card)`).toBeGreaterThan(m.row.right - m.row.left - 56 - 12 - 60);
+    expect(m.bar!.height, `${where}: the bar is a thin line`).toBeLessThanOrEqual(6);
+    expect(m.short!.left, `${where}: „{k}/{cap}“ beside the bar`).toBeGreaterThanOrEqual(m.bar!.right - 1);
+    expect(m.shortText, `${where}: the short figure`).toBe("1/6");
+    // what the card leaves out is not drawn: the long figure and the state tag; the line of free seats, seats awaiting their prepayment and the waitlist stays, under the bar
+    for (const gone of [m.long, m.state]) expect(gone === null || gone.width === 0, `${where}: left out of the card`).toBe(true);
+    expect(m.more!.width, `${where}: the seats line is drawn`).toBeGreaterThan(0);
+    expect(m.more!.top, `${where}: the seats line under the bar`).toBeGreaterThanOrEqual(m.bar!.bottom - 1);
+    for (const part of [m.day, m.link, m.place, m.bar, m.short, m.more]) expect(part!.right, `${where}: inside the card`).toBeLessThanOrEqual(m.row.right + 1);
+    expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+
+    // the city select is a pill: 44 px tall, with the select over it, the word „Linn“ until a city is chosen
+    const pill = page.locator("[data-scope-pill]");
+    await expect(pill, `${where}: the pill`).toHaveText("Linn");
+    const [p, s] = await Promise.all([pill.boundingBox(), page.getByLabel("Linn", { exact: true }).boundingBox()]);
+    expect(p!.height, `${where}: the pill is a 44 px target`).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(p!.x - s!.x) + Math.abs(p!.y - s!.y) + Math.abs(p!.width - s!.width) + Math.abs(p!.height - s!.height), `${where}: the select lies over the pill`).toBeLessThanOrEqual(2);
+    expect(p!.x + p!.width, `${where}: the pill inside the screen`).toBeLessThanOrEqual(width);
+    await page.getByLabel("Linn", { exact: true }).selectOption("Pärnu");
+    await expect(pill, `${where}: the chosen city`).toHaveText("Pärnu");
+    await expect(page).toHaveURL((url) => url.searchParams.get("linn") === "Pärnu");
+    await expect(page.locator(row), `${where}: the row stays in its city`).toBeVisible();
+    expect(await pageScroll(), `${where}: the page does not scroll sideways with a city chosen`).toBeLessThanOrEqual(0);
+  }
+});
+
 // Koolitused (B1, piece 3a) is a list of rows (DragList's `ol > li`) with a grid for the columns, not the shared table, and has four layouts by the width of its
 // box (the card's whole width, courses.module.css .box: a card content plus the 58 px of its padding and border, which a phone's card has none of): the README's
 // eight columns from 1098 px (a 1440 screen with the sidebar), the same closed up from 998 (a card content of 940: a 1366 laptop, an iPad Pro in landscape), two lines

@@ -1,16 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Drawer } from "@/components/admin/Drawer";
+import { ListRows } from "@/components/admin/ListRows";
+import { ListEmpty } from "@/components/admin/ListStates";
+import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/ListToolbar";
+import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
 import { SessionForm, type SessionValues } from "@/components/admin/SessionForm";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { listAdminSessions, listContactCourses, type AdminSessionRow } from "@/db/queries/admin";
+import { listAdminSessions, listContactCourses, listSessionCities, sessionCounts, type AdminSessionRow, type SessionFilter } from "@/db/queries/admin";
 import { startOfDayTallinn, tallinnFormParts } from "@/domain/calendar";
 import { seatsLeft } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
-import { fill, formatDate, formatTime, formatWeekday } from "@/i18n/format";
+import { fill, formatDate, formatDayShortMonth, formatTime, formatWeekday } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
 import styles from "./calendar.module.css";
 
@@ -22,10 +26,21 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 const parseId = (v: string | undefined) => (v && /^\d{1,10}$/.test(v) && Number(v) > 0 && Number(v) <= 2_147_483_647 ? Number(v) : null);
 
-/** The list's address: ?aeg=moodunud for past sessions, ?id=<n> | uus for the drawer. */
-function href(past: boolean, id?: number | "uus"): string {
+// Addresses (README B3, piece 3b Task 1): ?aeg=moodunud (the past sessions; none: the upcoming ones), ?koolitus=<course id> and ?linn=<city> (the two
+// selects), ?id=<n> | uus (the drawer over the list). The drawer's close link, the pills and the add button keep the course and the city.
+type View = {
+  past: boolean;
+  /** The course the list is limited to (a contact course that exists), or null. */
+  koolitus: number | null;
+  /** The city the list is limited to (one that has a session), or null. */
+  linn: string | null;
+};
+
+function href(view: View, id?: number | "uus"): string {
   const q = new URLSearchParams();
-  if (past) q.set("aeg", "moodunud");
+  if (view.past) q.set("aeg", "moodunud");
+  if (view.koolitus !== null) q.set("koolitus", String(view.koolitus));
+  if (view.linn !== null) q.set("linn", view.linn);
   if (id) q.set("id", String(id));
   const s = q.toString();
   return `/admin/kalender${s ? `?${s}` : ""}`;
@@ -39,23 +54,38 @@ function stateTag(s: AdminSessionRow): { text: string; cls: string } {
 }
 
 /**
- * Kalender (B adminOther "calendar"): the sessions of the contact courses, upcoming first (or the past ones), with
- * seats, registrations and the waitlist. "Lisa toimumine" and each row open the session form in a drawer (?id=uus,
- * ?id=<n>); a saved new session closes it and is highlighted (?lisatud=<n>).
+ * Kalender (B3, the list; admin UX pass, piece 3b Task 1): the sessions of the contact courses, upcoming first (or the past ones), under ListToolbar's
+ * course select, city select and the pills „Tulevased“ / „Möödunud“ with their counts (no search: the two selects are the filters). The table is the
+ * shared list table and each row is a link as a whole (ListRows): the course is the real Link, a click anywhere else on the row is forwarded to it. A
+ * row opens the session form in a drawer (?id=<n>), „Lisa toimumine +“ the empty one (?id=uus); a saved new session closes it and is highlighted
+ * (?lisatud=<n>). Part 3 draws four columns (date and weekday | course and place | seats with a bar | state); below 760 px of the card (Part 4) each row
+ * is a card: the day over the month, the course, „{linn} · {koht}“ („{linn} · tühistatud“ of a cancelled session), the seat bar with „{k}/{cap}“ and, under
+ * it, the line of free seats, seats awaiting their prepayment and the waitlist (a phone has no other place for it).
  */
 export default async function CalendarAdminPage({ searchParams }: Props) {
   await requireAdmin();
   const sp = await searchParams;
-  const past = one(sp.aeg) === "moodunud";
   const rawId = one(sp.id);
   const openId = rawId === "uus" ? "uus" : parseId(rawId);
   const added = parseId(one(sp.lisatud));
   const db = getDb();
-  const [sessions, courses, [open]] = await Promise.all([
-    listAdminSessions(db, { from: startOfDayTallinn(new Date()), upcoming: !past }),
-    listContactCourses(db),
-    // the drawer's session with its counts, also when it is in the other list (upcoming / past)
-    typeof openId === "number" ? listAdminSessions(db, { ids: [openId] }) : [],
+  const now = new Date();
+  const [courses, cities] = await Promise.all([listContactCourses(db), listSessionCities(db)]);
+  // the selects' choices are ones that exist (an old link to a removed course or a city without sessions lists everything)
+  const koolitus = parseId(one(sp.koolitus));
+  const linn = one(sp.linn);
+  const view: View = {
+    past: one(sp.aeg) === "moodunud",
+    koolitus: koolitus !== null && courses.some((c) => c.id === koolitus) ? koolitus : null,
+    linn: linn !== undefined && cities.includes(linn) ? linn : null,
+  };
+  const filter: SessionFilter = { courseId: view.koolitus ?? undefined, city: view.linn ?? undefined };
+  const filtered = view.koolitus !== null || view.linn !== null;
+  const [sessions, counts, [open]] = await Promise.all([
+    listAdminSessions(db, { from: startOfDayTallinn(now), upcoming: !view.past, ...filter }, now),
+    sessionCounts(db, filter, now),
+    // the drawer's session with its counts, also when it is in the other list (upcoming / past) or outside the selects' choice
+    typeof openId === "number" ? listAdminSessions(db, { ids: [openId] }, now) : [],
   ]);
   const t = adminEt.calendar;
   const courseOptions = courses.map((c) => ({ id: c.id, title: pick(c.title, "et"), published: c.published }));
@@ -64,11 +94,36 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
   if (open && !courseOptions.some((c) => c.id === open.courseId))
     courseOptions.push({ id: open.course.id, title: pick(open.course.title, "et"), published: open.course.published });
 
+  // The toolbar: each option goes to the list with that choice and the rest as it is (the time pill and the other select), from the top. The pills carry
+  // the counts of the sessions each then shows, under the two selects.
+  const scopes: ListScope[] = [
+    {
+      label: t.form.course,
+      value: view.koolitus !== null ? String(view.koolitus) : "",
+      params: ["koolitus"],
+      options: [
+        { value: "", label: t.allCourses, href: href({ ...view, koolitus: null }) },
+        ...courses.map((c) => ({ value: String(c.id), label: pick(c.title, "et"), href: href({ ...view, koolitus: c.id }) })),
+      ],
+    },
+    {
+      label: t.form.city,
+      value: view.linn ?? "",
+      params: ["linn"],
+      short: t.form.city,
+      options: [{ value: "", label: t.allCities, href: href({ ...view, linn: null }) }, ...cities.map((c) => ({ value: c, label: c, href: href({ ...view, linn: c }) }))],
+    },
+  ];
+  const pills: ListPill[] = [
+    { label: t.upcoming, count: counts.upcoming, href: href({ ...view, past: false }), current: !view.past },
+    { label: t.past, count: counts.past, href: href({ ...view, past: true }), current: view.past },
+  ];
+
   let drawer: React.ReactNode = null;
   if (openId === "uus" && courses.length > 0) {
     const initial: SessionValues = { id: null, courseId: null, date: "", time: "10:00", city: "", venue: "", language: "ET", capacity: 4, status: "scheduled" };
     drawer = (
-      <Drawer label={t.drawer.newLabel} closeHref={href(past)} closeLabel={adminEt.common.close} returnFocus="add-session">
+      <Drawer label={t.drawer.newLabel} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus="add-session">
         <div className={styles.drawer}>
           <h2 className={ui.h2}>{t.drawer.newLabel}</h2>
           <SessionForm initial={initial} courses={courseOptions} />
@@ -79,7 +134,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
     const name = open ? pick(open.course.title, "et") : "";
     const label = open ? fill(t.drawer.editLabel, { name: `${name}, ${formatDate(open.startsAt, "et")}` }) : t.drawer.notFound;
     drawer = (
-      <Drawer label={label} closeHref={href(past)} closeLabel={adminEt.common.close} returnFocus={`session-${openId}`}>
+      <Drawer label={label} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus={`session-${openId}`}>
         <div className={styles.drawer}>
           {open ? (
             <>
@@ -116,7 +171,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
             <p className={ui.lead}>{t.lead}</p>
           </div>
           {courses.length > 0 && (
-            <Link id="add-session" className={ui.btn} href={href(past, "uus")} scroll={false} data-add-session="">
+            <Link id="add-session" className={ui.btn} href={href(view, "uus")} scroll={false} data-add-session="">
               {t.add} +
             </Link>
           )}
@@ -134,93 +189,121 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
           </p>
         )}
 
-        <nav className={ui.filters} aria-label={t.whenLabel} data-when-filter="">
-          <Link className={ui.pill} href={href(false)} aria-current={!past ? "true" : undefined}>
-            {t.upcoming}
-          </Link>
-          <Link className={ui.pill} href={href(true)} aria-current={past ? "true" : undefined}>
-            {t.past}
-          </Link>
-        </nav>
+        <ListToolbar scopes={scopes} pillRows={[{ label: t.whenLabel, pills }]} />
 
-        <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
+        <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
+          <p className={`${ui.muted} ${ui.small} ${styles.count}`} data-calendar-count="">
+            {fill(t.count, { n: sessions.length })}
+          </p>
           {sessions.length === 0 ? (
-            <p className={ui.empty}>{past ? t.emptyPast : t.empty}</p>
+            filtered ? (
+              <ListEmpty things={t.things} filtered clearHref={href({ ...view, koolitus: null, linn: null })} />
+            ) : (
+              <p className={ui.empty} data-calendar-empty="">
+                {view.past ? t.emptyPast : t.empty}
+              </p>
+            )
           ) : (
-            <table className={`${ui.table} ${styles.table}`}>
-              <thead>
-                <tr>
-                  <th scope="col">{t.col.date}</th>
-                  <th scope="col">{t.col.course}</th>
-                  <th scope="col">{t.col.place}</th>
-                  <th scope="col">{t.col.language}</th>
-                  <th scope="col">{t.col.seats}</th>
-                  <th scope="col">{t.col.status}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((s) => {
-                  const name = pick(s.course.title, "et");
-                  const state = stateTag(s);
-                  return (
-                    <tr key={s.id} data-session-row={s.id} data-highlight={added === s.id ? "" : undefined} className={added === s.id ? styles.added : undefined}>
-                      <td data-label={t.col.date} className={ui.nowrap}>
-                        <span className={styles.when}>
-                          <strong>{formatDate(s.startsAt, "et")}</strong>
-                          <span className={`${ui.muted} ${styles.sub}`}>
-                            {formatWeekday(s.startsAt, "et")} · {formatTime(s.startsAt, "et")}
+            <ListRows>
+              <table className={`${ui.table} ${listTable.table} ${styles.list}`}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t.col.date}</th>
+                    <th scope="col">{t.col.course}</th>
+                    <th scope="col">{t.col.seats}</th>
+                    <th scope="col">{t.col.status}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => {
+                    const name = pick(s.course.title, "et");
+                    const state = stateTag(s);
+                    const cancelled = s.status === "cancelled";
+                    const full = !cancelled && seatsLeft(s.capacity, s.taken) === 0;
+                    const day = formatDayShortMonth(s.startsAt, "et");
+                    const filled = s.capacity > 0 ? Math.min(100, Math.round((s.confirmed / s.capacity) * 100)) : 0;
+                    const more = [
+                      cancelled ? "" : fill(t.left, { n: seatsLeft(s.capacity, s.taken) }),
+                      s.awaiting ? fill(t.awaiting, { n: s.awaiting }) : "",
+                      s.waitlist ? fill(t.waitlist, { n: s.waitlist }) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <tr
+                        key={s.id}
+                        data-session-row={s.id}
+                        data-highlight={added === s.id ? "" : undefined}
+                        className={added === s.id ? styles.added : s.id === openId ? styles.selected : undefined}
+                      >
+                        <td data-label={t.col.date} className={`${ui.nowrap} ${styles.dateCell}`}>
+                          <span className={styles.when}>
+                            <strong>{formatDate(s.startsAt, "et")}</strong>
+                            <span className={`${ui.muted} ${styles.sub}`}>
+                              {formatWeekday(s.startsAt, "et")} · {formatTime(s.startsAt, "et")}
+                            </span>
                           </span>
-                        </span>
-                      </td>
-                      <td data-label={t.col.course}>
-                        <span className={styles.courseCell}>
-                          <Link
-                            id={`session-${s.id}`}
-                            className={styles.name}
-                            href={href(past, s.id)}
-                            scroll={false}
-                            aria-label={fill(t.edit, { name: `${name}, ${formatDate(s.startsAt, "et")}, ${s.city}` })}
-                          >
-                            {name}
-                          </Link>
-                          {!s.course.published && (
-                            <span className={`${ui.tag} ${ui.warn}`} title={t.draftTitle}>
-                              {t.draft}
+                          {/* the phone card's date (the full one above stays for the screen reader) */}
+                          <span className={styles.day} data-session-day="" aria-hidden="true">
+                            <b>{day.day}</b>
+                            <span>{day.month}</span>
+                          </span>
+                        </td>
+                        <td data-label={t.col.course} className={styles.courseCell}>
+                          <span className={styles.courseLine}>
+                            <Link
+                              id={`session-${s.id}`}
+                              className={listTable.name}
+                              href={href(view, s.id)}
+                              scroll={false}
+                              aria-label={fill(t.edit, { name: `${name}, ${formatDate(s.startsAt, "et")}, ${s.city}` })}
+                            >
+                              {name}
+                            </Link>
+                            {!s.course.published && (
+                              <span className={`${ui.tag} ${ui.warn}`} title={t.draftTitle}>
+                                {t.draft}
+                              </span>
+                            )}
+                          </span>
+                          <span className={cancelled ? `${styles.place} ${styles.placeApart}` : styles.place} data-session-place="">
+                            {[s.city, s.venue].filter(Boolean).join(" · ")}
+                          </span>
+                          {cancelled && (
+                            <span className={styles.placeCancelled} data-session-place-cancelled="">
+                              {s.city} · {t.cancelledShort}
                             </span>
                           )}
-                        </span>
-                      </td>
-                      <td data-label={t.col.place}>
-                        <span className={styles.when}>
-                          <strong data-session-city="">{s.city}</strong>
-                          {s.venue && <span className={`${ui.muted} ${styles.sub}`}>{s.venue}</span>}
-                        </span>
-                      </td>
-                      <td data-label={t.col.language}>{s.language}</td>
-                      <td data-label={t.col.seats}>
-                        <span className={styles.when}>
-                          <span>{fill(t.seats, { confirmed: s.confirmed, capacity: s.capacity })}</span>
-                          <span className={`${ui.muted} ${styles.sub}`}>
-                            {[
-                              s.status === "scheduled" ? fill(t.left, { n: seatsLeft(s.capacity, s.taken) }) : "",
-                              s.awaiting ? fill(t.awaiting, { n: s.awaiting }) : "",
-                              s.waitlist ? fill(t.waitlist, { n: s.waitlist }) : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
+                        </td>
+                        <td data-label={t.col.seats} className={styles.seatsCell}>
+                          <span className={styles.seats}>
+                            <span className={styles.seatsLong} data-session-seats="">
+                              {fill(t.seats, { confirmed: s.confirmed, capacity: s.capacity })}
+                            </span>
+                            <span className={styles.bar} data-seats-bar="" data-full={full ? "" : undefined} aria-hidden="true">
+                              <span style={{ width: `${filled}%` }} />
+                            </span>
+                            <span className={styles.seatsShort} data-seats-short="">
+                              {s.confirmed}/{s.capacity}
+                            </span>
+                            {more && (
+                              <span className={`${ui.muted} ${styles.sub} ${styles.more}`} data-seats-more="">
+                                {more}
+                              </span>
+                            )}
                           </span>
-                        </span>
-                      </td>
-                      <td data-label={t.col.status}>
-                        <span className={`${ui.tag} ${state.cls}`} data-session-state="">
-                          {state.text}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td data-label={t.col.status} className={styles.statusCell}>
+                          <span className={`${ui.tag} ${state.cls}`} data-session-state="">
+                            {state.text}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </ListRows>
           )}
         </section>
       </div>

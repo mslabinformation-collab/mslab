@@ -28,6 +28,13 @@ export function formatDayMonth(d: Date, l: Locale): string {
   return `${get("day")}.${get("month")}`;
 }
 
+/** The day and the short month apart, in Estonian time: { day: "05", month: "dets" } (the admin Kalender's phone card puts the day over the month). */
+export function formatDayShortMonth(d: Date, l: Locale): { day: string; month: string } {
+  const parts = fmt(l, { day: "2-digit", month: "short" }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return { day: get("day"), month: get("month") };
+}
+
 /**
  * A file's size for people: "820 kB" under a megabyte (at least 1), else "1,4 MB" (one decimal, none when it is whole); Russian
  * units in Russian. A size that rounds to 1000 kB is "1 MB".

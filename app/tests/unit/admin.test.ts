@@ -4,7 +4,7 @@ import { centsToInput, MAX_PAYMENT_CENTS, parseEuroCents } from "@/domain/money"
 import { MAX_PAGE, pageInfo, PAGE_SIZE, parsePage } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
-import { formatDate, formatDayMonth, formatLongDate, formatMonthLong, formatStamp, formatTime, formatWeekday } from "@/i18n/format";
+import { formatDate, formatDayMonth, formatDayShortMonth, formatLongDate, formatMonthLong, formatStamp, formatTime, formatWeekday } from "@/i18n/format";
 import { csvCell, toCsv } from "@/server/csv";
 
 // Task 12: the pure parts of the admin inbox — the amount field, the price a payment is measured against, the CSV
@@ -117,6 +117,11 @@ describe("admin date formats (Estonian time)", () => {
     expect(formatMonthLong("2027-01", "et")).toBe("jaanuar 2027");
     expect(formatMonthLong("2026-12", "ru")).toBe("декабрь 2026");
     for (const bad of ["", "2026", "2026-13", "2026-00", "oktoober", "2026-1", "2026-10-01"]) expect(formatMonthLong(bad, "et"), bad).toBe("");
+  });
+  test("the day over the short month (the Kalender phone card: Intl's own „dets“, „veebr“), in Estonian time", () => {
+    expect(formatDayShortMonth(new Date("2030-12-05T08:00:00Z"), "et")).toEqual({ day: "05", month: "dets" });
+    expect(formatDayShortMonth(new Date("2031-02-06T08:00:00Z"), "et")).toEqual({ day: "06", month: "veebr" });
+    expect(formatDayShortMonth(new Date("2026-12-31T22:30:00Z"), "et")).toEqual({ day: "01", month: "jaan" }); // 00:30 on 1 January in Tallinn
   });
   test("the cached formatters keep locales and options apart", () => {
     for (let i = 0; i < 3; i++) {

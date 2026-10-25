@@ -1230,10 +1230,33 @@ test.describe("calendar", () => {
     await expect(calRow).toContainText("Vabu kohti · 5");
     await expect(calRow).toContainText(COURSE.title);
 
-    // edit: cancelled, 3 seats
+    // the list (B3, piece 3b): no search field; the city select limits it to this session (the address says so) and the pills count what is then shown;
+    // the course select too; the whole row, not only its name, opens the drawer on the same list
     await page.goto("/admin/kalender");
     await adminReady(page);
-    await page.getByRole("link", { name: `Muuda toimumist: ${COURSE.title}, ${when.shown}, ${city}` }).click();
+    const toolbar = page.locator("[data-list-toolbar]");
+    await expect(toolbar.locator("input")).toHaveCount(0);
+    await expect(toolbar.getByLabel("Koolitus", { exact: true })).toHaveValue("");
+    await expect(toolbar.getByLabel("Linn", { exact: true })).toHaveValue("");
+    await toolbar.getByLabel("Linn", { exact: true }).selectOption(city);
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/kalender" && url.searchParams.get("linn") === city);
+    const timePills = page.getByRole("navigation", { name: "Aeg" });
+    await expect(timePills.getByRole("link", { name: /^Tulevased/ })).toHaveText("Tulevased1");
+    await expect(timePills.getByRole("link", { name: /^Möödunud/ })).toHaveText("Möödunud0");
+    await expect(page.locator("[data-session-row]")).toHaveCount(1);
+    await expect(page.locator("[data-calendar-count]")).toHaveText("Toimumisi: 1");
+    expect(await noOverflow(page)).toBe(true);
+    await toolbar.getByLabel("Koolitus", { exact: true }).selectOption({ label: "Lash Lift BOTOX baaskoolitus" }); // another course: nothing in this city
+    await expect(page.locator("[data-list-empty]")).toContainText("Selle valikuga toimumisi pole.");
+    await expect(timePills.getByRole("link", { name: /^Tulevased/ })).toHaveText("Tulevased0");
+    await toolbar.getByLabel("Koolitus", { exact: true }).selectOption(String((await storedCourse(COURSE.slug)).id));
+    await expect(page.locator("[data-session-row]")).toHaveCount(1);
+
+    // edit: cancelled, 3 seats. A click on the row away from its name link opens the drawer, and the link is still the keyboard's way in
+    const link = page.getByRole("link", { name: `Muuda toimumist: ${COURSE.title}, ${when.shown}, ${city}` });
+    await expect(link).toBeVisible();
+    await page.locator("[data-session-row]").locator("td").first().click();
+    await expect(page).toHaveURL((url) => url.searchParams.get("id") === String(stored.id) && url.searchParams.get("linn") === city);
     const edit = page.getByRole("dialog", { name: `Toimumine: ${COURSE.title}, ${when.shown}` });
     await expect(edit).toBeVisible();
     await expect(edit.getByLabel("Kuupäev")).toHaveValue(when.input);

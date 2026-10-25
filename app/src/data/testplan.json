@@ -1458,10 +1458,10 @@
       "title": "Kalender: lisa ja kustuta toimumine",
       "href": "/admin/kalender",
       "steps": [
-        "Ava „Kalender“ ja vajuta „Lisa toimumine“.",
-        "Vali koolitus ja kuupäev järgmisel aastal.",
+        "Ava „Kalender“, vajuta „Lisa toimumine“ ja vali koolitus ning kuupäev järgmisel aastal.",
         "Kirjuta „Algus“: 10:00, „Linn“: Proov ja „Toimumiskoht“: Proov 1.",
         "Vajuta „Lisa toimumine“.",
+        "Vali loendis „Linn“ alt Proov ja vajuta toimumise reale.",
         "Ava avalik koolituskalender.",
         "Ava halduses see toimumine, vali „Staatus“ alt „Tühistatud“ ja vajuta „Salvesta toimumine“.",
         "Ava uuesti avalik koolituskalender.",
@@ -1469,13 +1469,17 @@
       ],
       "expect": [
         "Näed „Toimumine lisatud.“ ja uus rida on kalendris.",
+        "Valik „Linn“ jätab loendisse ainult linna Proov toimumised ja „Tulevased“ näitab nende arvu.",
+        "Toimumise reale vajutamine avab selle toimumise paneeli.",
         "Avalikus kalendris on rida linnaga Proov.",
         "Pärast tühistamist on avalikus kalendris märge „Tühistatud“.",
         "Pärast kustutamist näed „Toimumine kustutatud.“ ja rida on kadunud."
       ],
       "why": "Maria paneb kuupäevad kalendrisse ise.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-avaleht-slaid",
@@ -2563,13 +2567,15 @@
         "Ava halduses „Kalender“ ja sama kuupäeva rida."
       ],
       "expect": [
-        "Halduse veerus „Kohad“ on Proov 1 arvestatud kinnitatute hulka.",
+        "Halduse real on Proov 1 arvestatud kinnitatute hulka, näiteks „1/4“ või „1 / 4 kinnitatud“.",
         "Avaliku kalendri vabade kohtade arv on sama mis halduse „Vabu kohti“.",
         "Kui number pole veel muutunud, on see õige 5 minuti pärast."
       ],
       "why": "Täis kuupäevale ei tohi rohkem registreerida.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-ulejaanud",

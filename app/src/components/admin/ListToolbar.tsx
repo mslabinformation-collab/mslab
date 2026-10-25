@@ -19,10 +19,22 @@ export type ListPill = { href: string; label: string; count?: number; current: b
  */
 export type ListPillRow = { label: string; pills: ListPill[]; tone?: "light" };
 /**
- * The scope select. Each option carries the address the page built for it (`href`: the page knows the other filters, and which parameter the
+ * A scope select. Each option carries the address the page built for it (`href`: the page knows the other filters, and which parameter the
  * option sets: `?koolitus=` for a whole course, `?toimumine=` for one session), so one select can set either. `value` is the chosen option's value.
+ *
+ * - `params`: the query parameters this select sets (Kalender's course select `["koolitus"]`, its city select `["linn"]`). Only needed with several
+ *   selects: a choice made while another select's replace is still on its way takes that select's parameters from the address the list is heading
+ *   for, not from its own option's address (the page built that before the other choice).
+ * - `short`: on a phone (up to 640 px) the select is drawn as a 44 px pill, as Part 4 draws Kalender's „Linn ▾“: this word while nothing is chosen,
+ *   the chosen option's label after it. The select itself stays, invisible over the pill: it keeps its name and opens the same list.
  */
-export type ListScope = { label: string; value: string; options: { value: string; label: string; href: string }[] };
+export type ListScope = {
+  label: string;
+  value: string;
+  options: { value: string; label: string; href: string }[];
+  params?: string[];
+  short?: string;
+};
 
 /**
  * The top of an admin list (admin UX pass, README §1.10; the A screens, Task 1): a search field, an optional scope select, one or two rows of
@@ -33,7 +45,9 @@ export type ListScope = { label: string; value: string; options: { value: string
  *   empty) with `leht` dropped: a new search starts at page 1. Enter sends it at once, and so does the ✕, which also puts the focus back in the
  *   field. The field is never remounted by a replace, so it keeps its focus and its text.
  * - The scope select applies on change by going to the chosen option's own address (`router.replace`, `leht` dropped). The page built that address
- *   before the visitor typed, so the search typed so far goes onto it, and text still waiting for its 300 ms goes with it.
+ *   before the visitor typed, so the search typed so far goes onto it, and text still waiting for its 300 ms goes with it. A list may have several
+ *   (`scopes`: Kalender's course and city; `scope` is the same as a list of one): each select goes to its own option's address, with the other
+ *   selects' parameters (`ListScope.params`) taken from the address the list is heading for.
  * - One address for every replace: Next keeps one navigation at a time and drops a pending one when a newer starts, so each replace is built
  *   from the address the list is heading for (the last replace sent), not from the one on the screen; a search and a scope chosen within the
  *   time a page takes to load both arrive. An address that did not come from the toolbar (Back, a row, „Tühjenda otsing ja filtrid“) is the
@@ -49,12 +63,16 @@ export function ListToolbar({
   placeholder,
   pillRows,
   scope,
+  scopes,
   countLine,
 }: {
   /** The search field's placeholder and name; without it there is no search field. */
   placeholder?: string;
   pillRows?: ListPillRow[];
+  /** One select (an alias of `scopes` with one entry). */
   scope?: ListScope;
+  /** Several selects, side by side in this order. */
+  scopes?: ListScope[];
   countLine?: string;
 }) {
   const t = adminEt.lists;
@@ -63,6 +81,7 @@ export function ListToolbar({
   const params = useSearchParams();
   const committed = addressOf(pathname, params);
   const urlQuery = parseSearch(params.get("otsi") ?? undefined);
+  const selects = [...(scope ? [scope] : []), ...(scopes ?? [])];
 
   const [text, setText] = useState(urlQuery);
   const input = useRef<HTMLInputElement>(null);
@@ -93,11 +112,17 @@ export function ListToolbar({
     const from = splitAddress(intended.current);
     replaceWith(listHref(from.pathname, from.params, change));
   };
-  /** Goes to the page's own address `href` (a scope option's), with the search typed so far on it (leht goes). */
-  const goTo = (href: string) => {
+  /**
+   * Goes to the page's own address `href` (an option's of select `from`), with the search typed so far on it (leht goes). The other selects'
+   * parameters come from the address the list is heading for: a choice of theirs may be on its way, and `href` was built before it.
+   */
+  const goTo = (href: string, from: ListScope) => {
     cancel();
     const to = splitAddress(href);
-    replaceWith(listHref(to.pathname, to.params, { otsi: parseSearch(text) }));
+    const heading = splitAddress(intended.current).params;
+    const change: Record<string, string | null> = { otsi: parseSearch(text) };
+    for (const other of selects) if (other !== from) for (const key of other.params ?? []) change[key] = heading.get(key);
+    replaceWith(listHref(to.pathname, to.params, change));
   };
   const search = (value: string) => go({ otsi: parseSearch(value) });
 
@@ -126,7 +151,7 @@ export function ListToolbar({
   const rows = (pillRows ?? []).filter((row) => row.pills.length > 0);
   return (
     <div className={styles.toolbar} data-list-toolbar="">
-      {(placeholder !== undefined || scope) && (
+      {(placeholder !== undefined || selects.length > 0) && (
         <div className={styles.row}>
           {placeholder !== undefined && (
             <form
@@ -172,7 +197,9 @@ export function ListToolbar({
             </form>
           )}
           {/* a search still waiting for its 300 ms goes with the choice */}
-          {scope && <ScopeSelect scope={scope} onChoose={goTo} />}
+          {selects.map((s) => (
+            <ScopeSelect key={s.label} scope={s} onChoose={(href) => goTo(href, s)} />
+          ))}
         </div>
       )}
 
@@ -202,8 +229,8 @@ export function ListToolbar({
 }
 
 /**
- * The scope select. It shows the choice at once, while the address is still on its way, and follows the address when that changes. `onChoose` gets
- * the chosen option's own address.
+ * A scope select. It shows the choice at once, while the address is still on its way, and follows the address when that changes. `onChoose` gets
+ * the chosen option's own address. With a `short` word it is also a pill on a phone (see {@link ListScope}).
  */
 function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: string) => void }) {
   const [chosen, setChosen] = useState(scope.value);
@@ -213,7 +240,7 @@ function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: s
     setShown(scope.value);
     setChosen(scope.value);
   }
-  return (
+  const select = (
     <select
       className={styles.select}
       aria-label={scope.label}
@@ -231,5 +258,16 @@ function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: s
         </option>
       ))}
     </select>
+  );
+  if (scope.short === undefined) return select;
+  const picked = chosen === "" ? undefined : scope.options.find((o) => o.value === chosen);
+  return (
+    <span className={styles.selectBox}>
+      {/* (the select is the control; the pill only draws it on a phone, and is not read a second time) */}
+      <span className={styles.selectPill} data-scope-pill="" data-chosen={picked ? "" : undefined} aria-hidden="true">
+        {picked ? picked.label : scope.short}
+      </span>
+      {select}
+    </span>
   );
 }

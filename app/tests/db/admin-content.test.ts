@@ -3,8 +3,9 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
 import { clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
-import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, moveCourseTo } from "@/db/queries/admin";
+import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, listSessionCities, moveCourseTo, sessionCounts } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
+import { startOfDayTallinn } from "@/domain/calendar";
 import { draftFromCourse, newCourseDraft, type CourseDraft } from "@/domain/course-editor";
 import { createCourseForm, deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
 
@@ -424,6 +425,86 @@ describe("calendar sessions", () => {
       [a.id, 2, 1, 1],
     ]);
     expect(await listAdminSessions(db, { ids: [] })).toEqual([]);
+  });
+
+  // B3 Kalender (admin UX pass, piece 3b, Task 1): the list's course and city filters and the counts of its two pills.
+  describe("the list's course and city filters, and the pill counts", () => {
+    // 12:00 Tallinn time on 25 Oct 2026 (UTC+2 after the clocks went back): "today" starts at 21:00 UTC the day before
+    const NOW = new Date("2026-10-25T10:00:00Z");
+    const FROM = startOfDayTallinn(NOW);
+    const at = (iso: string) => new Date(iso);
+    let draft: { id: number };
+    const ids: Record<string, number> = {};
+
+    beforeEach(async () => {
+      [draft] = await db.insert(courses).values({ ...base, slug: "mustand", type: "contact", title: { et: "Mustand" } }).returning();
+      const rows = await db
+        .insert(courseSessions)
+        .values([
+          { courseId: contact.id, startsAt: at("2026-12-05T08:00:00Z"), city: "Pärnu" }, // upcoming
+          { courseId: draft.id, startsAt: at("2026-11-20T08:00:00Z"), city: "Tartu" }, // upcoming, a draft course's
+          { courseId: contact.id, startsAt: at("2026-12-12T08:00:00Z"), city: "Tallinn", status: "cancelled" }, // upcoming, cancelled
+          { courseId: contact.id, startsAt: at("2026-10-25T05:00:00Z"), city: "Tallinn" }, // earlier today: still "Tulevased" (the day, not the minute)
+          { courseId: contact.id, startsAt: at("2026-10-24T20:00:00Z"), city: "Tallinn" }, // 23:00 yesterday: past
+          { courseId: draft.id, startsAt: at("2026-01-10T08:00:00Z"), city: "Pärnu" }, // past
+          { courseId: contact.id, startsAt: at("2025-09-01T08:00:00Z"), city: "Pärnu" }, // past
+        ])
+        .returning();
+      ["parnu", "tartu", "cancelled", "today", "yesterday", "draftPast", "old"].forEach((k, i) => (ids[k] = rows[i].id));
+    });
+
+    const idsOf = async (filter: { courseId?: number; city?: string }, upcoming: boolean) =>
+      (await listAdminSessions(db, { from: FROM, upcoming, ...filter }, NOW)).map((s) => s.id);
+
+    test("by course: only that course's sessions, in both lists", async () => {
+      expect(await idsOf({ courseId: contact.id }, true)).toEqual([ids.today, ids.parnu, ids.cancelled]);
+      expect(await idsOf({ courseId: contact.id }, false)).toEqual([ids.yesterday, ids.old]);
+      expect(await idsOf({ courseId: draft.id }, true)).toEqual([ids.tartu]); // a draft course's sessions too
+      expect(await idsOf({ courseId: draft.id }, false)).toEqual([ids.draftPast]);
+    });
+
+    test("by city: exactly that city, every course, cancelled ones too", async () => {
+      expect(await idsOf({ city: "Tallinn" }, true)).toEqual([ids.today, ids.cancelled]);
+      expect(await idsOf({ city: "Tallinn" }, false)).toEqual([ids.yesterday]);
+      expect(await idsOf({ city: "Pärnu" }, false)).toEqual([ids.draftPast, ids.old]);
+      expect(await idsOf({ city: "pärnu" }, true)).toEqual([]); // (the city is matched as it is written)
+    });
+
+    test("by course and city together, and with nothing found", async () => {
+      expect(await idsOf({ courseId: contact.id, city: "Pärnu" }, true)).toEqual([ids.parnu]);
+      expect(await idsOf({ courseId: draft.id, city: "Pärnu" }, true)).toEqual([]);
+      expect(await idsOf({ courseId: draft.id, city: "Pärnu" }, false)).toEqual([ids.draftPast]);
+      expect(await idsOf({ courseId: 999_999 }, true)).toEqual([]);
+    });
+
+    test("the drawer's { ids } list ignores the filters of the list (a session opened from another view still opens)", async () => {
+      const [row] = await listAdminSessions(db, { ids: [ids.tartu] }, NOW);
+      expect(row.city).toBe("Tartu");
+    });
+
+    test("sessionCounts: the two pills' counts are the rows each list shows, under the same filters", async () => {
+      const filters = [{}, { courseId: contact.id }, { courseId: draft.id }, { city: "Tallinn" }, { city: "Pärnu" }, { courseId: contact.id, city: "Pärnu" }, { courseId: draft.id, city: "Pärnu" }, { city: "Narva" }];
+      for (const filter of filters) {
+        const counts = await sessionCounts(db, filter, NOW);
+        expect(counts, JSON.stringify(filter)).toEqual({ upcoming: (await idsOf(filter, true)).length, past: (await idsOf(filter, false)).length });
+      }
+      expect(await sessionCounts(db, {}, NOW)).toEqual({ upcoming: 4, past: 3 });
+      expect(await sessionCounts(db, { city: "Tallinn" }, NOW)).toEqual({ upcoming: 2, past: 1 });
+      expect(await sessionCounts(db, { courseId: draft.id, city: "Pärnu" }, NOW)).toEqual({ upcoming: 0, past: 1 });
+    });
+
+    test("sessionCounts counts sessions, not registrations: a cancelled registration, a waitlist request or a second registration changes nothing", async () => {
+      const reg = (status: "confirmed" | "awaiting_prepayment" | "cancelled") => ({ courseId: contact.id, courseSessionId: ids.parnu, kind: "group" as const, name: "X", email: "x@example.com", paymentChoice: "half" as const, status });
+      await db.insert(registrations).values([reg("confirmed"), reg("confirmed"), reg("cancelled")]);
+      await db.insert(requests).values({ kind: "waitlist", payload: { session: ids.parnu, email: "w@example.com" } });
+      expect(await sessionCounts(db, {}, NOW)).toEqual({ upcoming: 4, past: 3 });
+    });
+
+    test("listSessionCities: every city once, in Estonian order, from sessions of any time and any course", async () => {
+      expect(await listSessionCities(db)).toEqual(["Pärnu", "Tallinn", "Tartu"]);
+      await db.insert(courseSessions).values({ courseId: online.id, startsAt: at("2026-12-20T08:00:00Z"), city: "Ääre" });
+      expect(await listSessionCities(db)).toEqual(["Pärnu", "Tallinn", "Tartu", "Ääre"]); // (Estonian puts Ä near the end)
+    });
   });
 });
 

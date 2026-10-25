@@ -1859,7 +1859,15 @@ export const adminEt = {
     whenLabel: "Aeg",
     upcoming: "Tulevased",
     past: "Möödunud",
-    col: { date: "Kuupäev", course: "Koolitus", place: "Koht", language: "Keel", seats: "Kohad", status: "Staatus" },
+    // The list (B3, piece 3b Task 1; piece3-texts P-7): the two selects are named „Koolitus“ and „Linn“ (form.course, form.city; on a phone the
+    // city select is the pill „Linn ▾“), their first options are „Kõik koolitused“ / „Kõik linnad“; the count line is „Toimumisi: {n}“; the phone
+    // card says „{linn} · tühistatud“ of a cancelled session. The place is drawn under the course (Part 3), so the table has four columns.
+    allCourses: "Kõik koolitused",
+    allCities: "Kõik linnad",
+    count: "Toimumisi: {n}",
+    things: "toimumisi",
+    cancelledShort: "tühistatud",
+    col: { date: "Kuupäev", course: "Koolitus", seats: "Kohad", status: "Staatus" },
     seats: "{confirmed} / {capacity} kinnitatud",
     left: "Vabu kohti {n}",
     awaiting: "{n} ootab ettemaksu",

@@ -579,6 +579,160 @@ describe("ListToolbar: one address for every replace", () => {
   });
 });
 
+describe("ListToolbar: several selects (B3 Kalender: the course and the city)", () => {
+  // `scopes` is a list of selects, `scope` stays the alias of a list of one. Each option carries the page's own address; a select says which query
+  // parameters it sets (`params`), so a choice made while another select's address is still on its way carries that choice too. `short` is the
+  // phone's pill word (Part 4: „Linn ▾“).
+  const course: NonNullable<Props["scope"]> = {
+    label: "Koolitus",
+    value: "",
+    params: ["koolitus"],
+    options: [
+      { value: "", label: "Kõik koolitused", href: "/admin/kalender" },
+      { value: "3", label: "Kulmumeistri baaskoolitus", href: "/admin/kalender?koolitus=3" },
+      { value: "5", label: "Lash Lift BOTOX baaskoolitus", href: "/admin/kalender?koolitus=5" },
+    ],
+  };
+  const city: NonNullable<Props["scope"]> = {
+    label: "Linn",
+    value: "",
+    params: ["linn"],
+    short: "Linn",
+    options: [
+      { value: "", label: "Kõik linnad", href: "/admin/kalender" },
+      { value: "Pärnu", label: "Pärnu", href: "/admin/kalender?linn=P%C3%A4rnu" },
+      { value: "Tallinn", label: "Tallinn", href: "/admin/kalender?linn=Tallinn" },
+    ],
+  };
+  const selects = () => Array.from(container.querySelectorAll("select"));
+  const choose = (which: number, value: string) =>
+    act(async () => {
+      const el = selects()[which];
+      el.value = value;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  /** The same options with `extra` (a query string) added to every address: the page builds each select's addresses from the whole view. */
+  const withQuery = (scope: NonNullable<Props["scope"]>, extra: string): NonNullable<Props["scope"]> => ({
+    ...scope,
+    options: scope.options.map((o) => ({ ...o, href: `${o.href}${o.href.includes("?") ? "&" : "?"}${extra}` })),
+  });
+
+  it("draws one select for each scope, in the given order, each with its own name and its current option", async () => {
+    await show("/admin/kalender?koolitus=5&linn=Tallinn", { placeholder: undefined, scopes: [{ ...course, value: "5" }, { ...city, value: "Tallinn" }] });
+    expect(selects().map((s) => s.getAttribute("aria-label"))).toEqual(["Koolitus", "Linn"]);
+    expect(selects().map((s) => s.value)).toEqual(["5", "Tallinn"]);
+    expect(selects().map((s) => Array.from(s.options).map((o) => o.textContent))).toEqual([
+      ["Kõik koolitused", "Kulmumeistri baaskoolitus", "Lash Lift BOTOX baaskoolitus"],
+      ["Kõik linnad", "Pärnu", "Tallinn"],
+    ]);
+    expect($("input")).toBeNull(); // Kalender has nothing to search
+  });
+
+  it("each applies on change by going to its option's own address (leht not in it)", async () => {
+    await show("/admin/kalender?leht=2", { placeholder: undefined, scopes: [course, city] });
+    await choose(0, "3");
+    expect(router.replace).toHaveBeenLastCalledWith("/admin/kalender?koolitus=3", { scroll: false });
+    await go("/admin/kalender?koolitus=3");
+    props = { ...props, scopes: [{ ...course, value: "3" }, withQuery(city, "koolitus=3")] };
+    await draw();
+    await choose(1, "Pärnu");
+    expect(router.replace).toHaveBeenLastCalledWith("/admin/kalender?linn=P%C3%A4rnu&koolitus=3", { scroll: false });
+  });
+
+  it("the second select chosen before the first one's address has arrived carries the first choice (the page built its address before it)", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city] });
+    await choose(0, "3");
+    await choose(1, "Tallinn"); // the page is still on its way: this option's address knows nothing of the course
+    expect(router.replace).toHaveBeenCalledTimes(2);
+    expect(router.replace).toHaveBeenNthCalledWith(1, "/admin/kalender?koolitus=3", { scroll: false });
+    expect(router.replace).toHaveBeenNthCalledWith(2, "/admin/kalender?linn=Tallinn&koolitus=3", { scroll: false });
+  });
+
+  it("…and the other way round: the city on its way, then the course", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city] });
+    await choose(1, "Pärnu");
+    await choose(0, "5");
+    expect(router.replace).toHaveBeenNthCalledWith(1, "/admin/kalender?linn=P%C3%A4rnu", { scroll: false });
+    expect(router.replace).toHaveBeenNthCalledWith(2, "/admin/kalender?koolitus=5&linn=P%C3%A4rnu", { scroll: false });
+  });
+
+  it("a „Kõik“ chosen first is not brought back by the other select's older address", async () => {
+    await show("/admin/kalender?koolitus=3&linn=Tallinn", {
+      placeholder: undefined,
+      scopes: [
+        { ...withQuery(course, "linn=Tallinn"), value: "3" },
+        { ...withQuery(city, "koolitus=3"), value: "Tallinn" },
+      ],
+    });
+    await choose(0, ""); // the course: Kõik koolitused → ?linn=Tallinn
+    await choose(1, "Pärnu"); // the city: its address was built while the course was still 3
+    expect(router.replace).toHaveBeenNthCalledWith(1, "/admin/kalender?linn=Tallinn", { scroll: false });
+    expect(router.replace).toHaveBeenNthCalledWith(2, "/admin/kalender?linn=P%C3%A4rnu", { scroll: false });
+  });
+
+  it("with a search field the text typed so far goes with either select's choice", async () => {
+    await show("/admin/kalender", { scopes: [course, city] });
+    await type("abc");
+    await choose(1, "Tallinn");
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith("/admin/kalender?linn=Tallinn&otsi=abc", { scroll: false });
+  });
+
+  it("each select follows the address when it changes (Back), independently", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city] });
+    await choose(0, "3");
+    props = { ...props, scopes: [{ ...course, value: "5" }, { ...city, value: "Pärnu" }] };
+    await go("/admin/kalender?koolitus=5&linn=P%C3%A4rnu");
+    expect(selects().map((s) => s.value)).toEqual(["5", "Pärnu"]);
+    props = { ...props, scopes: [course, city] };
+    await go("/admin/kalender");
+    expect(selects().map((s) => s.value)).toEqual(["", ""]);
+  });
+
+  it("`scope` stays the alias of `scopes` with one entry: the same select, the same replace", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scope: course });
+    expect(selects().map((s) => s.getAttribute("aria-label"))).toEqual(["Koolitus"]);
+    await choose(0, "5");
+    expect(router.replace).toHaveBeenCalledWith("/admin/kalender?koolitus=5", { scroll: false });
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    router.replace.mockReset();
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course] });
+    expect(selects()).toHaveLength(1);
+    await choose(0, "5");
+    expect(router.replace).toHaveBeenCalledWith("/admin/kalender?koolitus=5", { scroll: false });
+  });
+
+  it("a select with a `short` word is a pill on a phone: the word while nothing is chosen, the choice after it; the select keeps its name and the pill is not read twice", async () => {
+    await show("/admin/kalender", { placeholder: undefined, scopes: [course, city] });
+    const pill = () => $("[data-scope-pill]");
+    expect(container.querySelectorAll("[data-scope-pill]")).toHaveLength(1); // the course select has no `short`
+    expect(pill()!.textContent).toBe("Linn");
+    expect(pill()!.getAttribute("aria-hidden")).toBe("true");
+    expect(pill()!.parentElement!.contains(selects()[1])).toBe(true); // the pill and its select are one control
+    await choose(1, "Tallinn");
+    expect(pill()!.textContent).toBe("Tallinn"); // at once, while the address is still on its way
+    expect(selects()[1].getAttribute("aria-label")).toBe("Linn");
+    props = { ...props, scopes: [course, { ...city, value: "Tallinn" }] };
+    await go("/admin/kalender?linn=Tallinn"); // the address arrives
+    expect(pill()!.textContent).toBe("Tallinn");
+    expect(pill()!.hasAttribute("data-chosen")).toBe(true); // (drawn ink, like the current pill of a row)
+    props = { ...props, scopes: [course, { ...city, value: "" }] };
+    await go("/admin/kalender"); // Back
+    expect(pill()!.textContent).toBe("Linn");
+    expect(pill()!.hasAttribute("data-chosen")).toBe(false);
+  });
+
+  it("the stylesheet: the pill is not drawn above a phone; on a phone it is a 44 px pill with the select over it", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(/\.selectPill \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/display:\s*none;/);
+    const phone = /@media \(max-width: 640px\) \{([\s\S]*)\n\}\s*$/.exec(css)?.[1] ?? "";
+    expect(phone).toMatch(/\.selectBox \{[^}]*position:\s*relative;/);
+    expect(phone).toMatch(/\.selectPill \{[^}]*min-height:\s*44px;[^}]*border-radius:\s*99px;/);
+    expect(phone).toMatch(/\.selectBox select \{[^}]*opacity:\s*0;/);
+  });
+});
+
 describe("ListEmpty", () => {
   const empty = (p: Parameters<typeof ListEmpty>[0]) => act(async () => root.render(createElement(ListEmpty, p)));
 

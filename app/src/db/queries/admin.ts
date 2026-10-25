@@ -295,13 +295,30 @@ export type AdminSessionRow = CourseSession & {
 };
 
 /**
- * Sessions for the admin calendar, drafts' sessions included, with the registration and waitlist counts per session.
- * `upcoming`: starting from `from`, soonest first; otherwise the ones before `from`, latest first. `{ ids }`: those
- * sessions, wherever they are in time (the drawer of a session opened from either list).
+ * The Kalender list's two selects (B3): one course (`courseId`), one city (`city`, as it is written in the session: the same text the city select
+ * offers). Either, both or none.
  */
-export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: boolean } | { ids: number[] }, now: Date = new Date()): Promise<AdminSessionRow[]> {
+export type SessionFilter = { courseId?: number; city?: string };
+
+/** The conditions of a {@link SessionFilter} on `course_sessions` (none for an empty filter). */
+function sessionFilter(filter: SessionFilter): SQL | undefined {
+  return and(filter.courseId === undefined ? undefined : eq(courseSessions.courseId, filter.courseId), filter.city === undefined ? undefined : eq(courseSessions.city, filter.city));
+}
+
+/**
+ * Sessions for the admin calendar, drafts' sessions included, with the registration and waitlist counts per session.
+ * `upcoming`: starting from `from`, soonest first; otherwise the ones before `from`, latest first, under the list's course and city filters
+ * ({@link SessionFilter}). `{ ids }`: those sessions, wherever they are in time and whatever the filters (the drawer of a session opened from
+ * either list).
+ */
+export async function listAdminSessions(
+  db: Db,
+  opts: ({ from: Date; upcoming: boolean } & SessionFilter) | { ids: number[] },
+  now: Date = new Date(),
+): Promise<AdminSessionRow[]> {
   if ("ids" in opts && opts.ids.length === 0) return [];
-  const where = "ids" in opts ? inArray(courseSessions.id, opts.ids) : opts.upcoming ? gte(courseSessions.startsAt, opts.from) : lt(courseSessions.startsAt, opts.from);
+  const where =
+    "ids" in opts ? inArray(courseSessions.id, opts.ids) : and(opts.upcoming ? gte(courseSessions.startsAt, opts.from) : lt(courseSessions.startsAt, opts.from), sessionFilter(opts));
   const newestFirst = "upcoming" in opts && !opts.upcoming;
   const rows = await db
     .select({ session: courseSessions, course: { id: courses.id, slug: courses.slug, title: courses.title, type: courses.type, published: courses.published } })
@@ -338,6 +355,30 @@ export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: bo
     taken: reg.get(r.session.id)?.taken ?? 0,
     waitlist: wait.get(r.session.id) ?? 0,
   }));
+}
+
+/**
+ * The counts of the Kalender pills „Tulevased“ and „Möödunud“ under the list's course and city filters: the sessions of each list, exactly the rows
+ * {@link listAdminSessions} gives for `{ from: startOfDayTallinn(now), upcoming }` and the same filter. Sessions, not registrations: a session that
+ * starts today is upcoming all day (the split is the start of the Estonian day).
+ */
+export async function sessionCounts(db: Db, filter: SessionFilter, now: Date = new Date()): Promise<{ upcoming: number; past: number }> {
+  const from = startOfDayTallinn(now);
+  const [row] = await db
+    .select({
+      upcoming: sql<number>`count(*) filter (where ${courseSessions.startsAt} >= ${from.toISOString()}::timestamptz)`.mapWith(Number),
+      past: sql<number>`count(*) filter (where ${courseSessions.startsAt} < ${from.toISOString()}::timestamptz)`.mapWith(Number),
+    })
+    .from(courseSessions)
+    .where(sessionFilter(filter));
+  return { upcoming: row?.upcoming ?? 0, past: row?.past ?? 0 };
+}
+
+/** Every city that has a session, once, in Estonian order (the Kalender city select): sessions of any time and any course, as the list shows them. */
+export async function listSessionCities(db: Db): Promise<string[]> {
+  const rows = await db.selectDistinct({ city: courseSessions.city }).from(courseSessions);
+  const collator = new Intl.Collator("et");
+  return rows.map((r) => r.city).sort(collator.compare);
 }
 
 /** One session, or null. */
