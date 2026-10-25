@@ -1,5 +1,5 @@
 import { z, type ZodType } from "zod";
-import type { Db, Q } from "@/db/client";
+import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { lockTables, readSetting } from "@/db/queries/admin-site";
 import type { SaveAnswer } from "@/domain/autosave";
@@ -39,8 +39,8 @@ export function seadedPatch(part: SeadedPart): ZodType<Record<string, unknown>> 
   return settingsPartPatch(part);
 }
 
-/** The switch's version: the hash of the stored setting (as the settings parts'). */
-export const financingVersion = async (q: Q): Promise<string> => contentVersion(await readSetting(q, FINANCING_KEY));
+/** The switch's version: the hash of the stored setting (as the settings parts'); the page reads it of the row it shows, the write of the row it locks. */
+export const financingVersionOf = (stored: unknown): Promise<string> => contentVersion(stored);
 
 /**
  * „Järelmaks (Inbank)“: `{ enabled }` over the stored switch at `version`, with the settings table locked as every settings save locks it; another
@@ -54,13 +54,13 @@ async function writeFinancing(db: Db, patch: unknown, version: string, now: Date
   return db.transaction(async (tx) => {
     await lockTables(tx, ["settings"]);
     const stored = await readSetting(tx, FINANCING_KEY);
-    const current = await contentVersion(stored);
+    const current = await financingVersionOf(stored);
     if (current !== version) return { ok: false, error: "conflict", version: current, value: readFinancingSettings(stored) };
     const { enabled } = parsed.data;
     const next = { enabled: enabled ?? readFinancingSettings(stored).enabled };
     if ((await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
     await setSetting(tx, FINANCING_KEY, next);
-    return { ok: true, version: await contentVersion(next), savedAt, changed: true };
+    return { ok: true, version: await financingVersionOf(next), savedAt, changed: true };
   });
 }
 

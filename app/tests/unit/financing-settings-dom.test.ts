@@ -21,13 +21,16 @@ let container: HTMLDivElement;
 let root: Root;
 let fetched: ReturnType<typeof stubFetch>;
 let version: string;
+/** The switch as the route holds it. */
+let stored: boolean;
 let down: boolean;
 let statuses: AutosaveStatus[];
 const route = async (url: string, init: RequestInit | undefined): Promise<Response> => {
   if (url !== "/api/admin/seaded/financing") return Response.json({ ok: false }, { status: 404 });
   if (down) return Response.json({ ok: false, error: "server" }, { status: 500 });
-  const body = JSON.parse(String(init?.body)) as { version: string };
-  if (body.version !== version) return Response.json({ ok: false, error: "conflict", version, value: { enabled: false } }, { status: 409 });
+  const body = JSON.parse(String(init?.body)) as { version: string; patch: { enabled?: boolean } };
+  if (body.version !== version) return Response.json({ ok: false, error: "conflict", version, value: { enabled: stored } }, { status: 409 });
+  if (typeof body.patch.enabled === "boolean") stored = body.patch.enabled;
   version = `${version}+`;
   return Response.json({ ok: true, version, savedAt: "2026-10-25T11:20:00.000Z" });
 };
@@ -52,6 +55,7 @@ const tick = async () => {
 
 beforeEach(() => {
   version = "f1";
+  stored = false;
   down = false;
   statuses = [];
   localStorage.clear();
@@ -97,6 +101,25 @@ describe("FinancingSettings", () => {
     await tick();
     expect(sent().at(-1)).toEqual({ version: "f1+", patch: { enabled: false } });
     expect(box().checked).toBe(false);
+  });
+
+  test("review I-2: switched in another tab meanwhile, the tick is a conflict: „Taasta minu tekst“ saves what the box shows over it, and the route holds it", async () => {
+    // another tab switched it on and off again since this page was read (the route is at another version, off)
+    version = "f3";
+    await show();
+    await tick();
+    expect(sent()).toEqual([{ version: "f1", patch: { enabled: true } }]);
+    expect(statuses.at(-1)!.kind).toBe("conflict");
+    expect(box().checked).toBe(true);
+    const restore = $<HTMLButtonElement>("[data-financing-restore]")!;
+    expect(restore.textContent).toBe("Taasta minu tekst");
+    await act(async () => restore.click());
+    await settle();
+    expect(sent().at(-1)).toEqual({ version: "f3", patch: { enabled: true } });
+    expect(stored).toBe(true);
+    expect(box().checked).toBe(stored);
+    expect(statuses.at(-1)!.kind).toBe("saved");
+    expect($("[data-financing-restore]")).toBeNull();
   });
 
   test("a failure is the status's to say (retry); what she ticked stays", async () => {

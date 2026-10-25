@@ -6,7 +6,7 @@ import { CERT_LIMITS, certificateForm, formatCertificateNumber, type Certificate
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { CertificateFieldError } from "@/server/certificates";
-import { useSeadedPart, type StatusReport } from "./useSeadedPart";
+import { useSeadedPart, type FieldGroup, type StatusReport } from "./useSeadedPart";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
@@ -31,8 +31,9 @@ export type CertificateSettingsInitial = {
 
 type Field = keyof CertificateForm;
 
-/** „Aasta“ and „Number“ commit on blur (behaviours conflict 13). */
+/** „Aasta“ and „Number“ commit on blur (behaviours conflict 13), and save together: one patch with both when either changes (review M-3). */
 const ON_BLUR = ["nextYear", "nextSeq"] as const;
+const NUMBER: FieldGroup = { name: "number", members: ON_BLUR };
 
 /** A whole number as typed, or null. */
 const whole = (typed: string): number | null => (/^\d{1,9}$/.test(typed.trim()) ? Number(typed.trim()) : null);
@@ -43,7 +44,8 @@ const whole = (typed: string): number | null => (/^\d{1,9}$/.test(typed.trim()) 
  * the script font as Maria's signature (owner, 15.10: no picture) — and "Järgmine number" (its „Aasta“ and „Number“, D6: certificates unchanged) with
  * the preview „Järgmine tunnistus: MS LAB {year}-{nn}“ under it and the number last issued in the card's year. Every field autosaves on
  * api/admin/seaded/certificate under the page's one SaveStatus (`onStatus`): a text 1.5 s after typing and at once when left, the two numbers when
- * left (they commit on blur); a year stored, the page is read again for the year's last issued number. A refused field says why in its own words, in the field (Review Focus 4: a number at or below one already issued is
+ * left (they commit on blur), always together (one patch with both: the server judges the pair as one); another year stored, the page is read
+ * again for the year's last issued number. A refused field says why in its own words, in the field (Review Focus 4: a number at or below one already issued is
  * `taken`; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is "invalid" on the year).
  */
 export function CertificateSettings({ initial, onStatus }: { initial: CertificateSettingsInitial; onStatus?: StatusReport }) {
@@ -65,12 +67,15 @@ export function CertificateSettings({ initial, onStatus }: { initial: Certificat
   useLayoutEffect(() => {
     nav.current = router;
   });
-  // a year stored: the page is read again, for the number last issued in that year (the line under the numbers)
+  // another year stored: the page is read again, for the number last issued in that year (the line under the numbers)
+  const yearStored = useRef(String(initial.nextYear));
   const onSaved = useCallback((patch: Record<string, unknown>) => {
-    if ("nextYear" in patch) startTransition(() => nav.current.refresh());
+    if (patch.nextYear === undefined || String(patch.nextYear) === yearStored.current) return;
+    yearStored.current = String(patch.nextYear);
+    startTransition(() => nav.current.refresh());
   }, []);
   const fields = useMemo(() => certificateForm(initial), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
-  const part = useSeadedPart({ part: "certificate", version: initial.version, fields, label, focusField: focusById, onStatus, onBlur: ON_BLUR, onSaved });
+  const part = useSeadedPart({ part: "certificate", version: initial.version, fields, label, focusField: focusById, onStatus, onBlur: ON_BLUR, group: NUMBER, onSaved });
   const value = (name: Field): string => String(part.text(name) ?? "");
 
   const errorOf = (name: Field): string | undefined => {

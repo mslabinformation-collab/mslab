@@ -22,7 +22,9 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 //   and restore() („Taasta minu tekst“, B13) saves the form's text over the server's version: an explicit overwrite;
 // - the row deleted meanwhile (404) is `gone`: the text stays in this browser, nothing is tried again;
 // - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
-//   and this engine sends and keeps nothing more (the screen starts a new one from what is stored).
+//   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
+// - adopt(name, value): the page read again holds another value for a field nobody typed in (a server rule moved it, piece 3b): it becomes the
+//   field's confirmed text, nothing is sent.
 // Old iPads run it: no regex lookbehind, no crypto.randomUUID (tests/unit/old-safari.test.ts). The server's side is server/autosave-route.ts.
 
 export { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
@@ -273,6 +275,23 @@ export class AutosaveEngine {
     if (storage) for (const key of copyKeys(storage, draftKey(this.owner, this.key, ""))) removeKey(storage, key);
     this.taken = [];
     this.refresh();
+  }
+
+  /**
+   * The page read again says the server holds `value` for the field `name` (a rule of the server moved it: piece 3b, Seaded's invoice number after
+   * a new prefix, R3). Taken as the confirmed text of that field, without a save, only while the form holds the confirmed one there: nothing typed
+   * in it, none of its saves on the way or unanswered, no conflict. Anything else of the form is left as it is. True when taken.
+   */
+  adopt(name: string, value: unknown): boolean {
+    if (this.blocked() || !(name in this.fields) || !same(this.fields[name], this.confirmed[name])) return false;
+    if (this.flying !== null && name in this.flying && !same(this.flying[name], this.confirmed[name])) return false;
+    if (this.unanswered.some((u) => name in u && !same(u[name], this.confirmed[name]))) return false;
+    if (same(this.fields[name], value)) return true;
+    this.fields = { ...this.fields, [name]: value };
+    this.confirmed = { ...this.confirmed, [name]: value };
+    if (this.uncertain()) this.keep();
+    this.refresh();
+    return true;
   }
 
   /** For useSyncExternalStore: told after every change. */

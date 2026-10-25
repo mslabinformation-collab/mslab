@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { SITE_LIMITS, type ContactDraft, type NewsletterDraft, type PageDraft } from "@/domain/site-editor";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
@@ -238,6 +238,18 @@ export function SettingsEditor(p: {
   const status = combineStatus(Object.values(board));
   const showInvalid = () => document.querySelector<HTMLElement>('[data-settings-editor] [data-seaded-section] [aria-invalid="true"]')?.focus();
   const sections: SectionEntry[] = SECTIONS.map((s) => ({ id: s.id, label: t.sections[s.label] }));
+  // A load with an anchor (a bookmark, a link from outside, #arve of an old one): the browser looks for it before the page has streamed in, so it is
+  // gone to once the page is here (a link within the admin is the router's own jump; this one lands in the same place).
+  useEffect(() => {
+    let id = "";
+    try {
+      id = decodeURIComponent(window.location.hash.slice(1));
+    } catch {
+      return;
+    }
+    const target = id ? document.getElementById(id) : null;
+    if (target?.closest("[data-settings-editor]")) target.scrollIntoView({ block: "start" });
+  }, []);
   const { initial } = p;
   // the legal form's own read: a new object only with a new read of the page (useSiteDraft follows each one)
   const legal = useMemo<Loaded<LegalValues>>(

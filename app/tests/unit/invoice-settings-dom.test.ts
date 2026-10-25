@@ -22,6 +22,7 @@ const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/admin/seaded", useSearchParams: () => new URLSearchParams() }));
 
 import { InvoiceSettings, type InvoiceBank, type InvoiceSettingsInitial } from "@/components/admin/InvoiceSettings";
+import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 
 const INITIAL: InvoiceSettingsInitial = {
   company: "MS LAB OÜ",
@@ -292,14 +293,62 @@ describe("the number and the prefix commit on blur (behaviours conflict 13)", ()
     await settle();
     expect(sent("invoice")).toEqual([{ version: "i:t1.c1", patch: { prefix: "abc" } }]);
     expect(router.refresh).toHaveBeenCalledTimes(1);
-    // the page's new read: the stored prefix and the number the next issue takes under it
+    // the page's new read: the stored prefix and the number the next issue takes under it, taken as stored (nothing sent for it)
     await show({ ...INITIAL, prefix: "ABC", nextSeq: 1, last: null, version: "i:t2.c2" }, BANK, OCTOBER, true);
     expect(input("nextSeq").value).toBe("1");
     expect(preview()).toBe("Järgmine arve: ABC2026-001");
     expect(text($("[data-invoice-last]"))).toBe("2026. aastal pole veel arveid väljastatud.");
+    await wait(DEBOUNCE_MS * 2);
+    await settle();
+    expect(sent("invoice")).toHaveLength(1);
+    expect(statuses.at(-1)![1].kind).toBe("saved");
     // the typed prefix back to the stored one: the number field's own number again
     await type(input("prefix"), "ABC");
     await type(input("nextSeq"), "5");
     expect(preview()).toBe("Järgmine arve: ABC2026-005");
+  });
+
+  test("review I-1: a number she types and leaves while the new prefix's read is on its way stays hers: the late read's number is not taken, nothing saves over it", async () => {
+    await show();
+    await type(input("prefix"), "abc");
+    await leave(input("prefix"));
+    await settle();
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // before the page's read comes back she types 50 and leaves it: saved
+    await type(input("nextSeq"), "50");
+    await leave(input("nextSeq"));
+    await settle();
+    expect(sent("invoice").map((b) => b.patch)).toEqual([{ prefix: "abc" }, { nextSeq: "50" }]);
+    // the read, made before her save, comes back late with the reset number
+    await show({ ...INITIAL, prefix: "ABC", nextSeq: 1, last: null, version: "i:t2.c2" }, BANK, OCTOBER, true);
+    await wait(DEBOUNCE_MS * 2);
+    await settle();
+    expect(input("nextSeq").value).toBe("50");
+    expect(preview()).toBe("Järgmine arve: ABC2026-050");
+    expect(sent("invoice").map((b) => b.patch)).toEqual([{ prefix: "abc" }, { nextSeq: "50" }]);
+    expect(statuses.at(-1)![1].kind).toBe("saved");
+  });
+
+  test("review M-1: a number typed and not left, then a link: the guard commits and saves it, and asks when the route refuses it (taken)", async () => {
+    refuse.invoice = { nextSeq: "taken" };
+    mounts++;
+    await act(async () =>
+      root.render(
+        createElement(
+          LeaveGuardProvider,
+          null,
+          createElement("a", { href: "/admin/kalender", "data-away": "" }, "Kalender"),
+          createElement(InvoiceSettings, { key: mounts, initial: INITIAL, bank: BANK, now: OCTOBER, onStatus: (key: string, st: AutosaveStatus) => void statuses.push([key, st]) }),
+        ),
+      ),
+    );
+    await settle();
+    await type(input("nextSeq"), "14");
+    await click($("[data-away]")!);
+    await settle();
+    expect(sent("invoice")).toEqual([{ version: "i:t1.c1", patch: { nextSeq: "14" } }]);
+    expect(router.push).not.toHaveBeenCalled();
+    expect(text(document.querySelector("[data-leave-title]"))).toBe("Muudatust „Arve järgmine number“ ei saanud veel salvestada.");
+    expect(text(document.querySelector("[data-leave-reason]"))).toBe("Üks väli vajab parandamist.");
   });
 });

@@ -21,17 +21,17 @@
     {
       "id": "registreerimine",
       "name": "Registreerimine ja maksmine",
-      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Järelmaksu kontrollid vajavad Seadetes sisselülitatud „Järelmaks (Inbank)“: seda teeb kontroll „Seaded: järelmaks“ (ala „Haldus: sisu“). Inbanki testis kasutab Dim isikukoodi 10101010005, SMS-koodi 0000 ja Eesti telefoninumbrit. Hinnaga 100–500 € taotlus kinnitatakse, 501–700 € läheb käsitsi ülevaatusele ja 901–1000 € taotluse peaks Inbank tagasi lükkama."
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: Maksmine, pangaandmed“ ja „Seaded: Maksmine, arve andmed“ (ala „Haldus: sisu“). Järelmaksu kontrollid vajavad Seadetes sisselülitatud „Järelmaks (Inbank)“: seda teeb kontroll „Seaded: järelmaks“ (ala „Haldus: sisu“). Inbanki testis kasutab Dim isikukoodi 10101010005, SMS-koodi 0000 ja Eesti telefoninumbrit. Hinnaga 100–500 € taotlus kinnitatakse, 501–700 € läheb käsitsi ülevaatusele ja 901–1000 € taotluse peaks Inbank tagasi lükkama."
     },
     {
       "id": "konto",
       "name": "Õpilase konto",
-      "note": "Konto lehed avanevad ainult seadmes, kus vajutasid halduses „Vaata kodulehte“. Proov 1 konto on olemas pärast registreerimist. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Arvete kontrollid kasutavad õpilast Proov 7, kelle registreeringu teed kontrolli „Arve tasumine kontolt“ esimestes sammudes."
+      "note": "Konto lehed avanevad ainult seadmes, kus vajutasid halduses „Vaata kodulehte“. Proov 1 konto on olemas pärast registreerimist. Enne arvete kontrolle täida halduses kontrollid „Seaded: Maksmine, pangaandmed“ ja „Seaded: Maksmine, arve andmed“ (ala „Haldus: sisu“). Arvete kontrollid kasutavad õpilast Proov 7, kelle registreeringu teed kontrolli „Arve tasumine kontolt“ esimestes sammudes."
     },
     {
       "id": "ekursus",
       "name": "E-kursus",
-      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontroll „Seaded: arve andmed“ (ala „Haldus: sisu“); ilma selleta tehakse ostu arve hiljem plokist „Arveta maksed“. E-koolituse ost ei vaja kontrolli „Seaded: ettemaksu juhised“. Ostu järelmaksuga kontroll vajab Seadetes sisselülitatud „Järelmaks (Inbank)“ ja kasutab õpilast Proov 11."
+      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontroll „Seaded: Maksmine, arve andmed“ (ala „Haldus: sisu“); ilma selleta tehakse ostu arve hiljem plokist „Arveta maksed“. E-koolituse ost ei vaja kontrolli „Seaded: Maksmine, pangaandmed“. Ostu järelmaksuga kontroll vajab Seadetes sisselülitatud „Järelmaks (Inbank)“ ja kasutab õpilast Proov 11."
     },
     {
       "id": "kontakt",
@@ -41,12 +41,12 @@
     {
       "id": "kirjad",
       "name": "Kirjad",
-      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis. Kirjad tulevad eelmiste alade kontrollidest; vaata need üle siis, kui kiri on käes. Maria teated lähevad Maria postkasti ja Telegrami teated enne avamist Dimile. Arvekirjade kontrollide jaoks täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“)."
+      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis. Kirjad tulevad eelmiste alade kontrollidest; vaata need üle siis, kui kiri on käes. Maria teated lähevad Maria postkasti ja Telegrami teated enne avamist Dimile. Arvekirjade kontrollide jaoks täida halduses kontrollid „Seaded: Maksmine, pangaandmed“ ja „Seaded: Maksmine, arve andmed“ (ala „Haldus: sisu“)."
     },
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“ ja kinnita „Jah, tühista“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“ ja kinnita „Jah, tühista“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Maksmine“ → „Arve järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -235,7 +235,7 @@
         "Ava e-koolituse leht, mille hind on 100–5000 €, ja vaata rida hinna all.",
         "Ava mõlemad lehed vene keeles (lehe päises RU).",
         "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja ava mõlemad lehed uuesti.",
-        "Lülita seade Seadetes uuesti sisse ja salvesta.",
+        "Lülita seade Seadetes uuesti sisse.",
         "Ava koolitus, mille hind on alla 100 € või üle 5000 € (kui sellist pole, jäta samm vahele)."
       ],
       "expect": [
@@ -2218,7 +2218,7 @@
         "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaariks: Proov 1.",
         "Vajuta „Saada“ ja ava Telegram.",
         "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
-        "Keri lehel „Seaded“ lõppu ja vaata nuppu „Salvesta“."
+        "Keri lehel „Seaded“ jaotiseni „Lepingud ja tingimused“ ja vaata selle nuppu „Salvesta“."
       ],
       "expect": [
         "Nupp „Kommentaar“ on igal halduse lehel, millele oled sisse logitud.",
@@ -2230,8 +2230,8 @@
       "why": "Kommentaar halduse lehe kohta peab jõudma Dimini samamoodi nagu kommentaar kodulehe kohta.",
       "risk": "low",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T17:47:15.802Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-vorm-vead",

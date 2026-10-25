@@ -5,13 +5,13 @@ import { getDb } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
 import { FINANCING_KEY, readFinancingSettings } from "@/domain/financing";
 import { adminEt } from "@/i18n/dict/admin";
-import { contentVersion } from "@/lib/version";
 import { loadSettings } from "@/server/admin-site";
 import { requireAdmin } from "@/server/auth";
 import { certificateCard } from "@/server/certificates";
 import { contractCard } from "@/server/contracts";
 import { serverEnv } from "@/server/env";
 import { invoiceCard } from "@/server/invoices";
+import { financingVersionOf } from "@/server/seaded";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.settings) };
@@ -48,7 +48,7 @@ export default async function SettingsEditPage() {
       admins={admins}
       invoice={invoice}
       certificate={{ ...certificate.settings, last: certificate.last, version: certificate.version }}
-      financing={{ ...readFinancingSettings(storedFinancing), version: await contentVersion(storedFinancing) }}
+      financing={{ ...readFinancingSettings(storedFinancing), version: await financingVersionOf(storedFinancing) }}
       contract={contract}
       now={now}
     />

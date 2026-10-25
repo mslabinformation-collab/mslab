@@ -761,8 +761,13 @@ describe("the instalments checks (instalments, Task 8)", () => {
     for (const id of needs) expect(at("haldus-seaded-jarelmaks"), id).toBeLessThan(at(id));
     expect(at("avalik-kursus-jarelmaks-rida")).toBeLessThan(at("haldus-seaded-jarelmaks"));
     expect(item("avalik-kursus-jarelmaks-rida").steps[0]).toMatch(/Seaded → „Järelmaks \(Inbank\)“ sisse;/);
-    // (the switch saves itself since piece 3b, Task 4: no check tells to „salvesta“ it)
-    expect(plan.items.flatMap((c) => [...c.steps, ...c.expect]).filter((l) => /Järelmaks \(Inbank\)“[^.]*salvest/.test(l))).toEqual([]);
+    // (the switch saves itself since piece 3b, Task 4: no step of a järelmaks check tells to „salvesta“, whatever it calls the switch — „Järelmaks
+    // (Inbank)“, „seade“ — and no check or area note names the cards „Arve andmed“ / „Ettemaksu juhised“ or the old titles of their checks (P-9))
+    const financingChecks = plan.items.filter((c) => /järelmaks/i.test([c.title, ...c.steps, ...c.expect].join("\n")));
+    expect(financingChecks.flatMap((c) => c.steps.map((l) => `${c.id}: ${l}`)).filter((l) => /\bsalvesta\b/i.test(l))).toEqual([]);
+    const OLD_NAMES = /„Arve andmed“|„Ettemaksu juhised“|Seaded → Arve andmed|Seaded: arve andmed|Seaded: ettemaksu juhised/;
+    expect(plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].filter((l) => OLD_NAMES.test(l)).map((l) => `${c.id}: ${l}`))).toEqual([]);
+    expect(plan.areas.filter((a) => OLD_NAMES.test(String(a.note))).map((a) => a.id)).toEqual([]);
     // the Maksed check reads the payments of Proov 9 and Proov 10 and the cancelled bank payment of Proov 2 or Proov 13 (the registration's cancelled
     // payment, or the e-course cart's after Seaded was switched off): all are made before it. Proov 11 is the e-course's, made after it (area ekursus)
     expect(at("registreerimine-jarelmaks-kinnitatud")).toBeLessThan(at("haldus-maksed-jarelmaks"));
@@ -967,11 +972,14 @@ describe("the review tools' checks (22.10)", () => {
     expect(expectText).toContain("Teine proov");
   });
 
-  test("a new check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“", () => {
+  test("a check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“", () => {
     const check = find("haldus-kommentaar-nupp");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "new" });
+    // (reworded in admin UX pass piece 3b, Task 4: Seaded's one save bar is the legal texts', so the check scrolls to their section, not the page's end)
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "reworded" });
     expect(markedSince(check.markedAt)).toBe(true);
-    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // a new check reopens nothing
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
+    expect(check.steps.join(" ")).toContain("jaotiseni „Lepingud ja tingimused“");
+    expect(check.steps.join(" ")).not.toContain("lõppu");
     const text = whole("haldus-kommentaar-nupp");
     for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);
     // the words the bubble itself shows (public/feedback.js)

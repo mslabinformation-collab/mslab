@@ -71,7 +71,8 @@ function sampleHref(d: InvoiceForm): string {
  * (`onStatus`); a text 1.5 s after typing and at once when left, the VAT box at once (without a VAT number it waits for it, said on the box: the server's rule,
  * vatNeedsNumber), the prefix and the number when left (they commit on blur). A
  * refused field says why in its own words (a number already issued: `taken`). Once a new prefix is stored the page is read again (router.refresh):
- * the number the next issue takes under it (1, or the old series' next) comes into the field and the last issued line follows. `now` is the page's
+ * the number the next issue takes under it (1, or the old series' next) comes into the field if nobody typed in it since (taken as
+ * stored, nothing sent), and the last issued line follows. `now` is the page's
  * clock (the preview's year and the December line). This file runs on old iPads: no regular expression with a lookbehind, here or in anything it
  * imports (tests/unit/old-safari.test.ts).
  */
@@ -105,24 +106,35 @@ export function InvoiceSettings({ initial, bank, now, onStatus }: { initial: Inv
   const id = (name: string) => `${uid}-${name}`;
   const focusById = useCallback((name: string) => document.getElementById(`${uid}-${name}`)?.focus(), [uid]);
 
-  // the page is read again once a prefix is stored: the number the next issue takes under it is the page's to say
+  // A new prefix (ruling R3): the number its save left is the page's to say, so the page is read again once it is stored. The number shown when the
+  // prefix went out is noted: the page's number is taken (as stored, nothing sent: useSeadedPart adopt) only if the field still holds it then —
+  // a number she typed meanwhile (or one on its way) stays hers, and no refusal is ever shown for a number she did not type (review I-1).
+  const latest = useRef<{ text: (name: string) => unknown } | null>(null);
+  const prefixSent = useRef<{ prefix: string; number: string; stored: boolean } | null>(null);
+  const onSend = useCallback((patch: Record<string, unknown>) => {
+    if ("prefix" in patch && typeof patch.prefix === "string")
+      prefixSent.current = { prefix: patch.prefix.trim().toUpperCase(), number: String(latest.current?.text("nextSeq") ?? ""), stored: false };
+  }, []);
   const onSaved = useCallback((patch: Record<string, unknown>) => {
-    if ("prefix" in patch) startTransition(() => nav.current.refresh());
+    if (!("prefix" in patch)) return;
+    if (prefixSent.current) prefixSent.current = { ...prefixSent.current, stored: true };
+    startTransition(() => nav.current.refresh());
   }, []);
   const fields = useMemo(() => invoiceForm(initial), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
-  const invoice = useSeadedPart({ part: "invoice", version: initial.version, fields, label, focusField: focusById, onStatus, onBlur: ON_BLUR, onSaved, validate });
+  const invoice = useSeadedPart({ part: "invoice", version: initial.version, fields, label, focusField: focusById, onStatus, onBlur: ON_BLUR, onSend, onSaved, validate });
   const bankFields = useMemo(() => ({ ...bank.value }), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
   const pay = useSeadedPart({ part: "prepayment", version: bank.version, fields: bankFields, label, focusField: focusById, onStatus });
-
-  // a new prefix stored: the field takes the number the page's new read gives it (1, or the series' next for one used before), unless it is being typed
-  const seenPrefix = useRef(initial.prefix);
   useLayoutEffect(() => {
-    if (initial.prefix === seenPrefix.current) return;
-    seenPrefix.current = initial.prefix;
-    if (invoice.typing("nextSeq") || String(invoice.text("prefix")).trim().toUpperCase() !== initial.prefix) return;
-    if (invoice.text("nextSeq") === String(initial.nextSeq)) return;
-    invoice.setField("nextSeq", String(initial.nextSeq));
-    void invoice.flush();
+    latest.current = invoice;
+  });
+
+  // the page's read with the stored prefix: the number it gives (1, or the series' next for a prefix used before) comes into an untouched field
+  useLayoutEffect(() => {
+    const sent = prefixSent.current;
+    if (!sent?.stored || initial.prefix !== sent.prefix) return;
+    prefixSent.current = null;
+    if (invoice.typing("nextSeq") || String(invoice.text("nextSeq")) !== sent.number) return;
+    invoice.adopt("nextSeq", String(initial.nextSeq));
   });
 
   const value = (name: Field): string => String(invoice.text(name) ?? "");

@@ -15,7 +15,8 @@ export type FinancingInitial = { enabled: boolean; version: string };
  * title: Maria's one switch, off by default. She ticks „Paku järelmaksu (Inbank)“ once her Montonio contract includes financing; only then do the
  * course page's line, the registration form's choice and the cart's choice appear (and only for a price of 100–5000 € with Montonio payments on:
  * domain/financing.ts financingOffered). The tick saves at once on api/admin/seaded/financing, under the page's one SaveStatus (`onStatus`): there is
- * no „Salvesta“ and no line of its own. The frame draws no switch for it, so it stays the checkbox it was.
+ * no „Salvesta“ and no line of its own. Switched in another tab meanwhile (a conflict), „Taasta minu tekst“ saves what this box shows over it, as
+ * on every other card. The frame draws no switch for it, so it stays the checkbox it was.
  */
 export function FinancingSettings({ initial, onStatus }: { initial: FinancingInitial; onStatus?: StatusReport }) {
   const t = adminEt.financing.settings;
@@ -48,6 +49,13 @@ export function FinancingSettings({ initial, onStatus }: { initial: FinancingIni
           <span>{t.enabled}</span>
         </label>
       </div>
+      {part.conflict && (
+        <p className={styles.restore}>
+          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void part.restore()} data-financing-restore="">
+            {adminEt.courseEditor.restore}
+          </button>
+        </p>
+      )}
     </section>
   );
 }

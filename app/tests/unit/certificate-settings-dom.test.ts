@@ -126,7 +126,7 @@ describe("CertificateSettings", () => {
     expect(statuses.at(-1)!.kind).toBe("saved");
   });
 
-  test("„Aasta“ and „Number“ commit on blur: typing sends nothing and the preview follows it; left, each is saved", async () => {
+  test("„Aasta“ and „Number“ commit on blur: typing sends nothing and the preview follows it; left, they are saved together (review M-3)", async () => {
     await show();
     await type(input("next-seq"), "93");
     expect(preview()).toBe("Järgmine tunnistus: MS LAB 2026-93");
@@ -134,15 +134,15 @@ describe("CertificateSettings", () => {
     expect(sent()).toEqual([]);
     await leave(input("next-seq"));
     await settle();
-    expect(sent()).toEqual([{ version: "c:t1.c1", patch: { nextSeq: "93" } }]);
+    expect(sent()).toEqual([{ version: "c:t1.c1", patch: { nextYear: "2026", nextSeq: "93" } }]);
     await type(input("next-year"), "2027");
     expect(preview()).toBe("Järgmine tunnistus: MS LAB 2027-93");
     await wait(DEBOUNCE_MS * 2);
     expect(sent()).toHaveLength(1);
     await leave(input("next-year"));
     await settle();
-    expect(sent().at(-1)).toEqual({ version: "c:t1.c1+", patch: { nextYear: "2027" } });
-    // a year stored: the page is read again (the year's last issued number); a number alone does not
+    expect(sent().at(-1)).toEqual({ version: "c:t1.c1+", patch: { nextYear: "2027", nextSeq: "93" } });
+    // another year stored: the page is read again (the year's last issued number); a number alone does not
     expect(router.refresh).toHaveBeenCalledTimes(1);
     // a number that is not one: no preview to show
     await type(input("next-seq"), "x");
@@ -176,6 +176,25 @@ describe("CertificateSettings", () => {
     await leave(input("registry"));
     await settle();
     expect([errorOf("place"), errorOf("registry")]).toEqual(["Täida see väli.", "Tekst on liiga pikk."]);
+  });
+
+  test("review M-3: back from a December preset, the year left alone goes with the number shown; refused on the number (taken), the next number typed goes with that year", async () => {
+    refuse = { nextSeq: "taken" };
+    await show({ ...INITIAL, nextYear: 2027, nextSeq: 1, last: null });
+    await type(input("next-year"), "2026");
+    await leave(input("next-year"));
+    await settle();
+    expect(sent()).toEqual([{ version: "c:t1.c1", patch: { nextYear: "2026", nextSeq: "1" } }]);
+    expect(errorOf("next-seq")).toBe("See number on juba väljastatud. Vali suurem number kui viimati väljastatud.");
+    expect(errorOf("next-year")).toBeNull();
+    expect(statuses.at(-1)!.kind).toBe("invalid");
+    await type(input("next-seq"), "95");
+    await leave(input("next-seq"));
+    await settle();
+    expect(sent().at(-1)).toEqual({ version: "c:t1.c1", patch: { nextYear: "2026", nextSeq: "95" } });
+    expect(errorOf("next-seq")).toBeNull();
+    expect(statuses.at(-1)!.kind).toBe("saved");
+    expect(preview()).toBe("Järgmine tunnistus: MS LAB 2026-95");
   });
 
   test("the trainer's name in Cyrillic or of one letter is refused in its field, in words (Latin letters as in the passport); what she typed stays", async () => {

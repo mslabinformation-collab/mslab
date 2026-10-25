@@ -642,13 +642,16 @@ test.describe("settings", () => {
     await expect.poll(() => top("maksmine")).toBeLessThanOrEqual(64 + 24 + 4);
     await select.locator("select").selectOption("ligipaas");
     await expect.poll(async () => (await page.locator("[data-admin-emails]").boundingBox())!.y).toBeLessThan(812);
-    // the old anchors: #arve, #ettemaks, #jarelmaks at the top of „Maksmine“ (below the phone bar), #tunnistus its section
+    // the old anchors, arriving from another page (a link of the drawer, a bookmark): #arve, #ettemaks, #jarelmaks at the top of „Maksmine“ (below
+    // the phone bar), #tunnistus its section. (A fresh load each time: a jump within the page could race the select's smooth scroll above.)
     for (const alias of ["arve", "ettemaks", "jarelmaks"]) {
+      await page.goto("about:blank");
       await page.goto(`/admin/seaded#${alias}`);
       await adminReady(page);
       await expect.poll(() => top("maksmine"), alias).toBeGreaterThanOrEqual(64);
       await expect.poll(() => top("maksmine"), alias).toBeLessThanOrEqual(64 + 24 + 4);
     }
+    await page.goto("about:blank");
     await page.goto("/admin/seaded#tunnistus");
     await adminReady(page);
     await expect.poll(() => top("tunnistus")).toBeGreaterThanOrEqual(64);

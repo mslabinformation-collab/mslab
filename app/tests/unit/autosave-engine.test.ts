@@ -242,6 +242,35 @@ describe("the browser's copy", () => {
     expect(next.snapshot().fields).toEqual(FIELDS);
   });
 
+  test("adopt() (the page read again holds a value a server rule moved): an untouched field takes it as confirmed, nothing is sent; a field typed in, or on its way, keeps hers", async () => {
+    const s = server();
+    const e = make(s.send);
+    expect(e.adopt("title", "Serveri oma")).toBe(true);
+    expect(e.snapshot().fields).toEqual({ title: "Serveri oma", body: "Tekst" });
+    expect(e.snapshot().status.kind).toBe("saved");
+    expect(e.unconfirmed()).toBeNull();
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(0);
+    // typed in (not yet saved): not taken
+    e.setField("body", "Minu");
+    expect(e.adopt("body", "Teine")).toBe(false);
+    expect(e.snapshot().fields.body).toBe("Minu");
+    // on its way: not taken either, and the save's answer confirms hers
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => c.body.patch)).toEqual([{ body: "Minu" }]);
+    expect(e.adopt("body", "Teine")).toBe(false);
+    s.calls[0].answer(ok("v2"));
+    await tick();
+    expect(e.snapshot().fields).toEqual({ title: "Serveri oma", body: "Minu" });
+    // in conflict: nothing is taken
+    e.setField("title", "Uus");
+    await tick(DEBOUNCE_MS);
+    s.calls[1].answer(stale("v3", { title: "Teine seade", body: "Minu" }));
+    await tick();
+    expect(e.adopt("body", "Kolmas")).toBe(false);
+    expect(e.snapshot().fields.body).toBe("Minu");
+  });
+
   test("discardCopy() while a save is on its way: its answer leaves no copy behind", async () => {
     const s = server();
     const e = make(s.send);

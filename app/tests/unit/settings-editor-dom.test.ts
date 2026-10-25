@@ -146,6 +146,27 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     for (const id of ["kontakt", "uudiskiri", "maksmine", "tunnistus", "lepingud", "ligipaas", "arve", "ettemaks", "jarelmaks"]) expect(ids.filter((x) => x === id), id).toHaveLength(1);
   });
 
+  test("a load with an old anchor (#arve: a bookmark, a link from outside) goes to it once the page is there; an anchor of another page is left alone", async () => {
+    const scrolled: string[] = [];
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this.id);
+    });
+    history.replaceState(null, "", "/admin/seaded#arve");
+    try {
+      await show();
+      expect(scrolled).toEqual(["arve"]);
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      scrolled.length = 0;
+      history.replaceState(null, "", "/admin/seaded#nothing-here");
+      await show();
+      expect(scrolled).toEqual([]);
+    } finally {
+      history.replaceState(null, "", "/admin/seaded");
+      spy.mockRestore();
+    }
+  });
+
   test("what each section holds: Maksmine the merged card and „Järelmaks (Inbank)“; Lepingud ja tingimused the four legal texts; the admin addresses read-only", async () => {
     await show();
     const titles = (id: string) => Array.from(document.getElementById(id)!.querySelectorAll("h2")).map(text);
