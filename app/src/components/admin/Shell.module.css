@@ -113,6 +113,9 @@
 @media (max-width: 899.98px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
+    /* The bar's row and the page's row keep their own heights: without this, min-height stretched both rows on a short page,
+       so the page started a third of the screen down under the bar. */
+    align-content: start;
     background: var(--canvas);
   }
 
