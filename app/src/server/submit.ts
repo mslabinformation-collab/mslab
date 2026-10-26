@@ -615,7 +615,9 @@ export function handlePractice(deps: Deps, formData: FormData): Promise<ActionRe
     const [pkg] = await deps.db.select().from(practicePackages).where(eq(practicePackages.code, data.package)).limit(1);
     if (!pkg) return { result: fail({ package: "required" }) };
     await storeRequest(deps.db, "practice", { ...data, package: pkg.code });
-    const summary = practiceSummary({ ...data, package: `${pick(pkg.name, "et")} (${pkg.code})` }, admin(deps));
+    // "MAXI (MAXI)" when Maria names a package by its code: the name alone then, as the client drawer does (admin-clients.ts)
+    const name = pick(pkg.name, "et").trim();
+    const summary = practiceSummary({ ...data, package: name.toUpperCase() === pkg.code ? pkg.code : `${name} (${pkg.code})` }, admin(deps));
     // the practice form has no "Loo mulle kohe konto": its confirmation never carries a login code
     const confirm: Confirmation = {
       email: data.email,
