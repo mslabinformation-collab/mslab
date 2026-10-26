@@ -5,7 +5,8 @@ import { createSession } from "@/server/auth";
 import { makeTestDb } from "./helpers";
 
 // „Laadi alla (CSV)“ of Uudiskiri → Tellijad (admin UX pass, piece 3b Task 7; README B5, piece3-texts P-13): GET /api/admin/subscribers.csv?otsi=…&olek=…
-// holds exactly the rows the screen shows for the same address — the search by a part of an address (a percent sign or an underscore is itself) and
+// holds exactly the rows the screen shows for the same address (the screen reads the address with the same helpers, and tests/db/newsletter-page.test.ts
+// pins what it shows; here the file is compared with the helpers' rows) — the search by a part of an address (a percent sign or an underscore is itself) and
 // the state (kinnitatud | ootab) — all of them, not a page of 50 — and names its file after the state. On PGlite, with the admin's session cookie faked
 // (as tests/db/registration-note-route.test.ts does).
 
@@ -96,7 +97,7 @@ describe("the subscribers' CSV is the current filter of Tellijad", () => {
     expect(addressesOf(await (await get("?otsi=%20%20")).text())).toHaveLength(8);
   });
 
-  test("the screen and the file agree: the same address gives the same rows (the page's own query is the file's)", async () => {
+  test("the route's file holds exactly the rows the shared helpers give for the same address (subscriberFilterOf + listSubscribers, the pair the page reads with)", async () => {
     const { listSubscribers } = await import("@/db/queries/admin");
     const { subscriberFilterOf } = await import("@/domain/subscribers");
     for (const query of ["", "?olek=kinnitatud", "?olek=ootab", "?otsi=ka", "?otsi=example&olek=ootab", "?otsi=%25", "?kinnitatud=1", "?olek=x", "?olek=constructor&otsi=ka"]) {

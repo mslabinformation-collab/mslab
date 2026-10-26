@@ -1450,7 +1450,7 @@ test.describe("signed in", () => {
     await expect(page.locator("main")).toContainText("Tellijaid: 2, neist kinnitatud 1");
     const all = await download();
     expect(all.name).toMatch(/^mslab-uudiskiri-\d{4}-\d{2}-\d{2}\.csv$/);
-    expect(all.text.startsWith("﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg\r\n")).toBe(true);
+    expect(all.text.startsWith("\uFEFFE-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg\r\n")).toBe(true);
     expect(addressesIn(all.text.slice(1)).sort()).toEqual([f.subscribers.confirmed, f.subscribers.pending].sort());
     expect(all.text).toContain(`${f.subscribers.confirmed},ET,`);
     expect(all.text).toContain(`${f.subscribers.pending},'=1+1,`); // a formula-like cell gets an apostrophe

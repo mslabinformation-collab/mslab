@@ -244,14 +244,14 @@ describe("subscriber export", () => {
       { email: "wait@example.test", locale: "=cmd", token: "t2", consentAt: new Date("2026-10-01T11:05:00Z") },
     ]);
     expect(subscribersCsv(await listSubscribers(db)).split("\r\n")).toEqual([
-      "﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
+      "\uFEFFE-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
       "wait@example.test,'=CMD,2026-10-01 14:05,ei,",
       "ok@example.test,RU,2026-09-30 12:00,jah,2026-09-30 12:10",
       "",
     ]);
     // (a state is chosen by the query now, not by a flag of the file: the rows are what the file holds)
     expect(subscribersCsv(await listSubscribers(db, { state: "confirmed" })).split("\r\n")).toEqual([
-      "﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
+      "\uFEFFE-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
       "ok@example.test,RU,2026-09-30 12:00,jah,2026-09-30 12:10",
       "",
     ]);

@@ -127,7 +127,7 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
   submitsForms();
   test.skip(phone(info), "one path on the desktop project; it looks at the four widths itself");
   test.setTimeout(240_000);
-  // the school of every contract is Seaded's „Arve andmed“, and the text is Maria's: both in the shared settings, put back afterwards
+  // the school of every contract is the seller of Seaded → „Maksmine“ (the invoice settings), and the text is Maria's: both in the shared settings, put back afterwards
   undo.push(await holdInvoiceSettings(info));
   undo.push(await holdContractTexts(info));
   undo.push(await holdLegalDraft("contract_contact"));

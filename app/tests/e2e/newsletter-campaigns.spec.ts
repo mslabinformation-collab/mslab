@@ -687,7 +687,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     }
   });
 
-  test("the Kirjad layout (README B5, the Part 3 frame): 300 px list | the letter's card | 380 px column at 1440 px; the column under the card at 1194; all stacked at 1024", async ({ page, context, visitorIp, isMobile }, info) => {
+  test("the Kirjad layout (README B5, the Part 3 frame): 300 px list | the letter's card | 380 px column at 1440 px; the column under the card at 1194; all stacked at 1060 and 960", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(isMobile, "sets its own widths: the desktop project only");
     const draft = await insertCampaign({ name: campaignName(info.project.name, "paigutus") });
     await signIn(page, context, visitorIp);
@@ -723,18 +723,30 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       expect(Math.round(mid.aside.x)).toBe(Math.round(mid.card.x));
       expect(await noOverflow(page)).toBe(true);
 
-      // narrow: the list over the letter, the column under the card
-      await page.setViewportSize({ width: 1024, height: 768 });
+      // narrow: the list over the letter, the column under the card. „Kood | Nupu tekst | Nupu aadress“ stand in one row where the card has 640 px
+      // of room inside its padding (a container query on the card, review M1; 684 px of card), and the 380 px column stands beside the card from 760 px of
+      // the letter's area (1100 px of screen). 1060 px of screen gives the card about 720 px (36 px from each) and
+      // 960 px about 576, so a classic scrollbar (about 15 px) cannot flip either answer: a width on the threshold itself (1024 px) could
+      await page.setViewportSize({ width: 1060, height: 800 });
       const narrow = await boxes();
       expect(narrow.card.y).toBeGreaterThanOrEqual(narrow.list.y + narrow.list.height);
       expect(Math.round(narrow.card.x)).toBe(Math.round(narrow.list.x));
       expect(narrow.aside.y).toBeGreaterThanOrEqual(narrow.card.y + narrow.card.height);
-      // the card holds „Kood | Nupu tekst | Nupu aadress“ in one row here (640 px of card, review M1); at 1440 its 399 px stack them
+      expect(narrow.card.width, "the card at 1060 px is clearly wider than the 684 px where the row starts").toBeGreaterThan(684 + 15);
       const code = await page.locator('[data-campaign-card] [data-field="code"]').boundingBox();
       const href = await page.locator('[data-campaign-card] [data-field="buttonHref"]').boundingBox();
       // (side by side, on one row: the fields' labels differ in height, so their inputs need not share a top)
       expect(href!.x).toBeGreaterThan(code!.x + code!.width);
       expect(Math.abs(code!.y - href!.y)).toBeLessThan(code!.height);
+      expect(await noOverflow(page)).toBe(true);
+
+      // a card clearly under the threshold stacks the three fields (at 1440 px its 399 px do too)
+      await page.setViewportSize({ width: 960, height: 800 });
+      const stacked = await boxes();
+      expect(stacked.card.width, "the card at 960 px is clearly narrower than 684 px").toBeLessThan(684 - 15);
+      const codeStacked = await page.locator('[data-campaign-card] [data-field="code"]').boundingBox();
+      const hrefStacked = await page.locator('[data-campaign-card] [data-field="buttonHref"]').boundingBox();
+      expect(hrefStacked!.y).toBeGreaterThanOrEqual(codeStacked!.y + codeStacked!.height);
       expect(await noOverflow(page)).toBe(true);
     } finally {
       await page.setViewportSize({ width: 1440, height: 900 });
