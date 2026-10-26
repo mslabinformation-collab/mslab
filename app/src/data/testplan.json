@@ -252,7 +252,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-galerii",
@@ -501,7 +501,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania",
@@ -532,7 +532,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -560,7 +560,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -587,7 +587,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-saada",
@@ -617,7 +617,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -642,7 +642,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-kopeeri",
@@ -667,7 +667,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kustuta",
@@ -692,7 +692,7 @@
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-jatkub",
@@ -724,7 +724,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-peata",
@@ -755,7 +755,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-ykslink",
@@ -1510,7 +1510,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-avaleht-slaid",
@@ -1687,7 +1687,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-ettemaks",
@@ -1714,7 +1714,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-tingimused",
@@ -1744,7 +1744,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -1772,7 +1772,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-arve",
@@ -1803,7 +1803,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-naidisarve",
@@ -1830,7 +1830,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-lepingud",
@@ -1862,7 +1862,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -1893,7 +1893,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-privaatsus-avalda",
@@ -1924,7 +1924,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-seaded-jarelmaks",
@@ -1955,7 +1955,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "haldus-laadimine-viga",
@@ -2301,7 +2301,7 @@
       "risk": "low",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -2383,7 +2383,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-montonio-esmane",
@@ -2689,7 +2689,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-ulejaanud",
@@ -2824,7 +2824,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-arve-maksmiseks",
@@ -2853,7 +2853,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -3085,7 +3085,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "registreerimine-arve-laekunud",
@@ -4144,7 +4144,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "ekursus-tingimused",
@@ -4814,7 +4814,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "ekursus-ava-jargmine",
@@ -5651,7 +5651,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "kirjad-arve-oppilasele",
@@ -5677,7 +5677,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "kirjad-arve-vene-keeles",
@@ -5703,7 +5703,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "kirjad-makse-katte",
@@ -6009,7 +6009,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
       "id": "kirjad-maria-registreerimine",

@@ -472,10 +472,15 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     }
     // Piece 3b Task 7 (README B5, Tellijad): the list check gained the search of an address, the pills „Kinnitatud“ / „Ootab kinnitust“ with their counts and
     // one „Laadi alla (CSV)“ of the current filter in place of the two fixed buttons: still a `redo` (a `reworded` would be weaker, and let an answer to
-    // the old page stand), now from the deploy.
-    for (const id of ["avalik-uudiskiri-resend", "avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) expect(item(id).markedAt, id).toBe("deploy");
-    for (const id of reworded) expect(item(id), id).toMatchObject({ mark: "reworded", markedAt: "deploy" });
-    expect(item("avalik-uudiskiri-kustuta")).toMatchObject({ mark: "new", markedAt: "deploy" });
+    // the old page stand), now from the deploy ("deploy" on the branch, the push instant of 26.10 once stamped).
+    const atPiece3b = (markedAt: unknown) => markedAt === "deploy" || (typeof markedAt === "string" && Date.parse(markedAt) >= Date.parse("2026-10-26T00:00:00.000Z"));
+    for (const id of ["avalik-uudiskiri-resend", "avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) expect(atPiece3b(item(id).markedAt), id).toBe(true);
+    for (const id of reworded) {
+      expect(item(id).mark, id).toBe("reworded");
+      expect(atPiece3b(item(id).markedAt), id).toBe(true);
+    }
+    expect(item("avalik-uudiskiri-kustuta").mark).toBe("new");
+    expect(atPiece3b(item("avalik-uudiskiri-kustuta").markedAt)).toBe(true);
     expect(item("avalik-uudiskiri-kampaania-ykslink").mark).toBe("new");
     expect(text("avalik-uudiskiri-kampaania")).toContain("„Sisu keel“");
   });
