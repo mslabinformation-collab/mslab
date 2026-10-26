@@ -69,15 +69,17 @@ import { contentVersion } from "@/lib/version";
 import { fieldCodes } from "./autosave-route";
 import { Check, field, invalid, type EditResult, type SavedParts } from "./edit-check";
 
-// The site content editors' form handling (Task 13B): home page, practice packages, trainer page, campaign, settings
-// and posts. Callers have already checked the admin session (server/actions/admin-site.ts wraps each in adminAction);
-// these take a Db and run without Next.js (tests/db/admin-site.test.ts).
+// The site content editors' parts and form handling (Task 13B; admin UX pass piece 4a). Avaleht, Koolitaja and Praktika are made of PARTS (the hero
+// slides, the statement, the FAQ; MINI and MAXI; …) which their editors save into drafts (server/site-drafts.ts: a loose check at a draft save,
+// the part's strict `check` and the Write it answers at „Avalda muudatused“): the Write is the one place that says what a part stores. The form
+// path below (`saveParts`, one `data` field of parts with the versions they were loaded at) is still Hüpikaken's (`saveCampaignForm`) and the
+// legal texts' publish (`saveLegalParts`), and posts have their own. Callers have already checked the admin session (server/actions/admin-site.ts
+// wraps each in adminAction); these take a Db and run without Next.js (tests/db/admin-site.test.ts).
 //
-// An editor page is made of PARTS (the hero slides, the statement, the FAQ; MINI and MAXI; …). The page loads every
-// part with its version (a hash of the stored value, lib/version.ts) and sends back only the parts the admin changed,
-// each with the version it loaded. A save checks every sent part, then in one transaction locks the tables, compares
-// each part's stored version with the one sent (refused as `stale`, nothing written, when another save came first) and
-// writes them all. So two admins can save different parts of the same page, but never overwrite a change unseen.
+// A form load gives every part with its version (a hash of the stored value, lib/version.ts); a save sends back only the parts the admin changed,
+// each with the version it loaded. It checks every sent part, then in one transaction locks the tables, compares each part's stored version with
+// the one sent (refused as `stale`, nothing written, when another save came first) and writes them all. So two admins can save different parts of
+// the same page, but never overwrite a change unseen.
 
 const DRAFT_MAX = 600_000;
 const ID_MAX = 2_147_483_647;
@@ -233,8 +235,6 @@ function bodyPart(key: string, max: number, defaultTitle: I18n): Part<{ body: I1
 
 // ---------- Avaleht: hero slides, statement, the trainer card's text, FAQ ----------
 
-export type HomeValues = { slides: SlideDraft[]; statement: { body: I18n }; teaser: { body: I18n }; faq: FaqDraft[] };
-
 /** A stored row's id in a list draft; null (or absent) for a new row. */
 const storedId = z.number().int().positive().max(ID_MAX).nullable().default(null);
 
@@ -307,9 +307,6 @@ export const homeParts: Parts = {
   }),
 };
 
-export const loadHome = async (q: Q) => (await loadParts(q, homeParts)) as SavedParts & { values: HomeValues };
-export const saveHomeForm = (db: Db, formData: FormData) => saveParts(db, homeParts, formData);
-
 // ---------- Praktika: one part per package (MINI, MAXI; the codes are fixed) ----------
 
 function packagePart(code: string): Part<PackageDraft> {
@@ -342,18 +339,8 @@ export async function practiceParts(q: Q): Promise<Parts> {
   return Object.fromEntries(codes.map((code) => [code, packagePart(code)]));
 }
 
-/** The packages in their order: codes and drafts. */
-export async function loadPractice(q: Q): Promise<SavedParts & { values: Record<string, PackageDraft>; codes: string[] }> {
-  const parts = await practiceParts(q);
-  const loaded = (await loadParts(q, parts)) as SavedParts & { values: Record<string, PackageDraft> };
-  return { ...loaded, codes: Object.keys(parts) };
-}
-
-export const savePracticeForm = async (db: Db, formData: FormData) => saveParts(db, await practiceParts(db), formData);
-
 // ---------- Koolitaja: the trainer card, bio, works gallery, the two stories ----------
 
-export type TrainerValues = { trainer: TrainerDraft; bio: { body: I18n }; works: WorkDraft[]; center_story: PageDraft; trainer_journey: PageDraft };
 export const WORKS_GROUP = "trainer_works";
 
 /** Koolitaja's parts (also the draft layer's entity "trainer", server/site-drafts.ts). */
@@ -412,9 +399,6 @@ export const trainerParts: Parts = {
   center_story: pagePart("center_story", { titleMax: L.storyTitle, bodyMax: L.story }),
   trainer_journey: pagePart("trainer_journey", { titleMax: L.storyTitle, bodyMax: L.story }),
 };
-
-export const loadTrainer = async (q: Q) => (await loadParts(q, trainerParts)) as SavedParts & { values: TrainerValues };
-export const saveTrainerForm = (db: Db, formData: FormData) => saveParts(db, trainerParts, formData);
 
 // ---------- Hüpikaken (prototype D adminCamp + image upload; phase 2c: the newsletter popup, one shown at a time) ----------
 

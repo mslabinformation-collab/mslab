@@ -11,7 +11,8 @@ type Action = (prev: EditResult | null, formData: FormData) => Promise<EditResul
 export type SaveStatus = { text: string; tone: "error" | "success" | "hint"; stale: boolean };
 
 /**
- * The draft of a site editor page (home page, practice, trainer, campaign, settings, a post), saved with one
+ * The draft of a site editor page (Hüpikaken's campaign, a post; the home page, practice and trainer are on the autosaved draft layer since admin UX
+ * pass piece 4a, components/admin/site/useSitePart.ts, and Seaded since piece 3b — piece 4b moves the rest), saved with one
  * "Salvesta". Only the parts that differ from what was loaded are sent, each with the version it was loaded at; the
  * server refuses a part that was saved elsewhere meanwhile (stale) and returns the saved parts as now stored, which
  * become the new starting point (site-draft.ts afterSave: a part edited while the save was on its way keeps the newer

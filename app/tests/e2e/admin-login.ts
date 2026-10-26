@@ -123,8 +123,9 @@ export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
 
 /**
  * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is (the
- * editors of piece 4: Avaleht, Praktika, Koolitaja, Uudised, Hüpikaken). Seaded has none since admin UX pass piece 3b: its cards autosave
- * (seadedAutosave) and its legal texts type into drafts (legalDraftSave) published by „Avalda uus leping“ / „Avalda uus tekst“.
+ * editors that piece 4b still has to move: Uudised and Hüpikaken). Seaded has none since admin UX pass piece 3b: its cards autosave
+ * (seadedAutosave) and its legal texts type into drafts (legalDraftSave) published by „Avalda uus leping“ / „Avalda uus tekst“. Avaleht, Praktika and
+ * Koolitaja have none since piece 4a: their cards save into drafts that „Avalda muudatused“ publishes (the PublishBar, `data-publish-bar`).
  */
 export const saveBarButton = (page: Page): Locator => page.locator("[data-save-bar]").getByRole("button", { name: "Salvesta", exact: true });
 
