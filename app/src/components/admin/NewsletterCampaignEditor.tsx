@@ -357,8 +357,9 @@ function DraftEditor({
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 200 && reply?.ok === true) {
         setRefused((r) => without(r, Object.keys(body.patch)));
-        // stored (its version moved): the list's row (its name, its time) and the count are the page's to say
-        if (reply.version !== body.version) startTransition(() => nav.current.refresh());
+        // stored: the list's row shows the letter's name, so a new name is read again into it (any other field is the editor's alone: no page read
+        // every 1.5 s of typing; the count on „Saada kõigile ({n})“ does not move with a save, and the press reads it again under its lock)
+        if (reply.version !== body.version && "name" in body.patch) startTransition(() => nav.current.refresh());
       } else if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
         const fields = reply.fields;
         const codes: Codes = {};
@@ -375,7 +376,7 @@ function DraftEditor({
   const label = useCallback((f: string) => LABELS[f as CampaignField] ?? f, []);
   const focusField = useCallback((name: string) => fieldElement(name)?.focus(), []);
   const auto = useAutosave({ owner: OWNER, key: String(id), version: campaign.version, fields: { ...campaign.values }, save, validate, label, focusField });
-  const { flush, unconfirmed, discardCopy } = auto;
+  const { flush, unconfirmed, discardCopy, versionNow } = auto;
   const values = auto.fields as CampaignValues;
 
   // „Uus kiri +“ made this draft: the cursor in „Nimi“ (S3-P3-h), its text chosen so that typing replaces „Uus kiri“
@@ -442,7 +443,7 @@ function DraftEditor({
         {t.back}
       </Link>
       {/* (a field left saves at once, README §1.3) */}
-      <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-form`} onBlur={() => void flush()}>
+      <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-form`} onBlur={() => void flush()} data-campaign-card="">
         <div className={styles.formHead}>
           <h2 id={`${uid}-form`} className={styles.formTitle} data-campaign-title="">
             {values.name.trim() || t.newTitle}
@@ -517,7 +518,7 @@ function DraftEditor({
         </div>
       </section>
 
-      <div className={styles.aside}>
+      <div className={styles.aside} data-campaign-aside="">
         <div data-pane-part="preview">
           <PreviewCard values={values} />
         </div>
@@ -526,6 +527,7 @@ function DraftEditor({
           name={values.name.trim() || t.newTitle}
           revision={JSON.stringify(values)}
           flush={flush}
+          versionNow={versionNow}
           sendable={sendable}
           mark={mark}
           blocked={cannot ? reason : null}
@@ -626,6 +628,7 @@ function Sends({
   name,
   revision,
   flush,
+  versionNow,
   sendable,
   mark,
   blocked,
@@ -637,6 +640,8 @@ function Sends({
   name: string;
   revision: string;
   flush: () => Promise<boolean>;
+  /** The letter's autosave version as the editor last heard it (after a flush that confirmed the text: the version of the very text on the screen). */
+  versionNow: () => string;
   sendable: () => boolean;
   mark: (fields: Record<string, string>) => void;
   blocked: string | null;
@@ -703,7 +708,9 @@ function Sends({
     try {
       if (!(await flush()) || now.current !== pressed) return setLine(IDLE);
       if (!sendable()) return setLine({ tone: "error", text: adminEt.editor.invalid });
-      const r = await prepareSendAction({ id }).catch(() => LOST);
+      // the version of the text on the screen, now that the flush confirmed it: a letter another tab or device saved since is refused under the press's
+      // lock (`changed`), so „Jah“ never sends a text this screen did not show (the action reads the page again)
+      const r = await prepareSendAction({ id, version: versionNow() }).catch(() => LOST);
       if (!r.ok) {
         if ("fields" in r) {
           mark(r.fields);
@@ -782,7 +789,7 @@ function Sends({
                   {testing ? t.test.working : t.test.button}
                 </span>
                 <span className={styles.phone} data-label-phone="">
-                  {fill(t.test.phoneButton, { email: fill(t.test.phoneEmail, { name: emailName }), lang: adminEt.common.locale[locale] })}
+                  {testing ? t.test.working : fill(t.test.phoneButton, { email: fill(t.test.phoneEmail, { name: emailName }), lang: adminEt.common.locale[locale] })}
                 </span>
               </button>
             )}
@@ -818,19 +825,20 @@ function Sends({
             )}
           </>
         )}
+        {/* (the results under the buttons: on a phone the bar is at the foot of the screen, where she pressed, and they are in it) */}
+        <p role="status" className={`${styles.status} ${toneClass(testLine.tone)}`} data-test-status="">
+          {testLine.text}
+        </p>
+        {gated && testLine.tone === "done" && <GateNotice />}
+        <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-send-status="">
+          {line.text}
+        </p>
       </div>
       {n > 0 && (
         <p className={`${ui.small} ${ui.muted} ${styles.hint}`} data-send-hint="">
           {hintOf(audience)}
         </p>
       )}
-      <p role="status" className={`${styles.status} ${toneClass(testLine.tone)}`} data-test-status="">
-        {testLine.text}
-      </p>
-      {gated && testLine.tone === "done" && <GateNotice />}
-      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-send-status="">
-        {line.text}
-      </p>
     </section>
   );
 }

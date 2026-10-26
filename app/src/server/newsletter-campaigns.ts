@@ -529,7 +529,7 @@ export async function sendCountNow(q: Q): Promise<number> {
  */
 export const PRESS_LOCK = "newsletter-press";
 
-type PressRefusal = "notFound" | "sent" | "busy" | "empty";
+type PressRefusal = "notFound" | "sent" | "busy" | "empty" | "changed";
 /** A letter the sends' rules refuse (ruling R-g: the required subject and text, the whole button): its fields by key, nothing sent. */
 export type SendInvalid = { ok: false; error: "invalid"; fields: Record<string, string> };
 
@@ -541,15 +541,21 @@ function sendRefusal(row: NewsletterCampaign): SendInvalid | null {
 
 /**
  * What a press is decided on, inside its transaction: the press lock, then the campaign's row (FOR UPDATE), then the checks. The campaign is there
- * (`notFound`), still a draft (`sent`: sent, or going out already), whole by the sends' rules (`invalid`, R-g), no other campaign is going out (`busy`:
- * spec §3 "One campaign at a time"), and there is someone to send to (`empty`); with the recipients at this moment and the confirmed sample addresses
- * left out.
+ * (`notFound`), still a draft (`sent`: sent, or going out already), the very letter the screen shows when `shown` is given (its autosave version as the
+ * editor confirmed it after its flush, campaignVersion: `changed` when another tab or device saved it since — the send would be a text she never saw),
+ * whole by the sends' rules (`invalid`, R-g), no other campaign is going out (`busy`: spec §3 "One campaign at a time"), and there is someone to send to
+ * (`empty`); with the recipients at this moment and the confirmed sample addresses left out.
  */
-async function pressState(t: Q, id: number): Promise<{ row: NewsletterCampaign; list: Recipient[]; samples: number } | { error: PressRefusal } | SendInvalid> {
+async function pressState(
+  t: Q,
+  id: number,
+  shown?: string,
+): Promise<{ row: NewsletterCampaign; list: Recipient[]; samples: number } | { error: PressRefusal } | SendInvalid> {
   await t.execute(sql`select pg_advisory_xact_lock(hashtext(${PRESS_LOCK}))`);
   const [row] = await t.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
   if (!row) return { error: "notFound" };
   if (row.status !== "draft") return { error: "sent" };
+  if (shown !== undefined && (await campaignVersion(row)) !== shown) return { error: "changed" };
   const invalid = sendRefusal(row);
   if (invalid) return invalid;
   const [other] = await t
@@ -566,15 +572,17 @@ async function pressState(t: Q, id: number): Promise<{ row: NewsletterCampaign; 
 /**
  * „Saada kõigile“, before the confirmation: the confirmed subscribers by language as a press would write them now, the confirmed sample addresses it
  * leaves out (`samples`: the panel's line „Näidisaadressidele (@example.test) ei saadeta.“), whether the Russian ones get the Estonian text
- * (ruFallsBack), and `updatedAt`, the campaign's last change as this read it (ISO): the press goes only if the counts and it are still so. A refusal in
- * a code (pressState), or the fields the sends' rules refuse (`invalid`). Writes nothing.
+ * (ruFallsBack), and `updatedAt`, the campaign's last change as this read it (ISO): the press goes only if the counts and it are still so. `shown`: the
+ * letter's autosave version on the screen (the editor's, after its flush); a letter saved elsewhere since is `changed` (pressState). A refusal in a code
+ * (pressState), or the fields the sends' rules refuse (`invalid`). Writes nothing.
  */
 export async function prepareSend(
   db: Db,
   id: number,
+  shown?: string,
 ): Promise<{ ok: true; et: number; ru: number; samples: number; ruFallsBack: boolean; updatedAt: string } | { ok: false; error: PressRefusal } | SendInvalid> {
   return db.transaction(async (t) => {
-    const state = await pressState(t, id);
+    const state = await pressState(t, id, shown);
     if ("fields" in state) return state;
     if ("error" in state) return { ok: false as const, error: state.error };
     return { ok: true as const, ...countsOf(state.list), samples: state.samples, ruFallsBack: ruFallsBack(draftOf(state.row)), updatedAt: state.row.updatedAt.toISOString() };

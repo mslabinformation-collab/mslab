@@ -95,39 +95,42 @@ export function CampaignsPanel({
   const t = adminEt.newsletter.campaigns;
   const open = editing !== null;
   return (
-    <div className={styles.panel} data-campaigns="" data-open={open ? "" : undefined}>
-      <section className={`${ui.card} ${styles.listCard}`} aria-label={t.list} data-campaigns-list="">
-        <NewLetterButton />
-        <DeletedNotice selected={selected} />
-        {campaigns.length === 0 ? (
-          <p className={ui.empty}>{t.empty}</p>
-        ) : (
-          <ul className={styles.list}>
-            {campaigns.map((c) => (
-              <li key={c.id} className={styles.row} data-campaign-row={c.id}>
-                <Link className={styles.rowLink} href={campaignListHref(c.id)} aria-current={selected === c.id ? "page" : undefined}>
-                  <span className={styles.rowName}>{c.name}</span>
-                  <span className={`${styles.rowLine} ${styles[c.status]}`} data-campaign-row-line="" data-campaign-status={c.status}>
-                    {rowLine(c)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {(open || notFound) && (
-        <div className={styles.work}>
-          {notFound && (
-            <p className={ui.notice} data-campaign-not-found="">
-              {t.notFound}
-            </p>
+    // (the box is the panel's container: its query lays out the panel, which is never its own container)
+    <div className={styles.panelBox}>
+      <div className={styles.panel} data-campaigns="" data-open={open ? "" : undefined}>
+        <section className={`${ui.card} ${styles.listCard}`} aria-label={t.list} data-campaigns-list="">
+          <NewLetterButton />
+          <DeletedNotice selected={selected} />
+          {campaigns.length === 0 ? (
+            <p className={ui.empty}>{t.empty}</p>
+          ) : (
+            <ul className={styles.list}>
+              {campaigns.map((c) => (
+                <li key={c.id} className={styles.row} data-campaign-row={c.id}>
+                  <Link className={styles.rowLink} href={campaignListHref(c.id)} aria-current={selected === c.id ? "page" : undefined}>
+                    <span className={styles.rowName}>{c.name}</span>
+                    <span className={`${styles.rowLine} ${styles[c.status]}`} data-campaign-row-line="" data-campaign-status={c.status}>
+                      {rowLine(c)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-          {/* (keyed by the letter: its autosave starts from the page's read of it, and another letter is another editor) */}
-          {editing && <NewsletterCampaignEditor key={editing.id} campaign={editing} links={links} testTargets={testTargets} gated={gated} audience={audience} />}
-        </div>
-      )}
+        </section>
+
+        {(open || notFound) && (
+          <div className={styles.work}>
+            {notFound && (
+              <p className={ui.notice} data-campaign-not-found="">
+                {t.notFound}
+              </p>
+            )}
+            {/* (keyed by the letter: its autosave starts from the page's read of it, and another letter is another editor) */}
+            {editing && <NewsletterCampaignEditor key={editing.id} campaign={editing} links={links} testTargets={testTargets} gated={gated} audience={audience} />}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -30,6 +30,8 @@ import { campaignSendDeps } from "../send-deps";
 
 const rowId = z.number().int().min(1).max(ROW_ID_MAX);
 const idOnly = z.object({ id: rowId });
+/** „Saada kõigile“'s first step: the letter and its autosave version as the screen holds it (newsletter-campaigns.ts campaignVersion). */
+const prepareInput = z.object({ id: rowId, version: z.string().min(1).max(100) });
 /** A count Maria confirmed: a whole number, never more than a list could ever hold. */
 const confirmedCount = z.number().int().min(0).max(1_000_000);
 /** The campaign's last change as the confirmation read it (prepareSend's `updatedAt`): an ISO instant. */
@@ -88,17 +90,19 @@ export const copyCampaignAction = adminAction(async (_admin, input: { id: number
 });
 
 /**
- * „Saada kõigile“, before the confirmation: `{ id }`. What the confirmation shows (newsletter-campaigns.ts prepareSend: the counts by language, the
- * sample addresses left out, `ruFallsBack`, `updatedAt`), or a code: `busy` (another campaign is going out), `empty`, `sent`, `notFound`, or `invalid`
- * with the fields the sends' rules refuse (ruling R-g). Sends nothing; the page is refreshed only when it is behind (the campaign sent or gone meanwhile).
+ * „Saada kõigile“, before the confirmation: `{ id, version }`, `version` the letter's autosave version on the screen after its flush (`changed` when another
+ * tab or device saved it since: the press would send a text she has not seen; piece 3b Task 6 review I2). What the confirmation shows (newsletter-campaigns.ts prepareSend: the counts by language, the
+ * sample addresses left out, `ruFallsBack`, `updatedAt`), or a code: `busy` (another campaign is going out), `empty`, `sent`, `notFound`, `changed`, or
+ * `invalid` with the fields the sends' rules refuse (ruling R-g). Sends nothing; the page is refreshed only when it is behind (the campaign sent, gone or
+ * saved elsewhere meanwhile).
  */
-export const prepareSendAction = adminAction(async (_admin, input: { id: number }): Promise<Awaited<ReturnType<typeof prepareSend>> | Server> => {
-  const parsed = idOnly.safeParse(input);
+export const prepareSendAction = adminAction(async (_admin, input: { id: number; version: string }): Promise<Awaited<ReturnType<typeof prepareSend>> | Server> => {
+  const parsed = prepareInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id } = parsed.data;
+  const { id, version } = parsed.data;
   try {
-    const result = await prepareSend(getDb(), id);
-    if (!result.ok && !("fields" in result) && (result.error === "sent" || result.error === "notFound")) refresh();
+    const result = await prepareSend(getDb(), id, version);
+    if (!result.ok && !("fields" in result) && (result.error === "sent" || result.error === "notFound" || result.error === "changed")) refresh();
     return result;
   } catch (e) {
     logFailure(`[newsletter] campaign ${id}: the send's preparation failed`, e);

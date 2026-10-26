@@ -116,6 +116,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         // piece 3b, Task 5: a legal text's draft autosave and its „Avalda uus leping“ / „Avalda uus tekst“
         "app/api/admin/oigustekst/[key]/route.ts",
         "app/api/admin/oigustekst/[key]/avalda/route.ts",
+        // piece 3b, Task 6: a newsletter letter's autosave
+        "app/api/admin/kiri/[id]/route.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -142,6 +144,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/seaded/[part]/route.ts",
         // piece 3b, Task 5: a legal text's draft and its publish
         "app/api/admin/oigustekst/[key]/route.ts", "app/api/admin/oigustekst/[key]/avalda/route.ts",
+        // piece 3b, Task 6: a newsletter letter's autosave
+        "app/api/admin/kiri/[id]/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);

@@ -1,18 +1,24 @@
 /* The „Kirjad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; admin UX pass piece 3b, Task 6: README B5, the Part 3 frame „B5 Uudiskiri“ and the
    Part 4 „B5 Kirjad“). The frame: a 300 px list | the letter's card | a 380 px column of the preview and the sends, 18 px apart (Part 3:237). They stand
-   side by side where they fit: the list beside the rest from 860 px of the panel, the card beside its 380 px column from 760 px of what is left (at a
-   1440 px screen, the frame's own, all three: 300 | 399 | 380); narrower, the column goes under the card, and then the list over it. Below 900 px of the
-   screen (the admin's phone: the top bar, Shell.module.css) the list is a screen of its own (an open letter hides it, „← Kirjad“ goes back to it), the
-   letter shows its fields or its preview („Muuda | Eelvaade“), and the two send buttons stand at the foot of the screen (Part 4). */
+   side by side where they fit: the list beside the rest from 820 px of the panel (an iPad across, 1194 px, has 854), the card beside its 380 px column
+   from 760 px of what is left (at a 1440 px screen, the frame's own, all three: 300 | 399 | 380); narrower, the column goes under the card, and then the
+   list over it. (A container query sizes the descendants of its container, never the container itself: the box round the panel is the panel's
+   container, `.work` the editor's, the card its fields'.) Below 900 px of the screen (the admin's phone: the top bar, Shell.module.css) the list is a
+   screen of its own (an open letter hides it, „← Kirjad“ goes back to it), the letter shows its fields or its preview („Muuda | Eelvaade“), and the two
+   send buttons stand at the foot of the screen (Part 4). */
+
+.panelBox {
+  min-width: 0;
+  container-type: inline-size;
+}
 
 .panel {
   display: grid;
   gap: 18px;
   min-width: 0;
-  container-type: inline-size;
 }
 
-@container (min-width: 860px) {
+@container (min-width: 820px) {
   .panel {
     grid-template-columns: 300px minmax(0, 1fr);
     align-items: start;
@@ -137,6 +143,7 @@
 
 .formCard {
   padding: 22px;
+  container-type: inline-size;
 }
 
 .formHead {
@@ -168,13 +175,14 @@
   max-width: 240px;
 }
 
-/* „Kood“ | „Nupu tekst“ | „Nupu aadress“ in one row (the frame) where the card has the room for three fields */
+/* „Kood“ | „Nupu tekst“ | „Nupu aadress“ in one row (the frame) where the card has the room for three fields with their counters (640 px of card:
+   from about 1024 px of screen, where the 380 px column stands under the card; at 1440 px the card is 399 px and they stack) */
 .trio {
   display: grid;
   gap: 22px 12px;
 }
 
-@container (min-width: 1100px) {
+@container (min-width: 640px) {
   .trio {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

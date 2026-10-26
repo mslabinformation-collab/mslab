@@ -244,12 +244,13 @@ describe("a draft: its fields autosave", () => {
     await settle();
     expect(saves).toEqual([{ version: "k:v1", patch: { subject: { et: "Talvepakkumine", ru: "Осеннее предложение" } } }]);
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    // the list's row (its name and its time) is the page's: it is read again
-    expect(router.refresh).toHaveBeenCalled();
-    // a field left saves at once, from the version the last save answered
+    // a field the list does not show: the page is not read again (review M6: no page read every 1.5 s of typing)
+    expect(router.refresh).not.toHaveBeenCalled();
+    // a field left saves at once, from the version the last save answered; the name is the list's row: the page is read again
     await type($('[data-field="name"]'), "Talv");
     await leave($('[data-field="name"]'));
     expect(saves.at(-1)).toEqual({ version: "k:v2", patch: { name: "Talv" } });
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   test("an empty subject and text save (ruling R-g); an empty name is held back in its field and said there, the others still save", async () => {
@@ -473,6 +474,24 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     expect($("[data-send-confirm]")).toBeNull();
   });
 
+  test("while the test goes both labels say „Saadan proovi…“; the results stand in the buttons' bar (on a phone, at the foot of the screen where she pressed)", async () => {
+    const working = pending<unknown>();
+    actions.sendTestAction.mockReturnValueOnce(working.answer);
+    await show(DRAFT);
+    await click($("[data-test-send]"));
+    expect(words($("[data-test-send] [data-label-wide]"))).toBe("Saadan proovi…");
+    expect(words($("[data-test-send] [data-label-phone]"))).toBe("Saadan proovi…");
+    await act(async () => working.release({ ok: true }));
+    await settle();
+    expect(words($("[data-test-send] [data-label-phone]"))).toBe("Saada proov · maria@… · ET");
+    const bar = $("[data-send-buttons]")!;
+    expect(bar.querySelector("[data-test-status]")).not.toBeNull();
+    expect(bar.querySelector("[data-send-status]")).not.toBeNull();
+    actions.prepareSendAction.mockResolvedValueOnce({ ok: false, error: "busy" });
+    await click($("[data-send-all]"));
+    expect(words(bar.querySelector("[data-send-status]"))).toBe("Eelmine kiri on veel saatmisel. Saada see, kui see on lõppenud.");
+  });
+
   test("without Maria's address only the signed-in admin's is offered, and it is the one chosen", async () => {
     actions.sendTestAction.mockResolvedValue({ ok: true });
     await show(DRAFT, { testTargets: [{ key: "me", address: "admin@example.test" }] });
@@ -505,7 +524,8 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     await show(DRAFT);
     $<HTMLButtonElement>("[data-send-all]")!.focus();
     await click($("[data-send-all]"));
-    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7 });
+    // the screen's version goes with the panel's read (review I2): nothing typed, so the page's own
+    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7, version: "k:v1" });
     expect(sendPanel()).toEqual({
       question: "Kas saadan kirja „Oktoobri pakkumine“?",
       lines: ["3 kinnitatud tellijat: 2 eesti, 1 vene keeles.", "Näidisaadressidele (@example.test) ei saadeta.", "Saadetud kirja ei saa tagasi võtta ega muuta."],
@@ -571,6 +591,8 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     await click($("[data-send-all]"));
     expect(order).toEqual(["save", "prepareSendAction"]);
     expect(saves[0].patch).toEqual({ preheader: { et: "Viimane rida", ru: "" } });
+    // the version the flush's save answered goes with the panel's read: the press is for the very text on the screen (review I2)
+    expect(actions.prepareSendAction).toHaveBeenLastCalledWith({ id: 7, version: "k:v2" });
     await click(buttonNamed("Katkesta"));
     await type($('[data-i18n="preheader"]'), "Veel üks rida");
     await click($("[data-test-send]"));
@@ -600,6 +622,59 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
       root = createRoot(container);
       localStorage.clear();
     }
+  });
+
+  test("S3-P3-l on a conflict (another tab saved first) and on a letter deleted meanwhile (gone): the general reason, nothing asked", async () => {
+    const cases: [() => Response, string][] = [
+      [() => Response.json({ ok: false, error: "conflict", version: "k:other", value: { ...VALUES, preheader: { et: "Teise vahekaardi rida", ru: "" } } }, { status: 409 }), "conflict"],
+      [() => Response.json({ ok: false, error: "notFound" }, { status: 404 }), "gone"],
+    ];
+    for (const [give, kind] of cases) {
+      await show({ ...DRAFT });
+      await type($('[data-i18n="preheader"]'), `Rida ${kind}`);
+      answer = give;
+      await click($("[data-send-all]"));
+      expect(chip()!.getAttribute("data-save-kind"), kind).toBe(kind);
+      expect(actions.prepareSendAction, kind).not.toHaveBeenCalled();
+      expect($("[data-send-all]"), kind).toBeNull();
+      expect($("[data-test-send]"), kind).toBeNull();
+      expect(words($("[data-send-blocked]")), kind).toBe("Saatmiseks peab kiri olema salvestatud. Salvestamine ei õnnestunud.");
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      localStorage.clear();
+    }
+  });
+
+  test("typed while the flush or the panel's count read is on its way: no panel opens, nothing more is asked", async () => {
+    // the flush: its save held until she has typed again
+    await show(DRAFT);
+    let releaseSave!: () => void;
+    answer = () =>
+      new Promise<Response>((resolve) => {
+        releaseSave = () => resolve(Response.json({ ok: true, version: "k:v2", savedAt: "2026-10-19T09:30:00.000Z" }));
+      });
+    await type($('[data-i18n="preheader"]'), "Esimene rida");
+    await click($("[data-send-all]"));
+    await type($('[data-i18n="preheader"]'), "Esimene rida ja veel");
+    await act(async () => releaseSave());
+    await settle();
+    expect(actions.prepareSendAction).not.toHaveBeenCalled();
+    expect($("[data-send-confirm]")).toBeNull();
+    expect(text("[data-send-status]")).toBe("");
+    // the count read: answered after she typed
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    localStorage.clear();
+    await show({ ...DRAFT, id: 8 });
+    const read = pending<unknown>();
+    actions.prepareSendAction.mockReturnValueOnce(read.answer);
+    await click($("[data-send-all]"));
+    expect(actions.prepareSendAction).toHaveBeenCalledTimes(1);
+    await type($('[data-field="name"]'), "Uus nimi vahepeal");
+    await act(async () => read.release(PLAN));
+    await settle();
+    expect($("[data-send-confirm]")).toBeNull();
+    expect(actions.startSendAction).not.toHaveBeenCalled();
   });
 
   test("S3-P3-l, a field held back: „Üks väli vajab parandamist.“ stands in the buttons' place until the field is right; then they are back", async () => {
@@ -653,6 +728,8 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
       [{ ok: false, error: "sent" }, "See kiri on juba saadetud."],
       [{ ok: false, error: "notFound" }, "Seda kirja enam pole."],
       [{ ok: false, error: "server" }, "Ei õnnestunud. Proovi uuesti."],
+      // (review I2: the letter saved elsewhere since the screen's version)
+      [{ ok: false, error: "changed" }, "Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“."],
     ];
     for (const [answer, line] of prepare) {
       actions.prepareSendAction.mockResolvedValueOnce(answer);

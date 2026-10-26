@@ -683,6 +683,60 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     }
   });
 
+  test("the Kirjad layout (README B5, the Part 3 frame): 300 px list | the letter's card | 380 px column at 1440 px; the column under the card at 1194; all stacked at 1024", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "sets its own widths: the desktop project only");
+    const draft = await insertCampaign({ name: campaignName(info.project.name, "paigutus") });
+    await signIn(page, context, visitorIp);
+    const boxes = async () => {
+      const box = async (selector: string) => {
+        const b = await page.locator(selector).first().boundingBox();
+        expect(b, selector).not.toBeNull();
+        return b!;
+      };
+      return { list: await box("[data-campaigns-list]"), card: await box("[data-campaign-card]"), aside: await box("[data-campaign-aside]") };
+    };
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${CAMPAIGNS}&kampaania=${draft}`);
+      await adminReady(page);
+      const wide = await boxes();
+      // three columns side by side, 18 px apart, their tops on one line
+      expect(Math.round(wide.list.width)).toBe(300);
+      expect(Math.round(wide.aside.width)).toBe(380);
+      expect(Math.round(wide.card.x - (wide.list.x + wide.list.width))).toBe(18);
+      expect(Math.round(wide.aside.x - (wide.card.x + wide.card.width))).toBe(18);
+      expect(Math.abs(wide.card.y - wide.list.y)).toBeLessThan(2);
+      expect(Math.abs(wide.aside.y - wide.list.y)).toBeLessThan(2);
+      expect(wide.card.width).toBeGreaterThan(380);
+      expect(await noOverflow(page)).toBe(true);
+
+      // an iPad across: the list beside, the column under the card
+      await page.setViewportSize({ width: 1194, height: 834 });
+      const mid = await boxes();
+      expect(Math.round(mid.list.width)).toBe(300);
+      expect(mid.card.x).toBeGreaterThan(mid.list.x + mid.list.width);
+      expect(mid.aside.y).toBeGreaterThanOrEqual(mid.card.y + mid.card.height);
+      expect(Math.round(mid.aside.x)).toBe(Math.round(mid.card.x));
+      expect(await noOverflow(page)).toBe(true);
+
+      // narrow: the list over the letter, the column under the card
+      await page.setViewportSize({ width: 1024, height: 768 });
+      const narrow = await boxes();
+      expect(narrow.card.y).toBeGreaterThanOrEqual(narrow.list.y + narrow.list.height);
+      expect(Math.round(narrow.card.x)).toBe(Math.round(narrow.list.x));
+      expect(narrow.aside.y).toBeGreaterThanOrEqual(narrow.card.y + narrow.card.height);
+      // the card holds „Kood | Nupu tekst | Nupu aadress“ in one row here (640 px of card, review M1); at 1440 its 399 px stack them
+      const code = await page.locator('[data-campaign-card] [data-field="code"]').boundingBox();
+      const href = await page.locator('[data-campaign-card] [data-field="buttonHref"]').boundingBox();
+      // (side by side, on one row: the fields' labels differ in height, so their inputs need not share a top)
+      expect(href!.x).toBeGreaterThan(code!.x + code!.width);
+      expect(Math.abs(code!.y - href!.y)).toBeLessThan(code!.height);
+      expect(await noOverflow(page)).toBe(true);
+    } finally {
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+  });
+
   test("a 375 × 812 phone (Part 4 „B5 Kirjad“): the list is its own screen; a letter has „← Kirjad“, „Muuda | Eelvaade“ and its send buttons at the foot; nothing scrolls sideways", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(isMobile, "sets its own size: the desktop project only");
     const name = campaignName(info.project.name, "telefon");

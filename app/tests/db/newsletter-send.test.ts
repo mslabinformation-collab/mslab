@@ -15,6 +15,7 @@ import {
   TEST_SEND_LIMIT,
   prepareSend,
   progressOf,
+  readCampaign,
   runBatch,
   runDueCampaigns,
   saveCampaign,
@@ -22,6 +23,7 @@ import {
   sendTest,
   startSend,
   stopSend,
+  writeCampaign,
   type SendDeps,
 } from "@/server/newsletter-campaigns";
 import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS, sendMail, type Env, type Mail, type MailOutcome, type SendOptions } from "@/server/notify";
@@ -235,6 +237,52 @@ describe("the sends' own rules (R-g) and a save that changes nothing (C4)", () =
     vi.setSystemTime(NOW.getTime() + 120_000);
     expect(await saveCampaign(db, other, { ...DRAFT, name: "Muudetud" }, new Date())).toEqual({ ok: true, id: other });
     expect(await startSend(deps(resend.send), other, { et: next.et, ru: next.ru, updatedAt: next.updatedAt })).toEqual({ ok: false, error: "changed" });
+  });
+});
+
+// Piece 3b Task 6 review I2 and M4: the panel's read carries the screen's version; the autosave's own write between the panel and „Jah“ is `changed`.
+describe("the screen's version and the autosave around the press", () => {
+  test("I2: another tab or device saved the letter before this tab pressed (this tab typed nothing): the panel's read is `changed`, nothing is written or sent", async () => {
+    const id = await campaign();
+    await subscribe("kati@example.com");
+    const shown = (await readCampaign(db, id))!.version;
+    vi.setSystemTime(NOW.getTime() + 60_000);
+    const other = await writeCampaign(db, id, { subject: { et: "Teise seadme teema", ru: "Тема" } }, shown, new Date());
+    if (!other.ok) throw new Error(JSON.stringify(other));
+    const resend = fakeSend();
+    expect(await prepareSend(db, id, shown)).toEqual({ ok: false, error: "changed" });
+    expect(await rowsOf(id)).toEqual([]);
+    expect((await campaignRow(id)).status).toBe("draft");
+    expect(resend.send).not.toHaveBeenCalled();
+    // the screen that holds the stored text: the panel opens, and the press sends that text
+    const plan = await prepareSend(db, id, other.version);
+    if (!plan.ok) throw new Error(JSON.stringify(plan));
+    expect(await startSend(deps(resend.send), id, plan)).toMatchObject({ ok: true, stopped: null });
+    expect(resend.mails.map((m) => m.subject)).toEqual(["Teise seadme teema"]);
+  });
+
+  test("M4: an autosave that changes the letter between the panel and „Jah“ is `changed` (nothing sent); one that changes nothing lets the press go (C4)", async () => {
+    const id = await campaign();
+    await subscribe("kati@example.com");
+    const shown = (await readCampaign(db, id))!.version;
+    const plan = await prepareSend(db, id, shown);
+    if (!plan.ok) throw new Error(JSON.stringify(plan));
+    const resend = fakeSend();
+    vi.setSystemTime(NOW.getTime() + 60_000);
+    // the same text again (another tab typed it back): no write, `updatedAt` stays
+    expect(await writeCampaign(db, id, { name: ` ${DRAFT.name} ` }, shown, new Date())).toEqual({ ok: true, version: shown, savedAt: new Date().toISOString() });
+    // a real change
+    vi.setSystemTime(NOW.getTime() + 120_000);
+    expect(await writeCampaign(db, id, { preheader: { et: "Uus rida", ru: "" } }, shown, new Date())).toMatchObject({ ok: true });
+    expect(await startSend(deps(resend.send), id, plan)).toEqual({ ok: false, error: "changed" });
+    expect(resend.send).not.toHaveBeenCalled();
+    expect(await rowsOf(id)).toEqual([]);
+    // after a save that changed nothing the press goes
+    const fresh = await prepareSend(db, id, (await readCampaign(db, id))!.version);
+    if (!fresh.ok) throw new Error(JSON.stringify(fresh));
+    vi.setSystemTime(NOW.getTime() + 180_000);
+    expect(await writeCampaign(db, id, { preheader: { et: "Uus rida ", ru: "" } }, (await readCampaign(db, id))!.version, new Date())).toMatchObject({ ok: true });
+    expect(await startSend(deps(resend.send), id, fresh)).toMatchObject({ ok: true, stopped: null });
   });
 });
 
