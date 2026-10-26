@@ -2243,11 +2243,13 @@ export const adminEt = {
     },
   },
 
+  // C5 Praktika (admin UX pass piece 4a, Task 4; piece4-texts S4-31 eyebrow, S4-32 lead, S4-33 card title, points list and its add button)
   practice: {
-    eyebrow: "Praktika",
+    eyebrow: "Koolitused",
     title: "Praktikapaketid",
-    lead: "MINI ja MAXI pakett: nimi, lühitekst, modellide arv, kestus, hind ja punktid. Salvestades uuenevad praktikaleht ja avalehe praktikaplokk.",
-    package: "Pakett {code}",
+    lead: "MINI ja MAXI pakett: nimi, lühitekst, modellide arv, kestus, hind ja punktid. Avaldades uuenevad praktikaleht ja avalehe praktikaplokk.",
+    // a package's card is titled by its code alone („MINI“, „MAXI“)
+    package: "{code}",
     name: "Nimi",
     tagline: "Lühitekst",
     models: "Modelle",
@@ -2255,9 +2257,11 @@ export const adminEt = {
     duration: "Kestus",
     durationHint: "nt 8 ak. Kaardil: „≈ 8 ak“.",
     price: "Hind (€)",
-    items: "Paketi punktid",
+    items: "Sisaldab",
     item: "Punkt",
     itemsHint: "Iga rida on üks punkt paketi kaardil.",
+    // the points' add button, after its „+“ (ListEditor; R-h: Enter in the last point adds one too)
+    addItem: "Lisa punkt (või Enter viimasel real)",
     empty: "Praktikapakette pole.",
   },
 

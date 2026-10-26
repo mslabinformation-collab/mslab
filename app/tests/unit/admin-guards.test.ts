@@ -170,8 +170,9 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    // admin UX pass piece 3b, Task 5: Seaded's legal texts' „Salvesta“ (saveSettings) is gone: they type into drafts (api/admin/oigustekst/<key>)
-    expect(siteExports).toEqual(["saveHome", "savePractice", "saveTrainer", "saveCampaign", "savePost", "deletePost"]);
+    // admin UX pass piece 3b, Task 5: Seaded's legal texts' „Salvesta“ (saveSettings) is gone: they type into drafts (api/admin/oigustekst/<key>);
+    // piece 4a, Task 4: Praktika's „Salvesta“ (savePractice) is gone: its packages type into drafts (api/admin/sisu/practice/0/osa/<code>)
+    expect(siteExports).toEqual(["saveHome", "saveTrainer", "saveCampaign", "savePost", "deletePost"]);
     expect(violations(site.path, site.source)).toEqual([]);
     // the contracts' actions: the contact text's „Salvesta lepingud“ (saveContractTextsAction) is gone with it (its draft is published on its route)
     const contractActions = files().find((f) => f.path === "server/actions/admin-contracts.ts")!;

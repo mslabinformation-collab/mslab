@@ -1,4 +1,4 @@
-import { holdLocalLock, LOCK_WAIT_MS } from "./fixtures";
+import { holdLocalLock, LOCK_WAIT_MS, PRACTICE_DRAFTS_LOCK, removePracticeDrafts } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { test as base } from "./test";
 
@@ -13,8 +13,12 @@ import { test as base } from "./test";
  *
  * The turn is a Postgres advisory lock (fixtures.ts holdLocalLock), taken when the test is set up and let go when its fixtures are torn down: the
  * test and its afterEach hooks (the restores of the rows it changed) are over by then, before the next test's turn.
+ *
+ * `practiceDrafts` (`test.use({ practiceDrafts: true })`): the test makes drafts of Praktika's packages, so it takes the practice turn as well
+ * (fixtures.ts PRACTICE_DRAFTS_LOCK) — under `next dev` too, since a publish or a discard there acts on every practice draft, whoever made it. The turn
+ * is taken after the edit turn and given back before it (no two tests ever wait for each other's), and at its end every practice draft goes.
  */
-export const test = base.extend<{ editTurn: void }>({
+export const test = base.extend<{ editTurn: void; practiceDrafts: boolean; practiceTurn: void }>({
   editTurn: [
     async ({}, provide, info) => {
       if (!PROD_BUILD) return provide();
@@ -26,6 +30,25 @@ export const test = base.extend<{ editTurn: void }>({
         await provide();
       } finally {
         await release();
+      }
+    },
+    { auto: true },
+  ],
+  practiceDrafts: [false, { option: true }],
+  practiceTurn: [
+    async ({ practiceDrafts, editTurn }, provide, info) => {
+      void editTurn; // (set up first, torn down last: the edit turn is always taken before this one)
+      if (!practiceDrafts) return provide();
+      info.setTimeout(info.timeout + LOCK_WAIT_MS);
+      const release = await holdLocalLock(PRACTICE_DRAFTS_LOCK, LOCK_WAIT_MS);
+      try {
+        await provide();
+      } finally {
+        try {
+          await removePracticeDrafts();
+        } finally {
+          await release();
+        }
       }
     },
     { auto: true },

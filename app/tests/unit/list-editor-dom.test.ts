@@ -27,9 +27,9 @@ const updates = vi.fn();
 let mounts = 0;
 let restoreRect: () => void = () => {};
 
-type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string };
+type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string; enterAdds?: boolean; addLabel?: string; rowNames?: boolean };
 /** The page around the editor: the card's list, changed by the editor's typing (`onChange`) and by its row changes (`onUpdate`, the card's update). */
-function Harness({ initial, unpublished, valueOnly, error }: { initial: I18n[] } & Opts) {
+function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, rowNames }: { initial: I18n[] } & Opts) {
   const [items, setItems] = useState(initial);
   useEffect(() => {
     current = items; // (not during the render: react-hooks/globals; act() flushes the effect)
@@ -41,6 +41,9 @@ function Harness({ initial, unpublished, valueOnly, error }: { initial: I18n[] }
     name: "outcomes",
     error,
     unpublished,
+    enterAdds,
+    addLabel,
+    rowNames,
     onChange: setItems,
     // (Praktika's lists have no update of their own: the editor works the change out from the list it last saw)
     onUpdate: valueOnly
@@ -216,6 +219,74 @@ describe("ListEditor: removal with the UndoBar (S3-P3-d)", () => {
     expect(after.slice(0, 3)).toEqual(before);
     expect(new Set(after.map(([key]) => key)).size).toBe(4);
     expect(document.activeElement).toBe(fieldOf(3));
+  });
+});
+
+describe("ListEditor: Enter on the last row adds a row (Praktika's points; ruling R-h, piece4-texts S4-33)", () => {
+  /** Enter pressed in `el` (a keydown that bubbles, as the browser sends it); `composing`: the key ends an IME composition. */
+  const enter = async (el: Element | null, init: KeyboardEventInit = {}) => {
+    expect(el, "the field to press Enter in").not.toBeNull();
+    let event: KeyboardEvent | null = null;
+    await act(async () => {
+      event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...init });
+      el!.dispatchEvent(event);
+    });
+    return event!;
+  };
+
+  it("`enterAdds`: Enter in the last row's field adds an empty row after it — one row change, a new key — and the cursor goes into it", async () => {
+    await render(ITEMS, { enterAdds: true });
+    const before = rows();
+    fieldOf(2)!.focus();
+    const event = await enter(fieldOf(2));
+    expect(updates).toHaveBeenCalledTimes(1);
+    expect(current).toEqual([...ITEMS, { et: "" }]);
+    const after = rows();
+    expect(after.slice(0, 3)).toEqual(before);
+    expect(after[3][1]).toBe("");
+    expect(new Set(after.map(([key]) => key)).size).toBe(4);
+    expect(document.activeElement).toBe(fieldOf(3));
+    expect(event.defaultPrevented).toBe(true);
+    // the new row is the last one now: Enter in it adds the next
+    await enter(fieldOf(3));
+    expect(current).toHaveLength(5);
+    expect(document.activeElement).toBe(fieldOf(4));
+  });
+
+  it("Enter in any other row, an Enter that ends an IME composition, and Shift+Enter add nothing", async () => {
+    await render(ITEMS, { enterAdds: true });
+    const before = rows();
+    fieldOf(0)!.focus();
+    expect((await enter(fieldOf(0))).defaultPrevented).toBe(false);
+    await enter(fieldOf(1));
+    await enter(fieldOf(2), { isComposing: true });
+    await enter(fieldOf(2), { shiftKey: true });
+    expect(updates).toHaveBeenCalledTimes(0);
+    expect(rows()).toEqual(before);
+    expect(document.activeElement).toBe(fieldOf(0));
+  });
+
+  it("without `enterAdds` (the course's lists) Enter in the last row adds nothing", async () => {
+    await render();
+    const before = rows();
+    await enter(fieldOf(2));
+    expect(updates).toHaveBeenCalledTimes(0);
+    expect(rows()).toEqual(before);
+  });
+
+  it("`addLabel` names the add button („+ Lisa punkt (või Enter viimasel real)“); without it, „+ Lisa rida“", async () => {
+    await render(ITEMS, { addLabel: "Lisa punkt (või Enter viimasel real)" });
+    expect(button("+ Lisa punkt (või Enter viimasel real)")).not.toBeNull();
+    expect(button("+ Lisa rida")).toBeNull();
+    await render();
+    expect(button("+ Lisa rida")).not.toBeNull();
+  });
+
+  it("`rowNames`: each row's field is named `<name>.<index>` (data-i18n, the site editors' focus of „Jää siia“ and „Näita“); without it, none", async () => {
+    await render(ITEMS, { rowNames: true });
+    expect($$("[data-drag-row] [data-lang-field]").map((el) => el.getAttribute("data-i18n"))).toEqual(["outcomes.0", "outcomes.1", "outcomes.2"]);
+    await render();
+    expect($$("[data-drag-row] [data-lang-field]").map((el) => el.getAttribute("data-i18n"))).toEqual([null, null, null]);
   });
 });
 

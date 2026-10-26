@@ -1,6 +1,6 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { SEED_ECOURSE_SLUG } from "./account";
-import { signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { test } from "./edit-lock";
 import { insertPreviewDraft, onLocalDb, PREVIEW_DRAFT_NOTE, removeAdminRows, removePreviewDrafts } from "./fixtures";
 import { PROD_BUILD } from "./target";
@@ -237,99 +237,100 @@ test("the catalogue in the admin's preview: „Eelvaade“ and the way out „L�
   expect(html).not.toContain("data-preview-bar");
 });
 
-// ---------- the site's pages (admin UX pass piece 4a, Task 3; ruling R-f) ----------
-// The same preview on Praktika: a package's price edited as the Praktika editor saves it (its autosave route, from the version the first answer names),
-// then the public /praktika in her preview with the draft price and the practice bar, and a signed-out visitor's with the live one. Once saved, the draft
-// row is tagged PREVIEW_DRAFT_NOTE, so the suite's cleanup (afterEach, global setup and teardown) takes it exactly as it takes the course's fixture.
+// ---------- the site's pages (admin UX pass piece 4a, Tasks 3–4; ruling R-f) ----------
+// The same preview on Praktika: MAXI's price typed into the Praktika editor's „Hind (€)“ (autosaved into the package's draft), the bar's „Eelvaade ↗“,
+// then the public /praktika in her preview with the draft price and the practice bar, and a signed-out visitor's with the live one. The test takes the
+// practice turn (edit-lock.ts `practiceDrafts`: Praktika's own e2e makes practice drafts too, and a publish or a discard acts on every one there is), so
+// every practice draft meanwhile is its own: the bar counts exactly its one change, and at the end of its turn none is left, whatever failed. Once
+// saved, the draft row is tagged PREVIEW_DRAFT_NOTE as well, which the suite's cleanup (afterEach, global setup and teardown) takes as it takes the
+// course's fixture.
 
 const PRACTICE = "/praktika";
 const DRAFT_PRICE = "987 €";
 const maxiPrice = (page: Page) => page.locator('[data-practice] [data-package="MAXI"] [data-price]');
 
-/** MAXI's price saved into its draft as the editor's „Hind“ saves it (POST api/admin/sisu/practice/0/osa/MAXI); the draft row's id (its version `d:<id>.<n>`). */
-async function draftMaxiPrice(page: Page, price: string): Promise<number> {
-  let version = "";
-  for (let i = 0; i < 3; i++) {
-    const res = await page.request.post("/api/admin/sisu/practice/0/osa/MAXI", { data: { version, patch: { price } }, failOnStatusCode: false });
-    const body = (await res.json()) as { version?: string };
-    if (res.status() === 200) {
-      const id = /^d:(\d+)\.\d+$/.exec(body.version ?? "")?.[1];
-      expect(id, `a draft's version, not ${body.version}`).toBeTruthy();
-      return Number(id);
-    }
-    // (the version the editor would hold is the stored one, which a save from another version is answered with)
-    expect(res.status(), JSON.stringify(body)).toBe(409);
-    version = body.version ?? "";
-  }
-  throw new Error("e2e: MAXI's price was not saved in 3 tries");
-}
+test.describe("the site's pages", () => {
+  test.use({ practiceDrafts: true });
 
-test("Praktika in the admin's preview (piece 4a, R-f): the drafted price under the practice bar; a signed-out visitor gets the live price; „Loobu muudatustest“ ends it", async ({ page, context, browser, request, visitorIp }) => {
-  // a visitor: the live price and no bar; in the production build the page is the cached one, with nothing of the admin's
-  await page.goto(PRACTICE);
-  const live = ((await maxiPrice(page).textContent()) ?? "").trim();
-  expect(live).toMatch(/€$/);
-  expect(live).not.toBe(DRAFT_PRICE);
-  await expect(page.locator(BAR)).toHaveCount(0);
-  if (PROD_BUILD) {
-    const cached = await fromCache(request, PRACTICE);
-    expect(cached.headers()["x-nextjs-cache"]).toBe("HIT");
-    const html = await cached.text();
+  test("Praktika in the admin's preview (piece 4a, R-f): the drafted price under the practice bar; a signed-out visitor gets the live price; „Loobu muudatustest“ ends it", async ({ page, context, browser, request, visitorIp }) => {
+    // a visitor: the live price and no bar; in the production build the page is the cached one, with nothing of the admin's
+    await page.goto(PRACTICE);
+    const live = ((await maxiPrice(page).textContent()) ?? "").trim();
+    expect(live).toMatch(/€$/);
+    expect(live).not.toBe(DRAFT_PRICE);
+    await expect(page.locator(BAR)).toHaveCount(0);
+    if (PROD_BUILD) {
+      const cached = await fromCache(request, PRACTICE);
+      expect(cached.headers()["x-nextjs-cache"]).toBe("HIT");
+      const html = await cached.text();
+      expect(html).not.toContain(DRAFT_PRICE);
+      expect(html).not.toContain("data-preview-bar");
+      await expectNoAdminCode(request, html);
+    }
+
+    // the admin edits MAXI's price in the Praktika editor: it goes to the practice draft, live stays
+    await signInAsAdmin(page, context, visitorIp, created);
+    await page.goto("/admin/praktika");
+    await adminReady(page);
+    const price = page.locator('[data-package="MAXI"]').getByRole("textbox", { name: "Hind (€)", exact: true });
+    const saved = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/practice/0/osa/MAXI") && r.request().method() === "POST" && r.status() === 200);
+    await price.fill("987");
+    await price.blur();
+    await saved;
+    // (tagged at once, before anything else can fail; the practice turn's end takes it in any case)
+    await onLocalDb((sql) => sql`update content_drafts set updated_by = ${PREVIEW_DRAFT_NOTE} where entity = 'practice' and entity_id = 0 and part = 'MAXI'`, { marksPages: false });
+    expect(await draftRows()).toBe(1);
+
+    // „Eelvaade ↗“ on the bar (a tab of its own): draft mode on, /praktika with the draft price and the bar (rendered for her alone)
+    const link = page.locator("[data-publish-preview]");
+    await expect(link).toHaveText("Eelvaade ↗");
+    await expect(link).toHaveAttribute("target", "_blank");
+    const href = await link.getAttribute("href");
+    expect(href).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent(PRACTICE)}`);
+    const preview = await page.goto(href!);
+    expect(new URL(page.url()).pathname).toBe(PRACTICE);
+    expect(preview!.headers()["cache-control"]).toMatch(PROD_BUILD ? /no-store/ : /no-store|no-cache/);
+    await expect(maxiPrice(page)).toHaveText(DRAFT_PRICE);
+    await expect(page.locator(BAR)).toBeVisible();
+    // (the practice turn: the practice drafts are this test's own, and they differ from live in the price alone)
+    await expect(page.locator("[data-preview-count]")).toHaveText("Avaldamata 1");
+    await expect(page.locator("[data-preview-discard]")).toHaveText("Loobu muudatustest");
+    await expect(page.locator("[data-preview-exit]")).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(PRACTICE)}`);
+    const bypass = (await context.cookies()).find((c) => c.name === BYPASS);
+    expect(bypass, "the draft-mode cookie").toBeTruthy();
+
+    // a second context, signed out, even carrying the draft-mode cookie (no identity): the live price and no bar
+    const stranger = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `${visitorIp}-stranger` } });
+    try {
+      await stranger.addCookies([bypass!]);
+      const other = await stranger.newPage();
+      await other.goto(PRACTICE);
+      await expect(maxiPrice(other)).toHaveText(live);
+      expect(await other.content()).not.toContain(DRAFT_PRICE);
+      await expect(other.locator(BAR)).toHaveCount(0);
+    } finally {
+      await stranger.close();
+    }
+
+    // „Loobu muudatustest“ on the bar: the practice drafts go, and this browser's copies of the Praktika editor with them (lib/site-copies.ts); the preview
+    // ends on the live page
+    const COPY = "mslab-draft:site:practice:MAXI:e2e";
+    await page.evaluate((key) => localStorage.setItem(key, "{}"), COPY);
+    await page.locator("[data-preview-discard]").click();
+    await expect(page.locator("[data-confirm-panel]")).toContainText("Avalikul lehel jääb praegune versioon.");
+    await page.locator("[data-confirm-panel]").getByRole("button", { name: "Jah, loobu" }).click();
+    await expect(page).toHaveURL((url) => url.pathname === PRACTICE);
+    await expect(maxiPrice(page)).toHaveText(live);
+    await expect(page.locator(BAR)).toHaveCount(0);
+    expect(await hasBypass(context)).toBe(false);
+    expect(await draftRows(), "the practice draft is gone").toBe(0);
+    expect(await page.evaluate((key) => localStorage.getItem(key), COPY)).toBeNull();
+
+    // nothing of the preview was kept: everyone else still gets the live page (in the production build, from the cache)
+    const after = PROD_BUILD ? await fromCache(request, PRACTICE) : await request.get(PRACTICE);
+    if (PROD_BUILD) expect(after.headers()["x-nextjs-cache"]).toBe("HIT");
+    const html = await after.text();
     expect(html).not.toContain(DRAFT_PRICE);
     expect(html).not.toContain("data-preview-bar");
-    await expectNoAdminCode(request, html);
-  }
-
-  // the admin edits MAXI's price: it goes to the practice draft, live stays
-  await signInAsAdmin(page, context, visitorIp, created);
-  const id = await draftMaxiPrice(page, "987");
-  await onLocalDb((sql) => sql`update content_drafts set updated_by = ${PREVIEW_DRAFT_NOTE} where id = ${id} and entity = 'practice'`, { marksPages: false });
-
-  // „Eelvaade ↗“: draft mode on, /praktika with the draft price and the bar (rendered for her alone)
-  const preview = await page.goto(`/api/admin/eelvaade?tee=${encodeURIComponent(PRACTICE)}`);
-  expect(new URL(page.url()).pathname).toBe(PRACTICE);
-  expect(preview!.headers()["cache-control"]).toMatch(PROD_BUILD ? /no-store/ : /no-store|no-cache/);
-  await expect(maxiPrice(page)).toHaveText(DRAFT_PRICE);
-  await expect(page.locator(BAR)).toBeVisible();
-  // (the count is the practice drafts' changes; admin-site.spec.ts changes MAXI's live duration side by side, which the draft would then differ in too:
-  // tests/db/site-preview.test.ts pins the number)
-  await expect(page.locator("[data-preview-count]")).toHaveText(/^Avaldamata [1-9]$/);
-  await expect(page.locator("[data-preview-discard]")).toHaveText("Loobu muudatustest");
-  await expect(page.locator("[data-preview-exit]")).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(PRACTICE)}`);
-  const bypass = (await context.cookies()).find((c) => c.name === BYPASS);
-  expect(bypass, "the draft-mode cookie").toBeTruthy();
-
-  // a second context, signed out, even carrying the draft-mode cookie (no identity): the live price and no bar
-  const stranger = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `${visitorIp}-stranger` } });
-  try {
-    await stranger.addCookies([bypass!]);
-    const other = await stranger.newPage();
-    await other.goto(PRACTICE);
-    await expect(maxiPrice(other)).toHaveText(live);
-    expect(await other.content()).not.toContain(DRAFT_PRICE);
-    await expect(other.locator(BAR)).toHaveCount(0);
-  } finally {
-    await stranger.close();
-  }
-
-  // „Loobu muudatustest“ on the bar: the practice drafts go, and this browser's copies of the Praktika editor with them (lib/site-copies.ts); the preview
-  // ends on the live page
-  const COPY = "mslab-draft:site:practice:MAXI:e2e";
-  await page.evaluate((key) => localStorage.setItem(key, "{}"), COPY);
-  await page.locator("[data-preview-discard]").click();
-  await expect(page.locator("[data-confirm-panel]")).toContainText("Avalikul lehel jääb praegune versioon.");
-  await page.locator("[data-confirm-panel]").getByRole("button", { name: "Jah, loobu" }).click();
-  await expect(page).toHaveURL((url) => url.pathname === PRACTICE);
-  await expect(maxiPrice(page)).toHaveText(live);
-  await expect(page.locator(BAR)).toHaveCount(0);
-  expect(await hasBypass(context)).toBe(false);
-  expect(await draftRows(), "the practice draft is gone").toBe(0);
-  expect(await page.evaluate((key) => localStorage.getItem(key), COPY)).toBeNull();
-
-  // nothing of the preview was kept: everyone else still gets the live page (in the production build, from the cache)
-  const after = PROD_BUILD ? await fromCache(request, PRACTICE) : await request.get(PRACTICE);
-  if (PROD_BUILD) expect(after.headers()["x-nextjs-cache"]).toBe("HIT");
-  const html = await after.text();
-  expect(html).not.toContain(DRAFT_PRICE);
-  expect(html).not.toContain("data-preview-bar");
+  });
 });

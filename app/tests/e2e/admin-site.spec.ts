@@ -51,72 +51,128 @@ async function save(page: Page): Promise<void> {
 }
 const one = async <T>(query: (sql: Parameters<Parameters<typeof onLocalDb>[0]>[0]) => Promise<T[]>): Promise<T> => (await onLocalDb(query))[0];
 
-test.describe("practice packages (A8, R3)", () => {
-  test("the package's duration and items are saved; the home practice card and /praktika show them", async ({ page, context, visitorIp }, info) => {
-    // the brief: MAXI "9 ak" → home card "≈ 9 ak" (desktop); the phone project changes MINI the same way
-    const pkg = phone(info) ? { code: "MINI", before: "4 ak", after: "5 ak", ru: "4 ак. ч." } : { code: "MAXI", before: "8 ak", after: "9 ak", ru: "8 ак. ч." };
-    await changing(["practice_packages", { column: "code", value: pkg.code }]);
+// The site editors on the draft layer (admin UX pass piece 4a: Praktika): the page's one status chip (SaveStatus, README §1.4; its status region speaks
+// the whole sentence, on a phone too), the PublishBar (README §1.8) and its desktop words (S3-P3-a's line after the labels), and a part's autosave.
+const chip = (page: Page) => page.locator("[data-site-editor] [data-save-status]");
+const publishBar = (page: Page) => page.locator("[data-publish-bar]");
+const barWords = (page: Page) => page.locator("[data-publish-words]");
+const draftWords = (labels: string) => `Avaldamata muudatused: ${labels.split(", ").length} · ${labels}. Avalikul lehel on näha eelmine versioon.`;
+/** The answer 200 to a package's autosave (POST api/admin/sisu/practice/0/osa/<code>). */
+const practiceSaved = (page: Page, code: string) =>
+  page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/practice/0/osa/${code}`) && r.request().method() === "POST" && r.status() === 200);
+
+test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass piece 4a, Task 4)", () => {
+  // every field autosaves into its package's draft, and the one bar's „Avalda muudatused“ publishes every practice draft there is (R-e): one test at a
+  // time makes them (edit-lock.ts `practiceDrafts`, shared with admin-eelvaade.spec.ts's preview of /praktika), and at its end none is left
+  test.use({ practiceDrafts: true });
+
+  test("a price waits in its draft („Mustand salvestatud“, the bar „{code} hind“) and /praktika keeps the old one until „Avalda muudatused“; Enter on the last point adds one; × and its undo; at 375 px the cards stack and nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+    test.slow(); // one long flow: the editor, the public pages, a publish and a second width
+    // desktop changes MAXI, the phone project MINI (the projects run side by side, each on its own row)
+    const code = phone(info) ? "MINI" : "MAXI";
+    await changing(["practice_packages", { column: "code", value: code }]);
+    const stored = () => one((sql) => sql<{ price: number; items: { et: string; ru?: string }[] }[]>`select price, items from practice_packages where code = ${code}`);
+    const drafts = () => one((sql) => sql<{ n: number }[]>`select count(*)::int as n from content_drafts where entity = 'practice'`);
+    const before = await stored();
+    expect(before.price % 100, "a whole euro price").toBe(0);
+    const oldPrice = String(before.price / 100);
+    const newPrice = String(before.price / 100 + 7);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/praktika");
     await adminReady(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Praktikapaketid");
-    const card = page.locator(`[data-practice-editor] [data-package="${pkg.code}"]`);
-    const duration = card.getByRole("textbox", { name: "Kestus (eesti keeles)", exact: true });
-    await expect(duration).toHaveValue(pkg.before);
-    await duration.fill(pkg.after);
-    await expect(status(page)).toHaveText("Salvestamata muudatused");
-    // a new item with its Russian text
-    const items = card.locator(`[data-list-editor="${pkg.code}.items"]`);
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koolitused");
+    // no page-wide „Salvesta“ any more, and nothing waits yet: no bar
+    await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+
+    // the price: autosaved into the package's draft, the bar names it, the field says „· avaldamata“
+    const card = page.locator(`[data-package="${code}"]`);
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText(code);
+    const price = card.getByRole("textbox", { name: "Hind (€)", exact: true });
+    await expect(price).toHaveValue(oldPrice);
+    let saved = practiceSaved(page, code);
+    await price.fill(newPrice);
+    await price.blur();
+    await saved;
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(barWords(page)).toHaveText(draftWords(`${code} hind`));
+    await expect(card.locator("[data-plain-field][data-unpublished] [data-unpublished-tag]")).toHaveText("· avaldamata");
+    expect((await stored()).price, "live keeps its price").toBe(before.price);
+    expect(await drafts()).toEqual({ n: 1 });
+
+    // a visitor's /praktika (this browser, no draft mode): still the old price
+    const visitor = await context.newPage();
+    await visitor.goto("/praktika");
+    const publicPrice = visitor.locator(`[data-practice] [data-package="${code}"] [data-price]`);
+    await expect(publicPrice).toHaveText(`${oldPrice} €`);
+
+    // „Sisaldab“: Enter on the last point adds one and puts the cursor in it (R-h); its Russian text too
+    const items = card.locator(`[data-list-editor="${code}.items"]`);
+    await expect(items.getByRole("heading", { level: 3 })).toHaveText("Sisaldab");
+    await expect(items.getByRole("button", { name: "+ Lisa punkt (või Enter viimasel real)", exact: true })).toBeVisible();
     const rows = items.locator("[data-row]");
     const count = await rows.count();
-    await items.getByRole("button", { name: "Lisa rida" }).click();
+    await rows.nth(count - 1).locator("[data-lang-field]").click();
+    await page.keyboard.press("Enter");
+    await expect(rows).toHaveCount(count + 1);
     await expect(rows.nth(count).locator("[data-lang-field]")).toBeFocused();
+    saved = practiceSaved(page, code);
     await page.keyboard.type("E2E punkt");
     await editLang(page, "ru");
     await rows.nth(count).locator("[data-lang-field]").fill("E2E пункт");
+    await rows.nth(count).locator("[data-lang-field]").blur();
+    await saved;
+    await editLang(page, "et");
     expect(await noOverflow(page)).toBe(true);
-    // × takes the row out at once with the UndoBar; while it shows, „Salvesta“ is in sight and takes a click (the bar stands above the sticky
-    // save bar, Task 8 review M-2); „Võta tagasi“ brings the row back with its texts
+    // × takes the point out at once with the UndoBar; while it shows, „Avalda muudatused“ (the phone's „Avalda“) is in sight and takes a click (the
+    // UndoBar stands above the phone's bar); „Võta tagasi“ brings the point back with its texts
     await items.getByRole("button", { name: `Eemalda rida ${count + 1}` }).click();
     await expect(rows).toHaveCount(count);
     const undoBar = page.locator("[data-undo-bar]");
     await expect(undoBar).toContainText("Rida eemaldatud.");
-    const saveButton = page.locator("[data-save-bar] button");
-    await expect(saveButton).toBeVisible();
-    await saveButton.click({ trial: true, timeout: 2000 });
-    const [a, b] = [(await undoBar.boundingBox())!, (await saveButton.boundingBox())!];
-    expect(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x, "the UndoBar is clear of „Salvesta“").toBe(true);
+    const go = page.locator("[data-publish-go]");
+    await expect(go).toBeVisible();
+    await go.click({ trial: true, timeout: 2000 });
+    const [a, b] = [(await undoBar.boundingBox())!, (await go.boundingBox())!];
+    expect(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x, "the UndoBar is clear of „Avalda muudatused“").toBe(true);
+    saved = practiceSaved(page, code);
     await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    await saved;
     await expect(rows).toHaveCount(count + 1);
-    await expect(rows.nth(count).locator("[data-lang-field]")).toHaveValue("E2E пункт");
-    await save(page);
-    const stored = await one((sql) => sql<{ duration: { et: string }; items: { et: string; ru?: string }[] }[]>`select duration_label as duration, items from practice_packages where code = ${pkg.code}`);
-    expect(stored.duration).toEqual({ et: pkg.after, ru: pkg.ru }); // the Russian text is Maria's to update
-    expect(stored.items.at(-1)).toEqual({ et: "E2E punkt", ru: "E2E пункт" });
+    await expect(rows.nth(count).locator("[data-lang-field]")).toHaveValue("E2E punkt");
+    await expect(barWords(page)).toHaveText(draftWords(`${code} hind, ${code} punktid`));
+    expect((await stored()).items, "live keeps its points").toEqual(before.items);
 
-    await page.goto("/");
-    const home = page.locator(`[data-practice] [data-package="${pkg.code}"]`);
-    await expect(home.getByText(`≈ ${pkg.after}`)).toBeVisible();
-    await expect(home.getByText("E2E punkt")).toBeVisible();
-    await page.goto("/ru/praktika");
-    await expect(page.locator(`[data-package="${pkg.code}"]`).getByText("E2E пункт")).toBeVisible();
-  });
+    // „Avalda muudatused“: one press publishes the package; the bar goes, nothing is left in the draft
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/practice/0/avalda") && r.request().method() === "POST");
+    await go.click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    const after = await stored();
+    expect(after.price).toBe(before.price + 700);
+    expect(after.items.at(-1)).toEqual({ et: "E2E punkt", ru: "E2E пункт" });
+    expect(await drafts()).toEqual({ n: 0 });
+    await expect(price).toHaveValue(newPrice);
+    await visitor.reload();
+    await expect(publicPrice).toHaveText(`${newPrice} €`);
+    await expect(visitor.locator(`[data-practice] [data-package="${code}"]`).getByText("E2E punkt")).toBeVisible();
+    await visitor.goto("/");
+    await expect(visitor.locator(`[data-practice] [data-package="${code}"]`).getByText("E2E punkt")).toBeVisible();
+    await visitor.goto("/ru/praktika");
+    await expect(visitor.locator(`[data-package="${code}"]`).getByText("E2E пункт")).toBeVisible();
+    await visitor.close();
 
-  test("stale: a package saved elsewhere since the page was loaded is refused and kept as it is", async ({ page, context, visitorIp }, info) => {
-    test.skip(phone(info), "the phone project changes MINI at the same time; desktop MAXI shows it");
-    await changing(["practice_packages", { column: "code", value: "MAXI" }]);
-    await signIn(page, context, visitorIp);
+    // 375 px: the two cards one under the other, and nothing scrolls sideways
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/admin/praktika");
     await adminReady(page);
-    // another admin saves MAXI in the meantime
-    await onLocalDb((sql) => sql`update practice_packages set duration_label = ${sql.json({ et: "7 ak" })} where code = 'MAXI'`);
-    await page.locator('[data-package="MAXI"]').getByRole("textbox", { name: "Kestus (eesti keeles)", exact: true }).fill("10 ak");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toContainText("salvestati vahepeal mujal");
-    await expect(status(page).getByRole("link", { name: "Laadi uuesti" })).toHaveAttribute("href", "/admin/praktika");
-    const stored = await one((sql) => sql<{ duration: { et: string } }[]>`select duration_label as duration from practice_packages where code = 'MAXI'`);
-    expect(stored.duration).toEqual({ et: "7 ak" });
-    await expect(page.locator('[data-package="MAXI"]').getByRole("textbox", { name: "Kestus (eesti keeles)", exact: true })).toHaveValue("10 ak"); // her draft stays
+    const [mini, maxi] = [(await page.locator('[data-package="MINI"]').boundingBox())!, (await page.locator('[data-package="MAXI"]').boundingBox())!];
+    expect(mini.y + mini.height, "MAXI under MINI").toBeLessThanOrEqual(maxi.y);
+    expect(maxi.x + maxi.width).toBeLessThanOrEqual(375);
+    expect(await noOverflow(page)).toBe(true);
   });
 });
 

@@ -1218,6 +1218,26 @@ export async function insertPreviewDraft(slug: string, title: string): Promise<s
   }
 }
 
+// ---------- the practice packages' drafts (admin-site.spec.ts, admin-eelvaade.spec.ts; admin UX pass piece 4a) ----------
+// Praktika's two packages are one entity on the draft layer: its „Avalda muudatused“ publishes, and „Loobu muudatustest“ (the editor's and the public
+// preview bar's) drops, EVERY practice draft there is (ruling R-e). So the tests that make practice drafts — Praktika's editor (both edit projects,
+// desktop MAXI, phone MINI) and the preview of /praktika — take turns: one at a time holds PRACTICE_DRAFTS_LOCK (edit-lock.ts `practiceDrafts`), from
+// its set-up until its fixtures are torn down, after its afterEach hooks (the restores of the rows it changed). While it holds the turn, every practice
+// draft is its own, so at the end of its turn all of them go (removePracticeDrafts): a test that failed half-way leaves none behind, tagged or not.
+
+export const PRACTICE_DRAFTS_LOCK = "e2e-practice-drafts";
+
+/** Deletes every practice draft (under PRACTICE_DRAFTS_LOCK they are the holder's own); returns how many there were. */
+export async function removePracticeDrafts(): Promise<number> {
+  const sql = connect(false); // (a draft is on no page a visitor gets)
+  try {
+    const gone = await sql`delete from content_drafts where entity = 'practice' returning id`;
+    return gone.length;
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Deletes every preview draft fixture; returns how many are left (0 when clean). */
 export async function removePreviewDrafts(): Promise<number> {
   const sql = connect(false);

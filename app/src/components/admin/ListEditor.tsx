@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { moveItem } from "@/domain/course-editor";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
@@ -35,6 +35,18 @@ type Props = {
   name: string;
   /** A published course's list that waits for „Avalda muudatused“: „· avaldamata“ after the title (README §1.8). */
   unpublished?: boolean;
+  /**
+   * Enter in the last row's field adds a row after it and puts the cursor there, as „+ Lisa rida“ does (Praktika's points, ruling R-h, piece4-texts
+   * S4-33); Enter in any other row does nothing new. Off (the course's lists): Enter does what the field does.
+   */
+  enterAdds?: boolean;
+  /** The add button's words after its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33); without it, „Lisa rida“. */
+  addLabel?: string;
+  /**
+   * Each row's field is named `<name>.<index>` (data-i18n, from 0): the site editors find a row's field by it for the leave guard's „Jää siia“ and
+   * SaveStatus's „Näita“ (site/useSitePart.ts focusSiteField: `MAXI.items.3`). Off (the course's lists): the rows' fields carry no name.
+   */
+  rowNames?: boolean;
 };
 
 /** Where the focus goes after the next render: a row's field (by its place after an add or a removal, by its key after an undo), or "Lisa rida". */
@@ -45,9 +57,10 @@ type Focus = { index: number } | { key: string } | "add" | null;
  * (DragList: a drag with a finger or the mouse, the arrows, the arrow keys on the handle, each one move announced), × takes it out at once with the
  * UndoBar „Rida eemaldatud.“, and „Võta tagasi“ puts it back at its place with its key (BEH B5: a client restore, then the card's save). The rows
  * take the page's language (EditLang.tsx). After adding a row its field gets the focus, after removing one the next row's field (or "Lisa rida"),
- * after an undo the row's own field (when the focus has nowhere else to be).
+ * after an undo the row's own field (when the focus has nowhere else to be). With `enterAdds` (Praktika's points), Enter in the last row adds the
+ * next one the same way.
  */
-export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished }: Props) {
+export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
   const t = adminEt.list;
   const uid = useId();
   const rows = useRowKeys(items);
@@ -89,6 +102,13 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
   const move = (from: number, to: number) => {
     rows.expect(moveItem(items, from, to), moveItem(keys, from, to));
     change((list) => moveItem(list, from, to));
+  };
+  /** R-h: Enter in the last row's one-line field (not one that ends an IME composition, nor with a modifier) adds the next row. */
+  const enterOnLast = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return;
+    if (!(e.target instanceof HTMLInputElement) || !e.target.hasAttribute("data-lang-field")) return;
+    e.preventDefault();
+    add();
   };
 
   const tagId = `${uid}-unpublished`;
@@ -134,7 +154,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
                 <span className={styles.num} aria-hidden="true">
                   {String(n).padStart(2, "0")}
                 </span>
-                <div className={styles.rowMain}>
+                <div className={styles.rowMain} onKeyDown={enterAdds && i === items.length - 1 ? enterOnLast : undefined}>
                   <I18nInput
                     label={`${itemLabel} ${n}`}
                     labelHidden
@@ -143,6 +163,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
                     multiline={multiline}
                     rows={2}
                     maxLength={maxLength}
+                    name={rowNames ? `${name}.${i}` : undefined}
                   />
                 </div>
                 <span className={styles.tools}>
@@ -162,7 +183,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
         </p>
       )}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`} onClick={add}>
-        + {t.add}
+        + {addLabel ?? t.add}
       </button>
     </div>
   );

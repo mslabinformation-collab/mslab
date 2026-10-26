@@ -1593,26 +1593,29 @@
       "href": "/admin/praktika",
       "steps": [
         "Ava „Praktika“.",
-        "Lisa paketi MINI „Lühitekst“ lõppu sõna Proov.",
-        "Vajuta „Salvesta“ ja ava avalik praktika leht.",
-        "Lohista paketi MINI plokis „Paketi punktid“ teise punkti käepide ⋮⋮ sõrmega esimeseks ja lase lahti.",
-        "Vajuta sama punkti juures noolt alla, nii et see on jälle teine.",
+        "Lisa paketi MINI „Lühitekst“ lõppu sõna Proov ja oota, kuni olek on „Mustand salvestatud“.",
+        "Ava avalik praktika leht, siis vajuta halduses ribal „Eelvaade ↗“.",
+        "Tule tagasi ja vajuta ribal „Avalda muudatused“.",
+        "Klõpsa paketi MAXI viimases punktis, vajuta Enter ja kirjuta uude punkti Proov.",
+        "Lohista plokis „Sisaldab“ teise punkti käepide ⋮⋮ sõrmega esimeseks, siis noolega tagasi teiseks.",
         "Eemalda viimane punkt × nupuga ja vajuta allservas „Võta tagasi“.",
-        "Eemalda sõna Proov ja salvesta."
+        "Eemalda sõna Proov lühitekstist ja punkt Proov, siis vajuta „Avalda muudatused“."
       ],
       "expect": [
-        "Praktika lehel ja avalehe praktikaplokis on sõna Proov.",
+        "Riba on „Avaldamata muudatused: 1 · MINI lühitekst. Avalikul lehel on näha eelmine versioon.“.",
+        "Avalikul lehel pole sõna Proov, eelvaates on see olemas ja all riba „Avaldamata 1“.",
+        "Pärast „Avalda muudatused“ on sõna Proov praktika lehel ja avalehe praktikaplokis.",
+        "Enter viimases punktis lisab uue tühja punkti ja kursor on selles.",
         "Punkt liigub lohistades ja noolega kohe uude kohta.",
-        "× võtab punkti kohe ära ja allservas on „Rida eemaldatud.“ ja nupp „Võta tagasi“.",
-        "„Võta tagasi“ paneb punkti samale kohale tagasi koos tekstiga.",
-        "Riba ajal on „Salvesta“ näha ja seda saab vajutada, ka telefonis.",
-        "Pärast sõna Proov eemaldamist on tekst nagu enne."
+        "× võtab punkti kohe ära, allservas on „Rida eemaldatud.“ ja nupp „Võta tagasi“.",
+        "„Võta tagasi“ paneb punkti tekstiga samale kohale; riba avaldamise nupp jääb näha ja vajutatavaks.",
+        "Pärast viimast avaldamist on paketid nagu enne."
       ],
       "why": "Paketid on praktika lehel ja avalehel.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitaja",
