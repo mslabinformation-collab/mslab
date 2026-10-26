@@ -25,7 +25,7 @@ const DAY = 86_400_000;
 
 /**
  * The PDF of a sample invoice as the card shows it at `now`. The seller is the card's company, registry code, address and VAT number, with the
- * bank details of Ettemaksu juhised as they are stored; VAT is on when the card says so and has a VAT number (as the save would keep it); the
+ * bank details of Seaded → „Maksmine“ as they are stored; VAT is on when the card says so and has a VAT number (as the save would keep it); the
  * number is the card's prefix (capitals, or MSL when it is no prefix), this Tallinn year and the card's next number (the card has no year
  * field since B21: its number is always this year's counter).
  */

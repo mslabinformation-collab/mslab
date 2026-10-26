@@ -407,7 +407,7 @@ export const et = {
     },
     // The footer of a newsletter campaign (server/campaign-mail.ts campaignMail; newsletter campaigns, spec D5), in the subscriber's language: why
     // she got the mail and the link out. The spec's own words, both Draft for Dim's wording sheet. The school's name and address under them come
-    // from Seaded -> "Arve andmed".
+    // from Seaded -> "Maksmine" (the invoice settings).
     campaign: {
       reason: "Said selle kirja, sest liitusid MS LAB-i uudiskirjaga.",
       unsubscribe: "Loobu uudiskirjast",

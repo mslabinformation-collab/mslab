@@ -17,7 +17,7 @@ const MAX = 400;
 /**
  * GET /api/admin/naidisarve?company=…&registryCode=… (invoices Task 5, spec §5): Seaded → „Näidisarve (PDF)“. A sample invoice drawn from the
  * card's values as they stand on the screen (the query holds the card's fields, saved or not; one left out reads as empty), with the bank
- * details of Ettemaksu juhised as stored. Nothing is stored and no number is used. Shown in the browser as `inline; filename="MS-LAB-naidisarve.pdf"`,
+ * details of Seaded → „Maksmine“ (the prepayment setting) as stored. Nothing is stored and no number is used. Shown in the browser as `inline; filename="MS-LAB-naidisarve.pdf"`,
  * private and never kept, nosniff. Signed-in admins only (withAdmin: 401 otherwise). 500 `server` (logged, no data).
  */
 export const GET = withAdmin(async (request) => {

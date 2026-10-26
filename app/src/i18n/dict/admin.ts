@@ -467,7 +467,7 @@ export const adminEt = {
   },
 
   // „Arved“ (invoices, phase 4 piece 2, Task 5): the registration drawer's block, the list (/admin/arved) and Seaded → „Maksmine“. The words
-  // of the spec (§2, §5) are verbatim: „Arved“, „Arve andmed“, „Arveta maksed“, „Koosta arve“, „Maksmiseks“, „Juba tasutud“, „Saada õpilasele“,
+  // of the spec (§2, §5) are verbatim: „Arved“, „Arveta maksed“, „Koosta arve“, „Maksmiseks“, „Juba tasutud“, „Saada õpilasele“,
   // „Saada ka aadressile“, „Muuda saajat“, „Märgi tasutuks“, „Võta tasumine tagasi“, „Tühista arve“, „Laadi alla (PDF)“, „Laadi alla (CSV)“,
   // „Näidisarve (PDF)“ (the states and the paid methods are domain/invoice.ts invoiceStatusText and paidMethodText). Every other text is Draft for
   // Dim's wording sheet (the controller's rulings R3, R10 and the two refusals `bankMissing`, `paidOnline` gave their words). {number} is an

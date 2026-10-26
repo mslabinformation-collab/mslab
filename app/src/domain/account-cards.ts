@@ -11,10 +11,10 @@ import type { Locale } from "@/i18n/locales";
 // components and the admin's read-only view render them; every date is an ISO string, so a card is exactly what the
 // JSON endpoint sends and nothing needs converting on the way.
 
-/** Where students pay the prepayment (settings key "prepayment", the admin's "Ettemaksu juhised"). */
+/** Where students pay the prepayment (settings key "prepayment", the bank fields of the admin's Seaded → „Maksmine“). */
 export type PrepaymentInfo = { receiver: string; iban: string; bank: string; referencePrefix: string };
 
-/** The settings key of the prepayment instructions (admin "Ettemaksu juhised"). */
+/** The settings key of the prepayment instructions (the bank fields of Seaded → „Maksmine“). */
 export const PREPAYMENT_KEY = "prepayment";
 
 /** The prepayment setting as the cards and e-mails use it: strings only; null when it is missing, not an object or every field is empty. */
@@ -32,7 +32,7 @@ export type SessionRef = { startsAt: string; city: string; venue: string };
 export type CalendarSession = SessionRef & { cancelled: boolean };
 
 /**
- * An unpaid invoice's bank details as they were frozen on it (invoices.seller: the receiver, the IBAN and the bank of Ettemaksu juhised at its
+ * An unpaid invoice's bank details as they were frozen on it (invoices.seller: the receiver, the IBAN and the bank of Seaded → „Maksmine“ at its
  * creation) and its payment reference (invoices.reference; empty when there is none to print). The instructions' rows, without the prefix.
  */
 export type InvoiceTransfer = { receiver: string; iban: string; bank: string; reference: string };

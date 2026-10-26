@@ -6,7 +6,7 @@ Every decision not attributed to Dim is my call and says so.
 
 ## 1. What stays from the 18.10 design
 
-- D4: Maria writes a campaign in „Uudiskiri → Kampaaniad": subject, preview line, picture, paragraphs, code and button, in ET and RU. The live preview shows both languages.
+- D4: Maria writes a campaign in „Uudiskiri → Kampaaniad" (since 26.10, the admin UX pass piece 3b, the tab and the letters are „Kirjad" and „kiri"; „kampaania" stays only for the popup): subject, preview line, picture, paragraphs, code and button, in ET and RU. The live preview shows both languages.
 - D5: the mail's look and footer.
 - D7: who receives it. Only confirmed `subscribers` rows get it; nobody else.
 - D9: the welcome mail.
@@ -33,7 +33,7 @@ Nothing in Resend needs setting up. The existing `RESEND_API_KEY` sends everythi
 - **Unsubscribe.** The link is the site's own, the same one the welcome mail carries (`/api/newsletter/loobu?t=<her token>`). Each mail also carries the `List-Unsubscribe` and `List-Unsubscribe-Post` headers for the mail program's own unsubscribe button. They point to the same address. The route must also accept the mail program's one-click POST: the body is `List-Unsubscribe=One-Click` and the token is only in the address. Today the route reads the token from the form only, so it must also take `t` from the address and answer 200 to such a POST (my call, from the builder check).
 - **The day's counter.** One counter counts every mail the site sends in a UTC day, the same day the other counters and Resend's own daily limit use: logins, confirmations, protocols, invoices, contracts, Maria's notices, welcome mails and campaigns. A campaign sends only while that counter is below **70** of Resend's 100. It stops there and leaves 30 for the rest of the day's site mails. The existing per-kind caps stay as they are.
 - **Pressing „Saada kõigile".**
-  - Maria confirms: „Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?"
+  - ~~Maria confirms: „Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?"~~ **Replaced by the admin UX pass (B5, B9; spec 2026-10-21 §9; amended 26.10):** the button reads „Saada kõigile ({n})", `n` being the confirmed subscribers (`@example.test` sample addresses left out), and it opens a ConfirmPanel in its place: „Kas saadan kirja „{nimi}"?", „{n} kinnitatud tellijat: {a} eesti, {b} vene keeles." (a language with none: only the other part), the sample line (only when a sample address is among the confirmed), the day's-room line (only when `n` is above 70), „Saadetud kirja ei saa tagasi võtta ega muuta." and „Jah, saada {n} tellijale" / „Katkesta". The number is read again under the press lock; a number that has moved meanwhile, or a letter saved in another window since the screen was read, answers `changed` and nothing is sent. Both sends first save what is typed and refuse an incomplete letter (name, subject and text; a half-typed button).
   - The site then writes the list of recipients as it is at that moment, one row per subscriber.
   - It starts sending at once, up to the day's room.
 - **Where the batches run** (my call).
@@ -56,7 +56,7 @@ Nothing in Resend needs setting up. The existing `RESEND_API_KEY` sends everythi
   - While the campaign is going out: „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval." (Draft), next to „Peata saatmine".
   - When it is done: „Saadetud {date} · {n} tellijale". A failure count is added if there were any.
 - **„Saada proov"** sends one ordinary mail, now, to Maria's address or the signed-in admin's. It is counted like every mail. Its subject starts with „[Proov]", and its unsubscribe link points to the test notice („Proovikiri — …").
-- **One campaign at a time** (my call). While one is going out, „Saada kõigile" on another one says „Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud." (Draft). Maria can still write and test.
+- **One campaign at a time** (my call). While one is going out, „Saada kõigile" on another one says ~~„Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud." (Draft)~~ „Eelmine kiri on veel saatmisel. Saada see, kui see on lõppenud." (the design's word, README B5; amended 26.10). Maria can still write and test.
 
 ## 4. Data (migration 0016)
 

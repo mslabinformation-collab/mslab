@@ -310,7 +310,7 @@ export function contactDraft(value: unknown): ContactDraft {
 export type NewsletterDraft = { discountLabel: string; welcomeCode: string };
 export const newsletterDraft = (value: unknown): NewsletterDraft => ({ discountLabel: str(obj(value).discountLabel), welcomeCode: str(obj(value).welcomeCode) });
 
-/** Seaded "Ettemaksu juhised" (settings key "prepayment"): where students pay, shown on their unpaid contact-course cards. */
+/** Seaded → „Maksmine“'s bank fields (settings key "prepayment"): where students pay, shown on their unpaid contact-course cards. */
 export type PrepaymentDraft = { receiver: string; iban: string; bank: string; referencePrefix: string };
 export function prepaymentDraft(value: unknown): PrepaymentDraft {
   const p = obj(value);

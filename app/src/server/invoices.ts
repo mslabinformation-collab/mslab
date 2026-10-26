@@ -93,9 +93,9 @@ type IssueDraft = Pick<
 
 /**
  * Issues one invoice inside the caller's transaction `tx`, after its row locks (it opens none of its own): the number series' lock, Seaded read
- * (no seller: "sellerMissing", nothing written), the bank details from Ettemaksu juhised, then `build` (which may refuse with its own word, R6's
+ * (no seller: "sellerMissing", nothing written), the bank details from Seaded → „Maksmine“, then `build` (which may refuse with its own word, R6's
  * "bankMissing"), the number for the Tallinn year of `now` under the setting's prefix (invoiceSeq: never at or below that prefix-year's
- * highest), the row as `build` drafts it (its amount and `paidAdds` too) with its frozen seller (Arve andmed and the bank details as they are
+ * highest), the row as `build` drafts it (its amount and `paidAdds` too) with its frozen seller (the seller's fields and the bank details of Seaded → „Maksmine“ as they are
  * now), VAT rate (null when VAT is off), footer line (D2, migration 0012: the PDF prints it, never a later setting) and issue time, and the
  * setting moved on. createInvoice and a paid payment's invoice (issueForPayment) draft `paidAdds: false`; „Lisa laekumine“'s receipt
  * (issueReceiptInTx) `true`.
@@ -206,7 +206,7 @@ async function lockInvoice(tx: Tx, id: number): Promise<Invoice | null> {
  * lockForPayment, the registration (`notFound`), its invoices and its paid payments that no invoice names (an amount not open: `notOpen`, under
  * the registration's lock alone, which every payment's settlement takes first), then the
  * issue: no seller (D3)
- * `sellerMissing`; a request without the receiver and the IBAN of Ettemaksu juhised (R6) `bankMissing`. The frozen line is the course's
+ * `sellerMissing`; a request without the receiver and the IBAN of Seaded → „Maksmine“ (R6) `bankMissing`. The frozen line is the course's
  * Estonian title, its session's date and city (empty for none) and the part; the buyer is the registration's name and e-mail. Logs
  * `[invoices] registration N: issued <number>` after the commit.
  */

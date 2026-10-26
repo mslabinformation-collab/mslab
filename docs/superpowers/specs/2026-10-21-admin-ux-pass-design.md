@@ -157,7 +157,7 @@ The design's order is global components first, then the A screens, then B, then 
 2. **The A screens (§2):** A1–A7, with B4, B7, B10, B11, B12, B14, B15 and B22. Migration: `payments`.
 3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files. **Split into 3a and 3b on 23.10**, each with its own plan, build, review and deploy:
    - **3a:** B1 Koolitused, B2 the course editor and the lesson drawer, with B18 (plan `docs/superpowers/plans/2026-10-23-admin-ux-courses.md`). It carries the whole of this item's migration (0020, §7) and the draft-mode preview of the course page and the catalogue (C3). Deploy notes: `docs/deploy.md` section 23.
-   - **3b:** B3 Kalender, B4 Seaded and B5 Uudiskiri, with B9, B17 and B21's Seaded side (plan `docs/superpowers/plans/2026-10-23-admin-ux-calendar-settings-newsletter.md`). No migration.
+   - **3b:** B3 Kalender, B4 Seaded and B5 Uudiskiri, with B9, B17 and B21's Seaded side (plan `docs/superpowers/plans/2026-10-23-admin-ux-calendar-settings-newsletter.md`). No migration. Deploy notes: `docs/deploy.md` section 24.
 4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews.
 
 **B21 goes first. Dim (21.10): "Yes, first."** Invoice numbers per year belong to the Seaded screen in piece 3. But the server part must be live before 1 December 2026, because today a December invoice silently erases a next-year number preset. So B21 is the opening commit of piece 1, and the rest of the Seaded screen comes with piece 3.
@@ -169,7 +169,7 @@ The design's order is global components first, then the A screens, then B, then 
 ## 9. Earlier specs the design changes
 
 Each is amended in the commit that changes its rule:
-- **contracts:** the contract texts are drafts and go live with „Avalda uus leping" (B4 screen).
+- **contracts:** the contract texts are drafts and go live with „Avalda uus leping" (B4 screen). Done in piece 3b (26.10): `2026-10-17-contracts-design.md` D2 and §4.
 - **payments and invoices:**
   - the typed „Laekunud summa" is removed (B4);
   - undoing a receipt's payment („Võta tasumine tagasi") lowers „Laekunud summa", because the design undoes a wrong entry that way. This replaces invoices ruling R10.
@@ -179,7 +179,7 @@ Each is amended in the commit that changes its rule:
 - **test page:** „Testimine" is in the menu (Q5). Its filters are „Olek" (Kõik / Avatud / Viga / Läbitud) and „Kes" (Mina / Kõik). A check is „Läbitud" / „Viga".
   - **Dim 22.10: the redesign's Viga-only note (C7) is overridden.** The note box opens under every answer as soon as one is chosen (as on Rempire's test page), asking „Mis läks valesti?" under „Viga" and „Märkus" under the others, and the first note on any answer pings Telegram (`2026-10-16-test-page-design.md` D6). Build the redesigned rows with the box open under every answer.
   - **Dim 22.10: the comment bubble („Kommentaar", `public/feedback.js`) shows on every signed-in admin page** while `NEXT_PUBLIC_REVIEW_TOOLS` is on (`next.config.ts`; switched off at the launch with the site's). It is loaded by the `(panel)` layout, so not on `/admin/login`: while the gate is on a signed-out visitor has no preview cookie and a comment could not be sent. On an admin page it sends where a picked element is (selector, position) and never its words (an admin page can show a student's name, address or phone). Its comments say „Haldus" on the list at `/guide/tagasiside/`. The admin's bars fixed at the bottom of the screen (the UndoBar, the PublishBar on a phone, the editors' save bars) carry `data-fab-avoid`, so the bubble lifts above them; a new bottom bar gets the mark too (`tests/unit/admin-fab-avoid.test.ts` lists them).
-- **newsletter-simple:** „Kampaaniad" becomes „Kirjad", and the send's ConfirmPanel changes.
+- **newsletter-simple:** „Kampaaniad" becomes „Kirjad", and the send's ConfirmPanel changes. Done in piece 3b (26.10): `2026-10-20-newsletter-simple-design.md` §1 and §3.
 - **reviews:** undo and focus (C6 screen).
 - **the sign-in:** the new sent text and rate-limit message (C8, S4).
 - **vercel-move:** the freshness rule becomes "the next public request after „Avalda muudatused" shows the change".

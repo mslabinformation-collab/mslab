@@ -1900,7 +1900,7 @@
       "area": "haldus",
       "who": "maria",
       "device": "telefon",
-      "title": "Seaded: privaatsuse tekst telefonis",
+      "title": "Seaded: lepingu ja privaatsuse tekst telefonis",
       "href": "/admin/seaded",
       "steps": [
         "Ava telefonis „Seaded“ ja vali „Jaotised“ alt „Lepingud ja tingimused“.",
@@ -1909,16 +1909,18 @@
         "Ava teises vahelehes leht /privaatsus.",
         "Vajuta Seadetes „Avalda uus tekst“ ja „Jah, avalda“.",
         "Laadi leht /privaatsus uuesti.",
-        "Kustuta lause „Proov 1.“ samamoodi ja avalda tekst uuesti."
+        "Kustuta lause „Proov 1.“ samamoodi ja avalda tekst uuesti.",
+        "Ava kaart „Kontaktkoolituse leping“, vajuta „Muuda teksti“, puuduta teksti, et klaviatuur avaneks, ja vajuta lõpuks „Sulge“."
       ],
       "expect": [
         "Kaardil on „Pikk tekst avaneb täisekraanil.“ ja tekst avaneb kogu ekraani laiuses.",
         "Pärast „Sulge“ on kaardil „Avaldamata“, aga lehel /privaatsus on veel vana tekst.",
         "„Avalda uus tekst“ küsib „Kas avaldan lehe „Privaatsus“ uue teksti?“ ja ütleb, et tekst on kohe näha.",
         "Pärast „Jah, avalda“ näed „Uus tekst on avaldatud.“ ja lehel /privaatsus on lause „Proov 1.“.",
+        "Klaviatuuri avanedes jäävad nupud „+ nimi“ kuni „+ ettemaks“ klaviatuuri kohale ja neid saab vajutada.",
         "Leht ei kerigi küljele ja nupud on kerged vajutada."
       ],
-      "why": "Privaatsuse tekst muutub avalikul lehel alles siis, kui Maria selle avaldab.",
+      "why": "Lepingu ja privaatsuse tekst muutub avalikul lehel alles siis, kui Maria selle avaldab.",
       "risk": "med",
       "writes": true,
       "mark": "new",
@@ -2679,7 +2681,8 @@
       ],
       "expect": [
         "Halduse real on Proov 1 arvestatud kinnitatute hulka, näiteks „1 / 4“ arvutis ja „1/4“ telefonis.",
-        "Avalikus kalendris on vabu kohti sama palju, kui halduse real on teine arv miinus esimene.",
+        "Avalikus kalendris on vabu kohti sama palju või vähem kui halduse real: teine arv miinus esimene.",
+        "Vähem on siis, kui tasumata registreering hoiab kohta kinni (30 minutit, järelmaksul 60).",
         "Kui number pole veel muutunud, on see õige 5 minuti pärast."
       ],
       "why": "Täis kuupäevale ei tohi rohkem registreerida.",
@@ -5994,17 +5997,19 @@
         "Kirjuta halduse sisselogimisel oma aadress ja vajuta „Saada sisselogimislink“.",
         "Ava Gmailis kiri „MS LAB — sisselogimislink“.",
         "Vajuta kirjas linki.",
-        "Vajuta sama linki teist korda."
+        "Ava sama link teist korda privaatses aknas; samas aknas oled juba sees ja see viib „Ülevaatesse“."
       ],
       "expect": [
         "Lehel on „Kontrolli oma postkasti“ ja „Link kehtib 15 minutit ja töötab ainult ühe korra.“.",
         "Saatja on MS LAB.",
         "Link avab halduse „Ülevaade“.",
-        "Teine kord ütleb leht „See sisselogimislink on aegunud või juba kasutatud. Telli uus link.“."
+        "Privaatses aknas ütleb leht „See sisselogimislink on aegunud või juba kasutatud. Telli uus link.“."
       ],
       "why": "Ilma selle kirjata ei pääse keegi haldusesse.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-maria-registreerimine",

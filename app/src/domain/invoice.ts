@@ -20,7 +20,7 @@ export type ManualPaidMethod = Exclude<PaidMethod, "montonio" | "financing">;
 
 /** The one line of an invoice, frozen at its creation (D4): the course's Estonian title, its session ("14.11.2026 Tallinn"; empty for an e-course) and the part ("Ettemaks 50%"). */
 export type InvoiceLine = { course: string; session: string; part: string };
-/** The seller as Seaded → Maksmine and Ettemaksu juhised held it at the creation, frozen (D2). */
+/** The seller as Seaded → Maksmine (the seller's fields and the bank fields) held it at the creation, frozen (D2). */
 export type InvoiceSeller = { company: string; registryCode: string; address: string; vatNumber: string; receiver: string; iban: string; bank: string };
 /** The buyer (D9): the registration's or the payment's name and e-mail, and what Maria added; a company only when it pays. */
 export type InvoiceBuyer = { name: string; email: string; address: string; company: string; companyCode: string; companyAddress: string };

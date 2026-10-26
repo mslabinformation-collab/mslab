@@ -1077,3 +1077,47 @@ describe("the Automaattest check (Dim 25.10)", () => {
     expect(text).toContain(`„${t.who.auto}: ${t.overtaken.replace(" {status}", "")}“`);
   });
 });
+
+// Admin UX pass, piece 3b, Task 8: three checks that the sweep reworded or extended.
+describe("piece 3b sweep (Task 8)", () => {
+  const item = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+
+  test("registreerimine-kohad: the public free seats leave out a seat an unpaid registration holds, so they can be fewer than the admin's capacity less confirmed", () => {
+    const check = item("registreerimine-kohad");
+    expect(check).toMatchObject({ mark: "reworded" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const text = check.expect.join("\n");
+    expect(text).toContain("sama palju või vähem");
+    expect(text).toContain("tasumata registreering hoiab kohta kinni");
+    expect(text).toContain("30 minutit");
+    expect(text).not.toContain("sama palju, kui halduse real on teine arv miinus esimene");
+  });
+
+  test("kirjad-halduse-link: the second open of the link is in a private window (the same window is signed in and lands on „Ülevaade“), marked reworded", () => {
+    const check = item("kirjad-halduse-link");
+    expect(check).toMatchObject({ mark: "reworded" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const last = check.steps[check.steps.length - 1];
+    expect(last).toContain("privaatses aknas");
+    expect(last).toContain("„Ülevaatesse“");
+    expect(last).not.toBe("Vajuta sama linki teist korda.");
+    expect(check.expect.at(-1)).toContain("Privaatses aknas ütleb leht „See sisselogimislink on aegunud või juba kasutatud. Telli uus link.“");
+  });
+
+  test("the phone check of the legal texts also covers a contract text: tap into it, „+ nimi“ … „+ ettemaks“ stay above the keyboard; it stays a new check", () => {
+    const check = item("haldus-seaded-privaatsus-avalda");
+    expect(check).toMatchObject({ device: "telefon", mark: "new" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const step = check.steps.find((s) => s.includes("„Kontaktkoolituse leping“"));
+    expect(step).toContain("„Muuda teksti“");
+    expect(step).toContain("klaviatuur");
+    expect(step ? /salvesta/i.test(step) : true).toBe(false);
+    const line = check.expect.find((l) => l.includes("klaviatuuri kohale"));
+    expect(line).toContain("„+ nimi“");
+    expect(line).toContain("„+ ettemaks“");
+  });
+});
