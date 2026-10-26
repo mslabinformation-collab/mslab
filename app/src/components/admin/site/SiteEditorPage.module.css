@@ -1,0 +1,70 @@
+/* The site editors' page (admin UX pass piece 4a, Task 2; README §4 "the site-editor template"; the Part 4 frames C1 Avaleht, C2 Koolitaja,
+   C5 Praktika): the header (eyebrow, H1, lead; at the right of the H1 row ET | RU, the chip, „Vaata lehel ↗“), the PublishBar under it, then from
+   1180 px the 170 px section map beside the cards, 22 px apart (`170px minmax(0,1fr)`, drawn), when the page has 4 or more cards; below 1180 px, and
+   without a map, one column: the map's „Jaotised ▾“ select first, then the cards. The cards are 14 px apart, as the frames draw them. Colours from
+   tokens.css only; no bar of its own at the foot (the PublishBar's phone form carries data-fab-avoid). */
+
+.headText {
+  min-width: 0;
+}
+
+.title {
+  overflow-wrap: anywhere;
+}
+
+/* the H1 takes the focus after a publish or a discard, when the bar it was pressed in is gone: no ring for that, one for the keyboard */
+.title:focus {
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* The chip's place in the H1 row: as wide as its usual words („Mustand salvestatud 14:02“, „Salvestamata muudatused“, „Salvestan…“), so that a change
+   of them moves nothing beside it (a tap on ET | RU that leaves a field would land beside the button it pressed). Up to 900 px the row starts at the
+   left and the chip keeps its own width. (The course editor's statusSlot, CourseEditor.module.css.) */
+.statusSlot {
+  display: inline-flex;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+@media (min-width: 901px) {
+  .statusSlot {
+    min-width: 15rem;
+  }
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  /* the cards' own two-column grids fold to one in a narrow column (editor.module.css: @container course-cards) */
+  container: course-cards / inline-size;
+}
+
+/* the cards the map jumps to take the focus (tabindex -1): no ring for a jump, one for the keyboard */
+.main > section:focus {
+  outline: none;
+}
+
+.main > section:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1180px) {
+  .withMap {
+    grid-template-columns: 170px minmax(0, 1fr);
+    gap: 22px;
+  }
+}

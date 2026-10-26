@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
 import { lockTables, type SiteTable } from "@/db/queries/admin-site";
 import type { SaveAnswer } from "@/domain/autosave";
-import { missingCase, partChangeLabels, sameSiteValue, siteFieldLabel } from "@/domain/site-changes";
+import { missingCase, sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
 import { MISSING_CODES } from "@/domain/site-checks";
 import { fromEditorValue, isListPart, SITE_ENTITY_ID, toEditorValue, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { contentVersion } from "@/lib/version";
@@ -263,7 +263,10 @@ function makeSitePublisher(entity: SiteEntity) {
   return { publisher, held };
 }
 
-/** The blocked parts with their reasons: the held ones as decided, the others changed meanwhile, with their drafts' changes' labels (read after the publish). */
+/**
+ * The blocked parts with their reasons: the held ones as decided, the others changed meanwhile, with their drafts' changes' labels row by row, as the
+ * PublishBar names them (domain/site-changes.ts siteChangeLabels: `Slaid 2 pealkiri`; read after the publish).
+ */
 async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<string, Omit<SiteBlockedPart, "part">>): Promise<SiteBlockedPart[]> {
   if (names.length === 0) return [];
   const parts = await partsOf(db, entity);
@@ -277,7 +280,7 @@ async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<s
     }
     const def = Object.hasOwn(parts, part) ? parts[part] : undefined;
     const s = def ? await partStateOf(db, entity, part, def, drafts) : null;
-    out.push({ part, reason: "changed", fields: s ? partChangeLabels(entity, part, s.live, s.value) : [] });
+    out.push({ part, reason: "changed", fields: s ? siteChangeLabels(entity, [{ part, live: s.live, draft: s.value }]) : [] });
   }
   return out;
 }

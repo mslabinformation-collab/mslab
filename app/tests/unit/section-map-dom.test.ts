@@ -166,6 +166,17 @@ describe("SectionMap: the list of links (from 1180 px)", () => {
     await draw();
     expect(nav().hasAttribute("data-fab-avoid")).toBe(true);
   });
+
+  it("is 190 px wide unless the page asks for 170 px (the C screens, piece 4a): `width={170}` sets the modifier class", async () => {
+    await draw();
+    expect(nav().className).not.toContain("narrow");
+    await act(async () => root.render(createElement(SectionMap, { sections: SECTIONS, width: 190 })));
+    expect(nav().className).not.toContain("narrow");
+    await act(async () => root.render(createElement(SectionMap, { sections: SECTIONS, width: 170 })));
+    expect(nav().className).toContain("narrow");
+    // the select below 1180 px is the same either way
+    expect(container.querySelector("[data-section-select]")!.className).not.toContain("narrow");
+  });
 });
 
 describe("SectionMap: the select (below 1180 px)", () => {
@@ -233,8 +244,9 @@ describe("SectionMap: the stylesheet", () => {
   };
   const tokens = readFileSync(join(process.cwd(), "src/styles/tokens.css"), "utf8");
 
-  it("the list is 190 px wide and sticky, and it shows from 1180 px, where the select goes", () => {
+  it("the list is 190 px wide (170 px with the modifier) and sticky, and it shows from 1180 px, where the select goes", () => {
     expect(rule(".nav")).toMatch(/width:\s*190px;/);
+    expect(rule(".narrow")).toMatch(/width:\s*170px;/);
     expect(rule(".nav")).toMatch(/position:\s*sticky;/);
     expect(css).toMatch(/@media \(min-width: 1180px\)\s*\{[^@]*\.nav\s*\{[^}]*display:\s*flex;[^}]*\}[^@]*\.select\s*\{[^}]*display:\s*none;/);
     expect(rule(".nav")).toMatch(/display:\s*none;/);

@@ -281,6 +281,28 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
+  test("changed meanwhile names the draft's rows as the bar does (R-i): „Slaid 2 pealkiri“, a Russian side alone with „(RU)“", async () => {
+    const slides = await liveSlides();
+    slides[1].title = { ...slides[1].title, et: "Mustandi pealkiri" };
+    const faqRows = await liveFaq();
+    faqRows[0].a = { ...faqRows[0].a, ru: "Новый ответ" };
+    expect((await save("home", "slides", { slides })).ok).toBe(true);
+    expect((await save("home", "faq", { faq: faqRows })).ok).toBe(true);
+    // another way of saving changes the same slide's title live, and the FAQ, after the drafts began
+    const rows = await readSlides(db);
+    await db.transaction((tx) => saveSlides(tx, rows.map((r, i) => (i === 1 ? { ...r, title: { ...r.title, et: "Otse muudetud" } } : r))));
+    const stored = await db.select().from(faq).orderBy(asc(faq.sort), asc(faq.id));
+    await db.update(faq).set({ q: { ...stored[2].q, et: "Otse muudetud küsimus" } }).where(eq(faq.id, stored[2].id));
+    const result = await publishSite(db, "home");
+    expect(result.published).toEqual([]);
+    // (the draft's rows against live as it is now: row 1's answer differs only in Russian, row 3's question in Estonian)
+    expect(result.blocked).toEqual([
+      { part: "slides", reason: "changed", fields: ["Slaid 2 pealkiri"] },
+      { part: "faq", reason: "changed", fields: ["KKK vastus 1 (RU)", "KKK küsimus 3"] },
+    ]);
+    expect((await drafts()).map((d) => d.part)).toEqual(["slides", "faq"]);
+  });
+
   test("nothing to publish: an answer with nothing published and nothing blocked, nothing revalidated", async () => {
     expect(await publishSite(db, "trainer")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
     expect(pub.revalidatePublic).not.toHaveBeenCalled();

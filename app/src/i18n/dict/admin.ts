@@ -282,6 +282,8 @@ export const adminEt = {
       item: "{code} punkt {n}",
       items: "{code} punktid",
     },
+    // S4-1: a label whose only change is the Russian text ({label}: any of the above, e.g. „Slaid 2 pealkiri (RU)“)
+    ru: "{label} (RU)",
   },
 
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“

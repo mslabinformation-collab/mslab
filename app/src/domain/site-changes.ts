@@ -1,13 +1,13 @@
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { stableJson } from "@/lib/version";
-import type { SiteEntity } from "./site-entities";
+import { HOME_PARTS, TRAINER_PARTS, type SiteEntity } from "./site-entities";
 
 // The site editors' field labels (admin UX pass piece 4a; piece4-texts S4-1, S4-2, S4-12, S4-17, S4-34; ruling R-i), pure: the server's publish
-// names a blocked part's fields with them (server/site-drafts.ts), and the editors' PublishBar lists the changes with them (Task 2's differ is
-// built on siteFieldLabel). A field is named by its path in the part's value as the editor holds it (domain/site-entities.ts, the same names as
-// domain/site-checks.ts): a package's `price`, a list row's `slides.2.title` (numbered by its place in the draft, from 1: „Slaid 3 pealkiri“), a
-// list as a whole by its own name (`slides`: „Slaidid“). Old iPads run it too: no lookbehind (tests/unit/old-safari.test.ts).
+// names a blocked part's fields with them (server/site-drafts.ts), and the editors' PublishBar lists the changes with them (siteChangeLabels, the
+// row-by-row differ of a draft against live). A field is named by its path in the part's value as the editor holds it (domain/site-entities.ts,
+// the same names as domain/site-checks.ts): a package's `price`, a list row's `slides.2.title` (numbered by its place in the draft, from 1: „Slaid 3
+// pealkiri“), a list as a whole by its own name (`slides`: „Slaidid“). Old iPads run it too: no lookbehind (tests/unit/old-safari.test.ts).
 
 const T = adminEt.siteChanges;
 
@@ -67,29 +67,146 @@ export function missingCase(label: string): string {
   return capitals ? label : label.charAt(0).toLocaleLowerCase("et") + label.slice(1);
 }
 
+/** S4-2's list of missing fields, as „Puudub: {väljad}“ takes it: each label in missingCase, joined with ", " (`slaid 3 pilt, KKK vastus 2`). */
+export const missingLabels = (fields: readonly string[]): string => fields.map(missingCase).join(", ");
+
+/** A text in two languages ({et, ru?} and nothing else). */
+function isText(v: unknown): v is { et: string; ru?: string } {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.et === "string" && Object.keys(o).every((k) => k === "et" || k === "ru") && (o.ru === undefined || typeof o.ru === "string");
+}
+
 /** A text in two languages with its Russian side "" when it has none, so that a Russian text typed and emptied again is no change. */
 function canonical(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(canonical);
   if (v === null || typeof v !== "object") return v;
+  if (isText(v)) return { et: v.et, ru: v.ru ?? "" };
   const o = v as Record<string, unknown>;
-  const keys = Object.keys(o);
-  if (typeof o.et === "string" && keys.every((k) => k === "et" || k === "ru") && (o.ru === undefined || typeof o.ru === "string")) return { et: o.et, ru: o.ru ?? "" };
-  return Object.fromEntries(keys.map((k) => [k, canonical(o[k])]));
+  return Object.fromEntries(Object.keys(o).map((k) => [k, canonical(o[k])]));
 }
 
 /** Do two values of a site part read the same on the editor's screen? (A text without its Russian side and one with it empty do.) */
 export const sameSiteValue = (a: unknown, b: unknown): boolean => stableJson(canonical(a)) === stableJson(canonical(b));
 
-/**
- * The labels of a part's changes, field by field of its editor value (a list field changed: the list's label), in the fields' order and once each.
- * The first version, for the publish's "changed" answer (server/site-drafts.ts); the PublishBar's row-by-row differ (R-i, with `(RU)`) builds on it.
- */
-export function partChangeLabels(entity: SiteEntity, part: string, live: Record<string, unknown>, draft: Record<string, unknown>): string[] {
-  const out: string[] = [];
-  for (const field of Object.keys({ ...live, ...draft })) {
-    if (sameSiteValue(live[field], draft[field])) continue;
-    const label = siteFieldLabel(entity, part, field);
-    if (!out.includes(label)) out.push(label);
+// ---------- the PublishBar's labels: the draft against live, row by row (S4-1, R-i) ----------
+
+/** How two values differ: not at all, only in the Russian side of their texts, or otherwise. */
+type Diff = "same" | "ru" | "other";
+const worse = (a: Diff, b: Diff): Diff => (a === "other" || b === "other" ? "other" : a === "ru" || b === "ru" ? "ru" : "same");
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+function diffOf(a: unknown, b: unknown): Diff {
+  if (isText(a) && isText(b)) return a.et !== b.et ? "other" : (a.ru ?? "") !== (b.ru ?? "") ? "ru" : "same";
+  if (Array.isArray(a) && Array.isArray(b)) return a.length !== b.length ? "other" : a.reduce<Diff>((d, x, i) => worse(d, diffOf(x, b[i])), "same");
+  if (isRecord(a) && isRecord(b) && !isText(a) && !isText(b)) {
+    return Object.keys({ ...a, ...b }).reduce<Diff>((d, k) => worse(d, diffOf(a[k], b[k])), "same");
   }
-  return out;
+  return sameSiteValue(a, b) ? "same" : "other";
+}
+
+/** A slide's fields in S4-12's order (its focal points are its picture); a FAQ row's; a package's in its card's order (S4-34, the P4 frame). */
+const SLIDE_ORDER = ["imageKey", "imagePos", "imagePosMobile", "kicker", "title", "text", "ctaLabel", "ctaHref", "tone", "active"];
+const FAQ_ORDER = ["q", "a"];
+const PACKAGE_ORDER = ["name", "tagline", "price", "models", "durationLabel", "items"];
+const TRAINER_ORDER = ["portraitKey", "portraitPos", "name", "role", "stats"];
+/** A list row's keys that are no field of the screen (the row's client key and its stored id). */
+const ROW_KEYS = ["uid", "id"];
+
+/**
+ * The labels, in the cards' order, each once: a label's place is its card's (`card`), then the order it came in. `(RU)` when every change under it
+ * was only on the Russian side (S4-1, R-i).
+ */
+class Labels {
+  private readonly list: { label: string; ru: boolean; card: number; n: number }[] = [];
+  add(label: string, diff: Diff, card: number): void {
+    if (diff === "same") return;
+    const known = this.list.find((x) => x.label === label);
+    if (known) known.ru = known.ru && diff === "ru";
+    else this.list.push({ label, ru: diff === "ru", card, n: this.list.length });
+  }
+  out(): string[] {
+    return [...this.list].sort((a, b) => a.card - b.card || a.n - b.n).map((x) => (x.ru ? fill(T.ru, { label: x.label }) : x.label));
+  }
+}
+
+/** A record's keys: `order` first, then any other key of either side (in their order), less `skip`. */
+const keysOf = (a: Record<string, unknown>, b: Record<string, unknown>, order: readonly string[], skip: readonly string[] = []): string[] =>
+  [...order, ...Object.keys({ ...a, ...b }).filter((k) => !order.includes(k))].filter((k) => !skip.includes(k) && (k in a || k in b));
+
+/**
+ * A list of rows (the slides, the FAQ, a package's points). Rows with a client key (`uid`) are followed by it: rows added, removed or moved name the
+ * list as a whole (`listLabel`), and a row that is on both sides names its changed fields by its place in the draft (`rowLabel(i, field)`); rows
+ * without one are compared by place, and any row added, removed or moved names the list.
+ */
+function listLabels(add: (label: string, diff: Diff) => void, live: unknown, draft: unknown, listLabel: string, rowLabel: (i: number, field: string | null) => string, order: readonly string[]): void {
+  const before = Array.isArray(live) ? live : [];
+  const after = Array.isArray(draft) ? draft : [];
+  const uid = (r: unknown) => (isRecord(r) && typeof r.uid === "string" ? r.uid : null);
+  const keys = [...before, ...after].map(uid);
+  const keyed = keys.every((k) => k !== null) && new Set(before.map(uid)).size === before.length && new Set(after.map(uid)).size === after.length;
+  let pairs: [unknown, unknown, number][];
+  if (keyed) {
+    const moved = before.length !== after.length || before.some((r, i) => uid(r) !== uid(after[i]));
+    if (moved) add(listLabel, "other");
+    pairs = after.flatMap((r, i): [unknown, unknown, number][] => {
+      const was = before.find((b) => uid(b) === uid(r));
+      return was === undefined ? [] : [[was, r, i]];
+    });
+  } else {
+    const sorted = (rows: unknown[]) => rows.map((r) => stableJson(canonical(r))).sort();
+    const moved = before.length !== after.length || (diffOf(before, after) !== "same" && stableJson(sorted(before)) === stableJson(sorted(after)));
+    if (moved) return add(listLabel, "other");
+    pairs = after.map((r, i): [unknown, unknown, number] => [before[i], r, i]);
+  }
+  for (const [was, row, i] of pairs) {
+    if (!isRecord(was) || !isRecord(row) || isText(was) || isText(row)) {
+      add(rowLabel(i, null), diffOf(was, row));
+      continue;
+    }
+    for (const field of keysOf(was, row, order, ROW_KEYS)) add(rowLabel(i, field), diffOf(was[field], row[field]));
+  }
+}
+
+/**
+ * The PublishBar's labels of an entity's drafts (`changed`; README §1.8, S4-1, R-i): each part's draft against its live value, row by row, as S4-12
+ * (Avaleht), S4-17 (Koolitaja) and S4-34 (Praktika) name them, in the cards' order and once each. A row is numbered by its place in the draft,
+ * from 1 (`Slaid 2 pealkiri`, `KKK küsimus 4`, `MAXI punkt 4`); rows added, removed or moved name the list's card (`Slaidid`, `KKK`, `Galerii`,
+ * `Numbrid`, `MAXI punktid`); a label whose only change is the Russian text says so (`Slaid 2 pealkiri (RU)`). A Russian text typed and emptied
+ * again is no change. `parts`: each part's name, live value and draft value, as the editor holds them (domain/site-entities.ts).
+ */
+export function siteChangeLabels(entity: SiteEntity, parts: readonly { part: string; live: unknown; draft: unknown }[]): string[] {
+  const labels = new Labels();
+  // the parts in the cards' order: Avaleht's and Koolitaja's fixed, Praktika's packages as they come (the packages' order)
+  const rank = (part: string) => {
+    const fixed: readonly string[] = entity === "home" ? HOME_PARTS : entity === "trainer" ? TRAINER_PARTS : [];
+    const i = fixed.indexOf(part);
+    return i < 0 ? fixed.length : i;
+  };
+  const ordered = parts.map((p, i) => ({ ...p, i })).sort((a, b) => rank(a.part) - rank(b.part) || a.i - b.i);
+  for (const { part, live: l, draft: d, i } of ordered) {
+    const live = isRecord(l) ? l : {};
+    const draft = isRecord(d) ? d : {};
+    const label = (path: string) => siteFieldLabel(entity, part, path);
+    if (entity === "home") {
+      const card = rank(part);
+      const add = (text: string, diff: Diff) => labels.add(text, diff, card);
+      if (part === "slides" || part === "faq") {
+        const order = part === "slides" ? SLIDE_ORDER : FAQ_ORDER;
+        listLabels(add, live[part], draft[part], label(part), (n, f) => label(f === null ? part : `${part}.${n}.${f}`), order);
+      } else for (const f of keysOf(live, draft, [])) add(label(f), diffOf(live[f], draft[f]));
+    } else if (entity === "trainer") {
+      // the cards: „Portree ja tutvustus“ (the portrait, name and role, then the bio), „Numbrid“ (the trainer's stats), „Galerii“, the two stories
+      const card = (f: string) => (part === "trainer" ? (f === "stats" ? 1 : 0) : part === "bio" ? 0 : part === "works" ? 2 : part === "center_story" ? 3 : part === "trainer_journey" ? 4 : 5);
+      for (const f of keysOf(live, draft, part === "trainer" ? TRAINER_ORDER : [])) labels.add(label(f), diffOf(live[f], draft[f]), card(f));
+    } else {
+      const add = (text: string, diff: Diff) => labels.add(text, diff, i);
+      for (const f of keysOf(live, draft, PACKAGE_ORDER)) {
+        if (f === "items") listLabels(add, live.items, draft.items, label("items"), (n) => label(`items.${n}`), []);
+        else add(label(f), diffOf(live[f], draft[f]));
+      }
+    }
+  }
+  return labels.out();
 }

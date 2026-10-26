@@ -31,9 +31,11 @@ export const sectionCard: string = styles.card;
  * user starts reading where the page went. The page does not split into tabs: the cards stay in one long page.
  *
  * It renders no wrapper (a fragment of the list and the select), so that in the page's grid the list is a grid item of its own and `position: sticky`
- * has the whole column to move in. The page decides where it goes: the first column from 1180 px, under the heading below it.
+ * has the whole column to move in. The page decides where it goes: the first column from 1180 px, under the heading below it. `width`: the list's
+ * width, 190 px (the B screens) or 170 px (the C screens' site-editor template, piece 4a; the Part 4 frames' `170px minmax(0,1fr)`), which the page's
+ * grid gives its column too.
  */
-export function SectionMap({ sections }: { sections: SectionEntry[] }) {
+export function SectionMap({ sections, width = 190 }: { sections: SectionEntry[]; width?: 170 | 190 }) {
   const t = adminEt.sectionMap;
   const [chosen, setChosen] = useState(sections[0]?.id);
   // the entry that was chosen last, or the first one when it is not there any more (the card follows the draft „Õppevorm“)
@@ -62,7 +64,7 @@ export function SectionMap({ sections }: { sections: SectionEntry[] }) {
 
   return (
     <>
-      <nav className={styles.nav} aria-label={t.label} data-fab-avoid="">
+      <nav className={width === 170 ? `${styles.nav} ${styles.narrow}` : styles.nav} aria-label={t.label} data-fab-avoid="">
         {sections.map((s) => (
           <a key={s.id} href={`#${s.id}`} className={styles.link} aria-current={s.id === current?.id ? "true" : undefined} onClick={(e) => onLink(e, s.id)}>
             <span data-section-label="">{s.label}</span>

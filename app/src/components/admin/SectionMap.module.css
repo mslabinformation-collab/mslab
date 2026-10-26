@@ -16,6 +16,11 @@
   width: 190px;
 }
 
+/* the C screens' site-editor template (piece 4a; the Part 4 frames' `170px minmax(0,1fr)`): a 170 px list */
+.narrow {
+  width: 170px;
+}
+
 .link {
   display: flex;
   align-items: center;
