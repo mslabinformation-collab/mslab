@@ -4,11 +4,12 @@ import type { Db, Q, Tx } from "@/db/client";
 import { lockTables, type SiteTable } from "@/db/queries/admin-site";
 import type { SaveAnswer } from "@/domain/autosave";
 import { missingCase, partChangeLabels, sameSiteValue, siteFieldLabel } from "@/domain/site-changes";
+import { MISSING_CODES } from "@/domain/site-checks";
 import { fromEditorValue, isListPart, SITE_ENTITY_ID, toEditorValue, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { contentVersion } from "@/lib/version";
 import { homeParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
-import { discardDrafts, dropDraftPart, publishDrafts, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
-import { Check } from "./edit-check";
+import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, readDrafts, type DraftPart, type Publisher } from "./drafts";
+import { Check, type FieldError } from "./edit-check";
 import { revalidatePublic } from "./public-cache";
 import { readStamp, stampOrNull } from "./read-stamp";
 
@@ -48,7 +49,6 @@ export async function hasSitePart(q: Q, entity: SiteEntity, part: string): Promi
 const lockEntity = (tx: Tx, entity: SiteEntity) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`site-draft:${entity}:${SITE_ENTITY_ID}`}))`);
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
 
 /** A part's live value as its editor holds it (its Part.draft of the stored value) and that value's hash (R-b). */
 async function liveOf(entity: SiteEntity, part: string, def: Part<unknown>, stored: unknown): Promise<{ live: Record<string, unknown>; hash: string }> {
@@ -74,18 +74,12 @@ async function partStateOf(q: Q, entity: SiteEntity, part: string, def: Part<unk
   return { live, liveHash: hash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(entity, part, def, live, draft.value) };
 }
 
-/** The database's clock as the answers carry it (server/read-stamp.ts): microseconds since 1970 in decimal; "" when it cannot be read (the next read). */
-const stampText = async (q: Q): Promise<string> => {
-  const stamp = await stampOrNull(q);
-  return stamp === null ? "" : String(stamp);
-};
-
 /**
  * The editor's start (Tasks 4–6; README B2): the read's stamp first (server/read-stamp.ts: a read at or past a press's answer shows what it did), then
  * every part of the entity, each with its version (R-b), its value (the draft over live) and live's value beside it, in the screen's order.
  */
-export async function readSiteEditor(q: Q, entity: SiteEntity): Promise<{ stamp: string; parts: Record<string, SitePartState> }> {
-  const stamp = String(await readStamp(q));
+export async function readSiteEditor(q: Q, entity: SiteEntity): Promise<{ stamp: number; parts: Record<string, SitePartState> }> {
+  const stamp = await readStamp(q);
   const parts = await partsOf(q, entity);
   const drafts = await readDrafts(q, entity, SITE_ENTITY_ID);
   const out: Record<string, SitePartState> = {};
@@ -104,19 +98,24 @@ function pathOf(entity: SiteEntity, part: string, name: string): string {
   return name.startsWith(`${part}.`) ? name.slice(part.length + 1) : name;
 }
 
-/** The field of the editor value a path is in: a list part's one field, a record's first key. */
-const fieldOf = (entity: SiteEntity, part: string, path: string): string => (isListPart(entity, part) ? part : path.split(".")[0]);
+/** The field of the editor value a path is in: a list part's one field (its own name), a record's first key. */
+const fieldOf = (entity: SiteEntity, part: string, path: string): string =>
+  isListPart(entity, part) && (path === part || path.startsWith(`${part}.`)) ? part : path.split(".")[0];
 
 /**
- * A refusal by field, for the autosave (server/autosave-route.ts): each path with its first code, and the field of the patch it is in with the first
- * code of its paths (the screen holds back the fields named among those it sent; the paths say where in a list the error is).
+ * A refusal by field, for the autosave (server/autosave-route.ts): each path with its first code, and the field of the editor value it is in with
+ * the first code of its paths (the screen holds back the fields named among those it sent; the paths say where in a list the error is). When none of
+ * the fields `sent` is named (the problem is in a field the save did not carry: a stored value a limit refuses since), every field sent is named with
+ * the first code, as course-parts.ts refusedFields does: the screen then holds them back and says so, instead of waiting with nothing held.
  */
-function refusal(entity: SiteEntity, part: string, problems: [path: string, code: string][]): SaveAnswer {
+function refusal(entity: SiteEntity, part: string, problems: [path: string, code: string][], sent: string[]): SaveAnswer {
   const fields: Record<string, string> = {};
   for (const [path, code] of problems) {
     fields[path] ??= code;
     fields[fieldOf(entity, part, path)] ??= code;
   }
+  const first = problems[0]?.[1] ?? "invalid";
+  if (!sent.some((n) => Object.hasOwn(fields, n))) for (const n of sent) fields[n] ??= first;
   return { ok: false, error: "invalid", fields };
 }
 
@@ -144,28 +143,28 @@ export async function writeSitePart(db: Db, entity: SiteEntity, part: string, pa
     const s = await partStateOf(tx, entity, part, def, await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] }));
     if (version !== s.version) return { ok: false, error: "conflict", version: s.version, value: s.value };
     const sent = isRecord(patch) ? patch : {};
-    const unknown = Object.keys(sent).filter((k) => !Object.hasOwn(s.live, k));
-    if (unknown.length > 0) return refusal(entity, part, unknown.map((k) => [k, "invalid"]));
+    const names = Object.keys(sent);
+    const unknown = names.filter((k) => !Object.hasOwn(s.live, k));
+    if (unknown.length > 0) return refusal(entity, part, unknown.map((k) => [k, "invalid"]), names);
     const parsed = def.schema.safeParse(fromEditorValue(entity, part, { ...s.value, ...sent }));
-    if (!parsed.success) return refusal(entity, part, parsed.error.issues.map((i) => issueOf(entity, part, i)));
+    if (!parsed.success) return refusal(entity, part, parsed.error.issues.map((i) => issueOf(entity, part, i)), names);
     const problems = Object.entries(def.loose?.(parsed.data) ?? {});
-    if (problems.length > 0) return refusal(entity, part, problems);
+    if (problems.length > 0) return refusal(entity, part, problems, names);
     const value = toEditorValue(entity, part, parsed.data);
     if (sameSiteValue(value, s.value)) return { ok: true, version: s.version, savedAt };
-    if (sameSiteValue(value, s.live)) {
-      // typed back to what is live: no change is left to publish
-      if (s.draft) await dropDraftPart(tx, entity, SITE_ENTITY_ID, part);
-      return { ok: true, version: `l:${s.liveHash}`, savedAt };
-    }
-    const saved = await saveDraftPart(tx, { entity, entityId: SITE_ENTITY_ID, part, value, baseVersion: s.liveHash, version: s.draft?.version ?? null, by: admin });
-    if (saved.ok) {
-      // a draft just made: its row's id (read under the same lock)
-      const rowId = s.draft?.id ?? (await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] }))[0]?.id;
-      if (rowId !== undefined) return { ok: true, version: draftVersion(rowId, saved.version), savedAt };
-    }
-    // (under the entity's lock nothing saves the draft between the read and the write: answered as any conflict)
-    const stored = await partStateOf(tx, entity, part, def, await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] }));
-    return { ok: false, error: "conflict", version: stored.version, value: stored.value };
+    // typed back to what is live, the draft goes; else the draft is made or saved (server/drafts.ts finishDraftSave)
+    return finishDraftSave(tx, {
+      entity,
+      entityId: SITE_ENTITY_ID,
+      part,
+      value,
+      liveHash: s.liveHash,
+      draft: s.draft,
+      sameAsLive: sameSiteValue(value, s.live),
+      by: admin,
+      savedAt,
+      reread: async () => partStateOf(tx, entity, part, def, await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] })),
+    });
   });
 }
 
@@ -188,10 +187,16 @@ function rowOfList(entity: SiteEntity, path: string, code: string, value: Record
   return i < 0 ? path : `items.${i}`;
 }
 
-/** The labels of a strict check's refused fields, as „Puudub: …“ lists them (S4-2), in the check's order and once each. */
-function missingOf(entity: SiteEntity, part: string, errors: Record<string, string>, value: Record<string, unknown>): string[] {
+/**
+ * The labels of a strict check's refused fields, as „Puudub: …“ lists them (S4-2), once each: the missing ones (MISSING_CODES) in the check's order,
+ * then any other refusal. Those others cannot come from a draft the loose check let through, since it runs the same Check rules without `required`
+ * (domain/site-checks.ts); one saved before a rule was tightened still holds its part back, named by its field.
+ */
+function missingOf(entity: SiteEntity, part: string, errors: Record<string, FieldError>, value: Record<string, unknown>): string[] {
+  const entries = Object.entries(errors);
+  const ordered = [...entries.filter(([, code]) => MISSING_CODES.includes(code)), ...entries.filter(([, code]) => !MISSING_CODES.includes(code))];
   const out: string[] = [];
-  for (const [name, code] of Object.entries(errors)) {
+  for (const [name, code] of ordered) {
     const label = missingCase(siteFieldLabel(entity, part, rowOfList(entity, pathOf(entity, part, name), code, value)));
     if (!out.includes(label)) out.push(label);
   }
@@ -281,24 +286,26 @@ async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<s
  * „Avalda muudatused“ of an entity (R-c, R-d): its drafts with its Publisher, in ONE transaction (server/drafts.ts publishDrafts: the locks, every
  * part's live version against its draft's base, the strict checks, the writes); the pages revalidated once after the commit when anything was
  * published (a failure there is logged: the publish stands). The answer: the parts written, those left in their drafts with why, in the order
- * their drafts were first saved, and the database's clock after the commit (`stamp`, server/read-stamp.ts; "" when it cannot be read). `now` is
- * the publishers' shape (server/course-parts.ts publishCourse): the site's writers store no time.
+ * their drafts were first saved, and the database's clock after the commit (`stamp`, server/read-stamp.ts, as the course's publish answers it: null
+ * when it cannot be read, the editor then takes the next read). The site's writers store no time, so it takes none.
  */
-export async function publishSite(db: Db, entity: SiteEntity, now: Date): Promise<{ stamp: string; published: string[]; blocked: SiteBlockedPart[] }> {
-  void now;
+export async function publishSite(db: Db, entity: SiteEntity): Promise<{ stamp: number | null; published: string[]; blocked: SiteBlockedPart[] }> {
   const { publisher, held } = makeSitePublisher(entity);
   const result = await publishDrafts(db, entity, SITE_ENTITY_ID, publisher);
   const blocked = await blockedOf(db, entity, result.blocked, held);
-  return { stamp: await stampText(db), published: result.published, blocked };
+  return { stamp: await stampOrNull(db), published: result.published, blocked };
 }
 
 // ---------- „Loobu muudatustest“ ----------
 
-/** „Loobu muudatustest“ (R-e): every draft of the entity deleted under its advisory lock; live stays as it is, so nothing is revalidated. */
-export async function discardSite(db: Db, entity: SiteEntity): Promise<{ stamp: string }> {
+/**
+ * „Loobu muudatustest“ (R-e): every draft of the entity deleted under its advisory lock; live stays as it is, so nothing is revalidated. `stamp`: the
+ * database's clock after the commit, null when it cannot be read (as the course's discard answers it).
+ */
+export async function discardSite(db: Db, entity: SiteEntity): Promise<{ stamp: number | null }> {
   await db.transaction(async (tx) => {
     await lockEntity(tx, entity);
     await discardDrafts(tx, entity, SITE_ENTITY_ID);
   });
-  return { stamp: await stampText(db) };
+  return { stamp: await stampOrNull(db) };
 }

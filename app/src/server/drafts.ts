@@ -3,6 +3,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "@/db/client";
 import type * as schema from "@/db/schema";
 import { contentDrafts } from "@/db/schema";
+import type { SaveAnswer } from "@/domain/autosave";
 import { logFailure } from "./log";
 
 // The draft layer's store (admin UX pass, README §1.8, behaviours.md B2; the table `content_drafts`, migration 0017). For a published thing (a
@@ -119,6 +120,51 @@ export async function saveDraftPart(
  */
 export async function dropDraftPart(db: Q, entity: string, entityId: number, part: string): Promise<boolean> {
   return (await pg(db).delete(contentDrafts).where(ofPart(entity, entityId, part)).returning({ id: contentDrafts.id })).length > 0;
+}
+
+/**
+ * A draft's version as its editor holds it (piece 3a R-b, I-1): "d:<draft row id>.<n>", the row's own id and its counter, so a tab still on an earlier
+ * draft of the part is never taken for a later one's. A part with no draft is "l:<hash>", the hash of its live value (each entity's own).
+ */
+export const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
+
+/**
+ * The end of an entity's draft save (server/autosave-route.ts' contract; course-parts.ts writeCoursePart, legal-drafts.ts writeLegalDraft,
+ * site-drafts.ts writeSitePart), inside the entity's transaction, after its lock, its read at the version the screen sent, its checks and its
+ * "the same value again" answer:
+ * - typed back to what is live (`sameAsLive`, by the entity's own rule): no change is left to publish, so the draft goes (when there is one) and the
+ *   answer is live's version "l:<liveHash>";
+ * - else the draft is made (from live at `liveHash`, `draft` null) or saved (its compare-and-set, `draft` the one read), and the answer is its new
+ *   version "d:<id>.<n>" (a draft just made: its row's id, read under the same lock);
+ * - a save the store refuses (under the entity's lock nothing saves the draft between the read and the write: answered as any conflict) answers
+ *   what is stored now (`reread`: the part's version and value as the editor reads them).
+ */
+export async function finishDraftSave(
+  tx: Q,
+  d: {
+    entity: string;
+    entityId: number;
+    part: string;
+    value: unknown;
+    liveHash: string;
+    draft: { id: number; version: number } | null;
+    sameAsLive: boolean;
+    by: string;
+    savedAt: string;
+    reread: () => Promise<{ version: string; value: unknown }>;
+  },
+): Promise<SaveAnswer> {
+  if (d.sameAsLive) {
+    if (d.draft) await dropDraftPart(tx, d.entity, d.entityId, d.part);
+    return { ok: true, version: `l:${d.liveHash}`, savedAt: d.savedAt };
+  }
+  const saved = await saveDraftPart(tx, { entity: d.entity, entityId: d.entityId, part: d.part, value: d.value, baseVersion: d.liveHash, version: d.draft?.version ?? null, by: d.by });
+  if (saved.ok) {
+    const rowId = d.draft?.id ?? (await readDrafts(tx, d.entity, d.entityId, { only: [d.part] }))[0]?.id;
+    if (rowId !== undefined) return { ok: true, version: draftVersion(rowId, saved.version), savedAt: d.savedAt };
+  }
+  const stored = await d.reread();
+  return { ok: false, error: "conflict", version: stored.version, value: stored.value };
 }
 
 /**

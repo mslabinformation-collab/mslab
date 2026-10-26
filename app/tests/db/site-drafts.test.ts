@@ -8,6 +8,7 @@ import { contentDrafts, faq, galleryItems, heroSlides, pages, practicePackages }
 import { applySeed } from "@/db/seed-apply";
 import { newSlideDraft, type FaqDraft, type PackageDraft, type SlideDraft, type WorkDraft } from "@/domain/site-editor";
 import { createSession } from "@/server/auth";
+import { saveDraftPart } from "@/server/drafts";
 import { makeTestDb } from "./helpers";
 
 // The site content's draft layer (admin UX pass piece 4a, Task 1; rulings R-a … R-e, R-i): Avaleht ("home"), Koolitaja ("trainer") and Praktika
@@ -69,14 +70,14 @@ describe("a draft: a save never changes what is live", () => {
     expect(mini.version).toMatch(/^l:[0-9a-f]{32}$/);
     expect(mini.value).toEqual(mini.live);
     expect(mini.live).toMatchObject({ price: "100", models: "2", name: { et: "MINI" } });
-    expect(before.stamp).toMatch(/^\d+$/);
+    expect(before.stamp).toEqual(expect.any(Number));
 
     const saved = await writeSitePart(db, "practice", "MINI", { price: "120" }, mini.version, ADMIN, NOW);
     expect(saved).toEqual({ ok: true, version: expect.stringMatching(/^d:\d+\.1$/), savedAt: NOW.toISOString() });
     const after = await read("practice");
     expect(after.parts.MINI).toEqual({ version: versionOf(saved), value: { ...(mini.live as PackageDraft), price: "120" }, live: mini.live });
     expect(after.parts.MAXI).toEqual(before.parts.MAXI);
-    expect(Number(after.stamp)).toBeGreaterThanOrEqual(Number(before.stamp));
+    expect(after.stamp).toBeGreaterThanOrEqual(before.stamp);
     const [row] = await drafts();
     expect(row).toMatchObject({ entity: "practice", entityId: 0, part: "MINI", version: 1, baseVersion: mini.version.slice(2), updatedBy: ADMIN });
     expect(`d:${row.id}.1`).toBe(versionOf(saved));
@@ -165,6 +166,15 @@ describe("the loose check at a save (R-d)", () => {
     expect(await drafts()).toHaveLength(1);
   });
 
+  test("a refusal in a field the save did not send (a stored value a limit refuses) names every field sent with its code, so the screen holds them back", async () => {
+    await db.update(practicePackages).set({ name: { et: "x".repeat(41) } }).where(eq(practicePackages.code, "MINI"));
+    const v = (await read("practice")).parts.MINI.version;
+    expect(await writeSitePart(db, "practice", "MINI", { price: "120", models: "3" }, v, ADMIN, NOW)).toEqual({ ok: false, error: "invalid", fields: { name: "tooLong", price: "tooLong", models: "tooLong" } });
+    // a refusal that names a field sent names only what it names
+    expect(await writeSitePart(db, "practice", "MINI", { name: { et: "MINI" }, price: "abc" }, v, ADMIN, NOW)).toEqual({ ok: false, error: "invalid", fields: { price: "amount" } });
+    expect(await drafts()).toHaveLength(0);
+  });
+
   test("a field the part does not have, or a value of the wrong type, is refused by field", async () => {
     const v = (await read("practice")).parts.MINI.version;
     expect(await writeSitePart(db, "practice", "MINI", { colour: "red" }, v, ADMIN, NOW)).toEqual({ ok: false, error: "invalid", fields: { colour: "invalid" } });
@@ -187,8 +197,8 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     const kept = items.slice(0, 5);
     expect((await save("home", "faq", { faq: kept })).ok).toBe(true);
 
-    const result = await publishSite(db, "home", NOW);
-    expect(result).toEqual({ stamp: expect.stringMatching(/^\d+$/), published: ["slides", "faq"], blocked: [] });
+    const result = await publishSite(db, "home");
+    expect(result).toEqual({ stamp: expect.any(Number), published: ["slides", "faq"], blocked: [] });
     const after = await read("home");
     expect(after.parts.slides).toEqual({ version: expect.stringMatching(/^l:/), value: { slides }, live: { slides } });
     expect(after.parts.faq).toEqual({ version: expect.stringMatching(/^l:/), value: { faq: kept }, live: { faq: kept } });
@@ -208,7 +218,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     items[3].a = { et: "Uus vastus.", ru: "Новый ответ." };
     expect((await save("home", "faq", { faq: items })).ok).toBe(true);
 
-    const result = await publishSite(db, "home", NOW);
+    const result = await publishSite(db, "home");
     expect(result.published).toEqual(["faq"]);
     expect(result.blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 3 pilt"] }]);
     expect((await drafts()).map((d) => d.part)).toEqual(["slides"]);
@@ -220,7 +230,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     // the picture added: the slides publish too, the new slide gets its row
     slides[2] = { ...slides[2], imageKey: UPLOAD };
     expect((await save("home", "slides", { slides })).ok).toBe(true);
-    expect(await publishSite(db, "home", NOW)).toMatchObject({ published: ["slides"], blocked: [] });
+    expect(await publishSite(db, "home")).toMatchObject({ published: ["slides"], blocked: [] });
     expect((await readSlides(db)).map((s) => s.title.et)[2]).toBe("Uus slaid");
   });
 
@@ -231,17 +241,28 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     const items = await liveFaq();
     items.push({ uid: "new-2", id: null, q: { et: "Kas?" }, a: { et: "" } });
     expect((await save("home", "faq", { faq: items })).ok).toBe(true);
-    expect((await publishSite(db, "home", NOW)).blocked).toEqual([
+    expect((await publishSite(db, "home")).blocked).toEqual([
       { part: "slides", reason: "missing", fields: ["slaid 3 pilt", "slaid 3 pealkiri"] },
       { part: "faq", reason: "missing", fields: ["KKK vastus 7"] },
     ]);
 
     expect((await save("practice", "MAXI", { price: "", items: [{ et: "Töö neljal modellil" }, { et: "", ru: "Только по-русски" }] })).ok).toBe(true);
     expect((await save("trainer", "trainer", { name: { et: "" } })).ok).toBe(true);
-    expect((await publishSite(db, "practice", NOW)).blocked).toEqual([{ part: "MAXI", reason: "missing", fields: ["MAXI hind", "MAXI punkt 2"] }]);
-    expect((await publishSite(db, "trainer", NOW)).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi"] }]);
+    expect((await publishSite(db, "practice")).blocked).toEqual([{ part: "MAXI", reason: "missing", fields: ["MAXI hind", "MAXI punkt 2"] }]);
+    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi"] }]);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
     expect(await drafts()).toHaveLength(4);
+  });
+
+  test("a draft the loose check never saw (stored before a rule was tightened) is still held back: the missing fields first, then the other refusals", async () => {
+    const live = await liveSlides();
+    live[0] = { ...live[0], ctaHref: "javascript:alert(1)" };
+    live[1] = { ...live[1], title: { et: "" } };
+    const base = (await read("home")).parts.slides.version.slice(2);
+    expect(await saveDraftPart(db, { entity: "home", entityId: 0, part: "slides", value: { slides: live }, baseVersion: base, version: null, by: ADMIN })).toMatchObject({ ok: true });
+    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 2 pealkiri", "slaid 1 nupp viib"] }]);
+    expect(await readSlides(db)).toHaveLength(5);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
   test("changed meanwhile: a live row that changed after the draft was based is blocked as changed, and stays a draft", async () => {
@@ -251,7 +272,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     // another way of saving changes live after the draft began
     const rows = await readSlides(db);
     await db.transaction((tx) => saveSlides(tx, rows.map((r, i) => (i === 1 ? { ...r, kicker: { et: "Otse muudetud" } } : r))));
-    const result = await publishSite(db, "home", NOW);
+    const result = await publishSite(db, "home");
     expect(result.published).toEqual([]);
     expect(result.blocked).toEqual([{ part: "slides", reason: "changed", fields: expect.any(Array) }]);
     expect(result.blocked[0].fields.length).toBeGreaterThan(0);
@@ -261,7 +282,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
   });
 
   test("nothing to publish: an answer with nothing published and nothing blocked, nothing revalidated", async () => {
-    expect(await publishSite(db, "trainer", NOW)).toEqual({ stamp: expect.stringMatching(/^\d+$/), published: [], blocked: [] });
+    expect(await publishSite(db, "trainer")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
@@ -270,14 +291,14 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     expect((await save("trainer", "trainer", { role: { et: "Koolitaja", ru: "Тренер" } })).ok).toBe(true);
     const works = (clone((await read("trainer")).parts.works.live) as { works: WorkDraft[] }).works.slice(0, 2);
     expect((await save("trainer", "works", { works })).ok).toBe(true);
-    expect(await publishSite(db, "trainer", NOW)).toMatchObject({ published: ["trainer", "works"], blocked: [] });
+    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["trainer", "works"], blocked: [] });
     expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: before.contactPhotoKey, role: { et: "Koolitaja", ru: "Тренер" } });
     expect(await db.select().from(galleryItems).where(eq(galleryItems.group, "trainer_works"))).toHaveLength(2);
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "trainer", parts: ["trainer", "works"] });
 
     pub.revalidatePublic.mockReset();
     expect((await save("practice", "MAXI", { price: "155,50" })).ok).toBe(true);
-    expect(await publishSite(db, "practice", NOW)).toMatchObject({ published: ["MAXI"], blocked: [] });
+    expect(await publishSite(db, "practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
     expect((await getPracticePackages(db))[1]).toMatchObject({ code: "MAXI", price: 15550 });
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "practice" });
   });
@@ -291,7 +312,7 @@ describe("„Loobu muudatustest“ (discardSite)", () => {
     expect((await save("trainer", "center_story", { title: { et: "Lugu" } })).ok).toBe(true);
     expect((await save("home", "statement", { body: { et: "Uus lause." } })).ok).toBe(true);
     const result = await discardSite(db, "trainer");
-    expect(result).toEqual({ stamp: expect.stringMatching(/^\d+$/) });
+    expect(result).toEqual({ stamp: expect.any(Number) });
     expect((await drafts()).map((d) => [d.entity, d.part])).toEqual([["home", "statement"]]);
     const after = await read("trainer");
     expect(after.parts).toEqual(start.parts);
@@ -310,7 +331,7 @@ describe("versions (R-b): the hash of the part's draft-shaped live value", () =>
     // a draft made before such a change still publishes: its base is still live's
     expect((await save("trainer", "trainer", { role: { et: "Koolitaja" } })).ok).toBe(true);
     await setSetting(db, "trainer", { ...stored, contactPhotoKey: "/seed/maria-standing.jpg" });
-    expect(await publishSite(db, "trainer", NOW)).toMatchObject({ published: ["trainer"], blocked: [] });
+    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
     expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: "/seed/maria-standing.jpg", role: { et: "Koolitaja" } });
   });
 
@@ -379,10 +400,10 @@ describe("the routes", () => {
     await signIn();
     const live = (await read("home")).parts.statement.version;
     expect((await saveCall("home", "0", "statement", { version: live, patch: { body: { et: "Uus lause." } } })).status).toBe(200);
-    expect(await publishCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.stringMatching(/^\d+$/), published: ["statement"], blocked: [] } });
+    expect(await publishCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number), published: ["statement"], blocked: [] } });
     const next = (await read("home")).parts.statement.version;
     expect((await saveCall("home", "0", "statement", { version: next, patch: { body: { et: "Veel üks." } } })).status).toBe(200);
-    expect(await discardCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.stringMatching(/^\d+$/) } });
+    expect(await discardCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number) } });
     expect(await drafts()).toHaveLength(0);
     expect((await read("home")).parts.statement.live).toMatchObject({ body: { et: "Uus lause." } });
   });

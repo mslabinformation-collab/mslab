@@ -18,7 +18,7 @@ import {
 import type { LessonCleanup } from "./admin-lessons";
 import { fieldCodes } from "./autosave-route";
 import { checkOutline, liveOutline, OUTLINE_SCHEMA, outlineFromDraft, outlineLabels, outlineRows, publishOutline, readLayout, type OutlineRows } from "./course-outline";
-import { discardDrafts, dropDraftPart, publishDraftsIn, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
+import { discardDrafts, draftVersion, finishDraftSave, publishDraftsIn, readDrafts, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
@@ -146,9 +146,6 @@ export async function draftedType(q: Q, course: Course): Promise<CourseType> {
   const drafts = await readDrafts(q, ENTITY, course.id, { only: ["basics"] });
   return drafts.length === 0 ? course.type : effectiveType(await liveOf(q, course), drafts);
 }
-
-/** A draft's version as its editor holds it (R-b, I-1): the row's id and its counter, "d:<id>.<n>": never an earlier draft's of the part. */
-const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
 
 type PartState = { liveValue: Record<string, unknown>; liveHash: string; draft: DraftPart | null; version: string; value: Record<string, unknown> };
 
@@ -293,20 +290,19 @@ export async function writeCoursePart(
     const checked = await PARTS[part].check({ q: tx, course, type }, c, value as never);
     if (!c.ok || checked === null) return { ok: false, error: "invalid", fields: refusedFields(part, c.errors, own) };
     if (course.published) {
-      if (same(value, current.liveValue)) {
-        // typed back to what is live: no change is left to publish
-        if (current.draft) await dropDraftPart(tx, ENTITY, courseId, part);
-        return { ok: true, version: `l:${current.liveHash}`, savedAt };
-      }
-      const saved = await saveDraftPart(tx, { entity: ENTITY, entityId: courseId, part, value, baseVersion: current.liveHash, version: current.draft?.version ?? null, by: admin.email });
-      if (saved.ok) {
-        // a draft just made: its row's id (read under the same lock)
-        const rowId = current.draft?.id ?? (await readDrafts(tx, ENTITY, courseId)).find((d) => d.part === part)?.id;
-        if (rowId !== undefined) return { ok: true, version: draftVersion(rowId, saved.version), savedAt };
-      }
-      // (under the course's lock nothing saves the draft between the read and the write: answered as any conflict)
-      const stored = await partStateOf(await stateOf(tx, course), part);
-      return { ok: false, error: "conflict", version: stored.version, value: stored.value };
+      // typed back to what is live: the draft goes; else the draft is made or saved (server/drafts.ts finishDraftSave)
+      return finishDraftSave(tx, {
+        entity: ENTITY,
+        entityId: courseId,
+        part,
+        value,
+        liveHash: current.liveHash,
+        draft: current.draft,
+        sameAsLive: same(value, current.liveValue),
+        by: admin.email,
+        savedAt,
+        reread: async () => partStateOf(await stateOf(tx, course), part),
+      });
     }
     await PARTS[part].write(tx, course, checked, now);
     const [after] = await tx.select().from(courses).where(eq(courses.id, courseId));

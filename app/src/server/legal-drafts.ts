@@ -13,7 +13,7 @@ import { contentVersion } from "@/lib/version";
 import { saveLegalParts } from "./admin-site";
 import type { ContractSampleValues } from "./contract-sample";
 import { saveContractTexts } from "./contracts";
-import { dropDraftPart, readDrafts, saveDraftPart, type DraftPart } from "./drafts";
+import { draftVersion, finishDraftSave, readDrafts, type DraftPart } from "./drafts";
 import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
 
@@ -68,8 +68,6 @@ function draftValueOf(value: unknown, live: LegalText): LegalText {
   return { title: value.title === undefined ? live.title : legalI18n(value.title), body: value.body === undefined ? live.body : legalI18n(value.body) };
 }
 
-const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
-
 type Stored = { state: LegalState; base: string; draft: DraftPart | null };
 
 /** The text now: its page row's version (`base`), live, its draft. */
@@ -119,18 +117,20 @@ export async function writeLegalDraft(db: Db, key: LegalKey, patch: { title?: I1
     if (version !== s.state.version) return conflict(s.state);
     const next: LegalText = { title: patch.title ? legalI18n(patch.title) : s.state.value.title, body: patch.body ? legalI18n(patch.body) : s.state.value.body };
     if (sameLegalText(next, s.state.value)) return { ok: true, version: s.state.version, savedAt };
-    if (sameStoredText(next, s.state.live)) {
-      // typed back to what is live (spaces at either end aside: the writers trim them, review M1): no change is left to publish
-      if (s.draft) await dropDraftPart(tx, ENTITY, id, PART);
-      return { ok: true, version: `l:${s.base}`, savedAt };
-    }
-    const saved = await saveDraftPart(tx, { entity: ENTITY, entityId: id, part: PART, value: next, baseVersion: s.base, version: s.draft?.version ?? null, by: admin.email });
-    if (saved.ok) {
-      const rowId = s.draft?.id ?? (await readDrafts(tx, ENTITY, id, { only: [PART] }))[0]?.id;
-      if (rowId !== undefined) return { ok: true, version: draftVersion(rowId, saved.version), savedAt };
-    }
-    // (under the text's lock nothing saves the draft between the read and the write: answered as any conflict)
-    return conflict((await storedOf(tx, key)).state);
+    // typed back to what is live (spaces at either end aside: the writers trim them, review M1), the draft goes; else the draft is made or saved
+    // (server/drafts.ts finishDraftSave; live's version is the stored page row's hash)
+    return finishDraftSave(tx, {
+      entity: ENTITY,
+      entityId: id,
+      part: PART,
+      value: next,
+      liveHash: s.base,
+      draft: s.draft,
+      sameAsLive: sameStoredText(next, s.state.live),
+      by: admin.email,
+      savedAt,
+      reread: async () => (await storedOf(tx, key)).state,
+    });
   });
 }
 

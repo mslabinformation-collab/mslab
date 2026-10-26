@@ -138,6 +138,8 @@ const BROWSER_FILES = [
   "src/domain/site-entities.ts",
   "src/domain/site-checks.ts",
   "src/domain/site-changes.ts",
+  // Task 1 review M1: the content editors' Check, moved from server/edit-check.ts (which re-exports it) so the loose checks are made of its rules
+  "src/domain/field-check.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

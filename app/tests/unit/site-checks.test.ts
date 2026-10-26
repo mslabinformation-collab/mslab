@@ -67,6 +67,53 @@ describe("what the strict check refuses besides is refused at the save, by the f
     }
   });
 
+  test("the loose check refuses what the strict check refuses, with the same code at the same field: its rules are Check's (M1: they cannot drift)", () => {
+    // malformed values of every rule a loose check runs: the strict check (the part's own, named <part>.<path>) gives the same code at the same path
+    const cases: [typeof homeParts, string, unknown, Record<string, string>][] = [
+      [
+        homeParts,
+        "slides",
+        [
+          slide({ ctaHref: "javascript:alert(1)", imageKey: "https://evil.example/a.jpg", imagePos: "120% 50%" }),
+          slide({ ctaHref: "/ru/praktika", imagePosMobile: "50%", kicker: { et: "k".repeat(81) } }),
+          slide({ ctaHref: "//evil.example/x", text: { et: "t", ru: "т".repeat(301) }, ctaLabel: { et: "c".repeat(41) } }),
+        ],
+        {
+          "slides.0.imageKey": "image",
+          "slides.0.imagePos": "focal",
+          "slides.0.ctaHref": "href",
+          "slides.1.imagePosMobile": "focal",
+          "slides.1.kicker": "tooLong",
+          "slides.1.ctaHref": "localeHref",
+          "slides.2.text": "tooLong",
+          "slides.2.ctaLabel": "tooLong",
+          "slides.2.ctaHref": "href",
+        },
+      ],
+      [homeParts, "faq", [{ uid: "f", id: null, q: { et: "q".repeat(201) }, a: { et: "a".repeat(2001) } }], { "faq.0.q": "tooLong", "faq.0.a": "tooLong" }],
+      [homeParts, "teaser", { body: { et: "b".repeat(301) } }, { body: "tooLong" }],
+      [
+        trainerParts,
+        "trainer",
+        trainer({ portraitKey: "../etc/passwd", portraitPos: "x", name: { et: "n".repeat(81) }, role: { et: "r".repeat(161) }, stats: [{ uid: "t0", value: "1234567890123", label: { et: "l".repeat(41) } }] }),
+        { portraitKey: "image", portraitPos: "focal", name: "tooLong", role: "tooLong", "stats.0.value": "tooLong", "stats.0.label": "tooLong" },
+      ],
+      [trainerParts, "works", [{ key: "img/not-an-upload.jpg", alt: { et: "a".repeat(201) } }], { "works.0.key": "image", "works.0.alt": "tooLong" }],
+      [trainerParts, "center_story", { title: { et: "t".repeat(121) }, body: { et: "" } }, { title: "tooLong" }],
+    ];
+    for (const [parts, part, value, expected] of cases) {
+      expect(parts[part].loose?.(value), part).toEqual(expected);
+      const prefix = ["slides", "faq", "works"].includes(part) ? "" : `${part}.`;
+      expect(strict(parts, part, value), part).toEqual(Object.fromEntries(Object.entries(expected).map(([path, code]) => [prefix + path, code])));
+    }
+    // a package (its part is made per code from the table: checked here by the same Check calls its strict check makes)
+    const bad = pkg({ price: "12,345", models: "21", items: [{ et: "x".repeat(301) }] });
+    expect(loosePackage(bad)).toEqual({ price: "amount", models: "whole", "items.0": "tooLong" });
+    const c = new Check();
+    expect([c.amount("price", bad.price), c.whole("models", bad.models, 0, 20), c.list("items", bad.items, 300, 20)]).toEqual([null, null, []]);
+    expect(c.errors).toEqual({ price: "amount", models: "whole", items: "tooLong" });
+  });
+
   test("every part of Avaleht and Koolitaja has its loose check", () => {
     expect(Object.entries({ ...homeParts, ...trainerParts }).filter(([, p]) => !p.loose).map(([n]) => n)).toEqual([]);
   });
