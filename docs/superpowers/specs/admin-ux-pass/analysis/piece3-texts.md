@@ -275,6 +275,7 @@ Existing and unchanged:
 
 Piece 4 (C screens):
 - C2 trainer gallery counter „4 / 12“ against the limit 24 (STR D25, "ASK DIM"); the shared gallery component is touched in piece 3, but it keeps its existing hint (ADM:1635) and shows no counter until Dim answers.
+  **Dim 26.10: keep the limit 24 and show the counter as „{n} / 24“** (no photo she already has can be lost).
 - UndoBar nouns for slides and FAQ rows (the generic `Rida eemaldatud.` and `Pilt eemaldatud.` come from S3-P3-d), and the review bars of C6 („Arvustus avaldatud.“ is drawn; the „Peida“ one is not).
 - C3: the post-specific required-field labels for `Puudub: …` (the shape is S3-P3-b), „Uus postitus“ with its slug (SPEC S8), `post.remove.confirm` re-skin.
 - PublishBar field labels of the home, trainer, news, popup and practice editors (the rules are P-3).
