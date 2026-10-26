@@ -58,6 +58,11 @@
   color: var(--muted);
 }
 
+/* a word about the card („tühi“, Koolitaja's empty story), in the count's grey */
+.status [data-note] {
+  color: var(--muted);
+}
+
 .status [data-flag] {
   color: var(--warn);
 }

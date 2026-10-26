@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { deletePostForm, saveCampaignForm, saveHomeForm, savePostForm, saveTrainerForm } from "../admin-site";
+import { deletePostForm, saveCampaignForm, saveHomeForm, savePostForm } from "../admin-site";
 import type { EditResult } from "../edit-check";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
@@ -13,11 +13,8 @@ import { revalidatePublic, type PublicChange } from "../public-cache";
 // The site content editors' server actions (Task 13B): every export is wrapped in adminAction (signed-in admin or a
 // redirect to /admin/login; tests/unit/admin-guards.test.ts fails otherwise). The work is in ../admin-site.ts. The
 // public pages are cached: a save revalidates the pages that show what it saved (server/public-cache.ts), so the public
-// site shows it on its next request; refresh() updates the open admin page. Praktika's packages are on the draft layer since admin UX pass piece 4a
-// (Task 4): they autosave into drafts and publish on their routes (api/admin/sisu/practice/0/…), with no action here.
-
-/** The parts an editor save stored (it sends only the changed ones). */
-const savedParts = (result: EditResult): string[] => (result.ok ? Object.keys(result.saved?.values ?? {}) : []);
+// site shows it on its next request; refresh() updates the open admin page. Praktika's packages (admin UX pass piece 4a, Task 4) and Koolitaja's parts
+// (Task 5) are on the draft layer: they autosave into drafts and publish on their routes (api/admin/sisu/<practice|trainer>/0/…), with no action here.
 
 async function run(what: string, change: (result: EditResult) => PublicChange, work: (db: Db) => Promise<EditResult>): Promise<EditResult> {
   try {
@@ -36,9 +33,6 @@ async function run(what: string, change: (result: EditResult) => PublicChange, w
 
 /** Avaleht "Salvesta": field data ({ parts: slides | statement | faq }). */
 export const saveHome = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("home save", () => ({ kind: "home" }), (db) => saveHomeForm(db, formData)));
-
-/** Koolitaja "Salvesta": field data ({ parts: trainer | bio | works | center_story | trainer_journey }). */
-export const saveTrainer = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("trainer save", (r) => ({ kind: "trainer", parts: savedParts(r) }), (db) => saveTrainerForm(db, formData)));
 
 /** Hüpikaken "Salvesta": field data ({ parts: campaign and/or newsletter }). */
 export const saveCampaign = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("campaign save", () => ({ kind: "campaign" }), (db) => saveCampaignForm(db, formData)));

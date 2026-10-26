@@ -1,0 +1,142 @@
+/* GalleryEditor layout="grid" (Koolitaja's „Galerii“, admin UX pass piece 4a ruling R-g; the Part 4 C2 frame): the pictures as tiles in a grid, 10 px
+   apart, as many columns of at least 140 px as the card holds (five at the frame's 1440 px; two on a phone; no container query: old iPads), then the
+   tile „+ Lisa“ (a 1 px dashed outline, drawn #cfc6ca: the token --fog). A tile is the picture, 120 px tall with a 12 px radius (drawn); on it the
+   handle at the top left, the ✕ at the top right and ↑ ↓ at the bottom right, each a 44 px target whose round white chip is drawn 32 px (the frame's
+   ✕: rgba(255, 255, 255, .9), 6 px from the corner). The course's gallery (the list of rows) is editor.module.css's, unchanged. */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.cell {
+  min-width: 0;
+}
+
+.tile {
+  position: relative;
+  height: 120px;
+}
+
+.picture {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border-radius: 12px;
+  background: var(--first);
+  object-fit: cover;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* the controls' places on the picture */
+.handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.arrows {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+
+/* each control: a 44 px target, its chip drawn 32 px round inside it (the padding keeps the white to the content box) */
+.handle > [data-drag-tool],
+.arrows [data-drag-tool],
+.remove {
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  border: 0;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.9);
+  -webkit-background-clip: content-box;
+  background-clip: content-box;
+  color: var(--ink);
+}
+
+.handle > [data-drag-tool]:hover,
+.arrows [data-drag-tool]:hover,
+.arrows [data-drag-tool][aria-disabled="true"]:hover,
+.remove:hover {
+  background-color: var(--paper);
+  -webkit-background-clip: content-box;
+  background-clip: content-box;
+}
+
+.handle > [data-drag-tool] {
+  font-size: 16px;
+}
+
+.remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  font: 500 12px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* „+ Lisa“: the whole tile is the file field's label (the field itself hidden, its focus shown on the tile) */
+.add {
+  position: relative;
+  display: block;
+}
+
+.add input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.add label {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  height: 120px;
+  padding: 0 8px;
+  border: 1px dashed var(--fog);
+  border-radius: 12px;
+  color: var(--ink);
+  font: 600 12px/1.3 var(--font-body);
+  text-align: center;
+  cursor: pointer;
+}
+
+.add label:hover {
+  background: var(--first);
+}
+
+.add input[type="file"]:focus-visible + label {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the upload's notes under the grid: what it takes, how it went */
+.notes {
+  display: grid;
+  gap: 6px;
+}
+
+.notes p {
+  margin: 0;
+}
+
+/* a phone: two tiles a row (two 44 px controls side by side still fit a tile of a 320 px screen) */
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

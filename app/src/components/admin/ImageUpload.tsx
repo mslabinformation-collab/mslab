@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { ShrinkError, shrinkImage, type ShrinkOptions, type ShrinkProblem } from "@/lib/shrink-image";
@@ -47,15 +47,24 @@ async function send(file: File): Promise<string> {
 
 type Status = { kind: "idle" } | { kind: "busy"; text: string } | { kind: "done"; text: string } | { kind: "error"; text: string };
 
+/** An upload's state for its parts (UploadPicker, UploadNotes): their ids, the status line, and the pick. */
+export type ImageUploadState = {
+  /** The ids' stem: the file field is `${id}-file`, its notes `${id}-hint` and `${id}-status`. */
+  id: string;
+  status: Status;
+  busy: boolean;
+  pick: (files: File[]) => void;
+};
+
 /**
- * "Lisa pilte": picks images, makes each smaller and metadata-free in the browser (lib/shrink-image.ts shrinkImage) and uploads it; the
- * keys of the stored images go to `onUploaded` in the order picked. The server checks type, size and content again.
+ * The upload of ImageUpload, for a page that places its parts itself (Koolitaja's gallery grid, piece 4a R-g: the „+ Lisa“ tile among the pictures,
+ * its notes under the grid): files picked while others are still uploading wait their turn (nothing is dropped), one queue, one counter; each one
+ * made smaller and metadata-free, uploaded, and its key handed to `onUploaded` in the order picked.
  */
-export function ImageUpload({ onUploaded, multiple = false, label }: { onUploaded: (keys: string[]) => void; multiple?: boolean; label?: string }) {
+export function useImageUpload(onUploaded: (keys: string[]) => void): ImageUploadState {
   const t = adminEt.upload;
-  const uid = useId();
+  const id = useId();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  // Files picked while others are still uploading wait their turn (nothing is dropped): one queue, one counter.
   const queue = useRef<File[]>([]);
   const progress = useRef({ running: false, done: 0, total: 0, added: 0, problem: null as Problem | null });
 
@@ -87,32 +96,66 @@ export function ImageUpload({ onUploaded, multiple = false, label }: { onUploade
     if (progress.current.running) setStatus({ kind: "busy", text: fill(t.queued, { n: files.length, total: progress.current.total }) });
     else void run();
   };
-  const busy = status.kind === "busy";
+  return { id, status, busy: status.kind === "busy", pick };
+}
 
+/**
+ * The upload's file field (hidden: its label is what is seen and pressed) and the label, with `children` as the label's words. `name`: the field's
+ * own name for a screen reader, where the words seen are shorter („+ Lisa“, named „Lisa pilte“).
+ */
+export function UploadPicker({ upload, multiple, className, name, children }: { upload: ImageUploadState; multiple?: boolean; className?: string; name?: string; children: ReactNode }) {
   return (
-    <div className={styles.upload} data-image-upload="" aria-busy={busy || undefined}>
+    <>
       <input
-        id={`${uid}-file`}
+        id={`${upload.id}-file`}
         type="file"
         accept={ACCEPT.join(",")}
         multiple={multiple}
-        aria-describedby={`${uid}-hint ${uid}-status`}
+        aria-label={name}
+        aria-describedby={`${upload.id}-hint ${upload.id}-status`}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           // reset at once, so the same file can be picked again (and a pick during an upload is not lost)
           e.target.value = "";
-          pick(files);
+          upload.pick(files);
         }}
       />
-      <label htmlFor={`${uid}-file`} className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>
-        {label ?? (multiple ? t.choose : t.chooseOne)}
+      <label htmlFor={`${upload.id}-file`} className={className}>
+        {children}
       </label>
-      <p id={`${uid}-hint`} className={`${ui.muted} ${styles.uploadHint}`}>
+    </>
+  );
+}
+
+/** The upload's notes: what it takes (and what the browser does to a picture first), and how it went (the field's description). */
+export function UploadNotes({ upload }: { upload: ImageUploadState }) {
+  const t = adminEt.upload;
+  const { id, status } = upload;
+  return (
+    <>
+      <p id={`${id}-hint`} className={`${ui.muted} ${styles.uploadHint}`}>
         {t.hint}
       </p>
-      <p id={`${uid}-status`} role="status" className={status.kind === "error" ? ui.error : status.kind === "done" ? ui.success : ui.hint} data-upload-status={status.kind}>
+      <p id={`${id}-status`} role="status" className={status.kind === "error" ? ui.error : status.kind === "done" ? ui.success : ui.hint} data-upload-status={status.kind}>
         {status.kind === "idle" ? "" : status.text}
       </p>
+    </>
+  );
+}
+
+/**
+ * "Lisa pilte": picks images, makes each smaller and metadata-free in the browser (lib/shrink-image.ts shrinkImage) and uploads it; the
+ * keys of the stored images go to `onUploaded` in the order picked. The server checks type, size and content again.
+ */
+export function ImageUpload({ onUploaded, multiple = false, label }: { onUploaded: (keys: string[]) => void; multiple?: boolean; label?: string }) {
+  const t = adminEt.upload;
+  const upload = useImageUpload(onUploaded);
+  return (
+    <div className={styles.upload} data-image-upload="" aria-busy={upload.busy || undefined}>
+      <UploadPicker upload={upload} multiple={multiple} className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>
+        {label ?? (multiple ? t.choose : t.chooseOne)}
+      </UploadPicker>
+      <UploadNotes upload={upload} />
     </div>
   );
 }

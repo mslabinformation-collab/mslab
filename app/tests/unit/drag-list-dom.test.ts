@@ -46,16 +46,21 @@ type Over = {
   menu?: "button" | "wrapper";
   menuTo?: number;
   arrowNames?: (n: number) => { up: string; down: string };
+  /** "grid": the rows stand in a grid (Koolitaja's gallery tiles); `after`: a last cell that is no row (its „+ Lisa“ tile). */
+  layout?: "list" | "grid";
+  after?: ReactNode;
 };
 
 /** A parent that keeps the order, as the editors do. */
-function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen, menu, menuTo = 0, arrowNames }: Over) {
+function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen, menu, menuTo = 0, arrowNames, layout, after }: Over) {
   const [items, setItems] = useState(initial);
   return createElement(DragList<Item>, {
     items,
     keyOf: (item) => item.id,
     label,
     arrowNames,
+    layout,
+    after,
     disabled,
     className,
     rowClassName,
@@ -100,7 +105,7 @@ const click = (el: Element) => act(async () => void (el as HTMLElement).click())
 const key = (el: Element, k: string, init: KeyboardEventInit = {}) => act(async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init })));
 const menuButton = (id: string) => row(id).querySelector<HTMLButtonElement>("[data-menu-button]")!;
 
-type Pointer = { pointerId?: number; pointerType?: string; button?: number; clientY?: number };
+type Pointer = { pointerId?: number; pointerType?: string; button?: number; clientX?: number; clientY?: number };
 const pointer = (el: Element, type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", init: Pointer = {}) =>
   act(async () => void el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: "touch", button: 0, isPrimary: true, ...init })));
 /** A finger on the handle of `id`: down at the middle of its row, then to `y`, then up (or not: `release: false`). */
@@ -680,6 +685,81 @@ describe("DragList: the focus", () => {
   });
 });
 
+// layout "grid" (piece 4a, Task 5, R-g: Koolitaja's gallery tiles): the rows stand in a grid, so a drag goes in both directions — the place it lands
+// in is the one whose middle is nearest in both; a row it passes moves to its neighbour's place (which may be on the row above or below); ArrowLeft and
+// ArrowRight on the handle move one place too. `after` is a last cell of the list that is no row (the „+ Lisa“ tile): no drag lands on it.
+describe("DragList: layout „grid“", () => {
+  /** Three columns of 150 × 100 px, row after row (only the rows: the `after` cell is no row). */
+  const gridRects = () => {
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (!this.hasAttribute("data-drag-row")) return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+      const i = Array.prototype.filter.call(this.parentElement!.children, (el: Element) => el.hasAttribute("data-drag-row")).indexOf(this);
+      const left = (i % 3) * 150;
+      const top = Math.floor(i / 3) * ROW;
+      return { top, bottom: top + ROW, left, right: left + 150, width: 150, height: ROW, x: left, y: top, toJSON: () => ({}) };
+    };
+  };
+  const FIVE: Item[] = ["a", "b", "c", "d", "e"].map((id) => ({ id, name: id.toUpperCase() }));
+  const at = (el: Element, type: "pointerdown" | "pointermove" | "pointerup", clientX: number, clientY: number) => pointer(el, type, { clientX, clientY });
+
+  it("a row dragged across and down lands on the place nearest in both directions, once; the `after` cell stays last and is no row", async () => {
+    gridRects();
+    const onMove = vi.fn();
+    await draw({ items: FIVE, layout: "grid", onMove, after: createElement("span", { "data-after": "" }, "+ Lisa") });
+    expect(list().lastElementChild!.hasAttribute("data-drag-row")).toBe(false);
+    expect(text(list().lastElementChild)).toBe("+ Lisa");
+    const handle = tool("a", "handle");
+    await at(handle, "pointerdown", 75, 50);
+    // to the middle of the second row's second place (d, e on the row under a b c): e's place
+    await at(handle, "pointermove", 230, 160);
+    expect(row("a").style.getPropertyValue("--drag-dx")).toBe("155px");
+    expect(row("a").style.getPropertyValue("--drag-dy")).toBe("100px");
+    // the rows it passes move to their neighbour's place: b to a's, d (first on the row below) up to c's
+    expect(row("b").getAttribute("data-shift")).toBe("up");
+    expect(row("b").style.getPropertyValue("--to-prev-x")).toBe("-150px");
+    expect(row("d").style.getPropertyValue("--to-prev-x")).toBe("300px");
+    expect(row("d").style.getPropertyValue("--to-prev-y")).toBe("-100px");
+    await at(handle, "pointerup", 230, 160);
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onMove).toHaveBeenCalledWith(0, 4);
+    expect(order()).toEqual(["B", "C", "D", "E", "A"]);
+    expect(text(live())).toBe("„A“ on nüüd 5. kohal.");
+    // the drag leaves nothing behind
+    for (const id of ["a", "b", "d"]) for (const p of ["--drag-dx", "--drag-dy", "--to-prev-x", "--to-prev-y", "--to-next-x", "--to-next-y"]) expect(row(id).style.getPropertyValue(p)).toBe("");
+  });
+
+  it("in a list the same move across is no move (a list's drag goes up and down only)", async () => {
+    gridRects();
+    const onMove = vi.fn();
+    await draw({ items: FIVE, onMove });
+    const handle = tool("a", "handle");
+    await at(handle, "pointerdown", 75, 50);
+    await at(handle, "pointermove", 380, 55);
+    await at(handle, "pointerup", 380, 55);
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it("ArrowRight and ArrowLeft on the handle move one place in a grid (in a list they do nothing)", async () => {
+    const onMove = vi.fn();
+    await draw({ layout: "grid", onMove });
+    await key(tool("a", "handle"), "ArrowRight");
+    expect(order()).toEqual(["B", "A", "C"]);
+    await key(tool("a", "handle"), "ArrowLeft");
+    expect(order()).toEqual(["A", "B", "C"]);
+    expect(onMove.mock.calls).toEqual([
+      [0, 1],
+      [1, 0],
+    ]);
+    expect(document.activeElement).toBe(tool("a", "handle"));
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    onMove.mockClear();
+    await draw({ onMove });
+    await key(tool("a", "handle"), "ArrowRight");
+    expect(onMove).not.toHaveBeenCalled();
+  });
+});
+
 describe("DragList: the stylesheet", () => {
   const raw = readFileSync(join(process.cwd(), "src/components/admin/DragList.module.css"), "utf8");
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -711,6 +791,12 @@ describe("DragList: the stylesheet", () => {
     expect(css).toMatch(/\.row\[data-shift="up"\]\s*\{[^}]*translateY\(calc\(var\(--drag-step[^)]*\) \* -1\)\)/);
     expect(css).toMatch(/\.row\[data-shift="down"\]\s*\{[^}]*translateY\(var\(--drag-step/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*transition:\s*none/);
+  });
+
+  it("in a grid the dragged row goes both ways, and a row making room goes to its neighbour's place", () => {
+    expect(rule(".grid > .row[data-dragging]")).toMatch(/translate\(var\(--drag-dx, 0px\), var\(--drag-dy, 0px\)\)/);
+    expect(rule('.grid > .row[data-shift="up"]')).toMatch(/translate\(var\(--to-prev-x, 0px\), var\(--to-prev-y, 0px\)\)/);
+    expect(rule('.grid > .row[data-shift="down"]')).toMatch(/translate\(var\(--to-next-x, 0px\), var\(--to-next-y, 0px\)\)/);
   });
 
   it("the announcement is for the screen reader only", () => {

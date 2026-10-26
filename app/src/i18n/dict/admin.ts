@@ -2265,11 +2265,13 @@ export const adminEt = {
     empty: "Praktikapakette pole.",
   },
 
+  // Koolitaja (C2; admin UX pass piece 4a, Task 5: piece4-texts S4-13…S4-16, the rest unchanged, §3; the numbers' list editor's words went with it, §4)
   trainer: {
-    eyebrow: "Koolitaja",
+    eyebrow: "Koduleht",
     title: "Koolitaja",
     lead: "Koolitaja leht: portree, nimi, tutvustus, numbrid, tööde galerii ja kaks lugu. Avalehe koolitaja plokk kasutab samu andmeid.",
-    card: "Koolitaja",
+    // the first card: the portrait beside the name, the role and the bio (S4-14)
+    card: "Portree ja tutvustus",
     portrait: "Portree",
     portraitHint: "Püstine foto sobib kõige paremini. Fookuspunkt jääb alati nähtavale.",
     portraitWide: "Arvutis (4:5)",
@@ -2277,24 +2279,26 @@ export const adminEt = {
     name: "Nimi",
     role: "Amet",
     roleHint: "Näidatakse koolitaja lehel, kui tutvustus on tühi.",
+    // three fixed pairs, each a number and its label (their fields' names: „Number {n}“, „Selgitus {n}“)
     stats: "Numbrid",
-    statsHint: "Kuni 3 numbrit, nt „8+“ ja „aastat“.",
     statValue: "Number",
     statLabel: "Selgitus",
     stat: "Number {n}",
-    addStat: "Lisa number",
-    removeStat: "Eemalda number {n}",
-    statsMax: "Numbreid saab olla kuni 3.",
     bio: "Tutvustus",
     bioHint: "Tühi rida alustab uut lõiku. Esimene lõik on ka avalehe koolitaja plokis.",
-    works: "Koolitaja tööd",
-    worksHint: "Pildid koolitaja lehel portree all, selles järjekorras. Muuda järjekorda nooltega.",
+    // the gallery's card (S4-14), its counter (S4-15; {n}: the pictures, at most 24 — Dim 26.10, D25) and its last tile, after its „+“ (S4-15)
+    works: "Galerii",
+    worksHint: "Lohista järjekorra muutmiseks · {n} / 24",
+    addWork: "Lisa",
     story: "Koolituskeskuse lugu",
     journey: "Koolitaja teekond",
     storyTitle: "Pealkiri",
     storyTitleHint: "Tühjaks jättes: „{title}“.",
     storyBody: "Tekst",
     storyHint: "Tühi rida alustab uut lõiku. Tühjaks jättes osa lehel ei näidata.",
+    // an empty story's card, folded (S4-16: „tühi · Lisa tekst ▸“, the ▸ the fold's own), and the section map's word for it
+    empty: "tühi",
+    addText: "Lisa tekst",
   },
 
   news: {

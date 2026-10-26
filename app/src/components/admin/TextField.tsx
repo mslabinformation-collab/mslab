@@ -19,15 +19,19 @@ type Props = {
   /** data-field attribute (tests, the first-error focus). */
   name?: string;
   className?: string;
+  /** The label for screen readers only (Koolitaja's number pairs, which the card's title names). */
+  labelHidden?: boolean;
 };
 
 /** A one-language text field with its label, hint and error (names, amounts, links, e-mail, phone). */
-export function TextField({ label, value, onChange, hint, error, type = "text", inputMode, autoComplete = "off", maxLength, placeholder, suggestions, name, className }: Props) {
+export function TextField({ label, value, onChange, hint, error, type = "text", inputMode, autoComplete = "off", maxLength, placeholder, suggestions, name, className, labelHidden }: Props) {
   const id = useId();
   const describedBy = [hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
   return (
     <div className={`${ui.field} ${className ?? ""}`}>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} className={labelHidden ? ui.sr : undefined}>
+        {label}
+      </label>
       <input
         id={id}
         className={ui.input}

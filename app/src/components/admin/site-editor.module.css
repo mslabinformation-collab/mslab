@@ -1,5 +1,5 @@
-/* The site content editors (Task 13B): home page slides and FAQ, trainer, campaign, settings, posts (Praktika:
-   PracticeEditor.module.css). Prototype B's admin cards and fields (ui.module.css, editor.module.css) plus what these editors add: a single picture
+/* The site content editors (Task 13B): home page slides and FAQ, campaign, settings, posts (Praktika: PracticeEditor.module.css; Koolitaja:
+   TrainerEditor.module.css, piece 4a). Prototype B's admin cards and fields (ui.module.css, editor.module.css) plus what these editors add: a single picture
    with its focal point and crop previews, the folding slide rows, the D campaign layout. Palette tokens only. */
 
 .stack {
@@ -321,29 +321,6 @@
   min-width: 0;
 }
 
-/* ---------- trainer ---------- */
-
-.trainerGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 30px;
-  align-items: start;
-}
-
-.statRow {
-  display: grid;
-  grid-template-columns: minmax(0, 120px) minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.statRow > :last-child {
-  padding-top: 22px;
-}
-
 /* ---------- campaign (D adminCamp .cols) ---------- */
 
 .cols {
@@ -459,8 +436,7 @@
 }
 
 @media (max-width: 980px) {
-  .slideBody,
-  .trainerGrid {
+  .slideBody {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -498,15 +474,6 @@
 
   .pair {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .statRow {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .statRow > :last-child {
-    padding-top: 0;
-    justify-self: end;
   }
 
   .frameBox {

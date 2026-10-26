@@ -246,6 +246,12 @@ export function packageDraft(p: { name: I18n; tagline: I18n; models: number; dur
 }
 
 export type StatDraft = Keyed & { value: string; label: I18n };
+
+/**
+ * A pair of „Numbrid“ with neither a number nor a label (in either language): the publish leaves it out (server/admin-site.ts), the draft's check
+ * does not count it (domain/site-checks.ts), and Koolitaja's editor keeps none at the end of its three pairs (TrainerEditor.tsx).
+ */
+export const isBlankStat = (s: { value: string; label: I18n }): boolean => !s.value.trim() && !s.label.et.trim() && !(s.label.ru ?? "").trim();
 export type TrainerDraft = { portraitKey: string; portraitPos: string; name: I18n; role: I18n; stats: StatDraft[] };
 
 /** settings.trainer → the trainer card's draft (the portrait's focal point defaults as the site frames it). */

@@ -328,56 +328,150 @@ test.describe("home page", () => {
   });
 });
 
-test.describe("trainer page (T1–T4)", () => {
-  test("an uploaded portrait is framed by its focal point without the seed photo's zoom; the works gallery follows", async ({ page, context, visitorIp }, info) => {
+/** The answer 200 to a trainer part's autosave (POST api/admin/sisu/trainer/0/osa/<part>). */
+const trainerSaved = (page: Page, part: string) =>
+  page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/trainer/0/osa/${part}`) && r.request().method() === "POST" && r.status() === 200);
+
+// Koolitaja (C2 on the draft layer; admin UX pass piece 4a, Task 5): every field autosaves into its part's draft, and the one bar's „Avalda muudatused“
+// publishes every trainer draft there is (R-e). One test at a time makes them (edit-lock.ts `trainerDrafts`: desktop the gallery and the portrait, the
+// phone a story — each in its own project only), and at its end none is left.
+const trainerDraftCount = () => one((sql) => sql<{ n: number }[]>`select count(*)::int as n from content_drafts where entity = 'trainer'`);
+/** The works on a visitor's /koolitaja, in their order (each one's picture). */
+const shownWorks = (p: Page) => p.locator("[data-works] [data-work] img").evaluateAll((imgs) => imgs.map((img) => img.getAttribute("src")));
+
+test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja on the draft layer)", () => {
+  test.use({ trainerDrafts: "chromium-edit" });
+
+  test("two gallery tiles swapped by drag and a new portrait with its focal point wait in their drafts (the bar „Portree, Galerii“) until „Avalda muudatused“; /koolitaja then shows the new order and the portrait framed by its point; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the trainer card and works; the phone project a story");
+    test.slow(); // one long flow: the editor, the public pages, a publish and a second width
     await changing(["settings", { column: "key", value: "trainer" }], ["gallery_items", { column: "group", value: "trainer_works" }]);
-    // the seed portrait (maria-standing): zoomed in, as tuned in Task 9
+    const storedTrainer = async () => (await one((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'trainer'`)).value;
+    const before = await storedTrainer();
+    // the seed portrait (maria-standing): zoomed in, as tuned in Task 9; the works in their order
     await page.goto("/koolitaja");
     await expect(page.locator("[data-portrait] img")).not.toHaveCSS("transform", "none");
-    const works = await page.locator("[data-works] [data-work]").count();
+    const works = await shownWorks(page);
+    expect(works.length, "the seed's works").toBeGreaterThan(2);
 
     await signIn(page, context, visitorIp);
     await page.goto("/admin/koolitaja");
     await adminReady(page);
-    const portrait = page.locator('[data-single-image="portrait"]');
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Koolitaja");
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht");
+    await expect(page.locator("[data-trainer-editor] > section > h2")).toHaveText(["Portree ja tutvustus", "Numbrid", "Galerii", "Koolituskeskuse lugu", "Koolitaja teekond"]);
+    await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+
+    // „Galerii“: the counter and „+ Lisa“; the first tile dragged onto the second's place swaps them, saved at once into the gallery's draft
+    const gallery = page.locator("#galerii");
+    await expect(gallery.locator("[data-gallery-count]")).toHaveText(`Lohista järjekorra muutmiseks · ${works.length} / 24`);
+    await expect(gallery.locator("[data-gallery-add] label")).toHaveText("+ Lisa");
+    const tiles = gallery.locator("[data-gallery-item]");
+    await expect(tiles).toHaveCount(works.length);
+    const [first, second] = [await tiles.nth(0).getAttribute("data-gallery-item"), await tiles.nth(1).getAttribute("data-gallery-item")];
+    await tiles.nth(1).scrollIntoViewIfNeeded(); // (a pointer goes only where the screen is)
+    const handle = (await tiles.nth(0).locator('[data-drag-tool="handle"]').boundingBox())!;
+    const target = (await tiles.nth(1).boundingBox())!;
+    let saved = trainerSaved(page, "works");
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await saved;
+    await expect(tiles.nth(0)).toHaveAttribute("data-gallery-item", second!);
+    await expect(tiles.nth(1)).toHaveAttribute("data-gallery-item", first!);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(barWords(page)).toHaveText(draftWords("Galerii"));
+
+    // „Portree ja tutvustus“: a new portrait (saved at once) and its focal point (saved when the field is left)
+    const portrait = page.locator('#portree [data-single-image="portrait"]');
+    saved = trainerSaved(page, "trainer");
     await portrait.locator('input[type="file"]').setInputFiles([jpeg("maria-seated.jpg")]);
     await expect(portrait.locator("[data-upload-status]")).toHaveText("Pilt lisatud.");
-    await portrait.locator('[data-focal-axis="portrait-x"]').fill("30");
-    await portrait.locator('[data-focal-axis="portrait-y"]').fill("25");
-    await expect(portrait.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("object-position", "30% 25%");
-    await expect(portrait.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("transform", "none"); // an upload: no zoom
-    await page.locator("[data-works-editor]").getByRole("button", { name: `Eemalda pilt ${works}` }).click();
+    await saved;
+    const focal = page.locator("#portree [data-focal-point]");
+    await focal.locator('[data-focal-axis="portrait-x"]').fill("30");
+    await focal.locator('[data-focal-axis="portrait-y"]').fill("25");
+    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("object-position", "30% 25%");
+    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("transform", "none"); // an upload: no zoom
+    saved = trainerSaved(page, "trainer");
+    await focal.locator('[data-focal-axis="portrait-y"]').blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Portree, Galerii"));
     expect(await noOverflow(page)).toBe(true);
-    await save(page);
-    const stored = await one((sql) => sql<{ value: Record<string, unknown> }[]>`select value from settings where key = 'trainer'`);
-    expect(stored.value.portraitKey).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
-    expect(stored.value).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: "/seed/maria-seated.jpg", name: { et: "Maria Sosnina", ru: "Мария Соснина" } });
-    const key = stored.value.portraitKey as string;
+    expect(await storedTrainer(), "live keeps its portrait").toEqual(before);
+    expect(await trainerDraftCount()).toEqual({ n: 2 });
 
-    await page.goto("/koolitaja");
-    const img = page.locator("[data-portrait] img");
+    // a visitor's /koolitaja (this browser, no draft mode): still the old order
+    const visitor = await context.newPage();
+    await visitor.goto("/koolitaja");
+    expect(await shownWorks(visitor)).toEqual(works);
+
+    // „Avalda muudatused“: both parts published, the bar goes, no draft is left
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/trainer/0/avalda") && r.request().method() === "POST");
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await trainerDraftCount()).toEqual({ n: 0 });
+    const after = await storedTrainer();
+    expect(after.portraitKey).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+    expect(after).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: before.contactPhotoKey, name: before.name });
+    const key = after.portraitKey as string;
+    await visitor.reload();
+    expect(await shownWorks(visitor)).toEqual([works[1], works[0], ...works.slice(2)]);
+    const img = visitor.locator("[data-portrait] img");
     await expect(img).toHaveAttribute("src", `/media/${key}`);
     await expect(img).toHaveCSS("object-position", "30% 25%");
     await expect(img).toHaveCSS("transform", "none");
-    await expect(page.locator("[data-works] [data-work]")).toHaveCount(works - 1);
-    await page.goto("/");
-    const teaser = page.locator(`img[src="/media/${key}"]`).first();
+    await visitor.goto("/");
+    const teaser = visitor.locator(`img[src="/media/${key}"]`).first();
     await expect(teaser).toHaveCSS("object-position", "30% 25%");
     await expect(teaser).toHaveCSS("transform", "none");
-  });
+    await visitor.close();
 
-  test("'Koolituskeskuse lugu': title and paragraphs on the trainer page", async ({ page, context, visitorIp }, info) => {
-    test.skip(!phone(info), "the phone project changes the story; desktop the trainer card");
+    // 375 px: the tiles inside the screen, nothing scrolls sideways
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/admin/koolitaja");
+    await adminReady(page);
+    await expect(page.locator("#galerii [data-gallery-item]")).toHaveCount(works.length);
+    for (const right of await page.locator("#galerii [data-gallery-item], #galerii [data-gallery-add]").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().right)))
+      expect(right).toBeLessThanOrEqual(375);
+    expect(await noOverflow(page)).toBe(true);
+  });
+});
+
+test.describe("trainer page, phone: a story (C2 Koolitaja on the draft layer)", () => {
+  test.use({ trainerDrafts: "mobile-edit" });
+
+  test("an empty story is folded to „tühi“ · „Lisa tekst“; the button opens it with the cursor in its title; typed, published, /koolitaja shows it", async ({ page, context, visitorIp }, info) => {
+    test.skip(!phone(info), "the phone project changes the story; desktop the trainer card and works");
     await changing(["pages", { column: "key", value: "center_story" }]);
+    // (the seed's story has text: emptied here, so its card starts folded)
+    await onLocalDb((sql) => sql`update pages set title = ${sql.json({ et: "" })}, body = ${sql.json({ et: "" })} where key = 'center_story'`);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/koolitaja");
     await adminReady(page);
-    const story = page.locator('[data-story-editor="center_story"]');
-    await story.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill("E2E lugu");
-    await story.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true }).fill("Esimene E2E lõik.\n\nTeine E2E lõik.");
+    const story = page.locator("#lugu");
+    await expect(story.getByRole("heading", { level: 2 })).toHaveText("Koolituskeskuse lugu");
+    await expect(story.locator("[data-story-fold]")).toHaveText("tühi · Lisa tekst ▸");
+    await expect(story.getByRole("textbox")).toHaveCount(0);
+    await story.getByRole("button", { name: "Lisa tekst", exact: true }).click();
+    const title = story.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    await expect(title).toBeFocused();
+    await title.fill("E2E lugu");
+    const body = story.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
+    await body.fill("Esimene E2E lõik.\n\nTeine E2E lõik.");
+    const saved = trainerSaved(page, "center_story");
+    await body.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Koolituskeskuse lugu"));
     expect(await noOverflow(page)).toBe(true);
-    await save(page);
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/trainer/0/avalda") && r.request().method() === "POST");
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await trainerDraftCount()).toEqual({ n: 0 });
     await page.goto("/koolitaja");
     const block = page.locator('[data-story="center_story"]');
     await expect(block.getByRole("heading")).toHaveText("E2E lugu");

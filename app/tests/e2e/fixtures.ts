@@ -1228,16 +1228,28 @@ export async function insertPreviewDraft(slug: string, title: string): Promise<s
 
 export const PRACTICE_DRAFTS_LOCK = "e2e-practice-drafts";
 
-/** Deletes every practice draft (under PRACTICE_DRAFTS_LOCK they are the holder's own); returns how many there were. */
-export async function removePracticeDrafts(): Promise<number> {
+/** Deletes every draft of a site entity (under its lock they are the holder's own); returns how many there were. */
+async function removeSiteDrafts(entity: "practice" | "trainer"): Promise<number> {
   const sql = connect(false); // (a draft is on no page a visitor gets)
   try {
-    const gone = await sql`delete from content_drafts where entity = 'practice' returning id`;
+    const gone = await sql`delete from content_drafts where entity = ${entity} returning id`;
     return gone.length;
   } finally {
     await sql.end();
   }
 }
+
+/** Deletes every practice draft (under PRACTICE_DRAFTS_LOCK they are the holder's own); returns how many there were. */
+export const removePracticeDrafts = (): Promise<number> => removeSiteDrafts("practice");
+
+// Koolitaja's parts are one entity too (admin UX pass piece 4a, Task 5): its editor's e2e in both edit projects (desktop the portrait and the gallery,
+// the phone a story) makes trainer drafts, and either one's „Avalda muudatused“ would publish the other's. They take turns the same way, under
+// TRAINER_DRAFTS_LOCK (edit-lock.ts `trainerDrafts`), and every trainer draft goes when the turn is taken and at its end.
+
+export const TRAINER_DRAFTS_LOCK = "e2e-trainer-drafts";
+
+/** Deletes every trainer draft (under TRAINER_DRAFTS_LOCK they are the holder's own); returns how many there were. */
+export const removeTrainerDrafts = (): Promise<number> => removeSiteDrafts("trainer");
 
 /** Deletes every preview draft fixture; returns how many are left (0 when clean). */
 export async function removePreviewDrafts(): Promise<number> {

@@ -38,6 +38,7 @@ import {
   newsletterDraft,
   newsletterPopupDraft,
   normalizeIban,
+  isBlankStat,
   isIban,
   packageDraft,
   prepaymentDraft,
@@ -377,7 +378,7 @@ export const trainerParts: Parts = {
       const role = c.text(`${p}role`, v.role, L.role);
       const stats: { value: string; label: I18n }[] = [];
       for (const [i, s] of v.stats.entries()) {
-        if (!s.value.trim() && blank(s.label)) continue;
+        if (isBlankStat(s)) continue;
         const value = c.plain(`${p}stats.${i}.value`, s.value, L.statValue, { required: true });
         const label = c.text(`${p}stats.${i}.label`, s.label, L.statLabel, { required: true });
         if (value && label) stats.push({ value, label });

@@ -1625,23 +1625,30 @@
       "title": "Koolitaja andmed",
       "href": "/admin/koolitaja",
       "steps": [
-        "Ava „Koolitaja“.",
-        "Vajuta „Koolitaja tööd“ all „Lisa pilte“ ja vali üks pilt.",
-        "Vajuta „Salvesta“.",
-        "Ava avalik koolitaja leht.",
-        "Eemalda see pilt ja salvesta."
+        "Ava „Koolitaja“ ja vaata kaartide järjekorda.",
+        "Lohista „Galerii“ esimese pildi käepide ⋮⋮ sõrmega teise pildi kohale ja oota olekut „Mustand salvestatud“.",
+        "Ava avalik koolitaja leht, siis vajuta halduses ribal „Eelvaade ↗“.",
+        "Tule tagasi ja vajuta ribal „Avalda muudatused“, siis lohista pilt tagasi ja avalda uuesti.",
+        "Eemalda üks pilt ✕ nupuga ja vajuta allservas „Võta tagasi“.",
+        "Puuduta portree pildil teist kohta, et fookuspunkt liiguks.",
+        "Tühjenda „Koolitaja teekond“ pealkiri ja tekst, oota olekut „Mustand salvestatud“ ja lae leht uuesti.",
+        "Vajuta loo real „Lisa tekst“, siis ribal „Loobu muudatustest“ ja kinnita."
       ],
       "expect": [
-        "Koolitaja lehel on uus pilt „Koolitaja tööd“ all.",
-        "Avalehe koolitaja plokis on sama nimi ja tutvustus.",
-        "Eemaldamisel on allservas „Pilt eemaldatud.“ ja nupp „Võta tagasi“.",
-        "Pärast eemaldamist on pilt kadunud."
+        "Kaardid on järjekorras „Portree ja tutvustus“, „Numbrid“, „Galerii“, „Koolituskeskuse lugu“, „Koolitaja teekond“.",
+        "Pilt liigub lohistades uude kohta; riba on „Avaldamata muudatused: 1 · Galerii. Avalikul lehel on näha eelmine versioon.“.",
+        "Avalikul lehel on piltide vana järjekord, eelvaates uus ja all riba „Avaldamata 1“.",
+        "Pärast avaldamist on koolitaja lehel uus järjekord, pärast teist avaldamist jälle vana.",
+        "✕ võtab pildi kohe ära, allservas on „Pilt eemaldatud.“ ja nupp „Võta tagasi“.",
+        "Riba on „Avaldamata muudatused: 1 · Portree. Avalikul lehel on näha eelmine versioon.“; eelvaated näitavad uut fookuspunkti.",
+        "Pärast laadimist on tühi lugu üks rida „tühi · Lisa tekst ▸“ ja jaotistes „tühi“.",
+        "„Lisa tekst“ avab loo, kursor on pealkirjas; „Loobu muudatustest“ järel on lugu ja portree endised."
       ],
       "why": "Koolitaja leht näitab Maria tööd.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-hupikaken",

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GalleryEditor } from "@/components/admin/GalleryEditor";
 import { UndoProvider } from "@/components/admin/UndoBar";
 import type { DraftImage } from "@/domain/course-editor";
+import { stubFetch } from "../fakes";
 
 // GalleryEditor (the course's „Galerii“ and the trainer's works; admin UX pass piece 3a, Task 8; README B2 "List editors (outcomes, protocol
 // points, gallery, test questions): drag + ↑/↓, removal with UndoBar"; S3-P3-d „Pilt eemaldatud.“, S3-P3-m): a picture is moved with its handle
@@ -34,20 +35,22 @@ const updates = vi.fn();
 let restoreRect: () => void;
 
 /** `twist`: each update lands on a list whose descriptions changed meanwhile (the form on screen after the cards started over, say). */
-function Harness({ initial, twist }: { initial: DraftImage[]; twist?: boolean }) {
+function Harness({ initial, twist, layout }: { initial: DraftImage[]; twist?: boolean; layout?: "list" | "grid" }) {
   const [images, setImages] = useState(initial);
   useEffect(() => {
     current = images; // (not during the render: react-hooks/globals; act() flushes the effect)
   }, [images]);
   return createElement(GalleryEditor, {
     images,
+    layout,
     onChange: (fn: (list: DraftImage[]) => DraftImage[]) => {
       updates();
       setImages((list) => fn(twist ? list.map((x) => ({ ...x, alt: { et: `${x.alt.et}!` } })) : list));
     },
   });
 }
-const render = (initial: DraftImage[] = IMAGES, twist = false) => act(async () => root.render(createElement(UndoProvider, null, createElement(Harness, { initial, twist }))));
+const render = (initial: DraftImage[] = IMAGES, twist = false, layout?: "list" | "grid") =>
+  act(async () => root.render(createElement(UndoProvider, null, createElement(Harness, { initial, twist, layout }))));
 const $ = <T extends Element = HTMLElement>(selector: string) => container.querySelector<T>(selector);
 const $$ = (selector: string) => [...container.querySelectorAll<HTMLElement>(selector)];
 const text = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -150,5 +153,84 @@ describe("GalleryEditor: a picture is known by its key (review M-5)", () => {
     await render(IMAGES, true);
     await click($('[aria-label="Eemalda pilt 2"]'));
     expect(current.map((x) => x.key)).toEqual(["img/a.jpg", "img/c.jpg"]);
+  });
+});
+
+// R-g (piece 4a, Task 5): Koolitaja's gallery is the same editor drawn as a grid of tiles (the Part 4 C2 frame: 120 px tiles, each with a 32 px round ✕
+// at its corner, then a „+ Lisa“ tile). The course's gallery keeps its rows (the cases above, unchanged).
+describe("GalleryEditor layout „grid“ (Koolitaja, R-g)", () => {
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+  /** The faked layout of a grid of three columns: a tile 150 px wide and 120 px tall, row after row. */
+  const gridRects = () => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (!this.hasAttribute("data-drag-row")) return original.call(this);
+      const i = Array.prototype.filter.call(this.parentElement!.children, (el: Element) => el.hasAttribute("data-drag-row")).indexOf(this);
+      const left = (i % 3) * 150;
+      const top = Math.floor(i / 3) * 120;
+      return { top, bottom: top + 120, left, right: left + 150, width: 150, height: 120, x: left, y: top, toJSON: () => ({}) };
+    };
+  };
+  const pointerAt = (el: Element, type: string, clientX: number, clientY: number) =>
+    act(async () => void el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: "mouse", button: 0, isPrimary: true, clientX, clientY })));
+
+  it("each picture is a tile: the picture, its handle, ✕ „Eemalda pilt {n}“ and ↑ / ↓ in the gallery's words; no description and no „Põhipilt“; the last cell is „+ Lisa“", async () => {
+    await render(IMAGES, false, "grid");
+    expect(order()).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg"]);
+    const second = $$("[data-gallery-item]")[1];
+    expect(second.querySelector("img")!.getAttribute("src")).toBe("/media/img/b.jpg");
+    expect(second.querySelector('[data-drag-tool="handle"]')!.getAttribute("aria-label")).toBe("Lohista rida 2");
+    expect(second.querySelector('[data-tool="remove"]')!.getAttribute("aria-label")).toBe("Eemalda pilt 2");
+    expect(text(second.querySelector('[data-tool="remove"]'))).toBe("✕");
+    expect(second.querySelector('[data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 2 ettepoole");
+    expect(second.querySelector('[data-drag-tool="down"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 2 tahapoole");
+    expect($("[data-gallery-editor] [data-i18n-box]")).toBeNull();
+    expect(text($("[data-gallery-editor]"))).not.toContain("Põhipilt");
+    // the „+ Lisa“ tile is the list's last cell, no picture's row (a drag never lands on it)
+    const cells = $$("[data-drag-list] > li");
+    expect(cells.at(-1)!.querySelector("[data-gallery-add]")).not.toBeNull();
+    expect(cells.at(-1)!.hasAttribute("data-drag-row")).toBe(false);
+    expect($("[data-image-upload]")).toBeNull();
+  });
+
+  it("a tile dragged across its row to the third place is moved there once (the place nearest in both directions)", async () => {
+    gridRects();
+    await render(IMAGES, false, "grid");
+    const handle = $$("[data-gallery-item]")[0].querySelector<HTMLElement>('[data-drag-tool="handle"]')!;
+    await pointerAt(handle, "pointerdown", 20, 20);
+    await pointerAt(handle, "pointermove", 320, 25);
+    await pointerAt(handle, "pointerup", 320, 25);
+    expect(updates).toHaveBeenCalledTimes(1);
+    expect(order()).toEqual(["img/b.jpg", "img/c.jpg", "img/a.jpg"]);
+  });
+
+  it("„+ Lisa“ uploads the pictures picked, each added at the end at once; the upload's words stand under the grid", async () => {
+    const fetched = stubFetch((url) => (url === "/api/admin/upload" ? Response.json({ ok: true, key: "img/uus.jpg" }) : Response.json({}, { status: 404 })));
+    try {
+      await render(IMAGES, false, "grid");
+      const input = $<HTMLInputElement>('[data-gallery-add] input[type="file"]')!;
+      Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
+      await act(async () => void input.dispatchEvent(new Event("change", { bubbles: true })));
+      await settle();
+      expect(order()).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg", "img/uus.jpg"]);
+      expect(current.at(-1)).toEqual({ key: "img/uus.jpg", alt: { et: "" } });
+      const status = $("[data-upload-status]")!;
+      expect(text(status)).toBe("Pilt lisatud.");
+      // the words are under the grid, and the field's description points at them
+      expect($("[data-drag-list]")!.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(input.getAttribute("aria-describedby")!.split(" ")).toContain(status.id);
+    } finally {
+      fetched.restore();
+    }
+  });
+
+  it("the list layout (the course's) is unchanged: rows with descriptions, „Põhipilt“, the upload box „Lisa pilte“, no tile", async () => {
+    await render();
+    expect($$("[data-gallery-item] [data-i18n-box]")).toHaveLength(3);
+    expect($("[data-gallery-add]")).toBeNull();
+    expect(text($("[data-image-upload] label"))).toBe("Lisa pilte");
   });
 });

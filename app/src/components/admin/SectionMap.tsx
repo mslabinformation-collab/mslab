@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { Fragment, useState, type MouseEvent } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import styles from "./SectionMap.module.css";
@@ -11,6 +11,8 @@ export type SectionEntry = {
   label: string;
   /** How many rows the card holds („Õpiväljundid 4“). */
   count?: number;
+  /** A word about the card's content, in the count's grey (Koolitaja's empty story: „tühi“, piece4-texts S4-16). */
+  note?: string;
   /** „RU puudub“ (the Russian text is missing) or „Kontrolli“, in #6b4f5c. */
   flag?: "ru" | "check";
   /** How many of its texts have an unpublished change: „{n} avaldamata“ (Seaded's „Lepingud ja tingimused“, piece3-texts P-11), in #6b4f5c; none at 0. */
@@ -59,8 +61,23 @@ export function SectionMap({ sections, width = 190 }: { sections: SectionEntry[]
 
   /** „{n} avaldamata“ while some of an entry's texts wait for their publish. */
   const waiting = (s: SectionEntry) => (s.unpublished ? fill(t.unpublished, { n: s.unpublished }) : "");
-  /** "4", "RU puudub", "6 · RU puudub", "1 avaldamata": the entry's status as one text (the select's options). */
-  const statusText = (s: SectionEntry) => [s.count === undefined ? "" : String(s.count), s.flag ? t[s.flag] : "", waiting(s)].filter(Boolean).join(t.join);
+  /** "4", "RU puudub", "6 · RU puudub", "1 avaldamata", "tühi": the entry's status as one text (the select's options). */
+  const statusText = (s: SectionEntry) => [s.count === undefined ? "" : String(s.count), s.note ?? "", s.flag ? t[s.flag] : "", waiting(s)].filter(Boolean).join(t.join);
+  /** The same, each part marked for the stylesheet (the count and a note in grey, a flag and „avaldamata“ in #6b4f5c), joined by „ · “. */
+  const status = (s: SectionEntry) =>
+    [
+      s.count !== undefined && <span data-count="">{s.count}</span>,
+      s.note && <span data-note="">{s.note}</span>,
+      s.flag && <span data-flag={s.flag}>{t[s.flag]}</span>,
+      waiting(s) && <span data-unpublished="">{waiting(s)}</span>,
+    ]
+      .filter(Boolean)
+      .map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && t.join}
+          {part}
+        </Fragment>
+      ));
 
   return (
     <>
@@ -69,11 +86,7 @@ export function SectionMap({ sections, width = 190 }: { sections: SectionEntry[]
           <a key={s.id} href={`#${s.id}`} className={styles.link} aria-current={s.id === current?.id ? "true" : undefined} onClick={(e) => onLink(e, s.id)}>
             <span data-section-label="">{s.label}</span>
             <span className={styles.status} data-section-status="">
-              {s.count !== undefined && <span data-count="">{s.count}</span>}
-              {s.count !== undefined && s.flag && t.join}
-              {s.flag && <span data-flag={s.flag}>{t[s.flag]}</span>}
-              {(s.count !== undefined || s.flag) && waiting(s) && t.join}
-              {waiting(s) && <span data-unpublished="">{waiting(s)}</span>}
+              {status(s)}
             </span>
           </a>
         ))}

@@ -1,0 +1,202 @@
+/* C2 Koolitaja (admin UX pass piece 4a, Task 5; the Part 4 C2 frame): the cards 14 px apart (drawn), each with a 22 px padding (ui.card's 20 px below
+   900 px kept) and its title in Jost 300 26 px (drawn). „Portree ja tutvustus“: a 240 px picture column beside the text (`240px minmax(0,1fr)`, 22 px
+   apart, drawn), the title over the text; the portrait picture first in its column (FocalPoint's picker, 300 px at most and a 16 px radius, drawn); one
+   column on a phone. „Numbrid“: three pairs in a row, 12 px apart, each a 90 px number (Jost 400 18 px) and its label 8 px apart (drawn); two or one a
+   row where the card is narrower. „Galerii“: the counter at the right of the title (12 px, the muted grey; under it on a phone). An empty story: one
+   52 px row with a 16 px radius, the title (600 14 px) at the left and „tühi · Lisa tekst ▸“ (the muted grey) at the right (drawn). Media queries only
+   (old iPads); colours from tokens.css and ui.module.css only. Nothing here is sticky (the PublishBar and the section map carry data-fab-avoid). */
+
+.cards {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* (inside .cards: over ui.card's padding, whichever of the two stylesheets comes first) */
+.cards .card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px;
+}
+
+.title {
+  margin: 0;
+  font: 300 26px/1.15 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- „Portree ja tutvustus“ ---------- */
+
+.cards .portraitCard {
+  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  column-gap: 22px;
+}
+
+.portraitCard > .title {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.picture {
+  display: grid;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.text {
+  display: grid;
+  grid-column: 2;
+  grid-row: 2;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* (the card's „Taasta minu tekst“ after a conflict: under both columns) */
+.portraitCard > p {
+  grid-column: 1 / -1;
+}
+
+/* the portrait picture on top of its column: FocalPoint's picker (a click there sets the point), then the point's fields and the crop previews */
+.picture [data-focal-point] > [data-focal-pick] {
+  order: -1;
+  border-radius: 16px;
+}
+
+.picture [data-focal-pick] img {
+  max-height: 300px;
+}
+
+/* the two crop previews (Arvutis 4:5, Telefonis 4:3) side by side in the 240 px column */
+.picture [data-focal-preview] > span:first-child {
+  height: 100px;
+}
+
+/* ---------- „Numbrid“ ---------- */
+
+.pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* (the label's box may carry „tõlge tulekul“ over its field: the two fields line up at their foot) */
+.pair {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.value input {
+  padding-right: 12px;
+  padding-left: 12px;
+  font: 400 18px/1.2 var(--font-display);
+}
+
+/* ---------- „Galerii“ ---------- */
+
+.cards .worksCard {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 16px;
+}
+
+.worksCard > :not(.title):not(.count) {
+  grid-column: 1 / -1;
+}
+
+.count {
+  justify-self: end;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* ---------- a story ---------- */
+
+.storyFields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* folded while empty: one row */
+.cards .folded {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 16px;
+  min-height: 52px;
+  padding: 4px 20px;
+  border-radius: 16px;
+}
+
+.foldTitle {
+  margin: 0;
+  font: 600 14px/1.3 var(--font-body);
+}
+
+.foldAside {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.addText {
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.addText:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.addText:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+@media (max-width: 899.98px) {
+  .cards .card {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cards .portraitCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portraitCard > .title,
+  .picture,
+  .text {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .cards .worksCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .count {
+    justify-self: start;
+    text-align: left;
+  }
+}

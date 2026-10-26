@@ -12,7 +12,7 @@ const FOCUS_WINDOW = 5000;
 
 /** What moved a row, and so where the focus comes back to: the handle, an arrow, or the page's own trigger (`data-drag-tool="menu"`, see `DragRowTools`). */
 type Tool = "handle" | "up" | "down" | "menu";
-type Rect = { top: number; bottom: number };
+type Rect = { top: number; bottom: number; left: number; right: number };
 /** One press on a handle, from `pointerdown` to its end. Kept in a ref, not in state: the handlers read it before React has drawn again. */
 type Session = {
   from: number;
@@ -23,14 +23,23 @@ type Session = {
   row: HTMLElement;
   /** false when the browser would not capture the pointer: no `pointerup` is then sure to reach the handle, so a new press may take over. */
   captured: boolean;
+  startX: number;
   startY: number;
   /** false until the pointer has gone DRAG_START px: a tap lifts nothing. */
   active: boolean;
-  /** The middle of each row's place as the drag began. */
+  /** The middle of each row's place as the drag began (`centresX`: across, used in a grid only). */
   centres: number[];
+  centresX: number[];
+  minDx: number;
+  maxDx: number;
   minDy: number;
   maxDy: number;
+  /** The rows as the drag began (in a grid they carry their neighbours' places until it ends). */
+  rows: HTMLElement[];
 };
+
+/** A grid row's custom properties while a row is dragged: how far it is to its neighbours' places (it moves to one of them to make room). */
+const NEIGHBOUR_PROPS = ["--to-prev-x", "--to-prev-y", "--to-next-x", "--to-next-y"];
 
 /** What the page gets for a row besides its handle and arrows: a way to move it that is not a step of one (the phone's „↕“ menu: „Esimeseks“, „Viimaseks“). */
 export type DragRowTools = {
@@ -62,6 +71,14 @@ export type DragListProps<T> = {
   /** For the list (an `ol`) and for each row (an `li`): the page's layout. */
   className?: string;
   rowClassName?: string;
+  /**
+   * "grid": the page lays the rows out in a grid (Koolitaja's gallery tiles, piece 4a R-g), so a drag goes both ways — the row lands on the place
+   * whose middle is nearest in both, and a row it passes moves to its neighbour's place, which may be at the end of the row above — and ArrowLeft /
+   * ArrowRight on the handle move one place too. "list" (the default): the rows stand one under another, and a drag goes up and down.
+   */
+  layout?: "list" | "grid";
+  /** A last item of the list that is no row (the gallery's „+ Lisa“ tile): it stands after the rows, and no drag lands on it. */
+  after?: ReactNode;
 };
 
 /** One row's `li`. A component of its own so that the page's `renderRow` is called here, with `moveTo` as the prop it is, and not in DragList's render beside the refs. */
@@ -113,7 +130,7 @@ function Row<T>({
  * node moves; it is given back as soon as the page's list has the new order, unless the reader has put it elsewhere meanwhile (it is given back only when it
  * is on the page's body or still in the moved row). A page that waits for the server before it reorders gets the same, for a few seconds.
  */
-export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow, disabled, className, rowClassName }: DragListProps<T>) {
+export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow, disabled, className, rowClassName, layout = "list", after }: DragListProps<T>) {
   const t = adminEt.drag;
   const list = useRef<HTMLOListElement>(null);
   const session = useRef<Session | null>(null);
@@ -127,7 +144,9 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
   const keys = items.map(keyOf);
   const sig = keys.join("\u0000");
 
-  const rowsOf = (): HTMLElement[] => Array.from(list.current?.children ?? []) as HTMLElement[];
+  const grid = layout === "grid";
+  // (the rows only: not the `after` item)
+  const rowsOf = (): HTMLElement[] => (Array.from(list.current?.children ?? []) as HTMLElement[]).filter((el) => el.dataset.dragRow !== undefined);
 
   /** Ends the press on a handle; `commit` drops the row where it is, else it snaps back. */
   const finish = (commit: boolean) => {
@@ -135,7 +154,9 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
     if (!s) return;
     session.current = null;
     s.row.style.removeProperty("--drag-dy");
+    s.row.style.removeProperty("--drag-dx");
     list.current?.style.removeProperty("--drag-step");
+    for (const row of s.rows) for (const p of NEIGHBOUR_PROPS) row.style.removeProperty(p);
     try {
       if (s.handle.hasPointerCapture?.(s.pointerId)) s.handle.releasePointerCapture(s.pointerId);
     } catch {
@@ -189,13 +210,34 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
       handle: e.currentTarget,
       row: rows[index],
       captured: false,
+      startX: e.clientX,
       startY: e.clientY,
       active: false,
       centres: rects.map((r) => (r.top + r.bottom) / 2),
-      minDy: rects[0].top - own.top,
-      maxDy: last.bottom - own.bottom,
+      centresX: rects.map((r) => (r.left + r.right) / 2),
+      // (a grid: anywhere in the rows' box; a list: up and down, from the first row's place to the last one's)
+      minDx: grid ? Math.min(...rects.map((r) => r.left)) - own.left : 0,
+      maxDx: grid ? Math.max(...rects.map((r) => r.right)) - own.right : 0,
+      minDy: grid ? Math.min(...rects.map((r) => r.top)) - own.top : rects[0].top - own.top,
+      maxDy: grid ? Math.max(...rects.map((r) => r.bottom)) - own.bottom : last.bottom - own.bottom,
+      rows,
     };
-    list.current?.style.setProperty("--drag-step", `${own.bottom - own.top + Math.max(0, neighbour)}px`);
+    if (grid) {
+      // each row's way to its neighbours' places, where it goes to make room (the stylesheet's data-shift)
+      rows.forEach((row, j) => {
+        const way = (k: number) => [rects[k].left - rects[j].left, rects[k].top - rects[j].top];
+        if (j > 0) {
+          const [x, y] = way(j - 1);
+          row.style.setProperty("--to-prev-x", `${x}px`);
+          row.style.setProperty("--to-prev-y", `${y}px`);
+        }
+        if (j < rows.length - 1) {
+          const [x, y] = way(j + 1);
+          row.style.setProperty("--to-next-x", `${x}px`);
+          row.style.setProperty("--to-next-y", `${y}px`);
+        }
+      });
+    } else list.current?.style.setProperty("--drag-step", `${own.bottom - own.top + Math.max(0, neighbour)}px`);
     // the pointer stays with the handle wherever the finger goes; the press is ours (no text selection, no mouse events after it), and the handle has the focus
     e.preventDefault();
     try {
@@ -211,14 +253,19 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
     const s = session.current;
     if (!s || e.pointerId !== s.pointerId) return;
     const raw = e.clientY - s.startY;
-    if (!s.active && Math.abs(raw) < DRAG_START) return;
+    const rawX = grid ? e.clientX - s.startX : 0;
+    if (!s.active && Math.abs(raw) < DRAG_START && Math.abs(rawX) < DRAG_START) return;
     s.active = true;
     const dy = Math.min(s.maxDy, Math.max(s.minDy, raw));
     s.row.style.setProperty("--drag-dy", `${dy}px`);
-    // the place whose middle is nearest to the dragged row's middle
+    const dx = Math.min(s.maxDx, Math.max(s.minDx, rawX));
+    if (grid) s.row.style.setProperty("--drag-dx", `${dx}px`);
+    // the place whose middle is nearest to the dragged row's middle (in a grid, in both directions)
     const middle = s.centres[s.from] + dy;
+    const across = s.centresX[s.from] + dx;
+    const far = (j: number) => (grid ? (s.centres[j] - middle) ** 2 + (s.centresX[j] - across) ** 2 : Math.abs(s.centres[j] - middle));
     let to = s.from;
-    for (let j = 0; j < s.centres.length; j++) if (Math.abs(s.centres[j] - middle) < Math.abs(s.centres[to] - middle)) to = j;
+    for (let j = 0; j < s.centres.length; j++) if (far(j) < far(to)) to = j;
     s.to = to;
     setDrag((now) => (now && now.from === s.from && now.to === to ? now : { from: s.from, to }));
   };
@@ -233,11 +280,11 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
       e.preventDefault();
       e.stopPropagation();
       finish(false);
-    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !session.current) {
+    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown" || (grid && (e.key === "ArrowLeft" || e.key === "ArrowRight"))) && !session.current) {
       // Ctrl, Cmd, Alt and Shift with an arrow are the browser's and the screen reader's chords, not a move
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       e.preventDefault();
-      step(index, e.key === "ArrowUp" ? -1 : 1, "handle");
+      step(index, e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 1, "handle");
     }
   };
 
@@ -271,7 +318,7 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
 
   return (
     <>
-      <ol ref={list} className={className ? `${styles.list} ${className}` : styles.list} data-drag-list="" data-dragging={drag ? "" : undefined}>
+      <ol ref={list} className={[styles.list, grid ? styles.grid : "", className ?? ""].filter(Boolean).join(" ")} data-drag-list="" data-dragging={drag ? "" : undefined}>
         {items.map((item, i) => {
           const name = label(item, i);
           const last = i === items.length - 1;
@@ -336,6 +383,7 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
             />
           );
         })}
+        {after !== undefined && <li data-drag-after="">{after}</li>}
       </ol>
       {/* a new node for each announcement, so the same words twice are read twice */}
       <div className={styles.live} role="status" aria-live="polite" aria-atomic="true">

@@ -102,6 +102,18 @@ describe("SectionMap: the list of links (from 1180 px)", () => {
     expect(options().map((o) => o.textContent)).toEqual(["Lepingud ja tingimused · 2 avaldamata", "KKK · 6 · 1 avaldamata", "Muu"]);
   });
 
+  it("a word about the card (`note`: Koolitaja's empty story, „tühi“, piece4-texts S4-16) in the count's grey, after the count and before a flag; also in the select", async () => {
+    await draw([
+      { id: "lugu", label: "Koolitaja teekond", note: "tühi" },
+      { id: "x", label: "Muu", count: 2, note: "tühi", flag: "check" },
+    ]);
+    expect(text(link("lugu").querySelector("[data-section-status]"))).toBe("tühi");
+    expect(link("lugu").querySelector("[data-note]")!.textContent).toBe("tühi");
+    expect(link("lugu").querySelector("[data-flag]")).toBeNull();
+    expect(text(link("x").querySelector("[data-section-status]"))).toBe("2 · tühi · Kontrolli");
+    expect(options().map((o) => o.textContent)).toEqual(["Koolitaja teekond · tühi", "Muu · 2 · tühi · Kontrolli"]);
+  });
+
   it("a count of 0 is shown (the page decides whether to pass one)", async () => {
     await draw([{ id: "a", label: "Galerii", count: 0 }]);
     expect(text(link("a").querySelector("[data-section-status]"))).toBe("0");
@@ -261,6 +273,7 @@ describe("SectionMap: the stylesheet", () => {
     expect(tokens).toMatch(/--warn:\s*#6b4f5c;/);
     expect(css).toMatch(/\[data-flag\]\s*\{[^}]*color:\s*var\(--warn\);/);
     expect(css).toMatch(/\[data-count\]\s*\{[^}]*color:\s*var\(--muted\);/);
+    expect(css).toMatch(/\[data-note\]\s*\{[^}]*color:\s*var\(--muted\);/);
   });
 
   it("a card keeps 24 px clear of the top when scrolled to, and 64 px more below 900 px (the phone top bar)", () => {

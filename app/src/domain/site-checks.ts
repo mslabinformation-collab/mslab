@@ -1,5 +1,5 @@
 import { Check, type FieldError } from "./field-check";
-import { SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
+import { isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
 import type { I18n } from "@/i18n/field";
 
 // The site editors' LOOSE checks (admin UX pass piece 4a, ruling R-d): what a draft save of Avaleht, Koolitaja and Praktika refuses. A draft may be
@@ -83,7 +83,7 @@ export function looseTrainer(v: TrainerDraft): LooseProblems {
   c.text("role", v.role, L.role);
   let stats = 0;
   for (const [i, s] of v.stats.entries()) {
-    if (!s.value.trim() && blank(s.label)) continue;
+    if (isBlankStat(s)) continue;
     stats++;
     c.plain(`stats.${i}.value`, s.value, L.statValue);
     c.text(`stats.${i}.label`, s.label, L.statLabel);

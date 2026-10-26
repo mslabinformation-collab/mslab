@@ -36,6 +36,21 @@
   transform: translateY(var(--drag-step, 0px));
 }
 
+/* layout="grid" (Koolitaja's gallery tiles, piece 4a R-g): the dragged row follows the pointer both ways (--drag-dx, --drag-dy), and a row that makes
+   room goes to its neighbour's place — the one before it ("up") or after it ("down"), which may be at the end of the row above or the start of the
+   row below — by the distances DragList puts on each row while the drag lasts (--to-prev-x/-y, --to-next-x/-y). */
+.grid > .row[data-dragging] {
+  transform: translate(var(--drag-dx, 0px), var(--drag-dy, 0px));
+}
+
+.grid > .row[data-shift="up"] {
+  transform: translate(var(--to-prev-x, 0px), var(--to-prev-y, 0px));
+}
+
+.grid > .row[data-shift="down"] {
+  transform: translate(var(--to-next-x, 0px), var(--to-next-y, 0px));
+}
+
 /* the rows that make room move smoothly while a row is dragged (also back, when it goes back); the dragged row itself is the finger's */
 .list[data-dragging] > .row:not([data-dragging]) {
   transition: transform 0.15s var(--ease);
