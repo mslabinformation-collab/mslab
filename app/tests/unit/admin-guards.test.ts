@@ -146,6 +146,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/oigustekst/[key]/route.ts", "app/api/admin/oigustekst/[key]/avalda/route.ts",
         // piece 3b, Task 6: a newsletter letter's autosave
         "app/api/admin/kiri/[id]/route.ts",
+        // piece 4a, Task 1: a site content part's autosave (Avaleht, Koolitaja, Praktika), „Avalda muudatused“ and „Loobu muudatustest“
+        "app/api/admin/sisu/[entity]/[id]/osa/[part]/route.ts", "app/api/admin/sisu/[entity]/[id]/avalda/route.ts", "app/api/admin/sisu/[entity]/[id]/loobu/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);

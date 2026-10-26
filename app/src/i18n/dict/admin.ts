@@ -244,6 +244,46 @@ export const adminEt = {
     previewExit: "Lõpeta eelvaade",
   },
 
+  // The site editors' field labels on the PublishBar and in „Puudub: …“ (admin UX pass piece 4a; piece4-texts S4-1, S4-12, S4-17, S4-34, Dim
+  // 26.10; domain/site-changes.ts siteFieldLabel): a field is its visible label, a field of a list row `{rida} {n} {väli}`, a list as a whole its
+  // card's title. „Puudub:“ writes them with the first letter in lower case except KKK, MINI and MAXI (S4-2, domain/site-changes.ts missingCase)
+  siteChanges: {
+    home: {
+      // {n}: the slide's place in the draft, from 1; {field}: one of slideFields
+      slide: "Slaid {n} {field}",
+      // a slide's focal points count as its picture (S4-10 note)
+      slideFields: { image: "pilt", kicker: "väike pealkiri", title: "pealkiri", text: "alapealkiri", ctaLabel: "nupu tekst", ctaHref: "nupp viib", tone: "toon", active: "näidatakse avalehel" },
+      slides: "Slaidid",
+      statement: "MS LABi lause",
+      teaser: "Koolitaja kaart",
+      question: "KKK küsimus {n}",
+      answer: "KKK vastus {n}",
+      faq: "KKK",
+    },
+    trainer: {
+      // the picture and its focal point
+      portrait: "Portree",
+      name: "Nimi",
+      role: "Amet",
+      bio: "Tutvustus",
+      stats: "Numbrid",
+      works: "Galerii",
+      // a story's title or text
+      center_story: "Koolituskeskuse lugu",
+      trainer_journey: "Koolitaja teekond",
+    },
+    // {code}: the package's code (MINI, MAXI); {n}: the point's place in the draft, from 1
+    practice: {
+      name: "{code} nimi",
+      tagline: "{code} lühitekst",
+      models: "{code} modelle",
+      durationLabel: "{code} kestus",
+      price: "{code} hind",
+      item: "{code} punkt {n}",
+      items: "{code} punktid",
+    },
+  },
+
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“
   overview: {
     // a session today: the line over its course (shown in capitals: CSS), the numbers under it ({n} the listed students, {a} the sent protocols,

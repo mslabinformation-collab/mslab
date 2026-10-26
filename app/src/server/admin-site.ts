@@ -58,6 +58,7 @@ import {
   type TrainerDraft,
   type WorkDraft,
 } from "@/domain/site-editor";
+import { looseBody, looseFaq, loosePackage, loosePage, looseSlides, looseTrainer, looseWorks } from "@/domain/site-checks";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
@@ -83,10 +84,11 @@ const i18n = z.object({ et: z.string().max(40_000), ru: z.string().max(40_000).o
 const text = (max = 2000) => z.string().max(max);
 const uid = z.string().max(40);
 
-type Write = (tx: Tx, stored: unknown) => Promise<void>;
+/** A checked part's write (Part.check's answer): `stored` is the part's stored value, read under the save's table lock. */
+export type Write = (tx: Tx, stored: unknown) => Promise<void>;
 
 /** One part of an editor page. */
-type Part<V> = {
+export type Part<V> = {
   /** The tables its save writes (locked for the transaction). */
   tables: SiteTable[];
   /** The draft as the browser sends it. */
@@ -97,9 +99,15 @@ type Part<V> = {
   draft: (stored: unknown) => V;
   /** Checks a draft (errors into `c`, field names prefixed with the part's name); the write, or null when refused. */
   check: (c: Check, value: V, name: string) => Write | null;
+  /**
+   * The loose check of a draft save (admin UX pass piece 4a, ruling R-d; domain/site-checks.ts): what `check` refuses, but for what is missing (a
+   * new slide's picture, a package's price), which waits in the draft until „Avalda muudatused“ runs `check`. Named by the fields' paths in the
+   * part's value as its editor holds it (domain/site-entities.ts), not prefixed. The parts on the draft layer have one: Avaleht's, Koolitaja's, Praktika's.
+   */
+  loose?: (value: V) => Record<string, string>;
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a page's parts have different draft types
-type Parts = Record<string, Part<any>>;
+export type Parts = Record<string, Part<any>>;
 
 const part = <V>(p: Part<V>): Part<V> => p;
 
@@ -178,6 +186,7 @@ function pagePart(key: string, opts: { titleMax: number; bodyMax: number; requir
     schema: z.object({ title: i18n, body: i18n }),
     read: (q) => readPage(q, key),
     draft: (stored) => pageDraft(stored as Page | null),
+    loose: (v) => loosePage(v, opts.titleMax, opts.bodyMax),
     check: (c, v, name) => {
       const title = c.text(`${name}.title`, v.title, opts.titleMax, { required: opts.required });
       const body = c.text(`${name}.body`, v.body, opts.bodyMax, { required: opts.required });
@@ -193,6 +202,7 @@ function bodyPart(key: string, max: number, defaultTitle: I18n): Part<{ body: I1
     schema: z.object({ body: i18n }),
     read: (q) => readPage(q, key),
     draft: (stored) => ({ body: copyI18n((stored as Page | null)?.body) }),
+    loose: (v) => looseBody(v, max),
     check: (c, v, name) => {
       const body = c.text(`${name}.body`, v.body, max);
       return async (tx, stored) => void (await upsertPage(tx, { key, title: (stored as Page | null)?.title ?? defaultTitle, body: orEmpty(body) }));
@@ -222,12 +232,14 @@ const slideSchema = z.object({
   active: z.boolean(),
 });
 
-const homeParts: Parts = {
+/** Avaleht's parts (also the draft layer's entity "home", server/site-drafts.ts). */
+export const homeParts: Parts = {
   slides: part<SlideDraft[]>({
     tables: ["hero_slides"],
     schema: z.array(slideSchema).max(50),
     read: readSlides,
     draft: (stored) => (stored as HeroSlide[]).map(slideDraft),
+    loose: looseSlides,
     check: (c, slides, name) => {
       if (slides.length > L.slides) c.fail(name, "tooMany");
       const rows: (SlideRow & { id: number | null })[] = slides.map((s, i) => {
@@ -257,6 +269,7 @@ const homeParts: Parts = {
     schema: z.array(z.object({ uid, id: storedId, q: i18n, a: i18n })).max(200),
     read: readFaq,
     draft: (stored) => (stored as FaqItem[]).map(faqDraft),
+    loose: looseFaq,
     check: (c, items, name) => {
       const rows: (FaqRow & { id: number | null })[] = [];
       for (const [i, item] of items.entries()) {
@@ -282,6 +295,7 @@ function packagePart(code: string): Part<PackageDraft> {
     schema: z.object({ name: i18n, tagline: i18n, models: text(20), durationLabel: i18n, price: text(40), items: z.array(i18n).max(200) }),
     read: (q) => readPackage(q, code),
     draft: (stored) => packageDraft(stored as PracticePackage),
+    loose: loosePackage,
     check: (c, v, name) => {
       const p = `${name}.`;
       const title = c.text(`${p}name`, v.name, L.packageName, { required: true });
@@ -298,7 +312,8 @@ function packagePart(code: string): Part<PackageDraft> {
   });
 }
 
-async function practiceParts(q: Q): Promise<Parts> {
+/** Praktika's parts, one per package code in the packages' order (also the draft layer's entity "practice", server/site-drafts.ts). */
+export async function practiceParts(q: Q): Promise<Parts> {
   const codes = (await readPackages(q)).map((p) => p.code);
   return Object.fromEntries(codes.map((code) => [code, packagePart(code)]));
 }
@@ -317,7 +332,8 @@ export const savePracticeForm = async (db: Db, formData: FormData) => saveParts(
 export type TrainerValues = { trainer: TrainerDraft; bio: { body: I18n }; works: WorkDraft[]; center_story: PageDraft; trainer_journey: PageDraft };
 export const WORKS_GROUP = "trainer_works";
 
-const trainerParts: Parts = {
+/** Koolitaja's parts (also the draft layer's entity "trainer", server/site-drafts.ts). */
+export const trainerParts: Parts = {
   trainer: part<TrainerDraft>({
     tables: ["settings"],
     schema: z.object({
@@ -329,6 +345,7 @@ const trainerParts: Parts = {
     }),
     read: (q) => readSetting(q, "trainer"),
     draft: trainerDraft,
+    loose: looseTrainer,
     check: (c, v, name) => {
       const p = `${name}.`;
       const portraitKey = c.image(`${p}portraitKey`, v.portraitKey);
@@ -357,6 +374,7 @@ const trainerParts: Parts = {
     schema: z.array(z.object({ key: text(400), alt: i18n })).max(200),
     read: (q) => readGallery(q, WORKS_GROUP),
     draft: (stored) => (stored as GalleryItem[]).map((g) => ({ key: g.key, alt: copyI18n(g.alt) })),
+    loose: looseWorks,
     check: (c, items, name) => {
       if (items.length > L.works) c.fail(name, "tooMany");
       // each picture's own field names, so the editor marks the one that is wrong

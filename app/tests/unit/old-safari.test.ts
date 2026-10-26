@@ -132,6 +132,12 @@ const BROWSER_FILES = [
   // piece 3b, Task 5: the legal texts' keys, shape and the writers' rule, which Seaded's legal cards check by in the browser (pure; it pulls
   // domain/lesson-limits.ts and domain/site-editor.ts)
   "src/domain/legal-text.ts",
+  // piece 4a, Task 1: the site content's entities and parts, the loose checks of a draft save (R-d) and the fields' labels (S4-1, S4-2), which the
+  // site editors run in the browser (pure; they pull domain/site-editor.ts, domain/lesson-limits.ts, domain/money.ts, lib/media.ts, lib/version.ts
+  // and the admin dict)
+  "src/domain/site-entities.ts",
+  "src/domain/site-checks.ts",
+  "src/domain/site-changes.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
