@@ -11,10 +11,10 @@ import { LangSwitch } from "../EditLang";
 import { PublishBar } from "../PublishBar";
 import { SaveStatus } from "../SaveStatus";
 import { SectionMap, type SectionEntry } from "../SectionMap";
-import { blockedOf, failedLine, LATE, orLate, post, stampOf, useEditorRestarts, useFormOnScreen, type Change, type HeldPart, type Waits } from "../useEditorRestarts";
+import { blockedOf, usePublishPresses, useEditorRestarts, useFormOnScreen, type Change, type Pressed, type Waits } from "../useEditorRestarts";
 import ui from "../ui.module.css";
 import styles from "./SiteEditorPage.module.css";
-import { focusSiteField, useSitePart, type SitePartApi } from "./useSitePart";
+import { focusSiteField, useSitePart, type SitePartApi, type SitePartOptions } from "./useSitePart";
 
 // The site editors' page (admin UX pass piece 4a, Task 2; README §4 "These share the site-editor template: header with H1, LangSwitch, SaveStatus and
 // „Vaata lehel ↗“; PublishBar; a section map when there are 4 or more cards", §1.8; the Part 4 frames C1, C2, C5): Avaleht, Koolitaja and Praktika
@@ -30,16 +30,22 @@ import { focusSiteField, useSitePart, type SitePartApi } from "./useSitePart";
 // - „Loobu muudatustest“ (behind the bar's question): the waiting saves first, then POST …/loobu (R-e: every draft of the entity), every part's copy
 //   in this browser goes, and the parts start over from the read (at the bound: from the live values the discard left).
 // - The cards wait (inert, aria-busy, nothing typed taken) from the press until then; a picture whose upload ends meanwhile goes in afterwards. The
-//   waits, the restart and the focus kept over it are the course editor's own (../useEditorRestarts.ts, moved out of course/SavedCourse.tsx).
+//   waits, the restart, the focus kept over it and the two presses are the course editor's own (../useEditorRestarts.ts).
+//
+// A screen (Tasks 4–6) is a small client component round it, which its server page.tsx renders with readSiteEditor's answer as it came:
+//   <SiteEditorPage<HomePartValues> entity="home" parts={data.parts} stamp={data.stamp} render={(apis) => <HomeCards apis={apis} />} … />
 
-/** The parts the last publish could not publish, with each part's count of saves then (`generation`: the form they were counted in). */
-type Held = { parts: HeldPart[]; generation: number; saves: Partial<Record<string, number>> };
+/** The editor values of an entity's parts by name (domain/site-entities.ts HomePartValues, TrainerPartValues; Praktika `Record<string, PackageDraft>`). */
+export type SiteValues = Record<string, Record<string, unknown>>;
+/** Every part's api, typed by its value. */
+export type SiteApis<A extends SiteValues = SiteValues> = { [K in keyof A & string]: SitePartApi<A[K]> };
+
 /** What the bar says; it stays when the form starts over (a publish that held some parts lists them after the read). */
-type Said = { held: Held | null; barError: string | null; publishedAt: Date | null };
-const QUIET: Said = { held: null, barError: null, publishedAt: null };
+type Said = Pressed;
+const QUIET: Said = { blocked: null, barError: null, publishedAt: null };
 
 type Parts = Record<string, SitePartState>;
-export type SiteEditorProps = {
+export type SiteEditorProps<A extends SiteValues = SiteValues> = {
   entity: SiteEntity;
   /** The line over the H1 („Koduleht“, „Koolitused“). */
   eyebrow: string;
@@ -50,13 +56,22 @@ export type SiteEditorProps = {
   /** The public page's path, for „Eelvaade ↗“ (`/api/admin/eelvaade?tee=<path>`). */
   previewPath: string;
   /** The section map's entries (the cards' ids and names), or how the parts' state makes them (a count, „Kontrolli“); a map only from 4 entries. */
-  sections?: SectionEntry[] | ((apis: Record<string, SitePartApi>) => SectionEntry[]);
-  /** Every part as the page read it, in the screen's order: its version, its value (the draft over live), live's value. */
+  sections?: SectionEntry[] | ((apis: SiteApis<A>) => SectionEntry[]);
+  /**
+   * Every part as the page read it, in the screen's order: its version, its value (the draft over live), live's value. Pass the read's own object, as
+   * it came (readSiteEditor's `parts`, through the page's props): a new object is a new read, and a read starts the parts over while a press waits for
+   * one — so memoise one that is derived (reordered, filtered, mapped), or every render of the wrapper would count as a read (review M-2).
+   */
   parts: Parts;
   /** The read's stamp (server/read-stamp.ts; readSiteEditor's): which read reflects a press. */
   stamp: number;
-  /** The cards, from every part's api (a card may show the fields of several parts). */
-  render: (apis: Record<string, SitePartApi>) => ReactNode;
+  /**
+   * The cards, from every part's api (a card may show the fields of several parts). It returns elements and is called while the page renders, so it
+   * calls no hook itself: a card's hooks belong in the card's own component (`render={(apis) => <Cards apis={apis} />}`; review M-5).
+   */
+  render: (apis: SiteApis<A>) => ReactNode;
+  /** A part's own leave-guard label, check before a save or field focus (useSitePart's options), by part name. */
+  partOptions?: { [K in keyof A & string]?: SitePartOptions };
 };
 
 type Form = Omit<SiteEditorProps, "parts" | "stamp"> & {
@@ -69,8 +84,9 @@ type Form = Omit<SiteEditorProps, "parts" | "stamp"> & {
   setSaid: (update: (s: Said) => Said) => void;
 };
 
-export function SiteEditorPage(props: SiteEditorProps) {
-  const { parts, stamp, ...rest } = props;
+export function SiteEditorPage<A extends SiteValues = SiteValues>(props: SiteEditorProps<A>) {
+  // (the parts' types are the screen's; the page itself works on any part)
+  const { parts, stamp, ...rest } = props as unknown as SiteEditorProps;
   const [said, setSaid] = useState<Said>(QUIET);
   const { seeds, generation, waiting, waits, refocus } = useEditorRestarts<Parts>({ read: parts, stamp, parts, root: "[data-site-editor]", title: "[data-site-title]" });
   const form: Form = { ...rest, seeds, generation, waiting, waits, refocus, said, setSaid };
@@ -80,27 +96,40 @@ export function SiteEditorPage(props: SiteEditorProps) {
 }
 
 /** One part's autosave, then the next part's, and the page once every part has its api. */
-function PartHooks({ names, index, apis, ...form }: Form & { names: string[]; index: number; apis: Record<string, SitePartApi> }) {
+function PartHooks({ names, index, apis, ...form }: Form & { names: string[]; index: number; apis: SiteApis }) {
   const part = names[index];
-  const api = useSitePart({ entity: form.entity, part, seed: form.seeds[part] });
+  const api = useSitePart({ ...form.partOptions?.[part], entity: form.entity, part, seed: form.seeds[part] });
   const all = { ...apis, [part]: api };
   return index + 1 < names.length ? <PartHooks {...form} names={names} index={index + 1} apis={all} /> : <SiteForm {...form} apis={all} />;
 }
 
-function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, sections, render, seeds, generation, waiting, waits, refocus, said, setSaid, apis }: Form & { apis: Record<string, SitePartApi> }) {
-  const { hold, waitingNow, release, reload, route } = waits;
+function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, sections, render, seeds, generation, waiting, waits, refocus, said, setSaid, apis }: Form & { apis: SiteApis }) {
+  const { route } = waits;
   const names = Object.keys(apis);
   const frozen = waiting;
   // a part's list change (an upload that ends) goes in now, or once the cards take typing again; the focus back where it was after a wait
   useFormOnScreen({ frozen, generation, waits, refocus, apply: (change: Change) => apis[change.part]?.update(change.name, change.fn) });
 
-  // the parts the publish held, until each one's next save
-  const held = (said.held?.parts ?? []).filter((b) => {
-    const before = said.held?.generation === generation ? (said.held.saves[b.part] ?? 0) : 0;
-    return !apis[b.part] || apis[b.part].saves <= before;
+  /** Every part's waiting save, sent now and waited for: a publish and a discard work on what is saved. True for each part the server holds. */
+  const flushAll = () => Promise.all(names.map((part) => apis[part].flush()));
+  // „Avalda muudatused“ and „Loobu muudatustest“ (../useEditorRestarts.ts usePublishPresses, shared with the course editor): a save that did not go
+  // through publishes nothing (`requireSaved`); `held`, the parts the publish held, until each one's next save
+  const { held, publish, discard } = usePublishPresses({
+    said,
+    setSaid,
+    generation,
+    waits,
+    parts: apis,
+    flushAll,
+    urls: { publish: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/avalda`, discard: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/loobu` },
+    requireSaved: true,
+    // what was thrown away must not come back: every part's copy in this browser
+    dropCopies: () => {
+      for (const part of names) apis[part].discardCopy();
+    },
+    seeds,
   });
   const heldNames = held.map((b) => b.part);
-  const savesNow = () => Object.fromEntries(names.map((part) => [part, apis[part].saves]));
 
   // what the cards get: nothing typed is taken while they wait; a list change goes in once they take typing again (`route`)
   const shown = Object.fromEntries(
@@ -110,7 +139,7 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
       const attention = api.attention || heldNames.includes(part);
       return [part, frozen ? { ...api, set: () => {}, commit: () => {}, update, attention } : { ...api, update, attention }];
     }),
-  ) as Record<string, SitePartApi>;
+  ) as SiteApis;
 
   const changed = siteChangeLabels(
     entity,
@@ -126,55 +155,6 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
       const why = apis[part].unconfirmed();
       if (why?.reason === "invalid" && why.field) return focusSiteField(part, why.field);
     }
-  };
-
-  const url = (press: "avalda" | "loobu") => `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/${press}`;
-  /** Every part's waiting save, sent now and waited for: a publish and a discard work on what is saved. True for each part the server holds. */
-  const flushAll = () => Promise.all(names.map((part) => apis[part].flush()));
-
-  // „Avalda muudatused“ and „Loobu muudatustest“ never join a wait of the cards: while one is on its way the PublishBar is busy (`waiting`), and a
-  // press that comes in the same turn does nothing here
-  const publish = async () => {
-    if (waitingNow()) return;
-    setSaid((s) => ({ ...s, barError: null }));
-    const signal = hold();
-    const saved = await orLate(flushAll(), signal);
-    if (saved === LATE) return; // (the bound: the cards take typing, the page is read)
-    // a save that did not go through: nothing is published, the chip says why (and the text stays, in this browser too)
-    if (saved.some((ok) => !ok)) return release();
-    const answer = await post(url("avalda"), signal);
-    if ("late" in answer) return;
-    if (!answer.ok) {
-      release();
-      return setSaid((s) => ({ ...s, barError: failedLine("publish", answer.signedOut) }));
-    }
-    const result = answer.body as { published?: unknown; blocked?: unknown } | null;
-    const blocked = Array.isArray(result?.blocked) && result.blocked.length > 0 ? (result.blocked as HeldPart[]) : null;
-    const done = Array.isArray(result?.published) && result.published.length > 0;
-    setSaid((s) => ({ ...s, held: blocked ? { parts: blocked, generation, saves: savesNow() } : null, publishedAt: done ? new Date() : s.publishedAt }));
-    // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
-    // page is read again, and the parts start over from a read at or past the answer's stamp
-    if (done || !blocked) reload(undefined, stampOf(answer.body));
-    else release();
-  };
-
-  const discard = async () => {
-    if (waitingNow()) throw new Error("the cards wait"); // (the question stays open)
-    setSaid((s) => ({ ...s, barError: null }));
-    const signal = hold();
-    if ((await orLate(flushAll(), signal)) === LATE) return;
-    const answer = await post(url("loobu"), signal);
-    if ("late" in answer) return;
-    if (!answer.ok) {
-      release();
-      setSaid((s) => ({ ...s, barError: failedLine("discard", answer.signedOut) }));
-      throw new Error("discard failed"); // (the question stays open)
-    }
-    // what was thrown away must not come back: every part's copy in this browser goes before the parts start over; muted, they start over from the
-    // read, or at the bound from the live values the discard left
-    for (const part of names) apis[part].discardCopy();
-    setSaid((s) => ({ ...s, held: null }));
-    reload(seeds, stampOf(answer.body));
   };
 
   const entries = typeof sections === "function" ? sections(shown) : (sections ?? []);

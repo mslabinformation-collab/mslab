@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo } from "react";
 import { patchSender, SAVE_TIMEOUT_MS, type Fields, type SendPatch } from "@/components/admin/autosave/engine";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { EditorPart, PartSeed } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
 import { COURSE_COPY_OWNER, courseCopyKey } from "@/lib/course-copies";
 import { stableJson } from "@/lib/version";
-import { CARD_ID, fieldLabel, listChange } from "./course-view";
+import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRefusals";
+import { CARD_ID, fieldLabel } from "./course-view";
 import type { PartApi } from "./types";
 
 // One card's autosave on a saved course (admin UX pass piece 3a, Task 7; README B2, §1.3): the shared engine (autosave/useAutosave.ts, used as it is)
@@ -18,9 +19,7 @@ import type { PartApi } from "./types";
 // loses its words; and the screen's `ear` hears each save as it goes and as it ends (an unpublished course's type, SavedCourse.tsx). A save's end
 // is never waited for beyond SAVE_TIMEOUT_MS, whatever the request does: the sender's own bound, set before the request's, says `late` then (its outcome
 // unknown), so nothing the screen holds for a save's end can wait for good (review round 3). The copy in this browser is
-// `mslab-draft:koolitus:<id>-<part>:<tab>`.
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+// `mslab-draft:koolitus:<id>-<part>:<tab>`. The refusals and the save count are ../useFieldRefusals.ts (shared with the site editors, piece 4a).
 
 /** A save's answer as the engine takes it: the status and the body, or null (none, or the browser's error). */
 export type SaveAnswer = Awaited<ReturnType<SendPatch>>;
@@ -57,10 +56,9 @@ export function useCoursePart<P extends EditorPart>(o: {
   ear?: { readonly current: SaveEar | null };
 }) {
   const { courseId, part, seed, published, liveType, ear } = o;
-  /** Each refused field's code and the value the refused save sent. */
-  const [codes, setCodes] = useState<Record<string, { code: string; sent: unknown }>>({});
-  /** The saves the server took since the card started: a part held back at the publish is listed until its next one (review M-3). */
-  const [saves, setSaves] = useState(0);
+  // each refused field's code and the value the refused save sent; the saves the server took since the card started: a part held back at the
+  // publish is listed until its next one (review M-3) — ../useFieldRefusals.ts, shared with the site editors
+  const { codes, saves, savedNow, hear, clear } = useFieldRefusals();
   const send = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/koolitus/${courseId}/osa/${part}`);
     return async (body, opts) => {
@@ -71,22 +69,11 @@ export function useCoursePart<P extends EditorPart>(o: {
       const result = await Promise.race([base(body, opts), late]);
       clearTimeout(timer);
       const answer = result === "late" ? null : result;
-      const reply = answer && isRecord(answer.body) ? answer.body : null;
-      if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
-        const named = Object.fromEntries(
-          Object.entries(reply.fields)
-            .filter(([name, code]) => name in body.patch && typeof code === "string")
-            .map(([name, code]) => [name, { code: code as string, sent: body.patch[name] }]),
-        );
-        setCodes((c) => ({ ...c, ...named }));
-      } else if (answer?.status === 200 && reply?.ok === true) {
-        setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
-      }
-      if (answer?.status === 200 && reply?.ok === true) setSaves((n) => n + 1);
+      hear(body.patch, answer);
       ear?.current?.ended(body.patch, answer, result === "late");
       return answer;
     };
-  }, [courseId, part, ear]);
+  }, [courseId, part, ear, hear]);
   const label = useCallback((field: string) => fieldLabel(part, field), [part]);
   const auto = useAutosave({
     owner: COURSE_COPY_OWNER,
@@ -100,19 +87,16 @@ export function useCoursePart<P extends EditorPart>(o: {
 
   const fields = auto.fields as PartApi<P>["fields"];
   // what the newest render holds: an upload that ends after other changes adds to the list as it is then (GalleryEditor's update functions)
-  const latest = useRef(fields);
+  const latest = useLatestFields(fields as Fields);
   useLayoutEffect(() => {
-    latest.current = fields;
+    latest.move(fields as Fields);
   });
 
   const { setField, flush, restore, conflict } = auto;
   const live = seed.live as Record<string, unknown>;
+  // a field typed in (its refusal's words go, the engine has it); a change worked out from the field as it lands (../useFieldRefusals.ts)
+  const { take, update } = useFieldEdits({ latest, setField, flush, clear });
   const api = useMemo<PartApi<P>>(() => {
-    /** A field typed in: its refusal's words go, and the engine has it. */
-    const take = (name: string, value: unknown) => {
-      setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
-      setField(name, value);
-    };
     return {
       fields,
       set: (name, value) => take(name, value),
@@ -120,13 +104,7 @@ export function useCoursePart<P extends EditorPart>(o: {
         take(name, value);
         void flush();
       },
-      update: (name, fn) => {
-        const before = latest.current[name];
-        const after = fn(before);
-        latest.current = { ...latest.current, [name]: after };
-        take(name, after);
-        if (Array.isArray(before) && Array.isArray(after) && listChange(before, after) === "instant") void flush();
-      },
+      update: update as PartApi<P>["update"],
       flush: () => void flush(),
       error: (name: string) => (codes[name] ? refusalText(codes[name].code, part, name, liveType) : undefined),
       refusedValue: (name: string) => codes[name]?.sent,
@@ -135,11 +113,13 @@ export function useCoursePart<P extends EditorPart>(o: {
       restore: () => void restore(),
       attention: auto.status.kind === "invalid" || auto.status.kind === "conflict" || auto.status.kind === "gone",
     };
-  }, [fields, setField, flush, restore, conflict, codes, part, liveType, published, live, auto.status.kind]);
+  }, [fields, take, update, flush, restore, conflict, codes, part, liveType, published, live, auto.status.kind]);
   return {
     api,
     status: auto.status,
     saves,
+    /** The saves the server took, this moment (a press that awaited its flush reads its own save; piece 4a Task 2 review I-1). */
+    savedNow,
     flushNow: auto.flush,
     unconfirmed: auto.unconfirmed,
     discardCopy: auto.discardCopy,

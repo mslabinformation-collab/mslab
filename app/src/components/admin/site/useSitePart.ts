@@ -1,20 +1,20 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { patchSender, type Fields, type SendPatch, type Unconfirmed } from "@/components/admin/autosave/engine";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
 import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
-import { listChange } from "../course/course-view";
+import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRefusals";
 
 // One part's autosave on a site editor (admin UX pass piece 4a, Task 2; README §1.3, B2; rulings R-a, R-b, R-d): the shared engine (autosave/
 // useAutosave.ts, used as it is) on POST /api/admin/sisu/<entity>/0/osa/<part> (server/site-drafts.ts writeSitePart: every save goes to the part's
-// draft, under the loose check), from the part's version the page read. As useCoursePart does for a course's card: a 400's field codes are kept
-// with the value each refused field was sent with (the engine holds those fields back and saves the rest), so a card can say at the field what was
-// refused and a list can place it on the row it is about (by the row's key in what was sent); a field typed in again or saved loses its words.
-// The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>`.
+// draft, under the loose check), from the part's version the page read. As a course's card does, with the same hook (../useFieldRefusals.ts): a
+// 400's field codes are kept with the value each refused field was sent with (the engine holds those fields back and saves the rest), so a card can
+// say at the field what was refused and a list can place it on the row it is about (by the row's key in what was sent); a field typed in again or
+// saved loses its words. The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>`.
 //
 // A field the leave guard names („Muudatust „Slaid 2 pealkiri“ ei saanud veel salvestada.“, piece4-texts S4-1 note) is named row by row, as the
 // PublishBar names it: the first change of that field since its last save the server took (else since live), by domain/site-changes.ts.
@@ -60,6 +60,8 @@ export type SitePartApi<V extends Record<string, unknown> = Record<string, unkno
   attention: boolean;
   /** The saves the server took since the part started (the page lists a part the publish held until its next save). */
   saves: number;
+  /** The same, this moment (a press that awaited its own flush reads its save; review I-1). */
+  savedNow(): number;
   /** Null when the server holds the part's text; else the first field concerned and why (SaveStatus's „Näita“). */
   unconfirmed(): Unconfirmed | null;
 };
@@ -101,23 +103,24 @@ function changedRow(before: unknown, now: unknown): number | null {
   return null;
 }
 
-/**
- * `entity`'s part `part` from `seed` (its version, its value, live's value as the page read them). `label`: a field's name for the leave guard (by
- * default the row-by-row label above); `validate`: a check of the form's own before a save (the engine holds back the fields it names); `focusField`:
- * where a field is (by default focusSiteField). All are read at mount, as useAutosave reads them: a new seed needs a new mount (a React `key`).
- */
-export function useSitePart<V extends Record<string, unknown> = Record<string, unknown>>(o: {
-  entity: SiteEntity;
-  part: string;
-  seed: SitePartState;
+/** What a screen may give a part besides its seed (useSitePart's options; SiteEditorPage's `partOptions`). */
+export type SitePartOptions = {
+  /** A field's name for the leave guard (by default the row-by-row label above). */
   label?: (field: string) => string;
+  /** A check of the form's own before a save (the engine holds back the fields it names). */
   validate?: (fields: Fields) => Record<string, string>;
+  /** Where a field is (by default focusSiteField). */
   focusField?: (name: string) => void;
-}): SitePartApi<V> {
+};
+
+/**
+ * `entity`'s part `part` from `seed` (its version, its value, live's value as the page read them), with the options above. All are read at mount, as
+ * useAutosave reads them: a new seed needs a new mount (a React `key`).
+ */
+export function useSitePart<V extends Record<string, unknown> = Record<string, unknown>>(o: { entity: SiteEntity; part: string; seed: SitePartState } & SitePartOptions): SitePartApi<V> {
   const { entity, part, seed } = o;
-  /** Each refused field's code and the value the refused save sent. */
-  const [codes, setCodes] = useState<Record<string, { code: string; sent: unknown }>>({});
-  const [saves, setSaves] = useState(0);
+  // each refused field's code and the value the refused save sent, the saves the server took (../useFieldRefusals.ts, shared with the course cards)
+  const { codes, saves, savedNow, hear, clear } = useFieldRefusals();
   const live = useMemo(() => (isRecord(seed.live) ? seed.live : {}), [seed.live]);
   /** The part's value as the server last took it (from the page's read, then each save it took): what the leave guard's label compares with. */
   const confirmed = useRef<Record<string, unknown>>(isRecord(seed.value) ? seed.value : {});
@@ -125,35 +128,24 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     const base = patchSender(sitePartUrl(entity, part));
     return async (body, opts) => {
       const answer = await base(body, opts);
-      const reply = answer && isRecord(answer.body) ? answer.body : null;
-      if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
-        const named = Object.fromEntries(
-          Object.entries(reply.fields)
-            .filter(([name, code]) => name in body.patch && typeof code === "string")
-            .map(([name, code]) => [name, { code: code as string, sent: body.patch[name] }]),
-        );
-        setCodes((c) => ({ ...c, ...named }));
-      } else if (answer?.status === 200 && reply?.ok === true) {
-        setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
-        confirmed.current = { ...confirmed.current, ...body.patch };
-        setSaves((n) => n + 1);
-      }
+      if (answer?.status === 200 && isRecord(answer.body) && answer.body.ok === true) confirmed.current = { ...confirmed.current, ...body.patch };
+      hear(body.patch, answer);
       return answer;
     };
-  }, [entity, part]);
+  }, [entity, part, hear]);
   // what the newest render holds: an upload that ends after other changes adds to the list as it is then; and the field's label as it is now
-  const latest = useRef<Record<string, unknown>>(isRecord(seed.value) ? seed.value : {});
+  const latest = useLatestFields(isRecord(seed.value) ? seed.value : {});
   const own = o.label;
   const label = useCallback(
     (field: string) => {
       if (own) return own(field);
-      const now = { [field]: latest.current[field] };
+      const now = { [field]: latest.now()[field] };
       const first =
         siteChangeLabels(entity, [{ part, live: { [field]: confirmed.current[field] }, draft: now }])[0] ??
         siteChangeLabels(entity, [{ part, live: { [field]: live[field] }, draft: now }])[0];
       return first ?? siteFieldLabel(entity, part, field);
     },
-    [own, entity, part, live],
+    [own, entity, part, live, latest],
   );
   const auto = useAutosave({
     owner: siteCopyOwner(entity),
@@ -164,31 +156,22 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     validate: o.validate,
     label,
     // (a list field: the row it names, as the label does)
-    focusField: o.focusField ?? ((name) => focusSiteField(part, name, changedRow(confirmed.current[name], latest.current[name]) ?? changedRow(live[name], latest.current[name]))),
+    focusField: o.focusField ?? ((name) => focusSiteField(part, name, changedRow(confirmed.current[name], latest.now()[name]) ?? changedRow(live[name], latest.now()[name]))),
   });
 
   const fields = auto.fields as V;
   useLayoutEffect(() => {
-    latest.current = fields;
+    latest.move(fields);
   });
 
   const { setField, flush, restore, conflict, status, discardCopy, unconfirmed } = auto;
+  // a field typed in (its refusal's words go, the engine has it); a change worked out from the field as it lands (../useFieldRefusals.ts)
+  const { take, update } = useFieldEdits({ latest, setField, flush, clear });
   return useMemo<SitePartApi<V>>(() => {
-    /** A field typed in: its refusal's words go, and the engine has it. */
-    const take = (name: string, value: unknown) => {
-      setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
-      setField(name, value);
-    };
     return {
       fields,
       set: (name, value) => take(name, value),
-      update: (name, fn) => {
-        const before = latest.current[name];
-        const after = (fn as (current: unknown) => unknown)(before);
-        latest.current = { ...latest.current, [name]: after };
-        take(name, after);
-        if (Array.isArray(before) && Array.isArray(after) && listChange(before, after) === "instant") void flush();
-      },
+      update: update as SitePartApi<V>["update"],
       commit: (name: string, ...value: unknown[]) => {
         if (value.length > 0) take(name, value[0]);
         void flush();
@@ -203,7 +186,8 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
       discardCopy,
       attention: status.kind === "invalid" || status.kind === "conflict" || status.kind === "gone",
       saves,
+      savedNow,
       unconfirmed,
     };
-  }, [fields, setField, flush, restore, conflict, status, discardCopy, unconfirmed, codes, live, saves]);
+  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, codes, live, saves, savedNow]);
 }

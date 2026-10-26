@@ -137,7 +137,10 @@ export type Waits<S, P extends string = string> = {
 /**
  * The shell's half (above the form, kept when the form starts over): the seeds the form starts from and its `generation`, the wait of the cards with
  * its bound, the read that starts them over, the late changes, and the focus kept for a restart.
- * - `read`: the page's read as the screen got it — a new object is a new read; `stamp` its stamp, `parts` its seeds.
+ * - `read`: the page's read as the screen got it — a new object is a new read (so it must be the read's own object, as it came through the page's
+ *   props, or a memoised one: a derived object made in render would make every render a read, and restart the parts while a press waits for its
+ *   read; piece 4a Task 2 review M-2 — reads are not compared by stamp: identity is the course editor's contract as piece 3a built and tested it);
+ *   `stamp` its stamp, `parts` its seeds.
  * - `root`, `title`: the editor's and its H1's selectors (the focus goes back into the editor, else to the H1).
  * - `onRead(stamp)`: told of every new read, while rendering (the course's switches look at its stamp); `onBound()`: told when a wait's bound passed.
  */
@@ -279,6 +282,100 @@ export function useEditorRestarts<S extends Record<string, Seed>, P extends stri
     waits: { hold: beginHold, waitingNow, release, reload, stampSeen, reread, route, onScreen, late: { take: takeLate, tick: lateTick } },
     refocus,
   };
+}
+
+/**
+ * The parts the last publish (or the course's R-d switch) could not publish, with each part's count of saves then (`generation`: the form they were
+ * counted in; after a restart every part counts from 0): a part leaves the list with its next save (piece 3a review M-3).
+ */
+export type Held<H extends HeldPart = HeldPart> = { parts: H[]; generation: number; saves: Partial<Record<string, number>> };
+/** What the bar says of the presses; it stays when the form starts over (a publish that held some parts lists them after the read). */
+export type Pressed<H extends HeldPart = HeldPart> = { blocked: Held<H> | null; barError: string | null; publishedAt: Date | null };
+/** A part as the presses see it: the saves the server took, as rendered and this moment (useFieldRefusals.ts). */
+export type PressPart = { saves: number; savedNow: () => number };
+
+/**
+ * „Avalda muudatused“ and „Loobu muudatustest“ of an editor of several autosaving parts (the course editor's, piece 3a; the site editors', piece 4a),
+ * with the parts the last publish held:
+ * - `held`: the parts the last publish could not publish, until each one's next save (the counts recorded at the answer are this moment's, so a press
+ *   whose own flush saved the part keeps it listed: piece 4a Task 2 review I-1); `savesNow()`, those counts for an answer of the screen's own.
+ * - `publish`: every part's waiting save, sent and waited for (`flushAll`) within the press's one bound; with `requireSaved` (the site editors) a
+ *   save that did not go through publishes nothing — the chip says why. Then POST `urls.publish`: something published, or nothing there to publish
+ *   (or an answer that cannot be read), the page is read again from the answer's stamp; only held, the cards take typing again; refused, the bar's
+ *   line.
+ * - `discard`: the waiting saves first, then POST `urls.discard`; done, every copy in this browser goes (`dropCopies`) and the parts start over from
+ *   the read, at the bound from `seeds`' live values. A discard whose request passes the bound may have gone through: the copies go then too, so the
+ *   next read's parts do not bring the thrown-away text back (review M-4; every part was saved first). Refused, the line, and the question stays open.
+ * Neither joins a wait of the cards: while one is on its way the bar is busy, and a press in the same turn does nothing.
+ */
+export function usePublishPresses<S extends Pressed<H>, H extends HeldPart, Seeds>(o: {
+  said: S;
+  setSaid: (update: (s: S) => S) => void;
+  generation: number;
+  waits: Pick<Waits<Seeds>, "hold" | "waitingNow" | "release" | "reload">;
+  /** The parts by name, in screen order. */
+  parts: Record<string, PressPart>;
+  flushAll: () => Promise<boolean[]>;
+  urls: { publish: string; discard: string };
+  requireSaved?: boolean;
+  dropCopies: () => void;
+  seeds: Seeds;
+}): { held: H[]; savesNow: () => Partial<Record<string, number>>; publish: () => Promise<void>; discard: () => Promise<void> } {
+  const { said, setSaid, generation, parts } = o;
+  const { hold, waitingNow, release, reload } = o.waits;
+  const held = (said.blocked?.parts ?? []).filter((b) => {
+    const part = Object.hasOwn(parts, b.part) ? parts[b.part] : null;
+    const before = said.blocked?.generation === generation ? (said.blocked.saves[b.part] ?? 0) : 0;
+    return !part || part.saves <= before;
+  });
+  const savesNow = () => Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.savedNow()]));
+
+  const publish = async () => {
+    if (waitingNow()) return;
+    setSaid((s) => ({ ...s, barError: null }));
+    const signal = hold();
+    const saved = await orLate(o.flushAll(), signal);
+    if (saved === LATE) return; // (the bound: the cards take typing, the page is read)
+    // a save that did not go through: nothing is published, the chip says why (and the text stays, in this browser too)
+    if (o.requireSaved && saved.some((ok) => !ok)) return release();
+    const answer = await post(o.urls.publish, signal);
+    if ("late" in answer) return;
+    if (!answer.ok) {
+      release();
+      return setSaid((s) => ({ ...s, barError: failedLine("publish", answer.signedOut) }));
+    }
+    const result = isAnswer(answer.body) ? answer.body : null;
+    const blocked = Array.isArray(result?.blocked) && result.blocked.length > 0 ? (result.blocked as H[]) : null;
+    const done = Array.isArray(result?.published) && result.published.length > 0;
+    const saves = savesNow();
+    setSaid((s) => ({ ...s, blocked: blocked ? { parts: blocked, generation, saves } : null, publishedAt: done ? new Date() : s.publishedAt }));
+    // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
+    // page is read again (piece 3a review M-2), and the parts start over from a read at or past the answer's stamp
+    if (done || !blocked) reload(undefined, stampOf(answer.body));
+    else release();
+  };
+
+  const discard = async () => {
+    if (waitingNow()) throw new Error("the cards wait"); // (the question stays open)
+    setSaid((s) => ({ ...s, barError: null }));
+    const signal = hold();
+    if ((await orLate(o.flushAll(), signal)) === LATE) return;
+    const answer = await post(o.urls.discard, signal);
+    // (the bound passed with the request on its way: it may have gone through)
+    if ("late" in answer) return o.dropCopies();
+    if (!answer.ok) {
+      release();
+      setSaid((s) => ({ ...s, barError: failedLine("discard", answer.signedOut) }));
+      throw new Error("discard failed"); // (the question stays open)
+    }
+    // what was thrown away must not come back: every copy in this browser goes before the parts start over (piece 3a review I-1); muted, they start
+    // over from the read, or at the bound from the live values the discard left (round 2 N-1, round 3)
+    o.dropCopies();
+    setSaid((s) => ({ ...s, blocked: null }));
+    reload(o.seeds, stampOf(answer.body));
+  };
+
+  return { held, savesNow, publish, discard };
 }
 
 /**

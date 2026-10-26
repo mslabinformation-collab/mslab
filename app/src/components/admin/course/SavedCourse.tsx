@@ -9,10 +9,10 @@ import { adminEt } from "@/i18n/dict/admin";
 import { dropCourseCopies } from "@/lib/course-copies";
 import { setCoursePublished, setCourseSample } from "@/server/actions/admin-content";
 import type { AdminModule } from "@/server/admin-lessons";
-import type { BlockedPart, PublishResult, SwitchResult } from "@/server/course-parts";
+import type { BlockedPart, SwitchResult } from "@/server/course-parts";
 import { PublishBar } from "../PublishBar";
 import { SaveStatus } from "../SaveStatus";
-import { blockedOf, failedLine, LATE, orLate, post, stampOf, useEditorRestarts, useFormOnScreen, type Change as AnyChange, type Waits as EditorWaits } from "../useEditorRestarts";
+import { blockedOf, LATE, orLate, usePublishPresses, stampOf, useEditorRestarts, useFormOnScreen, type Change as AnyChange, type Waits as EditorWaits } from "../useEditorRestarts";
 import ui from "../ui.module.css";
 import styles from "../CourseEditor.module.css";
 import { combineStatus, publishLabels } from "./course-view";
@@ -191,7 +191,7 @@ function SavedForm({
   setSaid: (update: (s: Said) => Said) => void;
 }) {
   const { id, published, liveType } = data;
-  const { hold, waitingNow, release, reload, stampSeen, reread, readLabels, route, onScreen, late } = waits;
+  const { hold, release, reload, stampSeen, reread, readLabels, route, onScreen, late } = waits;
   const common = { courseId: id, published, liveType };
   // an unpublished course's „Põhiinfo“ saves are heard (its type)
   const ear = useRef<SaveEar | null>(null);
@@ -294,61 +294,34 @@ function SavedForm({
 
   const phone = usePhoneChip();
   const { asked } = said;
-  // the parts the publish held, until each one's next save
-  const blocked = (said.blocked?.parts ?? []).filter((b) => {
-    const hook = order.includes(b.part as EditorPart) ? hooks[b.part as EditorPart] : null;
-    const before = said.blocked?.generation === generation ? (said.blocked.saves[b.part] ?? 0) : 0;
-    return !hook || hook.saves <= before;
-  });
-  const savesNow = () => Object.fromEntries(order.map((part) => [part, hooks[part].saves]));
-
   /** Every card's waiting save (the modules' names too), sent now and waited for: a publish, a discard or the switch work on what is saved. */
   const flushAll = () => Promise.all([...order.map((part) => hooks[part].flushNow()), ...Array.from(textRows.current, (row) => row.flush())]);
 
-  // „Avalda muudatused“ and „Loobu muudatustest“ never join a wait of the cards (the switch's, final review P7-1: its answer, or its bound, would
-  // end both): while one is on its way the PublishBar is busy (`waiting`), and a press that comes in the same turn does nothing here
-  const publish = async () => {
-    if (waitingNow()) return;
-    setSaid((s) => ({ ...s, barError: null }));
-    const signal = hold();
-    if ((await orLate(flushAll(), signal)) === LATE) return;
-    const answer = await post(`/api/admin/koolitus/${id}/avalda`, signal);
-    if ("late" in answer) return; // (the bound: the cards take typing, the page is read)
-    if (!answer.ok) {
-      release();
-      return setSaid((s) => ({ ...s, barError: failedLine("publish", answer.signedOut) }));
-    }
-    const result = answer.body as PublishResult | null;
-    const held = Array.isArray(result?.blocked) && result.blocked.length > 0 ? result.blocked : null;
-    const done = Array.isArray(result?.published) && result.published.length > 0;
-    setSaid((s) => ({ ...s, blocked: held ? { parts: held, generation, saves: savesNow() } : null, publishedAt: done ? new Date() : s.publishedAt }));
-    // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
-    // page is read again (review M-2), and the cards start over from a read at or past the answer's stamp
-    if (done || !held) reload(undefined, stampOf(answer.body));
-    else release();
-  };
-
-  const discard = async () => {
-    if (waitingNow()) throw new Error("the cards wait"); // (the question stays open)
-    setSaid((s) => ({ ...s, barError: null }));
-    const signal = hold();
-    if ((await orLate(flushAll(), signal)) === LATE) return;
-    const answer = await post(`/api/admin/koolitus/${id}/loobu`, signal);
-    if ("late" in answer) return;
-    if (!answer.ok) {
-      release();
-      setSaid((s) => ({ ...s, barError: failedLine("discard", answer.signedOut) }));
-      throw new Error("discard failed"); // (the question stays open)
-    }
-    // what was thrown away must not come back: every part's copy in this browser goes before the cards start over (review I-1); muted, they start
-    // over from the read, or at the bound from the live values the discard left (round 2 N-1, round 3)
-    for (const part of order) hooks[part].discardCopy();
-    for (const row of textRows.current) row.discardCopy();
-    // and every other copy of the course in this browser: a closed lesson drawer kept its name and short text („Sulge, tekst jääb seadmesse“, Task 10)
-    dropCourseCopies(id);
-    setSaid((s) => ({ ...s, blocked: null }));
-    reload(seeds, stampOf(answer.body));
-  };
+  // „Avalda muudatused“ and „Loobu muudatustest“ (../useEditorRestarts.ts usePublishPresses, shared with the site editors) never join a wait of the
+  // cards (the switch's, final review P7-1: its answer, or its bound, would end both): while one is on its way the PublishBar is busy (`waiting`), and
+  // a press that comes in the same turn does nothing; `blocked`, the parts the publish (or the switch) held, until each one's next save
+  const {
+    held: blocked,
+    savesNow,
+    publish,
+    discard,
+  } = usePublishPresses({
+    said,
+    setSaid,
+    generation,
+    waits,
+    parts: Object.fromEntries(order.map((part) => [part, hooks[part]])),
+    flushAll,
+    urls: { publish: `/api/admin/koolitus/${id}/avalda`, discard: `/api/admin/koolitus/${id}/loobu` },
+    // what was thrown away must not come back: every part's copy in this browser (review I-1), the modules' names', and every other copy of the
+    // course — a closed lesson drawer kept its name and short text („Sulge, tekst jääb seadmesse“, Task 10)
+    dropCopies: () => {
+      for (const part of order) hooks[part].discardCopy();
+      for (const row of textRows.current) row.discardCopy();
+      dropCourseCopies(id);
+    },
+    seeds,
+  });
 
   const switchPublished = async (on: boolean) => {
     if (asked.published !== undefined || asked.sample !== undefined) return;

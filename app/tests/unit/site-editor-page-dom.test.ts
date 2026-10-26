@@ -4,8 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
-import { SiteEditorPage } from "@/components/admin/site/SiteEditorPage";
-import type { SitePartApi } from "@/components/admin/site/useSitePart";
+import { SiteEditorPage, type SiteApis, type SiteEditorProps } from "@/components/admin/site/SiteEditorPage";
 import type { SectionEntry } from "@/components/admin/SectionMap";
 import type { PackageDraft } from "@/domain/site-editor";
 import type { SitePartState } from "@/domain/site-entities";
@@ -40,6 +39,8 @@ const pkg = (code: string, price: string, items: string[]): PackageDraft => ({
 const MINI = pkg("MINI", "100", ["2 modelli", "Tagasiside"]);
 const MAXI = pkg("MAXI", "150", ["4 modelli", "Tagasiside", "Fotod"]);
 const CODES = ["MINI", "MAXI"] as const;
+/** Praktika's parts by package code, as the screen types them (SiteEditorPage's generic parts). */
+type Practice = Record<string, PackageDraft>;
 
 /** The parts as the page reads them (server/site-drafts.ts readSiteEditor): live with no drafts, unless `over` says otherwise. */
 function partsOf(over: Partial<Record<string, Partial<SitePartState>>> = {}): Record<string, SitePartState> {
@@ -53,6 +54,8 @@ const remote = {
   n: 0,
   /** A part whose saves never answer (the request hangs until the browser gives it up). */
   hang: null as string | null,
+  /** A part whose saves the server's check refuses with these field codes. */
+  refuse: null as null | { part: string; fields: Record<string, string> },
   /** A part whose saves answer a server error. */
   fail: null as string | null,
   avalda: (): Response | Promise<Response> => Response.json({ stamp: 5, published: ["MAXI"], blocked: [] }),
@@ -64,6 +67,7 @@ function resetRemote() {
   remote.n = 0;
   remote.hang = null;
   remote.fail = null;
+  remote.refuse = null;
   remote.avalda = () => Response.json({ stamp: 5, published: ["MAXI"], blocked: [] });
   remote.loobu = () => Response.json({ stamp: 5 });
   remote.log = [];
@@ -79,6 +83,7 @@ const respond = (url: string, init: RequestInit | undefined): Response | Promise
   if (remote.hang === part)
     return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError"))));
   if (remote.fail === part) return Response.json({ ok: false, error: "server" }, { status: 500 });
+  if (remote.refuse?.part === part) return Response.json({ ok: false, error: "invalid", fields: remote.refuse.fields }, { status: 400 });
   const stored = remote.parts[part];
   if (body.version !== stored.version) return Response.json({ ok: false, error: "conflict", version: stored.version, value: stored.value }, { status: 409 });
   remote.n += 1;
@@ -99,12 +104,12 @@ const settle = () =>
   });
 
 /** The cards: each package's price, typed (set) and left (flush), and its points (a row's text through `update`), as a screen's fields do. */
-const cards = (apis: Record<string, SitePartApi>) =>
+const cards = (apis: SiteApis<Practice>) =>
   createElement(
     Fragment,
     null,
     CODES.map((code) => {
-      const api = apis[code] as SitePartApi<PackageDraft>;
+      const api = apis[code];
       return createElement(
         "section",
         { key: code, id: `pakett-${code}`, "data-card": code },
@@ -129,7 +134,7 @@ const cards = (apis: Record<string, SitePartApi>) =>
     }),
   );
 
-type Props = Parameters<typeof SiteEditorPage>[0];
+type Props = SiteEditorProps<Practice>;
 const props = (over: Partial<Props> = {}): Props => ({
   entity: "practice",
   eyebrow: "Koolitused",
@@ -144,7 +149,7 @@ const props = (over: Partial<Props> = {}): Props => ({
   ...over,
 });
 const show = async (over: Partial<Props> = {}) => {
-  await act(async () => root.render(createElement(SiteEditorPage, props(over))));
+  await act(async () => root.render(createElement(SiteEditorPage<Practice>, props(over))));
   await settle();
 };
 
@@ -289,6 +294,22 @@ describe("the PublishBar", () => {
     expect($("[data-publish-blocked]")).toBeNull();
   });
 
+  it("a press straight after typing, answered „blocked“ only: „Puudub: MAXI hind“ stays on the bar — the press's own save is counted (review I-1)", async () => {
+    remote.avalda = () => Response.json({ stamp: 5, published: [], blocked: [{ part: "MAXI", reason: "missing", fields: ["MAXI hind"] }] });
+    await show({ sections: (apis) => CODES.flatMap((code) => [{ id: code, label: code, ...(apis[code].attention ? { flag: "check" as const } : {}) }, { id: `${code}-2`, label: `${code} 2` }]) });
+    await type(field("MAXI.price"), "");
+    // (not left: the press itself sends the edit)
+    await click($("[data-publish-go]"));
+    expect(posts()).toEqual(["osa/MAXI", "avalda"]);
+    expect(text($("[data-publish-blocked]"))).toBe("Puudub: MAXI hind");
+    // and the part's map entry says „Kontrolli“
+    expect($$("nav[aria-label='Jaotised'] [data-flag]").map((el) => el.closest("a")!.getAttribute("href"))).toEqual(["#MAXI"]);
+    // the part's next save takes the line away
+    await type(field("MAXI.price"), "175");
+    await leave(field("MAXI.price"));
+    expect($("[data-publish-blocked]")).toBeNull();
+  });
+
   it("the parts that were published leave the bar; the one held stays on it with its „Puudub: …“", async () => {
     remote.avalda = () => Response.json({ stamp: 5, published: ["MINI"], blocked: [{ part: "MAXI", reason: "missing", fields: ["MAXI hind"] }] });
     await show();
@@ -342,6 +363,36 @@ describe("the PublishBar", () => {
     expect(fetched.calls).toHaveLength(sent);
   });
 
+  it("a discard whose POST passes the bound (its outcome unknown): this browser's copies go, so the next read's parts do not bring the discarded text back (review M-4)", async () => {
+    fakeClock();
+    try {
+      // MAXI's price is held back by the server's check: its text is kept in this browser's copy
+      remote.refuse = { part: "MAXI", fields: { price: "amount" } };
+      remote.loobu = () => new Promise<Response>(() => {});
+      await show();
+      await type(field("MAXI.price"), "abc");
+      await leave(field("MAXI.price"));
+      expect(copies()).toHaveLength(1);
+      await click($("[data-publish-discard]"));
+      await click(button("Jah, loobu"));
+      expect(posts().at(-1)).toBe("loobu");
+      await wait(SAVE_TIMEOUT_MS);
+      expect(copies()).toEqual([]);
+      expect(router.refresh).toHaveBeenCalledTimes(1);
+      // the next read (the discard did land: live, no drafts) starts the parts over; nothing comes back from this browser, nothing is sent
+      resetRemote();
+      const saves = remote.log.length;
+      await show({ parts: partsOf(), stamp: 6 });
+      await wait(2000);
+      expect(field("MAXI.price")!.value).toBe("150");
+      expect(copies()).toEqual([]);
+      expect(remote.log).toHaveLength(saves);
+      expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a publish while a save hangs waits at most SAVE_TIMEOUT_MS, then shows the save's failure, not a publish", async () => {
     fakeClock();
     try {
@@ -369,6 +420,20 @@ describe("the PublishBar", () => {
   });
 });
 
+describe("a part's own options (partOptions → useSitePart)", () => {
+  it("a screen's check before a save holds the field back without a request; the chip says „Salvestamata — kontrolli märgitud välja“", async () => {
+    await show({ partOptions: { MAXI: { validate: (f): Record<string, string> => (f.price === "x" ? { price: "amount" } : {}) } } });
+    await type(field("MAXI.price"), "x");
+    await leave(field("MAXI.price"));
+    expect(remote.log).toEqual([]);
+    expect(chip()!.getAttribute("data-save-kind")).toBe("invalid");
+    expect(text(chip()!.querySelector("[role=status]"))).toBe("Salvestamata — kontrolli märgitud välja");
+    await type(field("MAXI.price"), "160");
+    await leave(field("MAXI.price"));
+    expect(remote.log.map((s) => [s.part, s.patch])).toEqual([["MAXI", { price: "160" }]]);
+  });
+});
+
 describe("the leave guard", () => {
   it("leaving with a point's change the server did not take: the notice names the row as the bar does („MAXI punkt 2“, S4-1)", async () => {
     remote.fail = "MAXI";
@@ -377,7 +442,7 @@ describe("the leave guard", () => {
     document.addEventListener("click", followed);
     try {
       const menu = createElement("a", { href: "/admin/kalender", "data-menu": "" }, "Kalender");
-      await act(async () => root.render(createElement(LeaveGuardProvider, null, menu, createElement(SiteEditorPage, props()))));
+      await act(async () => root.render(createElement(LeaveGuardProvider, null, menu, createElement(SiteEditorPage<Practice>, props()))));
       await settle();
       await type(field("MAXI.items.1"), "Tagasiside protokolliga");
       await click($("[data-menu]"));

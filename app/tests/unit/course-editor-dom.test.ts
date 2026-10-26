@@ -331,6 +331,21 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(field("price")!.closest("[data-plain-field]")!.querySelector("[data-field-error]")).toBeNull();
   });
 
+  it("a press straight after typing, answered „blocked“ only: „Puudub: hind“ stays on the bar — the press's own save is counted (piece 4a Task 2 review I-1)", async () => {
+    remote.avalda = () => Response.json({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
+    await show();
+    await type(field("price"), "");
+    // (not left: the press itself sends the edit)
+    await click($("[data-publish-go]"));
+    expect(remote.log.map((s) => [s.part, s.patch])).toEqual([["price", { price: "" }]]);
+    expect(text($("[data-publish-blocked]"))).toBe("Puudub: hind");
+    expect(router.refresh).not.toHaveBeenCalled();
+    // the price typed in and saved again: the line goes
+    await type(field("price"), "95,5");
+    await leave(field("price"));
+    expect($("[data-publish-blocked]")).toBeNull();
+  });
+
   it("a held part typed back to live: no bar at all, never „Avaldamata muudatused: 0“ (review M-3)", async () => {
     remote.avalda = () => Response.json({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
     await show();
