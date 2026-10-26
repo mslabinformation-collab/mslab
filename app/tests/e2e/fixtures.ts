@@ -1223,7 +1223,8 @@ export async function insertPreviewDraft(slug: string, title: string): Promise<s
 // preview bar's) drops, EVERY practice draft there is (ruling R-e). So the tests that make practice drafts — Praktika's editor (both edit projects,
 // desktop MAXI, phone MINI) and the preview of /praktika — take turns: one at a time holds PRACTICE_DRAFTS_LOCK (edit-lock.ts `practiceDrafts`), from
 // its set-up until its fixtures are torn down, after its afterEach hooks (the restores of the rows it changed). While it holds the turn, every practice
-// draft is its own, so at the end of its turn all of them go (removePracticeDrafts): a test that failed half-way leaves none behind, tagged or not.
+// draft is its own, so when it takes the turn and at the end of it all of them go (removePracticeDrafts): a test that failed half-way leaves none
+// behind, tagged or not, and one a killed run left cannot reach the next holder.
 
 export const PRACTICE_DRAFTS_LOCK = "e2e-practice-drafts";
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { SITE_LIMITS, type PackageDraft } from "@/domain/site-editor";
 import type { SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
@@ -8,7 +7,7 @@ import { fill } from "@/i18n/format";
 import { PlainField } from "./course/PlainField";
 import { I18nInput } from "./I18nInput";
 import { ListEditor } from "./ListEditor";
-import { sectionCard } from "./SectionMap";
+import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SiteApis } from "./site/SiteEditorPage";
 import type { SitePartApi } from "./site/useSitePart";
 import ui from "./ui.module.css";
@@ -17,7 +16,10 @@ import styles from "./PracticeEditor.module.css";
 // C5 Praktika (admin UX pass piece 4a, Task 4 — the pilot of the site editors on the draft layer; README §4 C5 "the template; points get drag +
 // undo", the Part 4 C5 frame; piece4-texts S4-31…S4-34, S4-3; builder notes §5; ruling R-h). The pattern Koolitaja and Avaleht follow:
 //   page.tsx (server: requireAdmin, readSiteEditor) → this client wrapper → SiteEditorPage (header, one chip, the PublishBar, the parts' autosave,
-//   publish and discard) → `render` → the cards, one component each, with their hooks (a part's api: site/useSitePart.ts).
+//   publish and discard) → `render` → the cards, one component each, with their hooks (a part's api: site/useSitePart.ts), each one a SiteCard
+//   (site/SiteCard.tsx: the course editor's Card bound to the parts it shows — saved on leaving it, „Taasta minu tekst“, the section map's focus).
+// The cards stand in the screen's marker `data-practice-editor` (admin-inbox.spec.ts opens every content section from the menu by it; Avaleht's is
+// `data-home-editor`, Koolitaja's `data-trainer-editor`).
 // Each package code is a part of the entity "practice" (ruling R-a): MINI and MAXI side by side, each card titled by its code (S4-33), with „Nimi“
 // and „Lühitekst“ (kept, builder notes §5), the row of three short fields „Hind (€)“, „Modelle“ and „Kestus“ (each checked on its own: the server's
 // loose check names the field it refuses, domain/site-checks.ts loosePackage, and the engine holds back that one alone), then „Sisaldab“: the points
@@ -52,12 +54,12 @@ function PackageCards({ apis }: { apis: SiteApis<Practice> }) {
   const codes = Object.keys(apis);
   if (codes.length === 0)
     return (
-      <section className={ui.card}>
+      <section className={ui.card} data-practice-editor="">
         <p className={ui.empty}>{adminEt.practice.empty}</p>
       </section>
     );
   return (
-    <div className={styles.packages}>
+    <div className={styles.packages} data-practice-editor="">
       {codes.map((code) => (
         <PackageCard key={code} code={code} api={apis[code]} />
       ))}
@@ -65,23 +67,13 @@ function PackageCards({ apis }: { apis: SiteApis<Practice> }) {
   );
 }
 
-/** One package's card: its fields, saved when the focus leaves one (its part's flush, README §1.3 "on blur"). */
+/** One package's card (a SiteCard of its part): titled by its code, its fields saved when the focus leaves the card (README §1.3 "on blur"). */
 function PackageCard({ code, api }: { code: string; api: SitePartApi<PackageDraft> }) {
   const t = adminEt.practice;
-  const uid = useId();
   const v = api.fields;
   const named = (field: keyof PackageDraft & string) => `${code}.${field}`;
   return (
-    <section
-      id={`pakett-${code}`}
-      className={`${ui.card} ${sectionCard} ${styles.card}`}
-      aria-labelledby={`${uid}-title`}
-      data-package={code}
-      onBlur={() => void api.flush()}
-    >
-      <h2 id={`${uid}-title`} className={styles.name}>
-        {fill(t.package, { code })}
-      </h2>
+    <SiteCard id={`pakett-${code}`} title={fill(t.package, { code })} parts={[api]} className={styles.card} titleClassName={styles.name} data-package={code}>
       <I18nInput
         label={t.name}
         value={v.name}
@@ -149,13 +141,6 @@ function PackageCard({ code, api }: { code: string; api: SitePartApi<PackageDraf
         addLabel={t.addItem}
         rowNames
       />
-      {api.conflict && (
-        <p className={styles.restore}>
-          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={api.restore} data-part-restore="">
-            {adminEt.courseEditor.restore}
-          </button>
-        </p>
-      )}
-    </section>
+    </SiteCard>
   );
 }

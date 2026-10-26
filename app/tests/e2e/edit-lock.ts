@@ -16,7 +16,8 @@ import { test as base } from "./test";
  *
  * `practiceDrafts` (`test.use({ practiceDrafts: true })`): the test makes drafts of Praktika's packages, so it takes the practice turn as well
  * (fixtures.ts PRACTICE_DRAFTS_LOCK) — under `next dev` too, since a publish or a discard there acts on every practice draft, whoever made it. The turn
- * is taken after the edit turn and given back before it (no two tests ever wait for each other's), and at its end every practice draft goes.
+ * is taken after the edit turn and given back before it (no two tests ever wait for each other's). Every practice draft goes when the turn is taken
+ * (one a run killed half-way left behind, whose teardown never ran — review M-5) and again at its end.
  */
 export const test = base.extend<{ editTurn: void; practiceDrafts: boolean; practiceTurn: void }>({
   editTurn: [
@@ -42,6 +43,7 @@ export const test = base.extend<{ editTurn: void; practiceDrafts: boolean; pract
       info.setTimeout(info.timeout + LOCK_WAIT_MS);
       const release = await holdLocalLock(PRACTICE_DRAFTS_LOCK, LOCK_WAIT_MS);
       try {
+        await removePracticeDrafts();
         await provide();
       } finally {
         try {

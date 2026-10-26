@@ -185,6 +185,40 @@ describe("the page (S4-31, S4-32) and the two package cards (the P4 C5 frame, S4
     await show({});
     expect(text($("[data-site-editor]"))).toContain("Praktikapakette pole.");
     expect($("[data-package]")).toBeNull();
+    // (the screen's marker is there all the same: admin-inbox.spec.ts opens every content section from the menu by it)
+    expect($("[data-practice-editor]")).not.toBeNull();
+  });
+
+  it("the screen's marker `data-practice-editor` holds the cards (admin-inbox.spec.ts; review I-1)", async () => {
+    await show();
+    expect($$("[data-practice-editor] [data-package]")).toHaveLength(2);
+  });
+
+  it("each package is a site card (site/SiteCard.tsx, the course Card's): its section takes the focus a section map gives it (tabindex -1), named by its title", async () => {
+    await show();
+    for (const code of ["MINI", "MAXI"]) {
+      const c = card(code)!;
+      expect(c.tagName).toBe("SECTION");
+      expect(c.id).toBe(`pakett-${code}`);
+      expect(c.getAttribute("tabindex")).toBe("-1");
+      expect(c.getAttribute("aria-labelledby")).toBe(c.querySelector("h2")!.id);
+    }
+  });
+
+  it("another tab saved MAXI meanwhile (409): „Taasta minu tekst“ in MAXI's card only; it saves this text over the stored one", async () => {
+    await show();
+    // (another tab's save: MAXI's stored version moved on)
+    remote.parts.MAXI = { version: "d:2.40", value: { ...MAXI, price: "260" } };
+    await type(field("MAXI.price"), "230");
+    await leave(field("MAXI.price"));
+    expect(remote.log.at(-1)).toMatchObject({ part: "MAXI", version: "l:MAXI" });
+    const restore = button("Taasta minu tekst", card("MAXI"));
+    expect(restore).not.toBeNull();
+    expect(button("Taasta minu tekst", card("MINI"))).toBeNull();
+    await click(restore);
+    expect(remote.log.at(-1)).toMatchObject({ part: "MAXI", version: "d:2.40", patch: { price: "230" } });
+    expect(remote.parts.MAXI.value.price).toBe("230");
+    expect(button("Taasta minu tekst", card("MAXI"))).toBeNull();
   });
 });
 

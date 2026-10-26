@@ -165,6 +165,14 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     await expect(visitor.locator(`[data-package="${code}"]`).getByText("E2E пункт")).toBeVisible();
     await visitor.close();
 
+    // a 1280 px laptop: MINI and MAXI side by side (review M-1)
+    if (!phone(info)) {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const [left, right] = [(await page.locator('[data-package="MINI"]').boundingBox())!, (await page.locator('[data-package="MAXI"]').boundingBox())!];
+      expect(Math.abs(left.y - right.y), "one row").toBeLessThan(1);
+      expect(left.x + left.width, "MAXI right of MINI").toBeLessThanOrEqual(right.x);
+      expect(await noOverflow(page)).toBe(true);
+    }
     // 375 px: the two cards one under the other, and nothing scrolls sideways
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/admin/praktika");

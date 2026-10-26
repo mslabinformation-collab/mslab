@@ -1,0 +1,12 @@
+/* A site editor's card (SiteCard.tsx): it takes the focus when the section map jumps to it (tabindex -1) — no ring for a jump or a click on the card,
+   the admin's ring (2px solid --rose, offset 2) for the keyboard, wherever the card stands in the page's column (the shell's own rule covers only its
+   direct children). */
+
+.card:focus {
+  outline: none;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}

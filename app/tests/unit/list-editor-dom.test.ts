@@ -266,6 +266,23 @@ describe("ListEditor: Enter on the last row adds a row (Praktika's points; rulin
     expect(document.activeElement).toBe(fieldOf(0));
   });
 
+  it("a held Enter adds ONE row: the key's auto-repeats (in the new last row) add nothing and do nothing else (review M-3)", async () => {
+    await render(ITEMS, { enterAdds: true });
+    fieldOf(2)!.focus();
+    await enter(fieldOf(2));
+    expect(current).toHaveLength(4);
+    expect(document.activeElement).toBe(fieldOf(3));
+    // the repeats land in the field that has the cursor now: the new last row
+    const repeats = [await enter(fieldOf(3), { repeat: true }), await enter(fieldOf(3), { repeat: true })];
+    expect(repeats.map((e) => e.defaultPrevented)).toEqual([true, true]);
+    expect(current).toHaveLength(4);
+    expect(updates).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(fieldOf(3));
+    // the key let go and pressed again: the next row
+    await enter(fieldOf(3));
+    expect(current).toHaveLength(5);
+  });
+
   it("without `enterAdds` (the course's lists) Enter in the last row adds nothing", async () => {
     await render();
     const before = rows();

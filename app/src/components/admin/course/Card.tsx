@@ -13,6 +13,9 @@ import styles from "../CourseEditor.module.css";
  * part's flush: README §1.3 "on blur"). After a conflict (another tab saved the part meanwhile) „Taasta minu tekst“ saves this card's text over it.
  * `unpublished`: the card's title is its field's label (the gallery) and its value waits for „Avalda muudatused“: „· avaldamata“ after the title
  * (README §1.8), the card's description, not part of its name.
+ *
+ * The site editors' cards are this card too (../site/SiteCard.tsx binds it to their parts): `className` adds a screen's own layout to the card's
+ * section, `titleClassName` gives its title the screen's look instead of the course cards' (Praktika's package name). The course cards pass neither.
  */
 export function Card({
   id,
@@ -22,6 +25,8 @@ export function Card({
   conflict,
   onRestore,
   unpublished,
+  className,
+  titleClassName,
   children,
   ...rest
 }: {
@@ -32,14 +37,16 @@ export function Card({
   conflict?: boolean;
   onRestore?: () => void;
   unpublished?: boolean;
+  className?: string;
+  titleClassName?: string;
   children: ReactNode;
-} & Omit<HTMLAttributes<HTMLElement>, "id" | "title" | "children">) {
+} & Omit<HTMLAttributes<HTMLElement>, "id" | "title" | "children" | "className">) {
   const uid = useId();
   return (
     <section
       {...rest}
       id={id}
-      className={`${ui.card} ${sectionCard}`}
+      className={className ? `${ui.card} ${sectionCard} ${className}` : `${ui.card} ${sectionCard}`}
       tabIndex={-1}
       aria-labelledby={title ? `${uid}-title` : undefined}
       aria-label={title ? undefined : label}
@@ -47,7 +54,7 @@ export function Card({
       onBlur={onLeave}
     >
       {title && (
-        <h2 id={`${uid}-title`} className={`${ui.h2} ${styles.cardTitle}`}>
+        <h2 id={`${uid}-title`} className={titleClassName ?? `${ui.h2} ${styles.cardTitle}`}>
           {title}
           {unpublished && (
             <>

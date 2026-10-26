@@ -1,6 +1,6 @@
 /* C5 Praktika (admin UX pass piece 4a, Task 4; the Part 4 C5 frame): MINI and MAXI side by side, 18 px apart (`1fr 1fr`, drawn), each card at least
-   480 px wide (a point's row — ⋮⋮, its number, its text, ↑ ↓ × — keeps its text a usable width: from a 1366 px screen up the cards stand side by side,
-   on a narrower laptop, a tablet and a phone one under the other); a card's parts 12 px apart and its
+   440 px wide (side by side from a 1280 px laptop up, as the old editor stood from about 1183 px; a tablet's column and a phone show them one under
+   the other — task 4 review M-1); a card's parts 12 px apart and its
    padding 22 px (drawn; ui.card's 20 px below 900 px kept); the package's name in Jost 300 30 px (drawn); the row of three short fields „Hind (€)“,
    „Modelle“, „Kestus“ 10 px apart (`repeat(3, 1fr)`, drawn), one under another on a phone (as editor.module.css's field grid folds at 640 px). Colours
    from tokens.css and ui.module.css only: a field that waits for „Avalda muudatused“ has editor.module.css's --rose border (#9e8993, the frame's
@@ -8,12 +8,13 @@
 
 .packages {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
   gap: 18px;
   align-items: start;
 }
 
-.card {
+/* (inside .packages: over ui.card's padding, whichever of the two stylesheets comes first) */
+.packages .card {
   display: grid;
   gap: 12px;
   min-width: 0;
@@ -35,12 +36,8 @@
   min-width: 0;
 }
 
-.restore {
-  margin: 0;
-}
-
 @media (max-width: 899.98px) {
-  .card {
+  .packages .card {
     padding: 20px;
   }
 }

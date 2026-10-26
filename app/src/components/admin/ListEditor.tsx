@@ -103,11 +103,15 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
     rows.expect(moveItem(items, from, to), moveItem(keys, from, to));
     change((list) => moveItem(list, from, to));
   };
-  /** R-h: Enter in the last row's one-line field (not one that ends an IME composition, nor with a modifier) adds the next row. */
+  /**
+   * R-h: Enter in the last row's one-line field (not one that ends an IME composition, nor with a modifier) adds the next row. A held Enter adds one:
+   * its auto-repeats, which land in the new last row, add nothing more (review M-3).
+   */
   const enterOnLast = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== "Enter" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return;
     if (!(e.target instanceof HTMLInputElement) || !e.target.hasAttribute("data-lang-field")) return;
     e.preventDefault();
+    if (e.repeat) return;
     add();
   };
 
