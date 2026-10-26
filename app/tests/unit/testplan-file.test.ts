@@ -1113,11 +1113,14 @@ describe("piece 3b sweep (Task 8)", () => {
     expect(check).toMatchObject({ device: "telefon", mark: "new" });
     expect(markedSince(check.markedAt)).toBe(true);
     const step = check.steps.find((s) => s.includes("„Kontaktkoolituse leping“"));
-    expect(step).toContain("„Muuda teksti“");
+    expect(step).toMatch(/^Vajuta kaardil „Kontaktkoolituse leping“ nuppu „Muuda teksti“/); // (the form of step 2, not „Ava kaart“)
     expect(step).toContain("klaviatuur");
     expect(step ? /salvesta/i.test(step) : true).toBe(false);
     const line = check.expect.find((l) => l.includes("klaviatuuri kohale"));
     expect(line).toContain("„+ nimi“");
     expect(line).toContain("„+ ettemaks“");
+    expect(line).toContain("on nähtaval");
+    expect(line).not.toContain("saab vajutada"); // (no step presses a chip: a press writes a contract draft that cannot be discarded)
+    expect(check.why).toContain("telefonis");
   });
 });

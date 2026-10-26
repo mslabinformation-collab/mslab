@@ -10,7 +10,7 @@ import { expect } from "./test";
 export const INVOICE_COMPANY = "E2E Arvete OÜ";
 /** The numbers the tests' seller card gives (prefix E2E: the tests' own series, never MSL; three digits or more: the account specs write high ones). */
 export const INVOICE_NUMBER = /^E2E\d{4}-\d{3,}$/;
-/** The bank details of Ettemaksu juhised a test writes. */
+/** The bank fields of Seaded → Maksmine (the prepayment setting) a test writes. */
 export const INVOICE_BANK = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
 /** The widths the specs look at: a phone, a tablet, an iPad and a desktop. */
 export const WIDTHS = [390, 834, 1194, 1440] as const;
@@ -38,8 +38,8 @@ export const invoiceCard = (extra: Record<string, unknown> = {}) => ({
 });
 
 /**
- * Takes the shared settings for a test: the lock, the stored `invoice` and `prepayment` rows saved for putting back, then Ettemaksu juhised
- * (INVOICE_BANK) and Arve andmed (`seller`; null: no card, as on a site where Maria has not filled it in yet) written. The timeout is
+ * Takes the shared settings for a test: the lock, the stored `invoice` and `prepayment` rows saved for putting back, then the bank fields of Maksmine
+ * (INVOICE_BANK) and its seller fields (`seller`; null: no card, as on a site where Maria has not filled it in yet) written. The timeout is
  * lengthened by the wait for the lock. Returns the function that puts the rows back and lets the lock go: call it after the test, also when it failed.
  */
 export async function holdInvoiceSettings(

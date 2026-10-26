@@ -598,7 +598,7 @@ export async function invoiceForPaidPayment(tx: Tx, payment: Payment, now: Date)
   if (own) return own;
   const made = await invoiceForUninvoiced(tx, payment, now);
   if (made === "sellerMissing") {
-    console.info(`[invoices] payment ${payment.id}: paid without an invoice (Arve andmed not filled in)`);
+    console.info(`[invoices] payment ${payment.id}: paid without an invoice (Seaded → „Maksmine“ seller not filled in)`);
     return null;
   }
   if (made.id !== payment.invoiceId) console.info(`[invoices] payment ${payment.id}: issued ${made.number} (invoice ${made.id})`);

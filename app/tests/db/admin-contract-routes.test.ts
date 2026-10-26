@@ -240,7 +240,7 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
     expect(mixed).toContain("Русский текст.");
   });
 
-  test("nothing is stored: the contracts, the contact text's page and its version, and Arve andmed are as they were", async () => {
+  test("nothing is stored: the contracts, the contact text's page and its version, and the seller in Maksmine are as they were", async () => {
     await signIn();
     const before = { contracts: await countContracts(), stored: await stored() };
     expect((await sample({ titleEt: "Muu", bodyEt: "Muu tekst, {nimi}.", lang: "et" })).status).toBe(200);
@@ -268,7 +268,7 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
     expect(wildText).toContain("Tekst.");
   });
 
-  test("before Maria names the company in Arve andmed the school is „MS LAB“ and says nothing false", async () => {
+  test("before Maria names the company in Seaded → Maksmine the school is „MS LAB“ and says nothing false", async () => {
     await signIn();
     await db.delete(settings).where(eq(settings.key, INVOICE_KEY));
     try {

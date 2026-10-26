@@ -1120,7 +1120,7 @@ describe("the reads: the student's own, Maria's, a registration's, the list, the
     expect(await listInvoices(db, {}, 7)).toMatchObject({ page: 1, total: 4 });
     expect(await listInvoices(db, { month: "2026-13" }, 1)).toMatchObject({ total: 0, rows: [] });
     const csv = await invoicesCsv(db, "2026-10");
-    expect(csv.startsWith("﻿Arve nr;")).toBe(true);
+    expect(csv.startsWith("\uFEFFArve nr;")).toBe(true);
     const lines = csv.slice(1).trimEnd().split("\r\n");
     expect(lines).toHaveLength(3);
     expect(lines.slice(1).map((l) => l.split(";")[0])).toEqual([`"${oct1.number}"`, `"${oct31.number}"`]);

@@ -1910,17 +1910,17 @@
         "Vajuta Seadetes „Avalda uus tekst“ ja „Jah, avalda“.",
         "Laadi leht /privaatsus uuesti.",
         "Kustuta lause „Proov 1.“ samamoodi ja avalda tekst uuesti.",
-        "Ava kaart „Kontaktkoolituse leping“, vajuta „Muuda teksti“, puuduta teksti, et klaviatuur avaneks, ja vajuta lõpuks „Sulge“."
+        "Vajuta kaardil „Kontaktkoolituse leping“ nuppu „Muuda teksti“, puuduta teksti, et klaviatuur avaneks, ja vajuta lõpuks „Sulge“."
       ],
       "expect": [
         "Kaardil on „Pikk tekst avaneb täisekraanil.“ ja tekst avaneb kogu ekraani laiuses.",
         "Pärast „Sulge“ on kaardil „Avaldamata“, aga lehel /privaatsus on veel vana tekst.",
         "„Avalda uus tekst“ küsib „Kas avaldan lehe „Privaatsus“ uue teksti?“ ja ütleb, et tekst on kohe näha.",
         "Pärast „Jah, avalda“ näed „Uus tekst on avaldatud.“ ja lehel /privaatsus on lause „Proov 1.“.",
-        "Klaviatuuri avanedes jäävad nupud „+ nimi“ kuni „+ ettemaks“ klaviatuuri kohale ja neid saab vajutada.",
+        "Klaviatuuri avanedes jäävad nupud „+ nimi“ kuni „+ ettemaks“ klaviatuuri kohale ja on nähtaval.",
         "Leht ei kerigi küljele ja nupud on kerged vajutada."
       ],
-      "why": "Lepingu ja privaatsuse tekst muutub avalikul lehel alles siis, kui Maria selle avaldab.",
+      "why": "Lepingu ja privaatsuse teksti saab telefonis mugavalt kirjutada ja see läheb avalikule lehele alles avaldamisel.",
       "risk": "med",
       "writes": true,
       "mark": "new",

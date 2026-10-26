@@ -170,7 +170,7 @@ describe("a registration's contract (D1, D3)", () => {
     expect(await allContracts()).toEqual([made]);
   });
 
-  test("no session and no price leave their fields and placeholders empty; the school without Arve andmed is „MS LAB“", async () => {
+  test("no session and no price leave their fields and placeholders empty; the school without the seller in Maksmine is „MS LAB“", async () => {
     await saveContact();
     const [course] = await db
       .insert(courses)

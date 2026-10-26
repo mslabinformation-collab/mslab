@@ -232,7 +232,7 @@ describe("GET /api/admin/naidisarve: the sample from the card's values", () => {
     // the card's values, not the stored ones (MS LAB OÜ, MSL, 1)
     for (const part of ["Uus Ettevõte OÜ", "99887766", "Tartu mnt 5, Tartu", "EE100200300", `ABC${YEAR}-007`, "Aitäh, et valisid meid!", `175,00${NBSP}€`, "22%"]) expect(text, part).toContain(part);
     expect(text).not.toContain("MS LAB OÜ");
-    // the bank details are the ones Ettemaksu juhised holds
+    // the bank details are the ones the bank fields of Maksmine hold
     for (const part of ["MS LAB Koolituskeskus OÜ", "EE382200221020145685", "Swedbank"]) expect(text, part).toContain(part);
   });
 
