@@ -25,6 +25,13 @@ const SLIDE_FIELDS: Record<string, keyof typeof T.home.slideFields> = {
   active: "active",
 };
 
+/**
+ * The fields of a list part's row in the order its labels are listed (S4-12: a slide's picture with its focal points, kicker, title, text, button,
+ * link, tone, „Näidatakse avalehel“; a question, then its answer): the leave guard's field in a row is the first of them that changed.
+ */
+export const siteRowFields = (entity: SiteEntity, part: string): readonly string[] =>
+  entity === "home" && part === "slides" ? Object.keys(SLIDE_FIELDS) : entity === "home" && part === "faq" ? ["q", "a"] : [];
+
 /** The trainer card's fields → their labels (S4-17: the picture and its focal point are „Portree“, every stat is „Numbrid“). */
 const TRAINER_FIELDS: Record<string, string> = { portraitKey: T.trainer.portrait, portraitPos: T.trainer.portrait, name: T.trainer.name, role: T.trainer.role, stats: T.trainer.stats };
 

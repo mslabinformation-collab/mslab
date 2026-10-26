@@ -17,6 +17,7 @@ import { UploadNotes, UploadPicker, useImageUpload } from "./ImageUpload";
 import { insertAt } from "./row-keys";
 import { TextField } from "./TextField";
 import { useListRows } from "./useListRows";
+import { REVEAL_FIELD, type RevealDetail } from "./site/useSitePart";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./HomeEditor.module.css";
@@ -28,6 +29,9 @@ import styles from "./HomeEditor.module.css";
 // the picture with its focal dot and „Puuduta pilti, et valida fookus · Vaheta pilt“ (both views' focal points kept), and the fields — „Pealkiri“,
 // „Alapealkiri“, the kicker, the button's text and link, „Näidatakse avalehel“, the tone „Hele“ | „Tume“ — and „Eemalda slaid“, which takes it out at
 // once with the UndoBar „Slaid eemaldatud.“ (its „Võta tagasi“ puts it back at its place). „+ Lisa slaid“ opens a new slide at the end, up to 8.
+// A refused slide is never opened for her (it would close the one she types in, review I-1): a closed one says so on its row — the refusal's words
+// under it, its button aria-invalid, and the section map's „Kontrolli“ — and she opens it herself. The leave guard's „Jää siia“ and SaveStatus's
+// „Näita“ open the closed slide that holds their field (site/useSitePart.ts REVEAL_FIELD, review I-2).
 
 let added = 0;
 
@@ -70,8 +74,12 @@ export type SlidesEditorProps = {
   links: string[];
 };
 
-/** Where the focus goes after the next render: a slide's box, one of its fields, its row's button (after an undo), or „+ Lisa slaid“. */
-type Focus = { uid: string; what: "box" | "opener" | RuField } | "add" | null;
+/** Where the focus goes after the next render: a slide's box, one of its fields, its first refused field, its row's button (after an undo), or „+ Lisa slaid“. */
+type Focus = { uid: string; what: "box" | "opener" | "refused" | string } | "add" | null;
+
+/** A slide's fields in the order of its box: where the focus goes for the first refused one (a focal point is its picture's). */
+const BOX_FIELDS = ["imageKey", "title", "text", "kicker", "ctaLabel", "ctaHref", "active", "tone"] as const;
+const inBox = (field: string) => (field === "imagePos" || field === "imagePosMobile" ? "imageKey" : field);
 
 /**
  * The slides' rows and the one open slide, with „+ Lisa slaid“ first (the card draws it at the right of its title, as the frame does). It renders no
@@ -87,14 +95,6 @@ export function SlidesEditor({ slides, live, onUpdate, errors, error, links }: S
   const focus = useRef<Focus>(null);
   const { change, offer } = useListRows<SlideDraft>({ owner: "slides", items: slides, onUpdate: (fn) => onUpdate(fn) });
 
-  // a refused save opens the first slide it refused (once per refusal: she may open another one meanwhile)
-  const [seenErrors, setSeenErrors] = useState(errors);
-  if (errors !== seenErrors) {
-    setSeenErrors(errors);
-    const refused = slides.find((s) => errors?.has(s.uid));
-    if (refused) setOpen(refused.uid);
-  }
-
   useEffect(() => {
     const target = focus.current;
     if (!target) return;
@@ -102,15 +102,33 @@ export function SlidesEditor({ slides, live, onUpdate, errors, error, links }: S
     if (target === "add") return addBtn.current?.focus();
     const row = root.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(target.uid)}"]`);
     if (!row) return;
-    if (target.what === "box") return row.querySelector<HTMLElement>("[data-slide-box]")?.focus();
     // (after an undo: only when the focus has nowhere else to be)
     if (target.what === "opener") return void (focusFell() && row.querySelector<HTMLElement>("[data-slide-open]")?.focus());
-    // a field (a new slide's title; „Järgmine →“'s Russian text): the cursor in it, the field in the middle of the screen
+    const own = errors?.get(target.uid);
+    const what = target.what === "refused" ? (BOX_FIELDS.find((f) => own && Object.keys(own).some((k) => inBox(k) === f)) ?? "box") : target.what;
+    if (what === "box") return row.querySelector<HTMLElement>("[data-slide-box]")?.focus();
+    // a field (a new slide's title; „Järgmine →“'s Russian text; the field the leave guard names): the cursor in it, the field in the middle of the screen
     const i = slides.findIndex((s) => s.uid === target.uid);
-    const field = row.querySelector<HTMLElement>(`[data-i18n="slides.${i}.${target.what}"]`);
+    const name = `slides.${i}.${inBox(what)}`;
+    const field = row.querySelector<HTMLElement>(`[data-i18n="${name}"], [data-field="${name}"]`);
     field?.focus({ preventScroll: true });
     field?.scrollIntoView?.({ block: "center" });
   });
+
+  // a field of a closed slide is to be focused („Jää siia“, „Näita“; site/useSitePart.ts focusSiteField): the slide opens, the focus goes into it
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const onReveal = (e: Event) => {
+      const key = (e.target as Element | null)?.closest<HTMLElement>("[data-slide]")?.dataset.slide;
+      if (!key) return;
+      const field = ((e as CustomEvent<RevealDetail>).detail?.name ?? "").split(".")[2];
+      focus.current = { uid: key, what: field || "refused" };
+      setOpen(key);
+    };
+    el.addEventListener(REVEAL_FIELD, onReveal);
+    return () => el.removeEventListener(REVEAL_FIELD, onReveal);
+  }, []);
 
   /** Opens a slide (the open one closes) and puts the focus in its box. */
   const openSlide = (key: string) => {
@@ -174,12 +192,28 @@ export function SlidesEditor({ slides, live, onUpdate, errors, error, links }: S
             renderRow={(s, i, handle, arrows) => {
               const n = i + 1;
               const anchor = `${uid}-${s.uid}`;
-              if (open !== s.uid)
+              if (open !== s.uid) {
+                // a refusal of this slide's fields: its words under the row (she opens the slide herself)
+                const refused = [...new Set(Object.values(errors?.get(s.uid) ?? {}))];
                 return (
-                  <div id={anchor} className={styles.slideRow} data-slide={s.uid} data-tone={s.tone}>
+                  <div
+                    id={anchor}
+                    className={styles.slideRow}
+                    data-slide={s.uid}
+                    data-tone={s.tone}
+                    data-reveals={`slides.${i}`}
+                    data-invalid={refused.length > 0 ? "" : undefined}
+                  >
                     <CollapsedRu slide={s} anchor={anchor} reveal={reveal} />
                     <span className={styles.grip}>{handle}</span>
-                    <button type="button" className={styles.opener} onClick={() => openSlide(s.uid)} data-slide-open="">
+                    <button
+                      type="button"
+                      className={styles.opener}
+                      onClick={() => openSlide(s.uid)}
+                      aria-invalid={refused.length > 0 || undefined}
+                      aria-describedby={refused.length > 0 ? `${anchor}-error` : undefined}
+                      data-slide-open=""
+                    >
                       <span className={ui.sr}>{fill(t.slide, { n })}: </span>
                       {s.imageKey ? (
                         // eslint-disable-next-line @next/next/no-img-element -- a thumbnail of an upload
@@ -203,8 +237,14 @@ export function SlidesEditor({ slides, live, onUpdate, errors, error, links }: S
                       </span>
                     </button>
                     <span className={styles.rowTools}>{arrows}</span>
+                    {refused.length > 0 && (
+                      <p id={`${anchor}-error`} className={`${ui.error} ${styles.rowError}`} data-slide-error="">
+                        {refused.join(" ")}
+                      </p>
+                    )}
                   </div>
                 );
+              }
               return (
                 <OpenSlide
                   anchor={anchor}
@@ -266,7 +306,7 @@ function OpenSlide({
     <div id={anchor} className={styles.openSlide} data-slide={s.uid} data-tone={s.tone} data-open="">
       <div className={styles.box} role="group" aria-label={fill(t.slide, { n })} tabIndex={-1} data-slide-box="">
         <span className={styles.grip}>{handle}</span>
-        <SlideMedia slide={s} n={n} error={err("imageKey")} focalError={err("imagePos") ?? err("imagePosMobile")} onEdit={onEdit} />
+        <SlideMedia slide={s} n={n} name={`${p}imageKey`} error={err("imageKey")} focalError={err("imagePos") ?? err("imagePosMobile")} onEdit={onEdit} />
         <div className={styles.fields} data-slide-fields="">
           <I18nInput
             label={t.titleField}
@@ -331,6 +371,7 @@ function OpenSlide({
             value="1"
             checked={s.active}
             onChange={(e) => onEdit({ active: e.target.checked }, true)}
+            data-field={`${p}active`}
           />
           <div className={styles.toneLine}>
             <fieldset className={styles.toneSet} data-tone-switch="">
@@ -344,6 +385,7 @@ function OpenSlide({
                       value={tone}
                       checked={s.tone === tone}
                       onChange={() => onEdit({ tone, imagePosMobile: mobileFocalForTone(s.imagePosMobile, tone) }, true)}
+                      data-field={s.tone === tone ? `${p}tone` : undefined}
                     />
                     <span>{tone === "dark" ? t.dark : t.light}</span>
                   </label>
@@ -366,7 +408,22 @@ function OpenSlide({
  * both views (Arvutis 16:9, Telefonis 9:16) and their crop previews, the upload's „Vaheta pilt“ in its hint line (S4-10), the upload's notes under it.
  * An upload saves at once (the slide is found by its key when it lands). No picture yet: „Pilti pole veel valitud.“ and „Vali pilt“.
  */
-function SlideMedia({ slide: s, n, error, focalError, onEdit }: { slide: SlideDraft; n: number; error?: string; focalError?: string; onEdit: (patch: Partial<SlideDraft>, now?: boolean) => void }) {
+function SlideMedia({
+  slide: s,
+  n,
+  name,
+  error,
+  focalError,
+  onEdit,
+}: {
+  slide: SlideDraft;
+  n: number;
+  /** The picture's field name (`slides.2.imageKey`): the group takes the focus for it („Jää siia“, „Näita“). */
+  name: string;
+  error?: string;
+  focalError?: string;
+  onEdit: (patch: Partial<SlideDraft>, now?: boolean) => void;
+}) {
   const t = adminEt.home.slides;
   const im = adminEt.editor.image;
   const id = useId();
@@ -386,8 +443,9 @@ function SlideMedia({ slide: s, n, error, focalError, onEdit }: { slide: SlideDr
       aria-describedby={error ? `${id}-error` : undefined}
       data-slide-media=""
       data-single-image={`slide-${n}`}
+      data-field={name}
       data-invalid={error ? "" : undefined}
-      tabIndex={error ? -1 : undefined}
+      tabIndex={-1}
     >
       <p id={`${id}-label`} className={ui.sr}>
         {t.image}

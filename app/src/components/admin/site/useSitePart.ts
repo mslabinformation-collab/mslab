@@ -4,7 +4,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { patchSender, type Fields, type SendPatch, type Unconfirmed } from "@/components/admin/autosave/engine";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
+import { sameSiteValue, siteChangeLabels, siteFieldLabel, siteRowFields } from "@/domain/site-changes";
 import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { siteCopyOwner } from "@/lib/site-copies";
@@ -23,7 +23,8 @@ import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRef
 //
 // Where the fields are on the page (the leave guard's „Jää siia“, SaveStatus's „Näita“): a part's field is the control named `<part>.<field>` (a
 // record part's: `MAXI.price`, `trainer.name`) or `<field>` (a list part's rows: `slides.2.title`), as `data-i18n` (I18nInput) or `data-field`
-// (TextField); else the field's first control held back (`aria-invalid`).
+// (TextField); else the field's first control held back (`aria-invalid`). A row that holds its controls out of sight (Avaleht's closed slide, a
+// folded answer: piece 4a Task 6, review I-2) says so with `data-reveals` and opens itself on REVEAL_FIELD, then the focus goes into the control.
 
 /** The autosave route of an entity's part. */
 export const sitePartUrl = (entity: SiteEntity, part: string): string => `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/osa/${encodeURIComponent(part)}`;
@@ -92,32 +93,66 @@ export function rowRefusals<R>(sent: unknown, problemsOf: (rows: R[]) => Record<
 }
 
 /**
- * The control of a part's field on the page (see the top of the file), focused: `row` given (a list field's row, by its place in the draft), that
- * row's; else the field's own, its first row held back, its first row; else the page's first control held back.
+ * The event a site editor's row hears when a field it holds out of sight is to be focused (focusSiteField): Avaleht's closed slide, a folded answer.
+ * The row carries `data-reveals`, the start of the names of the controls it hides (`slides.2`, `faq.1.a`), and `data-invalid` while one of them is
+ * refused; `detail.name` is the control's name (`slides.2.title`), or the row's own when the field is not known (then its first refused field). The
+ * editor opens the row and puts the focus in that control once it is on the page.
  */
-export function focusSiteField(part: string, field: string, row: number | null = null): void {
+export const REVEAL_FIELD = "site-reveal-field";
+export type RevealDetail = { name: string };
+
+/**
+ * The control of a part's field on the page (see the top of the file), focused: `row` given (a list field's row, by its place in the draft), that
+ * row's control `sub` (the field in the row), or the row that holds it out of sight, opened on it (REVEAL_FIELD), or the row's first control; else
+ * the field's own, its first control held back, a row out of sight that holds one (opened on it), its first control; else the page's first control
+ * held back.
+ */
+export function focusSiteField(part: string, field: string, row: number | null = null, sub: string | null = null): void {
   const page = document.querySelector("[data-site-editor]") ?? document;
   const names = [`${part}.${field}`, field];
   const named = (n: string, more = "") => page.querySelector<HTMLElement>(`[data-i18n="${n}"]${more}, [data-field="${n}"]${more}`);
   const under = (n: string, more = "") => page.querySelector<HTMLElement>(`[data-i18n^="${n}."]${more}, [data-field^="${n}."]${more}`);
-  const target =
-    (row === null ? null : names.map((n) => named(`${n}.${row}`) ?? under(`${n}.${row}`)).find(Boolean)) ??
-    names.map((n) => named(n)).find(Boolean) ??
-    names.map((n) => under(n, '[aria-invalid="true"]')).find(Boolean) ??
-    names.map((n) => under(n)).find(Boolean) ??
-    page.querySelector<HTMLElement>('[aria-invalid="true"]');
-  target?.focus();
+  const hidden = () => Array.from(page.querySelectorAll<HTMLElement>("[data-reveals]"));
+  const reveal = (holder: HTMLElement, name: string) => void holder.dispatchEvent(new CustomEvent<RevealDetail>(REVEAL_FIELD, { bubbles: true, detail: { name } }));
+  if (row !== null)
+    for (const n of names) {
+      const cell = `${n}.${row}`;
+      const want = sub === null ? cell : `${cell}.${sub}`;
+      const exact = named(want);
+      if (exact) return exact.focus();
+      const holder = hidden().find((el) => {
+        const v = el.dataset.reveals ?? "";
+        return want === v || want.startsWith(`${v}.`);
+      });
+      if (holder) return reveal(holder, want);
+      const near = named(cell) ?? under(cell);
+      if (near) return near.focus();
+    }
+  const target = names.map((n) => named(n)).find(Boolean) ?? names.map((n) => under(n, '[aria-invalid="true"]')).find(Boolean);
+  if (target) return target.focus();
+  // a refused control in a row out of sight (a closed slide): the row opens on it
+  const refused = hidden().find((el) => el.hasAttribute("data-invalid") && names.some((n) => (el.dataset.reveals ?? "").startsWith(`${n}.`)));
+  if (refused) return reveal(refused, refused.dataset.reveals ?? "");
+  (names.map((n) => under(n)).find(Boolean) ?? page.querySelector<HTMLElement>('[aria-invalid="true"]'))?.focus();
 }
 
-/** A list field's first row that differs from `before` (a row followed by its key `uid` where it has one, else by its place), by its place now. */
-function changedRow(before: unknown, now: unknown): number | null {
+/**
+ * A list field's first row that differs from `before` (a row followed by its key `uid` where it has one, else by its place), by its place now, and the
+ * row's first field that differs (in the order its labels are listed, domain/site-changes.ts siteRowFields; none for a new row or a plain text row).
+ */
+function changedCell(entity: SiteEntity, part: string, before: unknown, now: unknown): { row: number; sub: string | null } | null {
   if (!Array.isArray(now)) return null;
   const was = Array.isArray(before) ? before : [];
   const uid = (r: unknown) => (isRecord(r) && typeof r.uid === "string" ? r.uid : null);
   for (let i = 0; i < now.length; i++) {
     const key = uid(now[i]);
-    const match = key === null ? was[i] : was.find((r) => uid(r) === key);
-    if (match === undefined || !sameSiteValue(match, now[i])) return i;
+    const match: unknown = key === null ? was[i] : was.find((r) => uid(r) === key);
+    if (match !== undefined && sameSiteValue(match, now[i])) continue;
+    const row: unknown = now[i];
+    if (!isRecord(match) || !isRecord(row)) return { row: i, sub: null };
+    const order = siteRowFields(entity, part);
+    const fields = [...order, ...Object.keys(row).filter((f) => !order.includes(f) && f !== "uid" && f !== "id")];
+    return { row: i, sub: fields.find((f) => !sameSiteValue(match[f], row[f])) ?? null };
   }
   return null;
 }
@@ -174,8 +209,13 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     save: send,
     validate: o.validate,
     label,
-    // (a list field: the row it names, as the label does)
-    focusField: o.focusField ?? ((name) => focusSiteField(part, name, changedRow(confirmed.current[name], latest.now()[name]) ?? changedRow(live[name], latest.now()[name]))),
+    // (a list field: the row and the field in it that the label names: the first change since the server's last save, else since live)
+    focusField:
+      o.focusField ??
+      ((name) => {
+        const cell = changedCell(entity, part, confirmed.current[name], latest.now()[name]) ?? changedCell(entity, part, live[name], latest.now()[name]);
+        focusSiteField(part, name, cell?.row ?? null, cell?.sub ?? null);
+      }),
   });
 
   const fields = auto.fields as V;

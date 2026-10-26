@@ -90,6 +90,16 @@
   background: var(--paper);
 }
 
+/* a closed slide with a refused field: its words under the row (beside the handle's column), the row's line in the error colour */
+.slideRow[data-invalid] {
+  border-color: var(--bad);
+}
+
+.rowError {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
 /* a row lifted by its handle: the row highlight */
 [data-dragging] > .slideRow,
 [data-dragging] > .openSlide .box {

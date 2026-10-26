@@ -5,13 +5,13 @@ import { moveItem } from "@/domain/course-editor";
 import { sameSiteValue } from "@/domain/site-changes";
 import { SITE_LIMITS, type FaqDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
-import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { DragList } from "./DragList";
 import { useEditLang } from "./EditLang";
 import { focusFell } from "./focus-fell";
-import { I18nInput, lacksRu } from "./I18nInput";
+import { hasRu, I18nInput, lacksRu } from "./I18nInput";
 import { insertAt } from "./row-keys";
+import { REVEAL_FIELD } from "./site/useSitePart";
 import { useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
@@ -22,11 +22,10 @@ import styles from "./HomeEditor.module.css";
 // state „ET · RU“ (both texts have their Russian) or „RU puudub“ with ▸, which opens the answer under it, and ↑ / ↓ / × (DragList: a drag with a finger
 // or the mouse, the arrows, the arrow keys on the handle). × takes the row out at once with the UndoBar „Küsimus eemaldatud.“, whose „Võta tagasi“ puts
 // it back at its place. The rows take the page's language (EditLang.tsx); a folded answer whose Russian text is missing is counted by the page and
-// „Järgmine →“ opens it, as a closed slide's fields are (SlidesEditor's CollapsedRu).
+// „Järgmine →“ opens it, as a closed slide's fields are (SlidesEditor's CollapsedRu); the leave guard's „Jää siia“ and SaveStatus's „Näita“ unfold the
+// answer they name (site/useSitePart.ts REVEAL_FIELD, review I-2 / M-4).
 
 let added = 0;
-
-const hasRu = (v: I18n) => Boolean(v.ru?.trim());
 
 /**
  * A folded answer is not on the page, so when it has Estonian text and no Russian it tells the page itself: „RU puudub {n} väljal“ counts it, and
@@ -91,11 +90,22 @@ export function FaqEditor({ items, live, onUpdate, errors, error }: FaqEditorPro
     field?.scrollIntoView?.({ block: "center" });
   });
 
-  /** „Järgmine →“ at a folded answer: it opens, the cursor goes into its Russian text. */
+  /** „Järgmine →“ (or „Jää siia“, „Näita“) at a folded answer: it opens, the cursor goes into it (in the language shown). */
   const reveal = useCallback((key: string) => {
     focus.current = { uid: key, what: "a" };
     setOpen((o) => new Set([...o, key]));
   }, []);
+  // a folded answer is to be focused (site/useSitePart.ts focusSiteField): it opens
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const onReveal = (e: Event) => {
+      const key = (e.target as Element | null)?.closest<HTMLElement>("[data-faq-row]")?.dataset.faqRow;
+      if (key) reveal(key);
+    };
+    el.addEventListener(REVEAL_FIELD, onReveal);
+    return () => el.removeEventListener(REVEAL_FIELD, onReveal);
+  }, [reveal]);
   const toggle = (key: string) =>
     setOpen((o) => {
       const next = new Set(o);
@@ -146,7 +156,7 @@ export function FaqEditor({ items, live, onUpdate, errors, error }: FaqEditorPro
             const changed = (f: "q" | "a") => was !== undefined && !sameSiteValue(item[f], was[f]);
             const own = errors?.get(item.uid);
             return (
-              <div id={rowId} className={styles.faqRow} data-faq-row={item.uid}>
+              <div id={rowId} className={styles.faqRow} data-faq-row={item.uid} data-reveals={expanded ? undefined : `faq.${i}.a`}>
                 {!expanded && <FoldedRu item={item} anchor={`${rowId}-toggle`} reveal={reveal} />}
                 <span className={styles.grip}>{handle}</span>
                 <div className={styles.question}>

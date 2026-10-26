@@ -2,8 +2,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
 import { EditLangProvider } from "@/components/admin/EditLang";
 import { HomeEditor } from "@/components/admin/HomeEditor";
+import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { UndoProvider } from "@/components/admin/UndoBar";
 import type { FaqDraft, SlideDraft } from "@/domain/site-editor";
 import type { SitePartState } from "@/domain/site-entities";
@@ -64,13 +66,14 @@ const partsOf = (over: Record<string, Record<string, unknown>> = {}): Record<str
 
 /**
  * The routes: each part's stored value and version; a save is a draft; `refuse` answers a 400's field codes; `hold` keeps a save's answer back until
- * the test lets it go; `log` the saves in order.
+ * the test lets it go; `fail` answers that part's saves with a server error (500); `log` the saves in order.
  */
 const remote = {
   parts: {} as Record<string, { version: string; value: Record<string, unknown> }>,
   n: 0,
   refuse: null as null | ((part: string, patch: Record<string, unknown>) => Record<string, string> | null),
   hold: null as null | ((part: string, patch: Record<string, unknown>) => Promise<void> | null),
+  fail: null as string | null,
   log: [] as { part: string; version: string; patch: Record<string, unknown> }[],
 };
 function resetRemote() {
@@ -78,6 +81,7 @@ function resetRemote() {
   remote.n = 0;
   remote.refuse = null;
   remote.hold = null;
+  remote.fail = null;
   remote.log = [];
 }
 const respond = async (url: string, init: RequestInit | undefined): Promise<Response> => {
@@ -91,6 +95,7 @@ const respond = async (url: string, init: RequestInit | undefined): Promise<Resp
   remote.log.push({ part, ...body });
   const wait = remote.hold?.(part, body.patch);
   if (wait) await wait;
+  if (remote.fail === part) return Response.json({ ok: false, error: "server" }, { status: 500 });
   const refused = remote.refuse?.(part, body.patch);
   if (refused) return Response.json({ ok: false, error: "invalid", fields: refused }, { status: 400 });
   const stored = remote.parts[part];
@@ -404,7 +409,56 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(text($$("nav[aria-label='Jaotised'] a")[0].querySelector("[data-section-status]"))).toBe("3 · Kontrolli");
   });
 
-  it("a refused slide opens by itself (the first one refused)", async () => {
+  it("a refusal never opens a slide for her (review I-1): the slide she types in stays open with the cursor in it; the closed refused slide says so on its row", async () => {
+    remote.refuse = (part, patch) => ((patch.slides as SlideDraft[] | undefined)?.some((s) => s.ctaHref.startsWith("javascript:")) ? { slides: "href" } : null);
+    await show();
+    await click(opener("s3"));
+    await type(field("slides.2.ctaHref"), "javascript:x");
+    await leave(field("slides.2.ctaHref"));
+    expect(field("slides.2.ctaHref")!.getAttribute("aria-invalid")).toBe("true");
+    // she goes on in slide 1, the cursor in its title, and a pause lets the list's save go: refused again (slide 3's link still waits)
+    await click(opener("s1"));
+    const title = field("slides.0.title")!;
+    await act(async () => title.focus());
+    await type(title, "Õpilase edu on meie siht.");
+    const before = remote.log.length;
+    await act(async () => new Promise((r) => setTimeout(r, DEBOUNCE_MS + 300)));
+    await settle();
+    expect(remote.log.length).toBe(before + 1);
+    expect((remote.log.at(-1)!.patch.slides as SlideDraft[])[0].title.et).toBe("Õpilase edu on meie siht.");
+    expect(openSlides()).toEqual(["s1"]);
+    expect(document.activeElement).toBe(field("slides.0.title"));
+    // slide 3's row: the refusal's words under it, its button aria-invalid and described by them; the map says „Kontrolli“
+    const row = slideRow("s3")!;
+    expect(row.hasAttribute("data-invalid")).toBe(true);
+    const words = row.querySelector("[data-slide-error]")!;
+    expect(text(words)).toBe("Sisesta lehe aadress, mis algab kaldkriipsuga (nt /koolitused), või täielik aadress, mis algab https://.");
+    expect(opener("s3")!.getAttribute("aria-invalid")).toBe("true");
+    expect(opener("s3")!.getAttribute("aria-describedby")).toBe(words.id);
+    expect(slideRow("s2")!.querySelector("[data-slide-error]")).toBeNull();
+    expect(text($$("nav[aria-label='Jaotised'] a")[0].querySelector("[data-section-status]"))).toBe("3 · Kontrolli");
+    // she opens it herself: the words at its field
+    await click(opener("s3"));
+    expect(field("slides.2.ctaHref")!.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("typed in slide 1, then slide 2 opened: slide 1's text is kept and its save goes as the field is left (review M-6)", async () => {
+    await show();
+    await click(opener("s1"));
+    const title = field("slides.0.title")!;
+    await act(async () => title.focus());
+    await type(title, "Õpilase edu on meie siht.");
+    // (a tap on slide 2's row takes the focus from the field first, as a browser does)
+    await act(async () => opener("s2")!.focus());
+    await click(opener("s2"));
+    expect(openSlides()).toEqual(["s2"]);
+    expect(remote.log).toHaveLength(1);
+    expect((remote.log[0].patch.slides as SlideDraft[])[0].title).toEqual({ et: "Õpilase edu on meie siht.", ru: SLIDES[0].title.ru });
+    await click(opener("s1"));
+    expect(field("slides.0.title")!.value).toBe("Õpilase edu on meie siht.");
+  });
+
+  it("SaveStatus's „Näita“ opens the closed slide whose field is refused and puts the focus in that field (review I-2)", async () => {
     remote.refuse = (part, patch) => ((patch.slides as SlideDraft[] | undefined)?.some((s) => s.ctaHref.startsWith("javascript:")) ? { slides: "href" } : null);
     await show();
     await click(opener("s3"));
@@ -412,13 +466,65 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     await leave(field("slides.2.ctaHref"));
     await click(opener("s1"));
     expect(openSlides()).toEqual(["s1"]);
-    // a new refusal (another value sent): slide 3 opens to show it
-    await click(opener("s3"));
-    await type(field("slides.2.ctaHref"), "javascript:y");
-    await click(opener("s1"));
-    await leave(field("slides.0.title"));
+    await click(button("Näita"));
     expect(openSlides()).toEqual(["s3"]);
-    expect(field("slides.2.ctaHref")!.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(field("slides.2.ctaHref"));
+  });
+});
+
+describe("the leave guard reaches a field out of sight (review I-2, M-4)", () => {
+  /** The page in the leave guard, with a menu link that leaving goes through (Next's Link stands in: reached only when the guard lets it through). */
+  const showGuarded = async () => {
+    const menu = createElement("a", { href: "/admin/kalender", "data-menu": "" }, "Kalender");
+    await act(async () =>
+      root.render(
+        createElement(
+          LeaveGuardProvider,
+          null,
+          menu,
+          createElement(EditLangProvider, null, createElement(UndoProvider, null, createElement(HomeEditor, { parts: partsOf(), stamp: 1, links: [] }))),
+        ),
+      ),
+    );
+    await settle();
+  };
+  const stay = () => Array.from(document.querySelectorAll<HTMLButtonElement>("[data-leave-notice] button")).find((b) => text(b) === "Jää siia") ?? null;
+  let followed: (e: MouseEvent) => void;
+  beforeEach(() => {
+    followed = vi.fn((e: MouseEvent) => e.preventDefault());
+    document.addEventListener("click", followed);
+  });
+  afterEach(() => document.removeEventListener("click", followed));
+
+  it("a closed slide's change the server did not take: „Jää siia“ opens that slide and puts the cursor in that field", async () => {
+    remote.fail = "slides";
+    await showGuarded();
+    await click(opener("s2"));
+    await type(field("slides.1.text"), "Uus alapealkiri");
+    await leave(field("slides.1.text"));
+    await click(opener("s1"));
+    expect(openSlides()).toEqual(["s1"]);
+    await click($("[data-menu]"));
+    expect(router.push).not.toHaveBeenCalled();
+    expect(text(document.querySelector("[data-leave-title]"))).toBe("Muudatust „Slaid 2 alapealkiri“ ei saanud veel salvestada.");
+    await click(stay());
+    expect(openSlides()).toEqual(["s2"]);
+    expect(document.activeElement).toBe(field("slides.1.text"));
+  });
+
+  it("a folded answer's change the server did not take: „Jää siia“ unfolds that answer and puts the cursor in it, not in its question", async () => {
+    remote.fail = "faq";
+    await showGuarded();
+    await click(faqToggle("f2"));
+    await type(field("faq.1.a"), "Kaks modelli.");
+    await leave(field("faq.1.a"));
+    await click(faqToggle("f2"));
+    expect(field("faq.1.a")).toBeNull();
+    await click($("[data-menu]"));
+    expect(text(document.querySelector("[data-leave-title]"))).toBe("Muudatust „KKK vastus 2“ ei saanud veel salvestada.");
+    await click(stay());
+    expect(faqToggle("f2")!.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(field("faq.1.a"));
   });
 });
 

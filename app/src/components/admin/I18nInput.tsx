@@ -11,7 +11,8 @@ import styles from "./editor.module.css";
 
 export type { Lang };
 
-const hasRu = (v: I18n) => Boolean(v.ru && v.ru.trim());
+/** A text with its Russian translation. */
+export const hasRu = (v: I18n) => Boolean(v.ru && v.ru.trim());
 /** An Estonian text without its Russian translation (an empty field is not "missing" anything yet). */
 export const lacksRu = (v: I18n) => Boolean(v.et.trim()) && !hasRu(v);
 
