@@ -1,4 +1,6 @@
-import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { newsletterCampaigns } from "@/db/schema";
@@ -319,5 +321,54 @@ describe("listCampaigns: the tab's list", () => {
     await db.update(newsletterCampaigns).set({ status: "sent", sentAt: at(-30) }).where(eq(newsletterCampaigns.id, sentLate));
     await db.update(newsletterCampaigns).set({ status: "sending", updatedAt: at(-120) }).where(eq(newsletterCampaigns.id, sending));
     expect((await listCampaigns(db)).map((c) => c.id)).toEqual([fresh, old, sentLate, sending, sentEarly]);
+  });
+});
+
+// docs/deploy.md section 24, item 2 (the rollback): the older code mails a stored draft without checking its content, so before a rollback every draft with
+// no Estonian subject or text, or with a button of only one part, is completed or deleted, and this read-only query must return no row. The test runs the
+// query as the doc prints it.
+describe("the rollback check of deploy.md §24 item 2: empty and half-done draft letters", () => {
+  const docQuery = (): string => {
+    const doc = readFileSync(join(process.cwd(), "..", "docs", "deploy.md"), "utf8");
+    const found = /`(select id, name from newsletter_campaigns where status = 'draft'[^`]*)`/.exec(doc);
+    if (!found) throw new Error("the query is not in docs/deploy.md section 24");
+    return found[1];
+  };
+  const unsafe = async (): Promise<number[]> => {
+    const rows = (await db.execute(sql.raw(docQuery()))) as unknown as { rows?: { id: number }[] } & { id: number }[];
+    return ((rows.rows ?? rows) as { id: number }[]).map((r) => r.id).sort((a, b) => a - b);
+  };
+
+  test("it finds „Uus kiri“ as made, a draft without its text, a spaces-only subject and a half button — and nothing that is ready, sent or only without Russian", async () => {
+    const empty = (await createDraft(db, NOW)).id;
+    const noBody = await draft({ ...DRAFT, name: "Ilma tekstita", body: { et: "", ru: "" } });
+    const spaces = await draft({ ...DRAFT, name: "Tühik teemas", subject: { et: "   ", ru: "" } });
+    // (a whole-draft save refuses a half button; the field-by-field autosave stores the one part that was typed — a rule broken by a field the patch does not carry holds nothing back)
+    const halfOf = async (name: string, patch: Record<string, unknown>): Promise<number> => {
+      const id = await draft({ ...DRAFT, name, buttonLabel: { et: "", ru: "" }, buttonHref: "" });
+      const read = await readCampaign(db, id);
+      if (!read) throw new Error("no letter");
+      expect(await writeCampaign(db, id, patch, read.version, at(1))).toMatchObject({ ok: true });
+      return id;
+    };
+    const halfLabel = await halfOf("Nupp ilma aadressita", { buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" } });
+    const halfHref = await halfOf("Aadress ilma nupuni", { buttonHref: "/koolitused" });
+    expect(await rowOf(halfLabel)).toMatchObject({ buttonHref: null });
+    expect((await rowOf(halfLabel)).buttonLabel).not.toBeNull();
+    expect(await rowOf(halfHref)).toMatchObject({ buttonLabel: null, buttonHref: "/koolitused" });
+    // (not found: a ready letter, one with no Russian text (the Estonian one goes out), one with no button at all)
+    await draft({ ...DRAFT, name: "Valmis" });
+    await draft({ ...ET_ONLY, name: "Ainult eesti" });
+    await draft({ ...DRAFT, name: "Nuputa", buttonLabel: { et: "", ru: "" }, buttonHref: "" });
+    const sent = await draft({ ...DRAFT, name: "Saadetud" });
+    await db.update(newsletterCampaigns).set({ status: "sent", sentAt: NOW }).where(eq(newsletterCampaigns.id, sent));
+    const sentEmpty = (await createDraft(db, NOW)).id;
+    await db.update(newsletterCampaigns).set({ status: "sent", sentAt: NOW }).where(eq(newsletterCampaigns.id, sentEmpty));
+    expect(await unsafe()).toEqual([empty, noBody, spaces, halfLabel, halfHref].sort((a, b) => a - b));
+
+    // completed or deleted: the check is clean
+    await deleteDraft(db, empty);
+    for (const id of [noBody, spaces, halfLabel, halfHref]) await deleteDraft(db, id);
+    expect(await unsafe()).toEqual([]);
   });
 });

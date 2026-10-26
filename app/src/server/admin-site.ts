@@ -513,7 +513,10 @@ export async function writeSettingsPart(db: Db, part: SettingsPart, patch: unkno
     const current = await contentVersion(stored);
     if (current !== version) return { ok: false, error: "conflict", version: current, value: DRAFTS[part](stored) };
     const next = { ...(part === "prepayment" ? prepaymentDraft(stored) : obj(stored)), ...values };
-    if ((await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
+    // nothing the card shows would change (the same text again, or a space typed into a field that is empty on a part with no row yet, which is the
+    // defaults): no write, no new version, nothing revalidated (C4)
+    const sameCard = JSON.stringify(DRAFTS[part](next)) === JSON.stringify(DRAFTS[part](stored));
+    if (sameCard || (await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
     await setSetting(tx, key, next);
     return { ok: true, version: await contentVersion(await readSetting(tx, key)), savedAt, changed: true };
   });

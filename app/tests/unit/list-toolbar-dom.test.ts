@@ -797,7 +797,8 @@ describe("ListToolbar: several selects (B3 Kalender: the course and the city)", 
     expect(phone).toMatch(/\.selectBox \{[^}]*position:\s*relative;[^}]*display:\s*inline-flex;/);
     expect(phone).toMatch(/\.selectBox select \{[^}]*opacity:\s*0;/);
     const pillRule = /\.selectPill \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(pillRule).toMatch(/min-height:\s*44px;/);
+    expect(pillRule).toMatch(/min-height:\s*44px;/); // (the height carries the 44 px target; the inside padding is Part 4's 14 px, like its siblings in the row)
+    expect(pillRule).toMatch(/padding:\s*0 14px;/);
     expect(pillRule).toMatch(/border-radius:\s*99px;/);
   });
 });

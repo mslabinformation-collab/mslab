@@ -58,7 +58,8 @@ async function writeFinancing(db: Db, patch: unknown, version: string, now: Date
     if (current !== version) return { ok: false, error: "conflict", version: current, value: readFinancingSettings(stored) };
     const { enabled } = parsed.data;
     const next = { enabled: enabled ?? readFinancingSettings(stored).enabled };
-    if ((await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
+    // the switch as it stands (a missing row is off): no write, no new version (C4)
+    if (next.enabled === readFinancingSettings(stored).enabled || (await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
     await setSetting(tx, FINANCING_KEY, next);
     return { ok: true, version: await financingVersionOf(next), savedAt, changed: true };
   });

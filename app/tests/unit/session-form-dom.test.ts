@@ -8,7 +8,7 @@ import { stubFetch } from "../fakes";
 
 // The Kalender drawer (admin UX pass piece 3b, Task 3; README B3, the Part 3 frame „B3 Kalender“ and the Part 4 „B3 Session drawer“; piece3-texts
 // S3-P3-g, S3-P3-i, P-2, P-7, P-8; rulings R-a, R-b, R-c). A stored session's drawer: the header (SaveStatus left of ✕, the course, „{date} · {city} ·
-// {k}/{cap} kinnitatud · ootenimekirjas {n}“, „Protokollid“ as the first button); the notice „{n} õpilast on registreerunud. …“; the fields autosave on
+// {k}/{cap} kinnitatud · ootab ettemaksu {a} · ootenimekirjas {n}“ — the last two parts only when above 0, Dim 25.10 —, „Protokollid“ as the first button); the notice „{n} õpilast on registreerunud. …“; the fields autosave on
 // api/admin/toimumine/<id> (no „Salvesta toimumine“), the date or time changed says „Muudetud — teavita {n} õpilast ise.“, „Kohti“ commits on blur and
 // below the confirmed is refused in the field, „Koolitus“ is locked once anyone is booked with S3-P3-i under it; the status is instant, „Tühistatud“ with
 // registrations behind a ConfirmPanel; „Kustuta toimumine“ only without registrations, else the refusal text. A new session (?id=uus): the header's

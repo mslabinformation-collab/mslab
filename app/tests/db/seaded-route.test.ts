@@ -137,6 +137,36 @@ describe("contact, newsletter, prepayment: the settings parts", () => {
     expect(await setting("prepayment")).toEqual({ receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "", referencePrefix: "" });
     expect(await save("prepayment", { version: v, patch: { bank: "Swedbank" } })).toMatchObject({ status: 409, body: { value: { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "", referencePrefix: "" } } });
   });
+
+  test("a save that changes nothing, on a part with no row yet (a space in an empty field, the switch left off), writes no row, keeps the version and revalidates nothing (C4)", async () => {
+    await signIn();
+    const cases: [string, string, Record<string, unknown>][] = [
+      ["contact", "contact", { email: " " }],
+      ["contact", "contact", { phone: "", address: "  " }],
+      ["newsletter", "newsletter", { welcomeCode: "" }],
+      ["prepayment", "prepayment", { bank: " ", iban: "" }],
+      ["financing", "financing", { enabled: false }],
+    ];
+    for (const [part, key, patch] of cases) {
+      const v = await versionOf(part);
+      expect(await save(part, { version: v, patch }), `${part} ${JSON.stringify(patch)}`).toMatchObject({ status: 200, body: { ok: true, version: v } });
+      expect(await setting(key), `${part}: no row`).toBeNull();
+      expect(await versionOf(part), `${part}: the version`).toBe(v);
+    }
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    // a real change from that same version still saves (the engine of a window that only had spaces typed goes on)
+    const v = await versionOf("contact");
+    expect((await save("contact", { version: v, patch: { phone: "+372 5555 0101" } })).status).toBe(200);
+    expect((await setting("contact")) as { phone: string }).toMatchObject({ phone: "+372 5555 0101" });
+    // the switch: ticked once, then the same state again is no write either; unticked is a change
+    const f = await versionOf("financing");
+    const on = await save("financing", { version: f, patch: { enabled: true } });
+    expect(on.status).toBe(200);
+    expect(await save("financing", { version: on.body.version as string, patch: { enabled: true } })).toMatchObject({ status: 200, body: { version: on.body.version } });
+    const off = await save("financing", { version: on.body.version as string, patch: { enabled: false } });
+    expect(off).toMatchObject({ status: 200, body: { version: expect.not.stringMatching(on.body.version as string) } });
+    expect(await setting("financing")).toEqual({ enabled: false });
+  });
 });
 
 describe("invoice (Maksmine's „Arve andmed“; R3, B21)", () => {
