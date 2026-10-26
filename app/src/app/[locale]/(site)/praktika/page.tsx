@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/site/Icon";
 import { PracticeBlock } from "@/components/site/PracticeBlock";
 import { PracticeRequest } from "@/components/site/PracticeRequest";
+import { PreviewBar } from "@/components/site/PreviewBar";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getPracticePackages } from "@/db/queries/public";
@@ -11,6 +12,7 @@ import { formatEUR } from "@/domain/money";
 import { pick, pickList } from "@/i18n/field";
 import { href } from "@/i18n/href";
 import { getDict, isLocale } from "@/i18n/locales";
+import { previewActive } from "@/server/preview";
 import styles from "./practice.module.css";
 
 type Props = { params: Promise<{ locale: string }> };
@@ -34,7 +36,11 @@ export default async function PracticePage({ params }: Props) {
   const d = getDict(locale);
   const p = d.practice;
   const to = (path: string) => href(locale, path);
-  const packages = await getPracticePackages(getDb());
+  const db = getDb();
+  // the signed-in admin's draft preview (api/admin/eelvaade; piece 4a, R-f) shows the packages' drafts: previewActive() is false, with no cookie read, for
+  // every visitor and for the static render, so the page stays the one cached
+  const drafts = await previewActive();
+  const packages = await getPracticePackages(db, { drafts });
 
   const views = packages.map((x) => ({
     code: x.code,
@@ -45,6 +51,13 @@ export default async function PracticePage({ params }: Props) {
     price: formatEUR(x.price, locale),
     href: `${to("/praktika")}?pakett=${encodeURIComponent(x.code)}#taotlus`,
   }));
+
+  // the admin's draft preview only (R-f): the practice bar; a visitor's page, and the page Next keeps, has none
+  let previewBar: React.ReactNode = null;
+  if (drafts) {
+    const { sitePreviewBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewBar {...await sitePreviewBarProps(db, "practice", to("/praktika"))} />;
+  }
 
   return (
     <>
@@ -119,6 +132,7 @@ export default async function PracticePage({ params }: Props) {
           </div>
         </section>
       )}
+      {previewBar}
     </>
   );
 }

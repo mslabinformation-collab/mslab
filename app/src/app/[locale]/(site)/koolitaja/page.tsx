@@ -3,12 +3,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/site/Icon";
+import { PreviewBar } from "@/components/site/PreviewBar";
 import { trainerSettings } from "@/components/site/settings";
 import ui from "@/components/site/ui.module.css";
 import { WorksGallery } from "@/components/site/WorksGallery";
 import { getDb } from "@/db/client";
-import { getGallery, getPage } from "@/db/queries/public";
-import { getSiteSettings } from "@/server/site-data";
+import { getTrainerPage } from "@/db/queries/public";
+import { previewActive } from "@/server/preview";
 import type { Page } from "@/db/schema";
 import { paragraphs } from "@/domain/catalogue";
 import { pick } from "@/i18n/field";
@@ -60,20 +61,24 @@ export default async function TrainerPage({ params }: Props) {
   if (!isLocale(locale)) notFound();
   const d = getDict(locale);
   const db = getDb();
-  const [settings, bio, story, journey, works] = await Promise.all([
-    getSiteSettings(),
-    getPage(db, "trainer_bio"),
-    getPage(db, "center_story"),
-    getPage(db, "trainer_journey"),
-    getGallery(db, "trainer_works"),
-  ]);
+  // the signed-in admin's draft preview (api/admin/eelvaade; piece 4a, R-f) shows the trainer's drafts: previewActive() is false, with no cookie read, for
+  // every visitor and for the static render, so the page stays the one cached
+  const drafts = await previewActive();
+  const { trainer: setting, bio, story, journey, works } = await getTrainerPage(db, { drafts });
 
-  const trainer = trainerSettings(settings, locale);
+  const trainer = trainerSettings({ trainer: setting }, locale);
   const name = trainer.name || pick(bio?.title, locale);
   const bioText = paragraphs(pick(bio?.body, locale));
   const lead = bioText.length > 0 ? bioText : [pick(trainer.role, locale)].filter(Boolean);
   const portrait = mediaUrl(trainer.portraitKey);
   const images = works.map((w) => ({ src: mediaUrl(w.key), alt: pick(w.alt, locale) }));
+
+  // the admin's draft preview only (R-f): the trainer's bar; a visitor's page, and the page Next keeps, has none
+  let previewBar: React.ReactNode = null;
+  if (drafts) {
+    const { sitePreviewBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewBar {...await sitePreviewBarProps(db, "trainer", href(locale, "/koolitaja"))} />;
+  }
 
   return (
     <>
@@ -139,6 +144,7 @@ export default async function TrainerPage({ params }: Props) {
         <Story id="center_story" page={story} fallbackTitle={d.trainer.storyTitle} locale={locale} />
         <Story id="trainer_journey" page={journey} fallbackTitle={d.trainer.journeyTitle} locale={locale} />
       </div>
+      {previewBar}
     </>
   );
 }

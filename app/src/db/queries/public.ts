@@ -112,8 +112,75 @@ export async function listUpcomingSessions(db: Db, fromDate: Date, only?: { slug
   return rows.map((r) => ({ ...r.session, course: r.course, taken: counts.get(r.session.id) ?? 0 }));
 }
 
-export async function getPracticePackages(db: Db): Promise<PracticePackage[]> {
-  return db.select().from(practicePackages).orderBy(asc(practicePackages.sort), asc(practicePackages.code));
+// ---------- the site content in the admin's draft preview (admin UX pass piece 4a, Task 3; ruling R-f) ----------
+// `opts.drafts` on the readers of the home page, /koolitaja and /praktika: the signed-in admin's preview lays the drafts of the entities home, trainer
+// and practice over the live data, each part as „Avalda muudatused“ would store it, a part whose draft fails its check left live
+// (server/site-preview.ts withSiteDrafts). Only a page that has asked server/preview.ts previewActive passes it; the draft layer is loaded only then, so
+// every other reader (and the static pages) never touch it. The `pick`s below put each part's stored value where the reader keeps it.
+
+/** The packages with the practice drafts' rows (by code) over the live ones, in their order. */
+const packagesOver =
+  (live: PracticePackage[]) =>
+  (parts: Record<string, unknown>): PracticePackage[] =>
+    live.map((p) => (Object.hasOwn(parts, p.code) ? (parts[p.code] as PracticePackage) : p));
+
+/** Practice packages (MINI, MAXI) in their order; `opts.drafts`: the admin's preview (the practice drafts, above). */
+export async function getPracticePackages(db: Db, opts: { drafts?: boolean } = {}): Promise<PracticePackage[]> {
+  const live = await db.select().from(practicePackages).orderBy(asc(practicePackages.sort), asc(practicePackages.code));
+  if (!opts.drafts) return live;
+  const { withSiteDrafts } = await import("@/server/site-preview");
+  return withSiteDrafts(db, "practice", live, packagesOver(live));
+}
+
+/** The trainer page's content (/koolitaja): the trainer setting (portrait, name, role, numbers), the bio, the two stories and the works gallery. */
+export type TrainerPageData = { trainer: unknown; bio: Page | null; story: Page | null; journey: Page | null; works: GalleryItem[] };
+
+/** The trainer's works gallery (gallery_items group; server/admin-site.ts WORKS_GROUP). */
+const TRAINER_WORKS = "trainer_works";
+
+/** What /koolitaja shows; `opts.drafts`: the admin's preview (the trainer drafts, above: parts trainer, bio, works, center_story, trainer_journey). */
+export async function getTrainerPage(db: Db, opts: { drafts?: boolean } = {}): Promise<TrainerPageData> {
+  const [trainer, bio, story, journey, works] = await Promise.all([
+    readSetting(db, "trainer"),
+    getPage(db, "trainer_bio"),
+    getPage(db, "center_story"),
+    getPage(db, "trainer_journey"),
+    getGallery(db, TRAINER_WORKS),
+  ]);
+  const live: TrainerPageData = { trainer, bio, story, journey, works };
+  if (!opts.drafts) return live;
+  const { withSiteDrafts } = await import("@/server/site-preview");
+  return withSiteDrafts(db, "trainer", live, (p) => ({
+    trainer: Object.hasOwn(p, "trainer") ? p.trainer : trainer,
+    bio: Object.hasOwn(p, "bio") ? (p.bio as Page) : bio,
+    story: Object.hasOwn(p, "center_story") ? (p.center_story as Page) : story,
+    journey: Object.hasOwn(p, "trainer_journey") ? (p.trainer_journey as Page) : journey,
+    works: Object.hasOwn(p, "works") ? (p.works as GalleryItem[]) : works,
+  }));
+}
+
+/**
+ * The home page's data in the admin's preview: its own drafts (home: the hero slides, shown ones only, the statement, the trainer card's text, the
+ * FAQ), the trainer's (the card's setting and the bio its text falls back to) and the packages', each from its own entity.
+ */
+async function homeWithDrafts(db: Db, live: HomeData): Promise<HomeData> {
+  const { withSiteDrafts } = await import("@/server/site-preview");
+  const home = await withSiteDrafts(db, "home", live, (p) => ({
+    ...live,
+    slides: Object.hasOwn(p, "slides") ? (p.slides as HeroSlide[]).filter((s) => s.active) : live.slides,
+    faq: Object.hasOwn(p, "faq") ? (p.faq as FaqItem[]) : live.faq,
+    pages: {
+      ...live.pages,
+      ...(Object.hasOwn(p, "statement") ? { statement: p.statement as Page } : {}),
+      ...(Object.hasOwn(p, "teaser") ? { trainer_teaser: p.teaser as Page } : {}),
+    },
+  }));
+  const trainer = await withSiteDrafts(db, "trainer", home, (p) => ({
+    ...home,
+    settings: Object.hasOwn(p, "trainer") ? { ...home.settings, trainer: p.trainer } : home.settings,
+    pages: Object.hasOwn(p, "bio") ? { ...home.pages, trainer_bio: p.bio as Page } : home.pages,
+  }));
+  return withSiteDrafts(db, "practice", trainer, (p) => ({ ...trainer, practice: packagesOver(trainer.practice)(p) }));
 }
 
 /** Published posts, newest first. */
@@ -147,8 +214,11 @@ export async function getSettings(db: Db): Promise<Record<string, unknown>> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
-/** Everything the home page needs in one call. The popup is the active one of the campaign and the newsletter popup, or null. The e-course terms (account-only) are not part of it. */
-export async function getHomeData(db: Db): Promise<HomeData> {
+/**
+ * Everything the home page needs in one call. The popup is the active one of the campaign and the newsletter popup, or null. The e-course terms
+ * (account-only) are not part of it. `opts.drafts`: the admin's preview (the site content's drafts, above: homeWithDrafts).
+ */
+export async function getHomeData(db: Db, opts: { drafts?: boolean } = {}): Promise<HomeData> {
   const [slides, courseList, faqItems, postList, practice, pageRows, settingsMap, popupRow] = await Promise.all([
     db.select().from(heroSlides).where(eq(heroSlides.active, true)).orderBy(asc(heroSlides.sort), asc(heroSlides.id)),
     listPublishedCourses(db),
@@ -159,7 +229,7 @@ export async function getHomeData(db: Db): Promise<HomeData> {
     getSettings(db),
     db.select().from(campaign).where(eq(campaign.active, true)).limit(1),
   ]);
-  return {
+  const live: HomeData = {
     slides,
     courses: courseList,
     faq: faqItems,
@@ -169,4 +239,5 @@ export async function getHomeData(db: Db): Promise<HomeData> {
     settings: settingsMap,
     popup: popupRow[0] ?? null,
   };
+  return opts.drafts ? homeWithDrafts(db, live) : live;
 }

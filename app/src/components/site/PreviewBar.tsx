@@ -1,7 +1,9 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { SiteEntity } from "@/domain/site-entities";
 import { dropCourseCopies } from "@/lib/course-copies";
+import { dropSiteCopies } from "@/lib/site-copies";
 import styles from "./PreviewBar.module.css";
 
 // The admin's ConfirmPanel (its words, its stylesheet and the admin's dictionary) is loaded when the question is first asked, never with the page: the
@@ -13,20 +15,36 @@ export type PreviewBarTexts = { count: string; exit: string; discard: string; qu
 /** The catalogue's bar's words: its name and the way out. */
 export type PreviewLabelTexts = { label: string; exit: string };
 
+/** Whose editor copies in this browser a discard drops with the drafts: a course's (lib/course-copies.ts) or a site entity's (lib/site-copies.ts). */
+export type PreviewCopies = { course: number } | { site: SiteEntity };
+
+/** The bar's props, as the server makes them (server/preview-bar.ts previewBarProps, sitePreviewBarProps). */
+export type PreviewBarProps = { discardHref: string | null; copies: PreviewCopies | null; count: number; exitHref: string; t: PreviewBarTexts };
+
+const dropCopies = (copies: PreviewCopies | null): void => {
+  if (copies === null) return;
+  if ("course" in copies) dropCourseCopies(copies.course);
+  else dropSiteCopies(copies.site);
+};
+
 /**
- * The bar of the admin's draft preview on the public course page (admin UX pass piece 3a, Task 6 review; spec C3: „Loobu muudatustest“ on the preview
- * page is shown only in draft mode; README §1.8, B2 Part 4: the phone's PublishBar leaves „Loobu muudatustest“ behind „Eelvaade“). The page renders it
- * only for a request that is the admin's preview (server/preview.ts previewActive), so a visitor's page, and the page Next keeps, never has it.
+ * The bar of the admin's draft preview on a public page that shows drafts: the course page (admin UX pass piece 3a, Task 6 review; spec C3: „Loobu
+ * muudatustest“ on the preview page is shown only in draft mode; README §1.8, B2 Part 4: the phone's PublishBar leaves „Loobu muudatustest“ behind
+ * „Eelvaade“), and the home page, /koolitaja and /praktika (piece 4a, Task 3; ruling R-f: the bar of the page's entity, home, trainer or practice). The
+ * page renders it only for a request that is the admin's preview (server/preview.ts previewActive), so a visitor's page, and the page Next keeps, never
+ * has it.
  *
- * - `count`: how many unpublished changes the course has (the PublishBar's count); „Avaldamata {n}“ (`t.count`), and „Loobu muudatustest“, are there when it is not 0.
+ * - `count`: how many unpublished changes the page's thing has (its PublishBar's count); „Avaldamata {n}“ (`t.count`), and „Loobu muudatustest“, are there
+ *   when it is not 0.
  * - the way out is the link `exitHref` (api/admin/eelvaade?lopeta=1&tee=<this page>): draft mode off, the same page as a visitor sees it, „Lõpeta
  *   eelvaade“ (`t.exit`, Dim 24.10 D-1).
- * - „Loobu muudatustest“ asks in the PublishBar's ConfirmPanel (the same words), then discards the course's drafts (POST api/admin/koolitus/<id>/loobu,
- *   Task 4) and ends the preview. A discard that fails leaves the question open (as the PublishBar's does) and says so in the bar, as an alert, in the
- *   PublishBar's words: `t.failed` („Muudatustest loobumine ei õnnestunud. Proovi uuesti.“, D-2), or `t.signedOut` for a session that ended
+ * - „Loobu muudatustest“ (only with a `discardHref`) asks in the PublishBar's ConfirmPanel (the same words), then discards the drafts (POST `discardHref`:
+ *   api/admin/koolitus/<id>/loobu, the course's; api/admin/sisu/<entity>/0/loobu, a site entity's, R-e), drops this browser's editor copies of them
+ *   (`copies`), and ends the preview. A discard that fails leaves the question open (as the PublishBar's does) and says so in the bar, as an alert, in
+ *   the PublishBar's words: `t.failed` („Muudatustest loobumine ei õnnestunud. Proovi uuesti.“, D-2), or `t.signedOut` for a session that ended
  *   (withAdmin's 401; the leave guard's „Logi uuesti sisse.“).
  */
-export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number; count: number; exitHref: string; t: PreviewBarTexts }) {
+export function PreviewBar({ discardHref, copies, count, exitHref, t }: PreviewBarProps) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -42,7 +60,7 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
     trigger.current?.focus();
   }, [confirming]);
 
-  async function discard(): Promise<void> {
+  async function discard(href: string): Promise<void> {
     if (running.current) return;
     running.current = true;
     setBusy(true);
@@ -50,16 +68,16 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
     let done = false;
     let signedOut = false;
     try {
-      const res = await fetch(`/api/admin/koolitus/${courseId}/loobu`, { method: "POST", cache: "no-store", credentials: "same-origin" });
+      const res = await fetch(href, { method: "POST", cache: "no-store", credentials: "same-origin" });
       done = res.ok;
       signedOut = res.status === 401;
     } catch {
       done = false; // no connection: the question stays, and she can press again
     }
     if (done) {
-      // what was thrown away must not come back: the course editor's copies of this course in this browser go too (lib/course-copies.ts), so its next
-      // visit does not resume them (Task 7 review round 2)
-      dropCourseCopies(courseId);
+      // what was thrown away must not come back: the editor's copies of these drafts in this browser go too (lib/course-copies.ts, lib/site-copies.ts),
+      // so its next visit does not resume them (Task 7 review round 2)
+      dropCopies(copies);
       // the preview ends with the drafts: the page comes back as a visitor sees it (the bar stays busy until it does)
       window.location.assign(exitHref);
       return;
@@ -82,7 +100,7 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
           {t.exit}
         </a>
       </p>
-      {count > 0 && !confirming && (
+      {discardHref !== null && count > 0 && !confirming && (
         <button
           ref={trigger}
           type="button"
@@ -101,7 +119,7 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
           {failed}
         </p>
       )}
-      {count > 0 && confirming && (
+      {discardHref !== null && count > 0 && confirming && (
         <div className={styles.confirm}>
           <Suspense fallback={null}>
             <ConfirmPanel
@@ -109,7 +127,7 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
               yesLabel={t.yes}
               tone="danger"
               busy={busy}
-              onYes={() => void discard()}
+              onYes={() => void discard(discardHref)}
               onCancel={() => {
                 refocus.current = true;
                 setFailed(null);

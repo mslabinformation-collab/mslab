@@ -13,6 +13,7 @@ import { Hero, type HeroSlideView } from "@/components/site/Hero";
 import { Icon } from "@/components/site/Icon";
 import { NewsletterPopup } from "@/components/site/NewsletterPopup";
 import { PracticeBlock } from "@/components/site/PracticeBlock";
+import { PreviewBar } from "@/components/site/PreviewBar";
 import { ReviewList } from "@/components/site/ReviewList";
 import { trainerSettings } from "@/components/site/settings";
 import { Statement } from "@/components/site/Statement";
@@ -31,6 +32,7 @@ import { href } from "@/i18n/href";
 import { getDict, isLocale } from "@/i18n/locales";
 import { DELETED_MARK } from "@/lib/account-marks";
 import { mediaUrl } from "@/lib/media";
+import { previewActive } from "@/server/preview";
 import { homeReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
 import styles from "./home.module.css";
@@ -65,7 +67,10 @@ export default async function Home({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  const [home, sessions, reviews] = await Promise.all([getHomeData(db), listUpcomingSessions(db, upcomingFrom(new Date())), homeReviews(db)]);
+  // the signed-in admin's draft preview (api/admin/eelvaade; piece 4a, R-f) shows the drafts of the home page, the trainer and the packages: previewActive()
+  // is false, with no cookie read, for every visitor and for the static render, so the page stays the one cached by revalidation
+  const drafts = await previewActive();
+  const [home, sessions, reviews] = await Promise.all([getHomeData(db, { drafts }), listUpcomingSessions(db, upcomingFrom(new Date())), homeReviews(db)]);
 
   const slides: HeroSlideView[] = home.slides.map((s) => ({
     id: s.id,
@@ -116,6 +121,14 @@ export default async function Home({ params }: Props) {
   };
   // "Minu andmed" lands here with #konto-kustutatud after deleting the account (a fragment: the server never sees it).
   const accountNotices: Record<string, FlashMessage> = { [DELETED_MARK]: { tone: "ok", title: d.account.details.deleted } };
+
+  // The admin's draft preview only (R-f): the home page's bar (its changes, „Loobu muudatustest“ of its drafts, the way out). For a visitor, and for the
+  // page Next keeps, there is none: nothing of the draft layer is loaded unless the request is the preview.
+  let previewBar: React.ReactNode = null;
+  if (drafts) {
+    const { sitePreviewBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewBar {...await sitePreviewBarProps(db, "home", to("/"))} />;
+  }
 
   return (
     <>
@@ -284,6 +297,7 @@ export default async function Home({ params }: Props) {
           }}
         />
       )}
+      {previewBar}
     </>
   );
 }

@@ -117,6 +117,8 @@ const BROWSER_FILES = [
   "src/components/admin/course/course-view.ts",
   // the B screens, Task 7 review round 2: the course editor's copies in this browser, which the public preview bar drops too (pure, imports nothing)
   "src/lib/course-copies.ts",
+  // piece 4a, Task 3: the site editors' copies in this browser, which the public preview bar drops too (pure; a type of domain/site-entities.ts)
+  "src/lib/site-copies.ts",
   // the B screens, Task 8: the list editors' row keys, which follow a JSON list's rows through moves, typing and an undo (it pulls lib/version.ts)
   "src/components/admin/row-keys.ts",
   // the B screens, final review M-1: the optimistic reorder the course list and the modules card run in the browser (pure, imports nothing), and

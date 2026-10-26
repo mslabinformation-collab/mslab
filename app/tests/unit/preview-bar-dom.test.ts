@@ -11,7 +11,9 @@ import { fill } from "@/i18n/format";
 // PreviewBar (admin UX pass piece 3a, Task 6 review; spec C3 „The phone's „Loobu muudatustest“ on the preview page (Part 4) is shown only in draft mode“;
 // README §1.8, the phone's PublishBar of Part 4: „Avaldamata {n} · Eelvaade“ + „Avalda“, „Loobu muudatustest“ behind „Eelvaade“). The bar the course
 // page shows in the admin's draft preview, and nowhere else: „Avaldamata {n}“, the way out, and „Loobu muudatustest“ behind the same ConfirmPanel as the
-// PublishBar's, which discards the course's drafts (Task 4's route) and then ends the preview.
+// PublishBar's, which discards the course's drafts (Task 4's route) and then ends the preview. Piece 4a, Task 3 (R-f): the same bar on the home page,
+// /koolitaja and /praktika, discarding through the page's entity's route (`discardHref`) and dropping that entity's editor copies; no `discardHref`, no
+// „Loobu muudatustest“.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -33,7 +35,8 @@ const texts = (n: number): PreviewBarTexts => ({
   failed: adminEt.publish.discardFailed,
   signedOut: adminEt.leave.reasons.signedOut,
 });
-const show = (over: Partial<Props> = {}) => act(async () => root.render(createElement(PreviewBar, { courseId: 7, count: 3, exitHref: EXIT, t: texts(over.count ?? 3), ...over })));
+const show = (over: Partial<Props> = {}) =>
+  act(async () => root.render(createElement(PreviewBar, { discardHref: "/api/admin/koolitus/7/loobu", copies: { course: 7 }, count: 3, exitHref: EXIT, t: texts(over.count ?? 3), ...over })));
 
 const $ = <E extends Element = HTMLElement>(selector: string) => container.querySelector<E>(selector);
 const discard = () => $<HTMLButtonElement>("[data-preview-discard]");
@@ -186,6 +189,50 @@ describe("PreviewBar", () => {
     // (the bar loads no admin dictionary or engine: its copy rule is lib/course-copies.ts)
     const source = readFileSync(join(process.cwd(), "src/components/site/PreviewBar.tsx"), "utf8");
     expect(source).not.toMatch(/i18n\/dict\/admin|autosave\/engine|components\/admin\/(?!ConfirmPanel)/);
+    localStorage.clear();
+  });
+
+  it("no discardHref (a page whose drafts it does not discard): no „Loobu muudatustest“ and no question; the count and the way out stay", async () => {
+    const f = fakeFetch();
+    await show({ discardHref: null, copies: null });
+    expect($("[data-preview-count]")!.textContent).toBe("Avaldamata 3");
+    expect(exit()!.getAttribute("href")).toBe(EXIT);
+    expect(discard()).toBeNull();
+    expect(panel()).toBeNull();
+    expect(f.calls).toEqual([]);
+  });
+
+  it("a site page's bar (piece 4a, R-f): „Jah, loobu“ posts to its discardHref, drops this browser's copies of that entity only, then ends the preview", async () => {
+    localStorage.clear();
+    const keep = [
+      "mslab-draft:site:home:slides:t1", // another entity's
+      "mslab-draft:site:practiceX:MAXI:t1", // not this entity (a longer name)
+      "mslab-draft:koolitus:7-basics:t1", // a course's
+      "mslab-draft:site:practice", // not a copy
+      "mslab-edit-lang",
+    ];
+    const mine = ["mslab-draft:site:practice:MAXI:t1", "mslab-draft:site:practice:MINI:t2-x"];
+    for (const key of [...keep, ...mine]) localStorage.setItem(key, "{}");
+    const f = fakeFetch();
+    await show({ discardHref: "/api/admin/sisu/practice/0/loobu", copies: { site: "practice" }, count: 1 });
+    await ask();
+    expect(panel()!.textContent).toContain("Kas loobun 1 muudatusest? Avalikul lehel jääb praegune versioon.");
+    await click(panelButtons()[0]);
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0].url).toBe("/api/admin/sisu/practice/0/loobu");
+    expect(f.calls[0].init).toMatchObject({ method: "POST", cache: "no-store", credentials: "same-origin" });
+    // one that fails keeps them
+    await f.answer(Response.json({ ok: false, error: "server" }, { status: 500 }));
+    expect(Object.keys(localStorage).sort()).toEqual([...keep, ...mine].sort());
+    expect(assign).not.toHaveBeenCalled();
+    await click(panelButtons()[0]);
+    await f.answer(Response.json({ stamp: 5 }));
+    expect(Object.keys(localStorage).sort()).toEqual([...keep].sort());
+    expect(assign).toHaveBeenCalledExactlyOnceWith(EXIT);
+    // (the site's copy rule is lib/site-copies.ts, the admin hook's own: the bar loads no admin code)
+    const source = readFileSync(join(process.cwd(), "src/components/site/PreviewBar.tsx"), "utf8");
+    expect(source).toContain('from "@/lib/site-copies"');
+    expect(source).not.toMatch(/components\/admin\/site|useSitePart/);
     localStorage.clear();
   });
 

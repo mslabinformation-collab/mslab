@@ -19,6 +19,7 @@ import {
   readSlides,
   saveFaq,
   saveSlides,
+  syncPlan,
   updatePackage,
   updatePost,
   type FaqRow,
@@ -84,8 +85,25 @@ const i18n = z.object({ et: z.string().max(40_000), ru: z.string().max(40_000).o
 const text = (max = 2000) => z.string().max(max);
 const uid = z.string().max(40);
 
-/** A checked part's write (Part.check's answer): `stored` is the part's stored value, read under the save's table lock. */
-export type Write = (tx: Tx, stored: unknown) => Promise<void>;
+/**
+ * A checked part's write (Part.check's answer): `stored` is the part's stored value, read under the save's table lock. `shown`, on the parts of the draft
+ * layer (Avaleht, Koolitaja, Praktika): the stored value the write makes of `stored`, that is what the part's `read` answers after it (a new row's id a
+ * placeholder below 0), for the admin's draft preview of the public pages (server/site-preview.ts, ruling R-f). Both come from the one check, so the
+ * preview shows what „Avalda muudatused“ stores.
+ */
+export type Write = ((tx: Tx, stored: unknown) => Promise<void>) & { shown?: (stored: unknown) => unknown };
+
+/** A write with what it makes of the stored value (Write.shown). */
+const writing = (write: (tx: Tx, stored: unknown) => Promise<void>, shown: (stored: unknown) => unknown): Write => Object.assign(write, { shown });
+
+/**
+ * A list's rows as an ordered save stores them (db/queries/admin-site.ts syncPlan: ids kept, sort 1…n), with a placeholder id below 0 for a row the
+ * save adds: the list Write.shown answers.
+ */
+function syncedRows<R extends { id: number | null }>(stored: unknown, rows: R[]): (Omit<R, "id"> & { id: number; sort: number })[] {
+  const ids = (Array.isArray(stored) ? stored : []).map((r) => (r as { id: number }).id);
+  return syncPlan(ids, rows).steps.map((step, i) => ({ ...step.row, id: step.id ?? -(i + 1), sort: step.sort }));
+}
 
 /** One part of an editor page. */
 export type Part<V> = {
@@ -190,7 +208,8 @@ function pagePart(key: string, opts: { titleMax: number; bodyMax: number; requir
     check: (c, v, name) => {
       const title = c.text(`${name}.title`, v.title, opts.titleMax, { required: opts.required });
       const body = c.text(`${name}.body`, v.body, opts.bodyMax, { required: opts.required });
-      return async (tx) => void (await upsertPage(tx, { key, title: orEmpty(title), body: orEmpty(body) }));
+      const row: Page = { key, title: orEmpty(title), body: orEmpty(body) };
+      return writing(async (tx) => void (await upsertPage(tx, row)), () => row);
     },
   });
 }
@@ -205,7 +224,8 @@ function bodyPart(key: string, max: number, defaultTitle: I18n): Part<{ body: I1
     loose: (v) => looseBody(v, max),
     check: (c, v, name) => {
       const body = c.text(`${name}.body`, v.body, max);
-      return async (tx, stored) => void (await upsertPage(tx, { key, title: (stored as Page | null)?.title ?? defaultTitle, body: orEmpty(body) }));
+      const row = (stored: unknown): Page => ({ key, title: (stored as Page | null)?.title ?? defaultTitle, body: orEmpty(body) });
+      return writing(async (tx, stored) => void (await upsertPage(tx, row(stored))), row);
     },
   });
 }
@@ -258,7 +278,8 @@ export const homeParts: Parts = {
           active: s.active,
         };
       });
-      return (tx) => saveSlides(tx, rows); // ids kept; a repeated or unknown id becomes a new row (syncPlan)
+      // ids kept; a repeated or unknown id becomes a new row (syncPlan)
+      return writing((tx) => saveSlides(tx, rows), (stored): HeroSlide[] => syncedRows(stored, rows));
     },
   }),
   statement: bodyPart("statement", L.statement, { et: "MS LAB Koolituskeskus" }),
@@ -279,7 +300,8 @@ export const homeParts: Parts = {
         if (q && a) rows.push({ id: item.id, q, a });
       }
       if (rows.length > L.faq) c.fail(name, "tooMany");
-      return (tx) => saveFaq(tx, rows); // the items keep their ids (the editor's rows keep their fields and focus)
+      // the items keep their ids (the editor's rows keep their fields and focus)
+      return writing((tx) => saveFaq(tx, rows), (stored): FaqItem[] => syncedRows(stored, rows));
     },
   }),
 };
@@ -307,7 +329,8 @@ function packagePart(code: string): Part<PackageDraft> {
       if (price == null) c.fail(`${p}price`, "required");
       const items = c.list(`${p}items`, v.items, L.item, L.packageItems);
       if (!title || !durationLabel || models == null || price == null) return null;
-      return (tx) => updatePackage(tx, code, { name: title, tagline: orEmpty(tagline), models, durationLabel, price, items });
+      const fields = { name: title, tagline: orEmpty(tagline), models, durationLabel, price, items };
+      return writing((tx) => updatePackage(tx, code, fields), (stored): PracticePackage => ({ ...(stored as PracticePackage), ...fields }));
     },
   });
 }
@@ -360,12 +383,13 @@ export const trainerParts: Parts = {
         if (value && label) stats.push({ value, label });
       }
       if (stats.length > L.stats) c.fail(`${p}stats`, "tooMany");
-      return (tx, stored) => {
+      const value = (stored: unknown) => {
         // other keys (the contact block's photo) stay as they are
         const { role: _oldRole, ...rest } = obj(stored);
         void _oldRole;
-        return setSetting(tx, "trainer", { ...rest, portraitKey, portraitPos, name: trainerName, ...(role ? { role } : {}), stats });
+        return { ...rest, portraitKey, portraitPos, name: trainerName, ...(role ? { role } : {}), stats };
       };
+      return writing((tx, stored) => setSetting(tx, "trainer", value(stored)), value);
     },
   }),
   bio: bodyPart("trainer_bio", L.bio, { et: "" }),
@@ -379,7 +403,9 @@ export const trainerParts: Parts = {
       if (items.length > L.works) c.fail(name, "tooMany");
       // each picture's own field names, so the editor marks the one that is wrong
       const rows = items.map((x, i) => ({ key: c.image(`${name}.${i}.key`, x.key, { required: true }), alt: c.text(`${name}.${i}.alt`, x.alt, L.alt) }));
-      return async (tx) => void (await replaceGallery(tx, WORKS_GROUP, rows));
+      // (replaceGallery's rows: the group's pictures in this order, sort 0…; new ids)
+      const shown = (): GalleryItem[] => rows.map((r, i) => ({ id: -(i + 1), group: WORKS_GROUP, key: r.key, alt: r.alt ?? null, sort: i }));
+      return writing(async (tx) => void (await replaceGallery(tx, WORKS_GROUP, rows)), shown);
     },
   }),
   center_story: pagePart("center_story", { titleMax: L.storyTitle, bodyMax: L.story }),

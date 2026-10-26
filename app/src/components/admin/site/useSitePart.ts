@@ -7,6 +7,7 @@ import type { AutosaveStatus } from "@/domain/autosave";
 import { sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
 import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
+import { siteCopyOwner } from "@/lib/site-copies";
 import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRefusals";
 
 // One part's autosave on a site editor (admin UX pass piece 4a, Task 2; README §1.3, B2; rulings R-a, R-b, R-d): the shared engine (autosave/
@@ -14,7 +15,8 @@ import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRef
 // draft, under the loose check), from the part's version the page read. As a course's card does, with the same hook (../useFieldRefusals.ts): a
 // 400's field codes are kept with the value each refused field was sent with (the engine holds those fields back and saves the rest), so a card can
 // say at the field what was refused and a list can place it on the row it is about (by the row's key in what was sent); a field typed in again or
-// saved loses its words. The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>`.
+// saved loses its words. The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>` (the owner is lib/site-copies.ts', which the public
+// preview bar's „Loobu muudatustest“ drops by too).
 //
 // A field the leave guard names („Muudatust „Slaid 2 pealkiri“ ei saanud veel salvestada.“, piece4-texts S4-1 note) is named row by row, as the
 // PublishBar names it: the first change of that field since its last save the server took (else since live), by domain/site-changes.ts.
@@ -22,9 +24,6 @@ import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRef
 // Where the fields are on the page (the leave guard's „Jää siia“, SaveStatus's „Näita“): a part's field is the control named `<part>.<field>` (a
 // record part's: `MAXI.price`, `trainer.name`) or `<field>` (a list part's rows: `slides.2.title`), as `data-i18n` (I18nInput) or `data-field`
 // (TextField); else the field's first control held back (`aria-invalid`).
-
-/** The engine's owner of a site entity's copies in this browser (`mslab-draft:site:<entity>:<part>:<tab>`). */
-export const siteCopyOwner = (entity: SiteEntity): string => `site:${entity}`;
 
 /** The autosave route of an entity's part. */
 export const sitePartUrl = (entity: SiteEntity, part: string): string => `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/osa/${encodeURIComponent(part)}`;

@@ -34,7 +34,7 @@ import { readStamp, stampOrNull } from "./read-stamp";
 export { isSiteEntity, SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 
 /** An entity's parts by name, in its screen's order: Praktika's are read from the packages. */
-async function partsOf(q: Q, entity: SiteEntity): Promise<Parts> {
+export async function partsOf(q: Q, entity: SiteEntity): Promise<Parts> {
   if (entity === "home") return homeParts;
   if (entity === "trainer") return trainerParts;
   return practiceParts(q);
@@ -63,6 +63,18 @@ function draftValueOf(entity: SiteEntity, part: string, def: Part<unknown>, live
   const own = isRecord(raw) ? Object.fromEntries(Object.entries(raw).filter(([k]) => Object.hasOwn(live, k))) : {};
   const parsed = def.schema.safeParse(fromEditorValue(entity, part, { ...live, ...own }));
   return parsed.success ? toEditorValue(entity, part, parsed.data) : live;
+}
+
+/**
+ * A part's draft as „Avalda muudatused“ takes it (R-d): its stored value `raw` read defensively over the live value of `stored` (draftValueOf), through
+ * the part's STRICT check (Part.check). `value`: the editor value checked; `check`: what it refused; `write`: the Write it answered (null: refused). The
+ * publish's hold and the admin's preview of the public pages (server/site-preview.ts, R-f) decide by it alike.
+ */
+export function strictDraft(entity: SiteEntity, part: string, def: Part<unknown>, stored: unknown, raw: unknown): { value: Record<string, unknown>; check: Check; write: Write | null } {
+  const value = draftValueOf(entity, part, def, toEditorValue(entity, part, def.draft(stored)), raw);
+  const check = new Check();
+  const write = def.check(check, fromEditorValue(entity, part, value), part);
+  return { value, check, write };
 }
 
 type PartState = { live: Record<string, unknown>; liveHash: string; draft: DraftPart | null; version: string; value: Record<string, unknown> };
@@ -244,9 +256,7 @@ function makeSitePublisher(entity: SiteEntity) {
       for (const { part, value: raw } of candidates) {
         const def = defOf(part);
         if (!def) continue;
-        const shown = draftValueOf(entity, part, def, toEditorValue(entity, part, def.draft(stored.get(part))), raw);
-        const c = new Check();
-        const write = def.check(c, fromEditorValue(entity, part, shown), part);
+        const { value: shown, check: c, write } = strictDraft(entity, part, def, stored.get(part), raw);
         if (c.ok && write) writes.set(part, write);
         else held.set(part, { reason: "missing", fields: missingOf(entity, part, c.errors, shown) });
       }

@@ -5,6 +5,7 @@ import type { AutosaveStatus } from "@/domain/autosave";
 import { siteChangeLabels } from "@/domain/site-changes";
 import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
+import { dropSiteCopies } from "@/lib/site-copies";
 import { combineStatus } from "../course/course-view";
 import { usePhoneChip } from "../course/usePhoneChip";
 import { LangSwitch } from "../EditLang";
@@ -123,9 +124,11 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
     flushAll,
     urls: { publish: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/avalda`, discard: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/loobu` },
     requireSaved: true,
-    // what was thrown away must not come back: every part's copy in this browser
+    // what was thrown away must not come back: every part's copy in this browser, and every other copy of the entity (a part the screen no longer
+    // has), by the rule the public preview bar's „Loobu muudatustest“ drops them by (lib/site-copies.ts), as the course editor does
     dropCopies: () => {
       for (const part of names) apis[part].discardCopy();
+      dropSiteCopies(entity);
     },
     seeds,
   });
