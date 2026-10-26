@@ -183,7 +183,7 @@ the seat counts are cached in public pages, so the daily sweep and every payment
      the time of the purchase on the payment row. The e-course's own "Enne alustamist" terms step at the first opening stays
      as it is.
 4. **Mail to the payer:**
-   - "Koht on kinnitatud" (or "Makse on kätte saadud" when not yet confirmed or full), with the amount, what is left to pay
+   - "Koht on kinnitatud" when this payment confirms the place (or "Makse on kätte saadud" when it does not: not yet confirmed, full, or a later payment of a place confirmed before, such as the rest — amended 26.10.2026), with the amount, what is left to pay
      and the date;
    - or "E-koolitus on avatud" with a login link (`verifyLink`, like the code login).
 5. **Maria:** mail + Telegram "Uus makse: {nimi}, {mis}, {summa}".

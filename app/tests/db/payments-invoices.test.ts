@@ -773,6 +773,7 @@ describe("the paid mails' line (account-mail.ts)", () => {
     paidCents: 17500,
     restCents: 17500,
     confirmed: true,
+    confirmedNow: true,
     full: false,
     ...over,
   });

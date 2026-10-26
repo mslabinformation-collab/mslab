@@ -427,8 +427,10 @@ export type RegistrationPaidInput = {
   paidCents: number;
   /** What is left to pay on the registration after it (its price − its paidCents), cents. */
   restCents: number;
-  /** The registration is confirmed now. */
+  /** The registration is confirmed after this payment (by it or before it). */
   confirmed: boolean;
+  /** This payment confirmed the place (it was not confirmed before): the "Koht on kinnitatud" subject and lead. */
+  confirmedNow: boolean;
   /** Paid, but the course was full: the place stayed unconfirmed (D2). */
   full: boolean;
   /** The payment's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
@@ -436,8 +438,8 @@ export type RegistrationPaidInput = {
 };
 
 /**
- * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when the place is confirmed now,
- * else "Makse on kätte saadud — {title}"; the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
+ * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when this payment confirmed the
+ * place, else "Makse on kätte saadud — {title}" (also a later payment of a place confirmed before, e.g. the rest); the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
  * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why; „Arve on lisatud." when the
  * payment's invoice is attached (settle.ts attaches it). One button: "Ava minu konto".
  * settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
@@ -455,8 +457,8 @@ export function registrationPaidMail(input: RegistrationPaidInput): Mail {
     name: input.name,
     locale: input.locale,
     siteUrl: input.siteUrl,
-    subject: oneLine(fill(input.confirmed ? m.subjectConfirmed : m.subjectReceived, { title })),
-    lead: input.confirmed ? m.leadConfirmed : m.leadReceived,
+    subject: oneLine(fill(input.confirmedNow ? m.subjectConfirmed : m.subjectReceived, { title })),
+    lead: input.confirmedNow ? m.leadConfirmed : m.leadReceived,
     box: { title, lines: input.session ? sessionLines(input.session, input.locale) : [] },
     sections,
     login: null,

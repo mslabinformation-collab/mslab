@@ -271,6 +271,7 @@ describe("the payer's mail after a paid registration", () => {
     paidCents: 17500,
     restCents: 17500,
     confirmed: true,
+    confirmedNow: true,
     full: false,
   };
 
@@ -283,15 +284,23 @@ describe("the payer's mail after a paid registration", () => {
     expect(registrationPaidMail({ ...input, restCents: 0 }).text).toContain("Kogu summa on tasutud.");
   });
 
+  test("already confirmed (a later payment, e.g. the rest): 'Makse on kätte saadud — …' with its thanks and what is left, not the place line again", () => {
+    const mail = registrationPaidMail({ ...input, confirmedNow: false, restCents: 0 });
+    expect(mail.subject).toBe("Makse on kätte saadud — Kulmumeistri baaskoolitus");
+    for (const line of ["Makse on kätte saadud. Aitäh!", "Tasutud: 175 €", "Kogu summa on tasutud."]) expect(mail.text).toContain(line);
+    expect(mail.text).not.toContain("Sinu koht on kinnitatud");
+    expect(registrationPaidMail({ ...input, confirmedNow: false }).text).toContain("Ülejäänud 175 € tasud koolituspäeval või Minu koolitused lehel.");
+  });
+
   test("not confirmed (the course was full): 'Makse on kätte saadud — …' and Maria will be in touch; no rest line", () => {
-    const mail = registrationPaidMail({ ...input, confirmed: false, full: true });
+    const mail = registrationPaidMail({ ...input, confirmed: false, confirmedNow: false, full: true });
     expect(mail.subject).toBe("Makse on kätte saadud — Kulmumeistri baaskoolitus");
     expect(mail.text).toContain("Koolitus on vahepeal täitunud, nii et koht jäi kinnitamata. Maria võtab sinuga ühendust.");
     expect(mail.text).not.toContain("Ülejäänud");
   });
 
   test("paid but not confirmed and not full (under half): Maria will be in touch", () => {
-    const mail = registrationPaidMail({ ...input, confirmed: false, full: false });
+    const mail = registrationPaidMail({ ...input, confirmed: false, confirmedNow: false, full: false });
     expect(mail.subject).toBe("Makse on kätte saadud — Kulmumeistri baaskoolitus");
     expect(mail.text).toContain("Makse on kätte saadud. Aitäh!");
     expect(mail.text).toContain("Maria võtab sinuga ühendust.");

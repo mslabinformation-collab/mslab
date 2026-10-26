@@ -747,7 +747,9 @@ describe("a registration's payment: one transaction, under the row's lock", () =
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
     await flush();
     expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 5000]);
-    expect(m.mails()[0].subject).toBe("Koht on kinnitatud — Kulmumeistri baaskoolitus");
+    // the place was confirmed before this payment: her mail is 'Makse on kätte saadud', with what is left
+    expect(m.mails()[0].subject).toBe("Makse on kätte saadud — Kulmumeistri baaskoolitus");
+    expect(m.mails()[0].text).toContain("Ülejäänud 300 € tasud koolituspäeval või Minu koolitused lehel.");
     expect(m.mails()[1].text).toContain("Registreering on kinnitatud. Ülejäänud 300 € tasub ta koolituspäeval või Minu koolitustes.");
   });
 

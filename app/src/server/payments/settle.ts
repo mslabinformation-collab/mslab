@@ -790,6 +790,7 @@ async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: Registratio
       paidCents: p.amountCents,
       restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents),
       confirmed: r.registration.status === "confirmed",
+      confirmedNow: !r.wasConfirmed && r.registration.status === "confirmed",
       full: r.full,
       invoiceAttached: attachment !== null,
     });

@@ -66,7 +66,7 @@ describe("PAID", () => {
     expect(m.mails()).toHaveLength(2);
   });
 
-  test("the rest after 50 %: a balance payment makes it fully paid; the mail says nothing is left", async () => {
+  test("the rest after 50 %: a balance payment makes it fully paid; the mail is 'Makse on kätte saadud' (the place was confirmed before) and says nothing is left", async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db), { status: "confirmed", paidCents: 17500 });
     const p = await pendingPayment(db, r, { kind: "balance" });
@@ -74,7 +74,9 @@ describe("PAID", () => {
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
     await flush();
     expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 35000]);
-    expect(m.mails()[0].subject).toBe("Koht on kinnitatud — Kulmumeistri baaskoolitus");
+    expect(m.mails()[0].subject).toBe("Makse on kätte saadud — Kulmumeistri baaskoolitus");
+    expect(m.mails()[0].text).toContain("Makse on kätte saadud. Aitäh!");
+    expect(m.mails()[0].text).not.toContain("Sinu koht on kinnitatud");
     expect(m.mails()[0].text).toContain("Kogu summa on tasutud.");
     expect(m.mails()[1].text).toContain("Registreering on kinnitatud ja täielikult tasutud.");
   });
