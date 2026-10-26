@@ -41,9 +41,9 @@ const TRAINER: TrainerDraft = {
 const BIO = { body: { et: "Kulmumeister ja koolitaja, kes usub täpsesse analüüsi.", ru: "Мастер бровей." } };
 const WORKS: { works: WorkDraft[] } = {
   works: [
-    { key: "img/a.jpg", alt: { et: "Esimene" } },
-    { key: "img/b.jpg", alt: { et: "Teine" } },
-    { key: "img/c.jpg", alt: { et: "Kolmas" } },
+    { key: "/seed/a.jpg", alt: { et: "Esimene", ru: "Первый" } },
+    { key: "/seed/b.jpg", alt: { et: "Teine", ru: "Второй" } },
+    { key: "/seed/c.jpg", alt: { et: "Kolmas", ru: "Третий" } },
   ],
 };
 const CENTER: PageDraft = { title: { et: "MS LAB Koolituskeskus", ru: "Учебный центр MS LAB" }, body: { et: "MS LAB ühendab teooria ja praktika.", ru: "MS LAB объединяет." } };
@@ -54,15 +54,17 @@ const LIVE: Record<string, Record<string, unknown>> = { trainer: TRAINER, bio: B
 const partsOf = (over: Record<string, Record<string, unknown>> = {}): Record<string, SitePartState> =>
   Object.fromEntries(Object.entries({ ...LIVE, ...over }).map(([part, value]) => [part, { version: `l:${part}`, value, live: value }]));
 
-/** The routes: each part's stored value and version; a save is a draft; `log` the saves in order. */
+/** The routes: each part's stored value and version; a save is a draft; `refuse` answers a 400's field codes; `log` the saves in order. */
 const remote = {
   parts: {} as Record<string, { version: string; value: Record<string, unknown> }>,
   n: 0,
+  refuse: null as null | ((part: string, patch: Record<string, unknown>) => Record<string, string> | null),
   log: [] as { part: string; version: string; patch: Record<string, unknown> }[],
 };
 function resetRemote() {
   remote.parts = Object.fromEntries(Object.entries(LIVE).map(([part, value]) => [part, { version: `l:${part}`, value: { ...value } }]));
   remote.n = 0;
+  remote.refuse = null;
   remote.log = [];
 }
 const respond = (url: string, init: RequestInit | undefined): Response => {
@@ -74,6 +76,8 @@ const respond = (url: string, init: RequestInit | undefined): Response => {
   const part = m[1];
   const body = JSON.parse(String(init?.body)) as { version: string; patch: Record<string, unknown> };
   remote.log.push({ part, ...body });
+  const refused = remote.refuse?.(part, body.patch);
+  if (refused) return Response.json({ ok: false, error: "invalid", fields: refused }, { status: 400 });
   const stored = remote.parts[part];
   if (body.version !== stored.version) return Response.json({ ok: false, error: "conflict", version: stored.version, value: stored.value }, { status: 409 });
   remote.n += 1;
@@ -200,6 +204,8 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     const x = $<HTMLInputElement>('[data-focal-axis="portrait-x"]');
     await type(x, "30");
     expect(barWords()).toBe(draft("Portree"));
+    // the picture has no label of its own on screen: its card says „· avaldamata“ (README §1.8), as „Numbrid“ and „Galerii“ do
+    expect(text(card("portree")!.querySelector("h2"))).toBe("Portree ja tutvustus · avaldamata");
     await leave(x);
     expect(remote.log).toEqual([{ part: "trainer", version: "l:trainer", patch: { portraitPos: "30% 30%" } }]);
     expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 09:40");
@@ -242,34 +248,93 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     expect(c.querySelectorAll("[data-stat-pair]")).toHaveLength(3);
   });
 
+  it("„Numbrid“: a refused pair is said at its own field (aria-invalid, the words under it), the other pairs and the card's foot stay quiet", async () => {
+    remote.refuse = (part, patch) => (part === "trainer" && "stats" in patch ? { "stats.1.value": "tooLong", stats: "tooLong" } : null);
+    await show();
+    // (the field's maxLength stops a typist at 12; the server's limit is the same)
+    await type(field("trainer.stats.1.value"), "1234567890123");
+    await leave(field("trainer.stats.1.value"));
+    expect(remote.log.at(-1)!.part).toBe("trainer");
+    const value = field("trainer.stats.1.value")!;
+    expect(value.getAttribute("aria-invalid")).toBe("true");
+    const words = container.querySelector(`#${CSS.escape(value.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
+    expect(text(words)).not.toBe("");
+    expect(words!.closest("[data-stat-pair]")).toBe(card("numbrid")!.querySelectorAll("[data-stat-pair]")[1]);
+    expect(field("trainer.stats.1.label")!.getAttribute("aria-invalid")).toBeNull();
+    expect(field("trainer.stats.0.value")!.getAttribute("aria-invalid")).toBeNull();
+    expect(card("numbrid")!.querySelector("[data-stats-error]")).toBeNull();
+    // the map says the card needs a look; the portrait card does not
+    const status = $$("nav[aria-label='Jaotised'] a").map((a) => text(a.querySelector("[data-section-status]")));
+    expect(status.slice(0, 2)).toEqual(["", "2 · Kontrolli"]);
+  });
+
   it("„Galerii“: the counter „Lohista järjekorra muutmiseks · {n} / 24“ and the tile „+ Lisa“; ✕ takes a picture out at once with „Pilt eemaldatud.“, whose undo puts it back", async () => {
     await show();
     const c = card("galerii")!;
     expect(text(c.querySelector("[data-gallery-count]"))).toBe("Lohista järjekorra muutmiseks · 3 / 24");
-    expect(tiles()).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg"]);
+    expect(tiles()).toEqual(["/seed/a.jpg", "/seed/b.jpg", "/seed/c.jpg"]);
     // the tile's words „+ Lisa“; the field it opens is named „Lisa pilte“ for a screen reader (S4-15 note)
     const add = c.querySelector<HTMLInputElement>('[data-gallery-add] input[type="file"]')!;
     expect(labelOf(add)).toBe("+ Lisa");
     expect(add.getAttribute("aria-label")).toBe("Lisa pilte");
     expect(add.multiple).toBe(true);
-    // the tiles have no description field (the frame's tiles are the pictures)
-    expect(c.querySelector("[data-i18n-box]")).toBeNull();
+    // each tile's description stays (builder notes §5): the course gallery's field and words, as its hidden name and its placeholder
+    const describe = (n: number) => field(`works.${n}.alt`)!;
+    expect(WORKS.works.map((_, n) => describe(n).value)).toEqual(["Esimene", "Teine", "Kolmas"]);
+    expect(labelOf(describe(1))).toBe("Pildi kirjeldus (eesti keeles)");
+    expect(describe(1).getAttribute("placeholder")).toBe("Pildi kirjeldus");
+    expect(describe(1).closest("[data-gallery-item]")!.getAttribute("data-gallery-item")).toBe("/seed/b.jpg");
     await click(button("Eemalda pilt 2", c));
-    expect(tiles()).toEqual(["img/a.jpg", "img/c.jpg"]);
+    expect(tiles()).toEqual(["/seed/a.jpg", "/seed/c.jpg"]);
     expect(remote.log.at(-1)).toEqual({ part: "works", version: "l:works", patch: { works: [WORKS.works[0], WORKS.works[2]] } });
     expect(text(undoBar()!.querySelector("p"))).toBe("Pilt eemaldatud.");
     expect(text(c.querySelector("[data-gallery-count]"))).toBe("Lohista järjekorra muutmiseks · 2 / 24");
     expect(barWords()).toBe(draft("Galerii"));
     await click(undoBar()!.querySelector("button"));
-    expect(tiles()).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg"]);
+    expect(tiles()).toEqual(["/seed/a.jpg", "/seed/b.jpg", "/seed/c.jpg"]);
     expect(remote.log.at(-1)!.patch).toEqual({ works: WORKS.works });
     expect($("[data-publish-bar]")).toBeNull();
   });
 
+  it("„Galerii“: a picture's description typed under its tile is saved when it is left, „Galerii“ on the bar", async () => {
+    await show();
+    await type(field("works.0.alt"), "Kulmukoolituse tunnistus");
+    await leave(field("works.0.alt"));
+    expect(remote.log.at(-1)).toEqual({
+      part: "works",
+      version: "l:works",
+      patch: { works: [{ key: "/seed/a.jpg", alt: { et: "Kulmukoolituse tunnistus", ru: "Первый" } }, WORKS.works[1], WORKS.works[2]] },
+    });
+    expect(barWords()).toBe(draft("Galerii"));
+    expect(text($$("nav[aria-label='Jaotised'] a")[2].querySelector("[data-section-status]"))).toBe("3");
+  });
+
+  it("„Galerii“: a description with its Estonian side only flags the map's entry „RU puudub“", async () => {
+    await show(partsOf({ works: { works: [WORKS.works[0], { key: "/seed/b.jpg", alt: { et: "Teine" } }] } }));
+    expect(text($$("nav[aria-label='Jaotised'] a")[2].querySelector("[data-section-status]"))).toBe("2 · RU puudub");
+  });
+
+  it("„Galerii“: a picture's refused description is said at its own tile (aria-invalid, the words under it), not under the grid", async () => {
+    remote.refuse = (part, patch) => (part === "works" && "works" in patch ? { "works.1.alt": "tooLong", works: "tooLong" } : null);
+    await show();
+    // (the field's maxLength stops a typist at 200; the server's limit is the same)
+    await type(field("works.1.alt"), "x".repeat(201));
+    await leave(field("works.1.alt"));
+    expect(remote.log.at(-1)!.part).toBe("works");
+    const second = field("works.1.alt")!;
+    expect(second.getAttribute("aria-invalid")).toBe("true");
+    const words = container.querySelector(`#${CSS.escape(second.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
+    expect(text(words)).not.toBe("");
+    expect(words!.closest("[data-gallery-item]")!.getAttribute("data-gallery-item")).toBe("/seed/b.jpg");
+    expect(field("works.0.alt")!.getAttribute("aria-invalid")).toBeNull();
+    // said once, at the tile: not again on the grid's own line (a refusal of the list as a whole)
+    expect(Array.from(card("galerii")!.querySelectorAll("p")).filter((p) => text(p) === text(words))).toHaveLength(1);
+  });
+
   it("„Galerii“: a tile moved with its arrow is saved at once, „Galerii“ on the bar", async () => {
     await show();
-    await click(card("galerii")!.querySelector('[data-gallery-item="img/c.jpg"] [data-drag-tool="up"]'));
-    expect(tiles()).toEqual(["img/a.jpg", "img/c.jpg", "img/b.jpg"]);
+    await click(card("galerii")!.querySelector('[data-gallery-item="/seed/c.jpg"] [data-drag-tool="up"]'));
+    expect(tiles()).toEqual(["/seed/a.jpg", "/seed/c.jpg", "/seed/b.jpg"]);
     expect(remote.log.at(-1)).toEqual({ part: "works", version: "l:works", patch: { works: [WORKS.works[0], WORKS.works[2], WORKS.works[1]] } });
     expect(barWords()).toBe(draft("Galerii"));
   });

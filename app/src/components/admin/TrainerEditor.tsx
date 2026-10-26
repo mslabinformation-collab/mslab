@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { looseTrainer, looseWorks } from "@/domain/site-checks";
 import { isBlankStat, portraitFraming, SITE_LIMITS, type PageDraft, type StatDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { SitePartState, TrainerPartValues } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
@@ -15,7 +16,7 @@ import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SiteApis } from "./site/SiteEditorPage";
-import type { SitePartApi } from "./site/useSitePart";
+import { refusalText, type SitePartApi } from "./site/useSitePart";
 import ui from "./ui.module.css";
 import styles from "./TrainerEditor.module.css";
 
@@ -28,8 +29,9 @@ import styles from "./TrainerEditor.module.css";
 //   (the picture on top, 300 px tall for a portrait photo, radius 16, drawn), beside „Nimi“, „Amet“ (kept, builder notes §5) and „Tutvustus“;
 // - „Numbrid“: `trainer.stats` as three fixed pairs, a number and its label (builder notes §5); a pair left empty is no pair — the draft keeps none at
 //   its end, and the publish leaves out any (domain/site-editor.ts isBlankStat), so the public page never shows one;
-// - „Galerii“ (S4-14): the works as GalleryEditor's grid of tiles (R-g: drag both ways, ↑ / ↓, ✕ with the UndoBar „Pilt eemaldatud.“ and its undo, the
-//   tile „+ Lisa“), with the counter „Lohista järjekorra muutmiseks · {n} / 24“ on the title's row (S4-15, drawn there; on this gallery only);
+// - „Galerii“ (S4-14): the works as GalleryEditor's grid of tiles (R-g: drag both ways, ↑ / ↓, ✕ with the UndoBar „Pilt eemaldatud.“ and its undo, each
+//   picture's description under its tile, the tile „+ Lisa“), with the counter „Lohista järjekorra muutmiseks · {n} / 24“ on the title's row (S4-15,
+//   drawn there; on this gallery only);
 // - „Koolituskeskuse lugu“ and „Koolitaja teekond“: a story that is empty when the page opens is one row „tühi · Lisa tekst ▸“ (S4-16); „Lisa tekst“
 //   opens it with the cursor in its title. The section map says „tühi“ for it too.
 // Every field autosaves into its part's draft, and the page's ONE bar publishes them all (S4-17: „Portree“, „Nimi“, „Amet“, „Tutvustus“, „Numbrid“,
@@ -58,6 +60,22 @@ function withPair(stats: StatDraft[], i: number, patch: Partial<StatDraft>): Sta
   const next = pairsOf(stats).map((s, j) => (j === i ? { ...s, ...patch } : s));
   while (next.length > 0 && isBlankStat(next[next.length - 1])) next.pop();
   return next;
+}
+
+/**
+ * A refused list placed on its rows (README B2: a list's errors keyed by row): the server's own loose check (domain/site-checks.ts) run over the list
+ * the refused save sent (useSitePart's refusedValue), each row's problems by the row's key, so they land on that row wherever it is now.
+ */
+function rowRefusals<R>(sent: unknown, problemsOf: (rows: R[]) => Record<string, string>, keyOf: (row: R) => string, path: (j: number) => string): Map<string, Record<string, string>> {
+  const placed = new Map<string, Record<string, string>>();
+  if (!Array.isArray(sent)) return placed;
+  const problems = problemsOf(sent as R[]);
+  (sent as R[]).forEach((row, j) => {
+    const prefix = `${path(j)}.`;
+    const own = Object.fromEntries(Object.entries(problems).flatMap(([name, code]) => (name.startsWith(prefix) ? [[name.slice(prefix.length), code]] : [])));
+    if (Object.keys(own).length > 0 && !placed.has(keyOf(row))) placed.set(keyOf(row), own);
+  });
+  return placed;
 }
 
 /** The editor of the trainer's page, from the page's read (readSiteEditor's `parts` and `stamp`, as they came). */
@@ -99,7 +117,7 @@ function sectionsOf(apis: SiteApis<Trainer>): SectionEntry[] {
   return [
     { id: CARD.portrait, label: t.card, ...flag(bio.attention || refused(PORTRAIT_FIELDS) || whole, [tr.name, tr.role, bio.fields.body].some(lacksRu)) },
     { id: CARD.stats, label: t.stats, count: pairs.length, ...flag(refused(["stats"]) || whole, pairs.some((s) => lacksRu(s.label))) },
-    { id: CARD.works, label: t.works, count: works.fields.works.length, ...flag(works.attention, false) },
+    { id: CARD.works, label: t.works, count: works.fields.works.length, ...flag(works.attention, works.fields.works.some((w) => lacksRu(w.alt))) },
     story("center_story", t.story),
     story("trainer_journey", t.journey),
   ];
@@ -125,7 +143,15 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
   const v = trainer.fields;
   const framing = portraitFraming(v.portraitKey, v.portraitPos);
   return (
-    <SiteCard id={CARD.portrait} title={t.card} parts={[trainer, bio]} className={`${styles.card} ${styles.portraitCard}`} titleClassName={styles.title}>
+    <SiteCard
+      id={CARD.portrait}
+      title={t.card}
+      parts={[trainer, bio]}
+      // the portrait and its focal point have no label of their own on screen: a change of them marks the card (README §1.8)
+      unpublished={trainer.unpublished("portraitKey") || trainer.unpublished("portraitPos")}
+      className={`${styles.card} ${styles.portraitCard}`}
+      titleClassName={styles.title}
+    >
       <div className={styles.picture} data-portrait-column="">
         {v.portraitKey && (
           <FocalPoint
@@ -188,12 +214,20 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
   );
 }
 
-/** „Numbrid“: three pairs in a row, each a number and its label (their names „Number {n}“, „Selgitus {n}“; the card's title names them on screen). */
+/**
+ * „Numbrid“: three pairs in a row, each a number and its label (their names „Number {n}“, „Selgitus {n}“; the card's title names them on screen). A
+ * refused pair says so at its own field (aria-invalid, the words under it); a refusal of the list as a whole (more than three) under the pairs.
+ */
 function StatsCard({ trainer }: { trainer: SitePartApi<TrainerDraft> }) {
   const t = adminEt.trainer;
   const stats = trainer.fields.stats;
   const set = (i: number, patch: Partial<StatDraft>) => trainer.set("stats", withPair(stats, i, patch));
   const error = trainer.error("stats");
+  const placed = rowRefusals<StatDraft>(trainer.refusedValue("stats"), (sent) => looseTrainer({ ...trainer.fields, stats: sent }), (s) => s.uid, (j) => `stats.${j}`);
+  const refused = (s: StatDraft, field: "value" | "label") => {
+    const code = placed.get(s.uid)?.[field];
+    return code ? refusalText(code) : undefined;
+  };
   return (
     <SiteCard id={CARD.stats} title={t.stats} parts={[trainer]} unpublished={trainer.unpublished("stats")} className={styles.card} titleClassName={styles.title}>
       <div className={styles.pairs}>
@@ -206,28 +240,59 @@ function StatsCard({ trainer }: { trainer: SitePartApi<TrainerDraft> }) {
               value={s.value}
               onChange={(value) => set(i, { value })}
               maxLength={SITE_LIMITS.statValue}
+              error={refused(s, "value")}
               name={`trainer.stats.${i}.value`}
               className={styles.value}
             />
-            <I18nInput label={`${t.statLabel} ${i + 1}`} labelHidden value={s.label} onChange={(label) => set(i, { label })} maxLength={SITE_LIMITS.statLabel} name={`trainer.stats.${i}.label`} />
+            <I18nInput
+              label={`${t.statLabel} ${i + 1}`}
+              labelHidden
+              value={s.label}
+              onChange={(label) => set(i, { label })}
+              maxLength={SITE_LIMITS.statLabel}
+              error={refused(s, "label")}
+              name={`trainer.stats.${i}.label`}
+            />
           </div>
         ))}
       </div>
-      {error && <p className={ui.error}>{error}</p>}
+      {error && placed.size === 0 && (
+        <p className={ui.error} data-stats-error="">
+          {error}
+        </p>
+      )}
     </SiteCard>
   );
 }
 
-/** „Galerii“: the works as tiles (GalleryEditor layout="grid"); a picture added, moved, removed or brought back saves at once (useSitePart's update). */
+/**
+ * „Galerii“: the works as tiles with their descriptions (GalleryEditor layout="grid"); a picture added, moved, removed or brought back saves at once,
+ * a description typed when it is left (useSitePart's update). A refused picture (its description, its key) says so at its own tile; a refusal of the
+ * list as a whole (more than 24) under the grid.
+ */
 function WorksCard({ works }: { works: SitePartApi<{ works: WorkDraft[] }> }) {
   const t = adminEt.trainer;
   const images = works.fields.works;
+  const placed = rowRefusals<WorkDraft>(works.refusedValue("works"), looseWorks, (w) => w.key, (j) => `works.${j}`);
+  const errorOf = (i: number) => {
+    const own = placed.get(images[i].key);
+    const code = own?.alt ?? own?.key;
+    return code ? refusalText(code) : undefined;
+  };
   return (
     <SiteCard id={CARD.works} title={t.works} parts={[works]} unpublished={works.unpublished("works")} className={`${styles.card} ${styles.worksCard}`} titleClassName={styles.title}>
       <p className={styles.count} data-gallery-count="">
         {fill(t.worksHint, { n: images.length })}
       </p>
-      <GalleryEditor layout="grid" images={images} onChange={(update) => works.update("works", update)} error={works.error("works")} addLabel={t.addWork} />
+      <GalleryEditor
+        layout="grid"
+        images={images}
+        onChange={(update) => works.update("works", update)}
+        error={placed.size === 0 ? works.error("works") : undefined}
+        errorOf={errorOf}
+        addLabel={t.addWork}
+        name="works"
+      />
     </SiteCard>
   );
 }

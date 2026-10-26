@@ -383,6 +383,13 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     await expect(tiles.nth(1)).toHaveAttribute("data-gallery-item", first!);
     await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Galerii"));
+    // the picture's description under its tile (kept, builder notes §5): saved into the gallery's draft when it is left
+    const description = tiles.nth(0).getByRole("textbox", { name: "Pildi kirjeldus (eesti keeles)", exact: true });
+    saved = trainerSaved(page, "works");
+    await description.fill("E2E kirjeldus");
+    await description.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Galerii"));
 
     // „Portree ja tutvustus“: a new portrait (saved at once) and its focal point (saved when the field is left)
     const portrait = page.locator('#portree [data-single-image="portrait"]');
@@ -420,6 +427,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     const key = after.portraitKey as string;
     await visitor.reload();
     expect(await shownWorks(visitor)).toEqual([works[1], works[0], ...works.slice(2)]);
+    await expect(visitor.locator("[data-works] [data-work] button").first()).toHaveAttribute("aria-label", /: E2E kirjeldus$/);
     const img = visitor.locator("[data-portrait] img");
     await expect(img).toHaveAttribute("src", `/media/${key}`);
     await expect(img).toHaveCSS("object-position", "30% 25%");

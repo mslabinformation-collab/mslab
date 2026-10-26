@@ -69,7 +69,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const errors = adminEt.courseEditor.errors as Record<string, string>;
 
 /** The words of a refusal's code: the editors' field errors (domain/field-check.ts codes); anything else, the generic line. */
-const refusalText = (code: string): string => errors[code] ?? adminEt.courseEditor.invalid;
+export const refusalText = (code: string): string => errors[code] ?? adminEt.courseEditor.invalid;
 
 /**
  * The control of a part's field on the page (see the top of the file), focused: `row` given (a list field's row, by its place in the draft), that

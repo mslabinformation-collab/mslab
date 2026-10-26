@@ -2,7 +2,8 @@
    apart, as many columns of at least 140 px as the card holds (five at the frame's 1440 px; two on a phone; no container query: old iPads), then the
    tile „+ Lisa“ (a 1 px dashed outline, drawn #cfc6ca: the token --fog). A tile is the picture, 120 px tall with a 12 px radius (drawn); on it the
    handle at the top left, the ✕ at the top right and ↑ ↓ at the bottom right, each a 44 px target whose round white chip is drawn 32 px (the frame's
-   ✕: rgba(255, 255, 255, .9), 6 px from the corner). The course's gallery (the list of rows) is editor.module.css's, unchanged. */
+   ✕: rgba(255, 255, 255, .9), 6 px from the corner); under the tile, 6 px apart, the picture's description field (kept, builder notes §5). The course's
+   gallery (the list of rows) is editor.module.css's, unchanged. */
 
 .grid {
   display: grid;
@@ -11,6 +12,13 @@
 }
 
 .cell {
+  min-width: 0;
+}
+
+/* a picture: its tile, then its description */
+.item {
+  display: grid;
+  gap: 6px;
   min-width: 0;
 }
 

@@ -177,7 +177,7 @@ describe("GalleryEditor layout „grid“ (Koolitaja, R-g)", () => {
   const pointerAt = (el: Element, type: string, clientX: number, clientY: number) =>
     act(async () => void el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: "mouse", button: 0, isPrimary: true, clientX, clientY })));
 
-  it("each picture is a tile: the picture, its handle, ✕ „Eemalda pilt {n}“ and ↑ / ↓ in the gallery's words; no description and no „Põhipilt“; the last cell is „+ Lisa“", async () => {
+  it("each picture is a tile: the picture, its handle, ✕ „Eemalda pilt {n}“ and ↑ / ↓ in the gallery's words, its description under it; no „Põhipilt“; the last cell is „+ Lisa“", async () => {
     await render(IMAGES, false, "grid");
     expect(order()).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg"]);
     const second = $$("[data-gallery-item]")[1];
@@ -187,12 +187,18 @@ describe("GalleryEditor layout „grid“ (Koolitaja, R-g)", () => {
     expect(text(second.querySelector('[data-tool="remove"]'))).toBe("✕");
     expect(second.querySelector('[data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 2 ettepoole");
     expect(second.querySelector('[data-drag-tool="down"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 2 tahapoole");
-    expect($("[data-gallery-editor] [data-i18n-box]")).toBeNull();
+    // the picture's description (builder notes §5): the list's field and words, its name hidden and its placeholder
+    const alt = second.querySelector<HTMLInputElement>("[data-i18n-box] input")!;
+    expect(alt.value).toBe("Teine");
+    expect(text(container.querySelector(`label[for="${alt.id}"]`))).toBe("Pildi kirjeldus (eesti keeles)");
+    expect(alt.getAttribute("placeholder")).toBe("Pildi kirjeldus");
+    expect(alt.getAttribute("data-i18n")).toBe("image-1");
     expect(text($("[data-gallery-editor]"))).not.toContain("Põhipilt");
-    // the „+ Lisa“ tile is the list's last cell, no picture's row (a drag never lands on it)
+    // the „+ Lisa“ tile is the list's last cell, no picture's row (a drag never lands on it) and no item a screen reader counts
     const cells = $$("[data-drag-list] > li");
     expect(cells.at(-1)!.querySelector("[data-gallery-add]")).not.toBeNull();
     expect(cells.at(-1)!.hasAttribute("data-drag-row")).toBe(false);
+    expect(cells.at(-1)!.getAttribute("role")).toBe("presentation");
     expect($("[data-image-upload]")).toBeNull();
   });
 

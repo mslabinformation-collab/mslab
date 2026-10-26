@@ -77,7 +77,7 @@ export type DragListProps<T> = {
    * ArrowRight on the handle move one place too. "list" (the default): the rows stand one under another, and a drag goes up and down.
    */
   layout?: "list" | "grid";
-  /** A last item of the list that is no row (the gallery's „+ Lisa“ tile): it stands after the rows, and no drag lands on it. */
+  /** A last item of the list that is no row (the gallery's „+ Lisa“ tile): it stands after the rows, no drag lands on it, and a screen reader does not count it. */
   after?: ReactNode;
 };
 
@@ -383,7 +383,12 @@ export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow
             />
           );
         })}
-        {after !== undefined && <li data-drag-after="">{after}</li>}
+        {/* (no list item for a screen reader: the list counts the rows only) */}
+        {after !== undefined && (
+          <li role="presentation" data-drag-after="">
+            {after}
+          </li>
+        )}
       </ol>
       {/* a new node for each announcement, so the same words twice are read twice */}
       <div className={styles.live} role="status" aria-live="polite" aria-atomic="true">

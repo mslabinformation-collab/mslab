@@ -707,6 +707,7 @@ describe("DragList: layout „grid“", () => {
     const onMove = vi.fn();
     await draw({ items: FIVE, layout: "grid", onMove, after: createElement("span", { "data-after": "" }, "+ Lisa") });
     expect(list().lastElementChild!.hasAttribute("data-drag-row")).toBe(false);
+    expect(list().lastElementChild!.getAttribute("role")).toBe("presentation"); // (a screen reader counts the rows only)
     expect(text(list().lastElementChild)).toBe("+ Lisa");
     const handle = tool("a", "handle");
     await at(handle, "pointerdown", 75, 50);
