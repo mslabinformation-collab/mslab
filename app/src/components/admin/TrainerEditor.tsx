@@ -16,7 +16,7 @@ import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SiteApis } from "./site/SiteEditorPage";
-import { refusalText, type SitePartApi } from "./site/useSitePart";
+import { refusalText, rowRefusals, type SitePartApi } from "./site/useSitePart";
 import ui from "./ui.module.css";
 import styles from "./TrainerEditor.module.css";
 
@@ -60,22 +60,6 @@ function withPair(stats: StatDraft[], i: number, patch: Partial<StatDraft>): Sta
   const next = pairsOf(stats).map((s, j) => (j === i ? { ...s, ...patch } : s));
   while (next.length > 0 && isBlankStat(next[next.length - 1])) next.pop();
   return next;
-}
-
-/**
- * A refused list placed on its rows (README B2: a list's errors keyed by row): the server's own loose check (domain/site-checks.ts) run over the list
- * the refused save sent (useSitePart's refusedValue), each row's problems by the row's key, so they land on that row wherever it is now.
- */
-function rowRefusals<R>(sent: unknown, problemsOf: (rows: R[]) => Record<string, string>, keyOf: (row: R) => string, path: (j: number) => string): Map<string, Record<string, string>> {
-  const placed = new Map<string, Record<string, string>>();
-  if (!Array.isArray(sent)) return placed;
-  const problems = problemsOf(sent as R[]);
-  (sent as R[]).forEach((row, j) => {
-    const prefix = `${path(j)}.`;
-    const own = Object.fromEntries(Object.entries(problems).flatMap(([name, code]) => (name.startsWith(prefix) ? [[name.slice(prefix.length), code]] : [])));
-    if (Object.keys(own).length > 0 && !placed.has(keyOf(row))) placed.set(keyOf(row), own);
-  });
-  return placed;
 }
 
 /** The editor of the trainer's page, from the page's read (readSiteEditor's `parts` and `stamp`, as they came). */

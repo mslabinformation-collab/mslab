@@ -1,0 +1,546 @@
+/* C1 Avaleht (admin UX pass piece 4a, Task 6; README §4 C1, the Part 3 template's slide row and the Part 4 C1 frame): the cards 14 px apart (drawn),
+   each with a 22 px padding (ui.card's 20 px below 900 px kept) and its title in Jost 300 26 px (drawn); „+ Lisa slaid“ at the right of the „Slaidid“
+   title (drawn). Media queries only (old iPads); colours from tokens.css and ui.module.css only. Nothing here is sticky or fixed (the PublishBar and
+   the section map carry data-fab-avoid).
+
+   - A slide's row (the Part 3 template): `24px | 72px | 1fr | 80px | 96px`, 12 px apart, 10 px × 12 px inside a 1 px --line box of radius 14 — the
+     handle, the 72 × 48 thumbnail (radius 10), the ET title (600 13 px) over its „RU: …“ line (muted), the tone tag (22 px, 600 10 px; „Tume“ ink,
+     „Hele“ white), ↑ ↓. The row's button holds the middle three. The handle is DragList's 44 px button, centred in its 24 px column (it reaches into
+     the padding and the gap, which hold nothing else).
+   - The open slide (the Part 4 frame): a 1 px ink box of radius 16, 14 px inside, `24px | 300px | 1fr` 16 px apart: the handle, the picture column
+     (the focal picker's picture, 190 px tall, radius 12; under it „Puuduta pilti, et valida fookus · Vaheta pilt“ in 11 px muted), the fields. The
+     picture column gives way first where the card is narrow (the fields keep 260 px); below 640 px it stands above the fields.
+   - A FAQ row (the Part 4 frame): `24px | 1fr | 90px`, at least 50 px tall, a 1 px --line above it — the handle, the question, the state „ET · RU“
+     (--ok) or „RU puudub“ (--warn) in 600 11 px with ▸ — and ↑ ↓ × after it; the answer under the question when it is open.
+   - The link row „Koolitaja plokk“: one row of at least 52 px, radius 16, the title (600 14 px) at the left and the link at the right, as Koolitaja's
+     folded story is drawn. */
+
+.cards {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* (inside .cards: over ui.card's padding, whichever of the two stylesheets comes first) */
+.cards .card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px;
+}
+
+.title {
+  margin: 0;
+  font: 300 26px/1.15 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.lead {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* the handle's column: DragList's 44 px button, centred over it */
+.grip {
+  display: flex;
+  justify-content: center;
+  width: 24px;
+}
+
+/* ---------- Slaidid ---------- */
+
+/* the title and „+ Lisa slaid“ on one row; everything else across the card */
+.cards .slidesCard {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 16px;
+}
+
+.slidesCard > :not(.title):not(.addSlide) {
+  grid-column: 1 / -1;
+}
+
+.addSlide {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.slides {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.slideList {
+  display: grid;
+  gap: 10px;
+}
+
+.slideRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+/* a row lifted by its handle: the row highlight */
+[data-dragging] > .slideRow,
+[data-dragging] > .openSlide .box {
+  background: var(--row-highlight);
+}
+
+.opener {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 80px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.opener:hover .rowTitle {
+  text-decoration: underline;
+}
+
+.opener:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.thumb {
+  display: block;
+  width: 72px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--first);
+  object-fit: cover;
+}
+
+.rowText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.rowTitle,
+.ruLine {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowTitle {
+  font-weight: 600;
+}
+
+.ruLine {
+  color: var(--muted);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 4px;
+}
+
+.tone {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 600 10px/1 var(--font-body);
+}
+
+.tone[data-dark] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.rowTools {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* the open slide */
+.box {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 300px) minmax(260px, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--ink);
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+/* it takes the focus when it opens: no ring for that, one for the keyboard */
+.box:focus {
+  outline: none;
+}
+
+.box:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.media {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* the picture first (a tap sets the focal point), then the hint line with „Vaheta pilt“, then the two views, their numbers and their crops */
+.media [data-focal-point] {
+  gap: 10px;
+  padding-top: 0;
+}
+
+.media [data-focal-pick] {
+  order: -2;
+}
+
+.media [data-focal-pick] img {
+  max-height: 190px;
+}
+
+.media [data-focal-hint] {
+  order: -1;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.media [data-focal-preview] > span:first-child {
+  height: 100px;
+}
+
+.noImage {
+  display: grid;
+  place-items: center;
+  height: 190px;
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--iced);
+  border-radius: 12px;
+  background: var(--first);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.mediaLine {
+  margin: 0;
+  font-size: 11px;
+}
+
+/* the upload's file field: hidden, its label is what is seen and pressed („Vaheta pilt“, underlined as drawn) */
+.media input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.change {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.media input[type="file"]:focus-visible + .change {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.media [data-upload-status],
+.media p[id$="-hint"] {
+  margin: 0;
+}
+
+.fields {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* „Hele“ | „Tume“ and „Eemalda slaid“ on one line (drawn) */
+.toneLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.toneSet {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pills {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* the radio lies over its pill, invisible: a tap anywhere on the pill picks it */
+.pill {
+  position: relative;
+  display: inline-flex;
+}
+
+.pill input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pill span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.pill input:checked + span {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.pill input:focus-visible + span {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.removeSlide {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--bad);
+  font: 600 12px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.removeSlide:hover {
+  text-decoration: underline;
+}
+
+.removeSlide:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* ---------- KKK ---------- */
+
+.faq {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.faqRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 90px auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 50px;
+  padding: 3px 0;
+  border-top: 1px solid var(--line);
+}
+
+[data-dragging] > .faqRow {
+  border-radius: 12px;
+  background: var(--row-highlight);
+}
+
+.question {
+  min-width: 0;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  font: 600 11px/1.2 var(--font-body);
+  text-align: right;
+  cursor: pointer;
+}
+
+.state[data-both] {
+  color: var(--ok);
+}
+
+/* ▸ points down while the answer is open */
+.state[aria-expanded="true"] > [aria-hidden="true"] {
+  transform: rotate(90deg);
+}
+
+.state:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.faqTools {
+  display: flex;
+  gap: 4px;
+}
+
+.answer {
+  grid-column: 2 / -1;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+/* ---------- the link row „Koolitaja plokk“ ---------- */
+
+.cards .linkRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 16px;
+  min-height: 52px;
+  padding: 4px 20px;
+  border-radius: 16px;
+}
+
+.linkTitle {
+  margin: 0;
+  font: 600 14px/1.3 var(--font-body);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+@media (max-width: 899.98px) {
+  .cards .card {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* a slide's row: the handle and the button on the first line (the tone under the title), the arrows under them at the right */
+  .slideRow {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+
+  .opener {
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+  }
+
+  .opener > .thumb {
+    grid-row: 1 / span 2;
+  }
+
+  .opener > .tags {
+    grid-column: 2;
+  }
+
+  .rowTools {
+    grid-column: 1 / -1;
+  }
+
+  /* the open slide: the handle beside the picture, the fields under both */
+  .box {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .box > .fields {
+    grid-column: 1 / -1;
+  }
+
+  .media [data-focal-pick] img {
+    max-height: 180px;
+  }
+
+  /* „Hele“ | „Tume“ as one control across the box (the phone frame), „Eemalda slaid“ under it */
+  .toneSet,
+  .pills {
+    width: 100%;
+  }
+
+  .pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pill span {
+    width: 100%;
+  }
+
+  /* a FAQ row: the handle and the question, then the state and the arrows and × */
+  .faqRow {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+
+  .question {
+    grid-column: 2 / -1;
+  }
+
+  .state {
+    grid-column: 1 / span 2;
+    justify-content: flex-start;
+  }
+
+  .answer {
+    grid-column: 1 / -1;
+  }
+}

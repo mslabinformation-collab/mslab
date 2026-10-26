@@ -1229,7 +1229,7 @@ export async function insertPreviewDraft(slug: string, title: string): Promise<s
 export const PRACTICE_DRAFTS_LOCK = "e2e-practice-drafts";
 
 /** Deletes every draft of a site entity (under its lock they are the holder's own); returns how many there were. */
-async function removeSiteDrafts(entity: "practice" | "trainer"): Promise<number> {
+async function removeSiteDrafts(entity: "practice" | "trainer" | "home"): Promise<number> {
   const sql = connect(false); // (a draft is on no page a visitor gets)
   try {
     const gone = await sql`delete from content_drafts where entity = ${entity} returning id`;
@@ -1250,6 +1250,15 @@ export const TRAINER_DRAFTS_LOCK = "e2e-trainer-drafts";
 
 /** Deletes every trainer draft (under TRAINER_DRAFTS_LOCK they are the holder's own); returns how many there were. */
 export const removeTrainerDrafts = (): Promise<number> => removeSiteDrafts("trainer");
+
+// Avaleht's parts are one entity too (admin UX pass piece 4a, Task 6): its editor's e2e in both edit projects (desktop the slides, the statement and the
+// trainer card's text; the phone the FAQ) makes home drafts, and either one's „Avalda muudatused“ would publish the other's. They take turns the same
+// way, under HOME_DRAFTS_LOCK (edit-lock.ts `homeDrafts`), and every home draft goes when the turn is taken and at its end.
+
+export const HOME_DRAFTS_LOCK = "e2e-home-drafts";
+
+/** Deletes every home draft (under HOME_DRAFTS_LOCK they are the holder's own); returns how many there were. */
+export const removeHomeDrafts = (): Promise<number> => removeSiteDrafts("home");
 
 /** Deletes every preview draft fixture; returns how many are left (0 when clean). */
 export async function removePreviewDrafts(): Promise<number> {

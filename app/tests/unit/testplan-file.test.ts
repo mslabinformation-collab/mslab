@@ -701,21 +701,24 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
   const whole = (id: string) => [...find(id).steps, ...find(id).expect].join("\n");
   const t = adminEt.i18n;
 
-  test("„Sisu keel lehe päises“ is a new check in Haldus, quoting the switch's words as the page shows them", () => {
+  test("„Sisu keel lehe päises“ is a check in Haldus (reworded in piece 4a: Avaleht's answers fold), quoting the switch's words as the page shows them", () => {
     const check = find("haldus-keel-lehel");
-    expect(check).toMatchObject({ area: "haldus", who: "maria", writes: false, mark: "new", href: "/admin/avaleht" });
+    expect(check).toMatchObject({ area: "haldus", who: "maria", writes: false, mark: "reworded", href: "/admin/avaleht" });
     expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     for (const word of [t.contentLang, t.lang.et, t.lang.ru, t.next, t.copyFromEt, t.missing, t.etTag]) expect(whole("haldus-keel-lehel"), word).toContain(`„${word}“`);
     expect(whole("haldus-keel-lehel")).toContain(`„${t.ruMissing.replace("{n} ", "… ")}“`);
   });
 
-  test("it makes its own gap: two Russian fields are emptied on the screen and not saved, so the count, „Järgmine →“ and the copy show whatever the data is; it says the line counts folded slides", () => {
-    const steps = find("haldus-keel-lehel").steps.join("\n");
-    expect(steps).toContain("Tühjenda vene väljad „Küsimus 1“ ja „Vastus 1“ ning ära salvesta.");
-    expect(steps.indexOf("Tühjenda")).toBeLessThan(steps.indexOf(`„${t.next}“`));
-    expect(steps.indexOf("Tühjenda")).toBeLessThan(steps.indexOf(`„${t.copyFromEt}“`));
+  test("it makes its own gap: two Russian texts are emptied (into Avaleht's draft) and thrown away at the end, so the count, „Järgmine →“ and the copy show whatever the data is; it says the line counts closed slides and folded answers", () => {
+    const steps = find("haldus-keel-lehel").steps;
+    const all = steps.join("\n");
+    // (piece 4a, Task 6: a FAQ answer is folded behind ▸, and what is typed waits in the draft; „Loobu muudatustest“ leaves the site as it was)
+    expect(all).toContain("Vajuta esimese küsimuse real ▸, tühjenda küsimuse ja vastuse vene tekst ja vajuta uuesti ▸.");
+    expect(all.indexOf("tühjenda")).toBeLessThan(all.indexOf(`„${t.next}“`));
+    expect(all.indexOf("tühjenda")).toBeLessThan(all.indexOf(`„${t.copyFromEt}“`));
+    expect(steps.at(-1)).toBe(`Vajuta ribal „${adminEt.publish.discard}“ ja kinnita.`);
     expect(find("haldus-keel-lehel").writes).toBe(false);
-    expect(find("haldus-keel-lehel").expect.join("\n")).toContain("kokkuvolditud slaidide väljad");
+    expect(find("haldus-keel-lehel").expect.join("\n")).toContain("kinniste slaidide ja kokkuvolditud vastuste väljad");
   });
 
   test("a check that goes to RU ends with „ET“ under „Sisu keel“: the device keeps the language, and the next check starts in Estonian", () => {
@@ -1040,18 +1043,21 @@ describe("the review tools' checks (22.10)", () => {
     expect(expectText).toContain("Teine proov");
   });
 
-  test("a check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“ on Avaleht", () => {
+  test("a check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of Avaleht's publish bar", () => {
     const check = find("haldus-kommentaar-nupp");
     // (reworded in admin UX pass piece 3b: Seaded has no save bar since Task 5 — its legal texts are drafts with their own „Avalda …“ —, so the check
-    // looks at the save bar of Avaleht, an editor that keeps one)
+    // looked at the save bar of Avaleht; reworded again in piece 4a, Task 6: Avaleht is on the draft layer, so a word typed into „MS LABi lause“ brings
+    // its publish bar, whose „Avalda muudatused“ the bubble must leave clear, and the word taken out again takes the bar away: nothing is published)
     expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "reworded" });
     expect(markedSince(check.markedAt)).toBe(true);
     expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
-    expect(check.steps.join(" ")).toContain("Ava halduses „Avaleht“ ja vaata lehe allservas nuppu „Salvesta“.");
+    expect(check.steps.join(" ")).toContain("Ava halduses „Avaleht“, lisa „MS LABi lause“ lõppu sõna Proov ja vaata ribal nuppu „Avalda muudatused“.");
+    expect(check.steps.at(-1)).toBe("Kustuta sõna Proov ja oota, kuni riba kaob.");
     expect(check.steps.join(" ")).not.toContain("„Lepingud ja tingimused“");
-    expect(check.steps.join(" ")).not.toContain("lõppu");
+    expect(check.steps.join(" ")).not.toContain("Salvesta");
     const text = whole("haldus-kommentaar-nupp");
-    for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);
+    for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", adminEt.publish.publish, adminEt.publish.phonePublish, "Telegram", "/guide/tagasiside/", "Proov 1"])
+      expect(text, word).toContain(word);
     // the words the bubble itself shows (public/feedback.js)
     expect(text).toContain("Aitäh! Kommentaar on saadetud ✓");
     // fix round 1: the wording, and the claim about covered buttons is about the page the check opens; the login page has no bubble (signed out)

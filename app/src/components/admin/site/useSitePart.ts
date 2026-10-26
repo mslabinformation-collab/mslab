@@ -31,6 +31,8 @@ export const sitePartUrl = (entity: SiteEntity, part: string): string => `/api/a
 /** A part's way for its cards: what they show and how they change it (as course/types.ts PartApi, for a part that is always drafted). */
 export type SitePartApi<V extends Record<string, unknown> = Record<string, unknown>> = {
   fields: V;
+  /** Live's value of the part, as the page read it: what the public page shows (a list's row is „· avaldamata“ where it differs from its live row). */
+  live: V;
   /** A typed change: saved 1.5 s after the last one, or when the field is left (`flush`). */
   set<K extends keyof V & string>(name: K, value: V[K]): void;
   /**
@@ -70,6 +72,24 @@ const errors = adminEt.courseEditor.errors as Record<string, string>;
 
 /** The words of a refusal's code: the editors' field errors (domain/field-check.ts codes); anything else, the generic line. */
 export const refusalText = (code: string): string => errors[code] ?? adminEt.courseEditor.invalid;
+
+/**
+ * A refused list placed on its rows (README B2, §4: a list's errors keyed by row id, not by its place; course/TestCard.tsx placeOf's way): the server's
+ * own loose check (domain/site-checks.ts, `problemsOf`) run over the list the refused save sent (`sent`: the part's refusedValue), each row's problems
+ * — its fields' codes, by the field's name in the row — by the row's key, so they land on that row wherever it is now (moved, or with rows added
+ * before it while the save was on its way). `path(j)` is the row's name in the check's names (`slides.2`).
+ */
+export function rowRefusals<R>(sent: unknown, problemsOf: (rows: R[]) => Record<string, string>, keyOf: (row: R) => string, path: (j: number) => string): Map<string, Record<string, string>> {
+  const placed = new Map<string, Record<string, string>>();
+  if (!Array.isArray(sent)) return placed;
+  const problems = problemsOf(sent as R[]);
+  (sent as R[]).forEach((row, j) => {
+    const prefix = `${path(j)}.`;
+    const own = Object.fromEntries(Object.entries(problems).flatMap(([name, code]) => (name.startsWith(prefix) ? [[name.slice(prefix.length), code]] : [])));
+    if (Object.keys(own).length > 0 && !placed.has(keyOf(row))) placed.set(keyOf(row), own);
+  });
+  return placed;
+}
 
 /**
  * The control of a part's field on the page (see the top of the file), focused: `row` given (a list field's row, by its place in the draft), that
@@ -169,6 +189,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
   return useMemo<SitePartApi<V>>(() => {
     return {
       fields,
+      live: live as V,
       set: (name, value) => take(name, value),
       update: update as SitePartApi<V>["update"],
       commit: (name: string, ...value: unknown[]) => {

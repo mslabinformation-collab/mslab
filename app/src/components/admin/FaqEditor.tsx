@@ -1,95 +1,209 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { moveItem } from "@/domain/course-editor";
+import { sameSiteValue } from "@/domain/site-changes";
 import { SITE_LIMITS, type FaqDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
+import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
-import { I18nInput } from "./I18nInput";
+import { DragList } from "./DragList";
+import { useEditLang } from "./EditLang";
+import { focusFell } from "./focus-fell";
+import { I18nInput, lacksRu } from "./I18nInput";
+import { insertAt } from "./row-keys";
+import { useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
-import styles from "./site-editor.module.css";
+import styles from "./HomeEditor.module.css";
+
+// Avaleht's „KKK“ (admin UX pass piece 4a, Task 6; the Part 4 C1 frame and its note "FAQ rows: question visible, answer collapsed; drag, ↑/↓ and
+// removal with undo"; piece4-texts S4-11, S4-3; builder notes §5 "a FAQ answer is folded"): each row is the handle, the question's field, the row's
+// state „ET · RU“ (both texts have their Russian) or „RU puudub“ with ▸, which opens the answer under it, and ↑ / ↓ / × (DragList: a drag with a finger
+// or the mouse, the arrows, the arrow keys on the handle). × takes the row out at once with the UndoBar „Küsimus eemaldatud.“, whose „Võta tagasi“ puts
+// it back at its place. The rows take the page's language (EditLang.tsx); a folded answer whose Russian text is missing is counted by the page and
+// „Järgmine →“ opens it, as a closed slide's fields are (SlidesEditor's CollapsedRu).
 
 let added = 0;
 
+const hasRu = (v: I18n) => Boolean(v.ru?.trim());
+
 /**
- * The home page FAQ: question and answer pairs in two languages (they take the page's language, EditLang.tsx), ↑ / ↓, ×, "Lisa
- * küsimus". As in ListEditor, the arrows are aria-disabled at the ends and the focus follows adds and removals.
+ * A folded answer is not on the page, so when it has Estonian text and no Russian it tells the page itself: „RU puudub {n} väljal“ counts it, and
+ * „Järgmine →“ opens it with the cursor in its Russian text. Its place on the page is its row's ▸ (`anchor`), after the question. Renders nothing.
  */
-export function FaqEditor({ items, onChange, err }: { items: FaqDraft[]; onChange: (items: FaqDraft[]) => void; err: (name: string) => string | undefined }) {
+function FoldedRu({ item, anchor, reveal }: { item: FaqDraft; anchor: string; reveal: (key: string) => void }) {
+  const { register } = useEditLang();
+  const missing = lacksRu(item.a);
+  const key = item.uid;
+  useEffect(() => (missing ? register(`${anchor}-answer`, true, () => reveal(key), anchor) : undefined), [register, anchor, missing, reveal, key]);
+  return null;
+}
+
+export type FaqEditorProps = {
+  items: FaqDraft[];
+  /** Live's questions: a field of a row that is live too says „· avaldamata“ where it differs from it (README §1.8). */
+  live?: readonly FaqDraft[];
+  /** A change of the rows, worked out from the list as it is when it lands; rows added, moved or removed save at once (the part's update). */
+  onUpdate: (fn: (items: FaqDraft[]) => FaqDraft[]) => void;
+  /** Each row's refused fields (`q`, `a`), in words, by the row's key (`uid`): placed on that row wherever it is now (README B2). */
+  errors?: ReadonlyMap<string, Readonly<Record<string, string>>>;
+  /** A refusal of the list as a whole (more than 30), under the rows. */
+  error?: string;
+};
+
+/** Where the focus goes after the next render: a row's question, its answer („Järgmine →“), its × (after a removal) or ▸ (after an undo), „Lisa küsimus“. */
+type Focus = { uid: string; what: "q" | "a" | "remove" | "toggle" } | "add" | null;
+
+export function FaqEditor({ items, live, onUpdate, errors, error }: FaqEditorProps) {
   const t = adminEt.home.faq;
   const uid = useId();
+  /** The rows whose answer is open (several may be). */
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const root = useRef<HTMLDivElement>(null);
-  const focus = useRef<{ uid: string; what: "q" | "up" | "down" } | "add" | null>(null);
+  const addBtn = useRef<HTMLButtonElement>(null);
+  const focus = useRef<Focus>(null);
+  const { change, offer } = useListRows<FaqDraft>({ owner: "faq", items, onUpdate });
+
+  // a refused answer opens its row (once per refusal)
+  const [seenErrors, setSeenErrors] = useState(errors);
+  if (errors !== seenErrors) {
+    setSeenErrors(errors);
+    const refused = items.filter((x) => errors?.get(x.uid)?.a !== undefined).map((x) => x.uid);
+    if (refused.length > 0) setOpen((o) => new Set([...o, ...refused]));
+  }
 
   useEffect(() => {
     const target = focus.current;
     if (!target) return;
     focus.current = null;
-    if (target === "add") root.current?.querySelector<HTMLElement>("[data-add-faq]")?.focus();
-    else {
-      const row = root.current?.querySelector(`[data-faq-row="${CSS.escape(target.uid)}"]`);
-      (target.what === "q" ? row?.querySelector<HTMLElement>("[data-lang-field]") : row?.querySelector<HTMLElement>(`[data-tool="${target.what}"]`))?.focus();
-    }
+    if (target === "add") return addBtn.current?.focus();
+    const row = root.current?.querySelector<HTMLElement>(`[data-faq-row="${CSS.escape(target.uid)}"]`);
+    if (!row) return;
+    const i = items.findIndex((x) => x.uid === target.uid);
+    if (target.what === "q") return row.querySelector<HTMLElement>(`[data-i18n="faq.${i}.q"]`)?.focus();
+    if (target.what === "remove") return row.querySelector<HTMLElement>('[data-tool="remove"]')?.focus();
+    // (after an undo: only when the focus has nowhere else to be)
+    if (target.what === "toggle") return void (focusFell() && row.querySelector<HTMLElement>("[data-faq-toggle]")?.focus());
+    // „Järgmine →“ opened the answer: the cursor in its Russian text, the field in the middle of the screen
+    const field = row.querySelector<HTMLElement>(`[data-i18n="faq.${i}.a"]`);
+    field?.focus({ preventScroll: true });
+    field?.scrollIntoView?.({ block: "center" });
   });
 
-  const edit = (i: number, patch: Partial<FaqDraft>) => onChange(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const move = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= items.length) return;
-    focus.current = { uid: items[i].uid, what: dir < 0 ? "up" : "down" };
-    onChange(moveItem(items, i, j));
-  };
+  /** „Järgmine →“ at a folded answer: it opens, the cursor goes into its Russian text. */
+  const reveal = useCallback((key: string) => {
+    focus.current = { uid: key, what: "a" };
+    setOpen((o) => new Set([...o, key]));
+  }, []);
+  const toggle = (key: string) =>
+    setOpen((o) => {
+      const next = new Set(o);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  /** A row's texts, found by its key. */
+  const edit = (key: string, patch: Partial<FaqDraft>) => onUpdate((list) => list.map((x) => (x.uid === key ? { ...x, ...patch } : x)));
+  const move = (from: number, to: number) => change((list) => moveItem(list, from, to));
   const remove = (i: number) => {
+    const item = items[i];
     const next = items[i + 1] ?? items[i - 1];
-    focus.current = next ? { uid: next.uid, what: "q" } : "add";
-    onChange(items.filter((_, j) => j !== i));
+    focus.current = next ? { uid: next.uid, what: "remove" } : "add";
+    change((list) => list.filter((x) => x.uid !== item.uid));
+    // back at its place with its key, unless it is in the list again already
+    offer(
+      adminEt.courseEditor.fields.testRemoved,
+      (list) => (list.some((x) => x.uid === item.uid) ? list : insertAt(list, i, item)),
+      () => void (focus.current = { uid: item.uid, what: "toggle" }),
+    );
   };
   const add = () => {
     const item: FaqDraft = { uid: `new-${Date.now().toString(36)}-${++added}`, id: null, q: { et: "" }, a: { et: "" } };
     focus.current = { uid: item.uid, what: "q" };
-    onChange([...items, item]);
+    setOpen((o) => new Set([...o, item.uid]));
+    change((list) => [...list, item]);
   };
-  const listError = err("faq");
 
   return (
-    <div ref={root} className={ed.list} data-faq-editor="" role="group" aria-labelledby={`${uid}-title`} data-invalid={listError ? "" : undefined} tabIndex={listError ? -1 : undefined}>
-      <h3 id={`${uid}-title`} className={ui.sr}>
-        {t.title}
-      </h3>
+    <div ref={root} className={styles.faq} data-faq-editor="">
       {items.length === 0 ? (
         <p className={`${ui.muted} ${ui.small}`}>{t.empty}</p>
       ) : (
-        <ol className={ed.rows}>
-          {items.map((item, i) => {
+        <DragList
+          items={items}
+          keyOf={(x) => x.uid}
+          label={() => ""}
+          arrowNames={(n) => ({ up: fill(t.up, { n }), down: fill(t.down, { n }) })}
+          onMove={move}
+          className={styles.faqList}
+          renderRow={(item, i, handle, arrows) => {
             const n = i + 1;
+            const rowId = `${uid}-${item.uid}`;
+            const expanded = open.has(item.uid);
+            const both = hasRu(item.q) && hasRu(item.a);
+            const was = live?.find((x) => x.uid === item.uid);
+            const changed = (f: "q" | "a") => was !== undefined && !sameSiteValue(item[f], was[f]);
+            const own = errors?.get(item.uid);
             return (
-              <li key={item.uid} className={ed.item} data-faq-row={item.uid}>
-                <span className={ed.num} aria-hidden="true">
-                  {String(n).padStart(2, "0")}
-                </span>
-                <div className={styles.faqFields}>
-                  <I18nInput label={`${t.question} ${n}`} value={item.q} onChange={(q) => edit(i, { q })} maxLength={SITE_LIMITS.question} error={err(`faq.${i}.q`)} name={`faq.${i}.q`} />
-                  <I18nInput label={`${t.answer} ${n}`} value={item.a} onChange={(a) => edit(i, { a })} multiline rows={3} maxLength={SITE_LIMITS.answer} error={err(`faq.${i}.a`)} name={`faq.${i}.a`} />
+              <div id={rowId} className={styles.faqRow} data-faq-row={item.uid}>
+                {!expanded && <FoldedRu item={item} anchor={`${rowId}-toggle`} reveal={reveal} />}
+                <span className={styles.grip}>{handle}</span>
+                <div className={styles.question}>
+                  <I18nInput
+                    label={`${t.question} ${n}`}
+                    labelHidden
+                    value={item.q}
+                    onChange={(q) => edit(item.uid, { q })}
+                    maxLength={SITE_LIMITS.question}
+                    error={own?.q}
+                    name={`faq.${i}.q`}
+                    unpublished={changed("q")}
+                  />
                 </div>
-                <span className={ed.tools}>
-                  <button type="button" className={ed.iconBtn} data-tool="up" aria-label={fill(t.up, { n })} aria-disabled={i === 0 || undefined} onClick={() => move(i, -1)}>
-                    ↑
-                  </button>
-                  <button type="button" className={ed.iconBtn} data-tool="down" aria-label={fill(t.down, { n })} aria-disabled={i === items.length - 1 || undefined} onClick={() => move(i, 1)}>
-                    ↓
-                  </button>
-                  <button type="button" className={ed.iconBtn} aria-label={fill(t.remove, { n })} onClick={() => remove(i)}>
+                <button
+                  id={`${rowId}-toggle`}
+                  type="button"
+                  className={styles.state}
+                  aria-expanded={expanded}
+                  aria-controls={expanded ? `${rowId}-answer` : undefined}
+                  onClick={() => toggle(item.uid)}
+                  data-faq-toggle=""
+                  data-both={both || undefined}
+                >
+                  <span className={ui.sr}>
+                    {t.answer} {n} ·{" "}
+                  </span>
+                  <span data-faq-state="">{both ? t.both : adminEt.sectionMap.ru}</span> <span aria-hidden="true">▸</span>
+                </button>
+                <span className={styles.faqTools}>
+                  {arrows}
+                  <button type="button" className={ed.iconBtn} data-tool="remove" aria-label={fill(t.remove, { n })} onClick={() => remove(i)}>
                     ×
                   </button>
                 </span>
-              </li>
+                {expanded && (
+                  <div id={`${rowId}-answer`} className={styles.answer}>
+                    <I18nInput
+                      label={`${t.answer} ${n}`}
+                      value={item.a}
+                      onChange={(a) => edit(item.uid, { a })}
+                      multiline
+                      rows={3}
+                      maxLength={SITE_LIMITS.answer}
+                      error={own?.a}
+                      name={`faq.${i}.a`}
+                      unpublished={changed("a")}
+                    />
+                  </div>
+                )}
+              </div>
             );
-          })}
-        </ol>
+          }}
+        />
       )}
-      {listError && <p className={ui.error}>{listError}</p>}
-      <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${ed.addBtn}`} onClick={add} data-add-faq="">
+      {error && <p className={ui.error}>{error}</p>}
+      <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${ed.addBtn}`} onClick={add} data-add-faq="">
         + {t.add}
       </button>
     </div>

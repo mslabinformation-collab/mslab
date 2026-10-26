@@ -1258,26 +1258,26 @@
       "steps": [
         "Ava „Avaleht“ ja vaata lehe päist: seal on „Sisu keel“ ja kaks nuppu, „ET“ ja „RU“.",
         "Vajuta „RU“, lae leht uuesti, ava „Koolitaja“ ja siis uuesti „Avaleht“.",
-        "Tühjenda vene väljad „Küsimus 1“ ja „Vastus 1“ ning ära salvesta.",
+        "Vajuta esimese küsimuse real ▸, tühjenda küsimuse ja vastuse vene tekst ja vajuta uuesti ▸.",
         "Vaata päist: seal on rida „RU puudub … väljal“ ja „Järgmine →“.",
         "Vajuta „Järgmine →“ kaks korda.",
-        "Vajuta tühja välja „Küsimus 1“ all „Kopeeri eesti keelest“.",
+        "Vajuta esimese küsimuse tühja vene välja all „Kopeeri eesti keelest“.",
         "Vajuta lehe päises „Sisu keel“ juures „ET“.",
-        "Lae leht uuesti ilma salvestamata."
+        "Vajuta ribal „Loobu muudatustest“ ja kinnita."
       ],
       "expect": [
         "Kõik lehe väljad lülituvad korraga vene keelele ja iga välja kohal on eestikeelne tekst märkega „ET“.",
         "Pärast uuesti laadimist ja teisel lehel on valitud keel sama.",
-        "Rida „RU puudub … väljal“ loendab ka kokkuvolditud slaidide väljad, kus vene tekst puudub.",
-        "„Järgmine →“ viib kursori järgmisele tühjale vene väljale, lehe järjekorras, ja avab vajadusel slaidi.",
+        "Rida „RU puudub … väljal“ loendab ka kinniste slaidide ja kokkuvolditud vastuste väljad, kus vene tekst puudub.",
+        "„Järgmine →“ viib kursori järgmisele tühjale vene väljale, lehe järjekorras, ja avab vajadusel slaidi või vastuse.",
         "„Kopeeri eesti keelest“ paneb välja eestikeelse teksti, märge „tõlge tulekul“ kaob ja loendur väheneb.",
-        "Pärast nuppu „ET“ on väljad eesti keeles."
+        "Pärast nuppu „ET“ on väljad eesti keeles; pärast loobumist on vene tekstid endised."
       ],
       "why": "Maria näeb ühe pilguga, mis jäi venekeelsena kirjutamata.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-margis",
@@ -1520,23 +1520,30 @@
       "title": "Avalehe slaid",
       "href": "/admin/avaleht",
       "steps": [
-        "Ava „Avaleht“ ja vajuta „Slaid 1“, et see avada.",
-        "Lisa „Pealkiri“ lõppu sõna Proov ja vajuta „Salvesta“.",
-        "Ava avaleht.",
-        "Eemalda sõna Proov ja salvesta.",
-        "Võta ära märge „Näidatakse avalehel“, salvesta ja ava avaleht.",
-        "Pane märge tagasi ja salvesta."
+        "Ava „Avaleht“ ja vajuta esimese slaidi real, siis teise slaidi real.",
+        "Lisa teise slaidi „Pealkiri“ lõppu sõna Proov ja oota olekut „Mustand salvestatud“.",
+        "Ava avaleht, siis vajuta halduses ribal „Avalda muudatused“ ja ava avaleht uuesti.",
+        "Vajuta „+ Lisa slaid“, kirjuta „Pealkiri“: Proov 2 ja vajuta ribal „Avalda muudatused“.",
+        "Vajuta uuel slaidil „Eemalda slaid“, siis allservas „Võta tagasi“ ja siis uuesti „Eemalda slaid“.",
+        "Lohista mõne slaidi käepide ⋮⋮ sõrmega teise kohale, siis vajuta ribal „Loobu muudatustest“ ja kinnita.",
+        "Eemalda teise slaidi pealkirjast sõna Proov ja vajuta „Avalda muudatused“.",
+        "Võta ära märge „Näidatakse avalehel“, avalda ja ava avaleht; siis pane märge tagasi ja avalda."
       ],
       "expect": [
-        "Pärast salvestamist näed „Salvestatud.“.",
-        "Avalehe esimesel slaidil on sõna Proov.",
-        "Pärast eemaldamist on pealkiri nagu enne.",
-        "Ilma märketa on slaid halduses „Peidetud“ ja avalehel seda pole.",
-        "Pärast märke tagasipanekut on slaid jälle avalehel."
+        "Korraga on lahti üks slaid: teise avamisel sulgub esimene; lahti oleval slaidil on pilt ja väljad.",
+        "Väljal on „· avaldamata“, ribal „Avaldamata muudatused: 1 · Slaid 2 pealkiri. Avalikul lehel on näha eelmine versioon.“.",
+        "Enne avaldamist on avalehel vana pealkiri, pärast avaldamist sõnaga Proov; riba kaob.",
+        "Uus slaid avaneb, kursor on pealkirjas; ribal on „Puudub: slaid … pilt“ ja avalehel uut slaidi pole.",
+        "„Eemalda slaid“ võtab slaidi kohe ära, allservas on „Slaid eemaldatud.“ ja „Võta tagasi“ toob selle tagasi.",
+        "Slaid liigub lohistades uude kohta ja ribal on „Slaidid“; pärast loobumist on järjekord endine.",
+        "Pärast avaldamist on avalehe pealkiri nagu enne.",
+        "Ilma märketa on slaidi real „Peidetud“ ja avalehel seda pole; märke tagasipanekul on slaid jälle avalehel."
       ],
       "why": "Slaidid on avalehe esimene vaade.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-avaleht-kkk",
@@ -1546,19 +1553,26 @@
       "title": "Avalehe küsimused",
       "href": "/admin/avaleht",
       "steps": [
-        "Ava „Avaleht“ ja keri plokini „Korduma kippuvad küsimused“.",
-        "Vajuta „Lisa küsimus“.",
-        "Kirjuta „Küsimus“: Proov 1? ja „Vastus“: Proov 1.",
-        "Vajuta „Salvesta“ ja ava avaleht.",
-        "Eemalda see küsimus ja salvesta."
+        "Ava „Avaleht“ ja keri kaardini „KKK“.",
+        "Vajuta „+ Lisa küsimus“ ja kirjuta küsimuseks Proov 1? ning „Vastus“: Proov 1.",
+        "Oota olekut „Mustand salvestatud“, ava avaleht ja siis vajuta halduses ribal „Avalda muudatused“.",
+        "Liiguta see küsimus nupuga ↑ esimeseks või lohista selle käepide ⋮⋮ sõrmega üles.",
+        "Vajuta selle rea nupule ×, siis allservas „Võta tagasi“.",
+        "Eemalda küsimus uuesti nupuga ×, vajuta ribal „Avalda muudatused“ ja ava avaleht."
       ],
       "expect": [
-        "Avalehe küsimuste lõpus on „Proov 1?“.",
-        "Pärast eemaldamist on küsimus avalehelt kadunud."
+        "Igal real on küsimus, olek „ET · RU“ või „RU puudub“ ja kokku volditud vastus ▸.",
+        "Uus rida tuleb lõppu, selle vastus on lahti ja kursor on küsimuses.",
+        "Enne avaldamist pole küsimust avalehel; pärast avaldamist on avalehe küsimuste lõpus „Proov 1?“.",
+        "Küsimus liigub kohe üles ja ribal on „KKK“.",
+        "× võtab küsimuse kohe ära, allservas on „Küsimus eemaldatud.“; „Võta tagasi“ toob selle tagasi.",
+        "Pärast avaldamist on küsimus avalehelt kadunud."
       ],
       "why": "Maria vastab korduvatele küsimustele ise.",
       "risk": "low",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-uudised-postitus",
@@ -2298,20 +2312,22 @@
         "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaariks: Proov 1.",
         "Vajuta „Saada“ ja ava Telegram.",
         "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
-        "Ava halduses „Avaleht“ ja vaata lehe allservas nuppu „Salvesta“."
+        "Ava halduses „Avaleht“, lisa „MS LABi lause“ lõppu sõna Proov ja vaata ribal nuppu „Avalda muudatused“.",
+        "Kustuta sõna Proov ja oota, kuni riba kaob."
       ],
       "expect": [
         "Nupp „Kommentaar“ on igal halduse lehel, millele oled sisse logitud.",
         "Pärast „Saada“ ütleb paneel „Aitäh! Kommentaar on saadetud ✓“.",
         "Telegramis on uus kommentaar, kus on „Haldus“ ja tekst Proov 1.",
         "Kommentaaride lehel on see kommentaar sildiga „Haldus“ ja lingiga „Näita kohta“, mis avab sama halduse lehe.",
-        "Nupp „Kommentaar“ ei kata sellel lehel ühtegi nuppu ja „Salvesta“ on täielikult näha."
+        "Nupp „Kommentaar“ ei kata sellel lehel ühtegi nuppu ja „Avalda muudatused“ (telefonis „Avalda“) on täielikult näha.",
+        "Pärast sõna kustutamist riba kaob ja avalehel jääb lause endiseks."
       ],
       "why": "Kommentaar halduse lehe kohta peab jõudma Dimini samamoodi nagu kommentaar kodulehe kohta.",
       "risk": "low",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-vorm-vead",

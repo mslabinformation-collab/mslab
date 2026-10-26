@@ -2179,10 +2179,12 @@ export const adminEt = {
     },
   },
 
+  // C1 Avaleht (admin UX pass piece 4a, Task 6; piece4-texts S4-5 eyebrow, S4-6 lead, S4-7 card and map names, S4-8 the link row, S4-9 a slide row's
+  // Russian line, S4-10 the open slide, S4-11 a FAQ row's state, S4-3 the slide's UndoBar line; the FAQ's is courseEditor.fields.testRemoved)
   home: {
-    eyebrow: "Avaleht",
+    eyebrow: "Koduleht",
     title: "Avaleht",
-    lead: "Avalehe slaidid, MS LABi lause ja korduma kippuvad küsimused. Pärast salvestamist on muudatus avalehel kohe näha.",
+    lead: "Avalehe slaidid, MS LABi lause ja korduma kippuvad küsimused. Muudatus on avalehel näha pärast avaldamist.",
     slides: {
       title: "Slaidid",
       lead: "Slaidid on avalehel selles järjekorras. Tumedal slaidil on päis, tekst ja nupud valged, heledal tumedad.",
@@ -2193,6 +2195,14 @@ export const adminEt = {
       up: "Liiguta slaid {n} ettepoole",
       down: "Liiguta slaid {n} tahapoole",
       remove: "Eemalda slaid {n}",
+      // S4-10: the open slide's remove button, as it is seen (its name for a screen reader is `remove`, with the slide's number)
+      removeText: "Eemalda slaid",
+      // S4-3: the UndoBar's line after „Eemalda slaid“
+      removed: "Slaid eemaldatud.",
+      // S4-9: a row's second line, the slide's Russian title; with none, „RU: RU puudub“ (sectionMap.ru in its place)
+      ru: "RU: {title}",
+      // S4-10: under the open slide's picture, before „Vaheta pilt“ (the other pictures keep editor.focal.hint)
+      focalHint: "Puuduta pilti, et valida fookus",
       max: "Slaide saab olla kuni 8.",
       empty: "Slaide pole. Ilma slaidita algab avaleht kohe koolitustega.",
       hidden: "Peidetud",
@@ -2206,7 +2216,8 @@ export const adminEt = {
       kicker: "Väike pealkiri",
       titleField: "Pealkiri",
       titleHint: "Uus rida pealkirjas: vajuta Enter.",
-      text: "Tekst",
+      // S4-10 (was „Tekst“): the slide's text, printed under its title
+      text: "Alapealkiri",
       ctaLabel: "Nupu tekst",
       ctaLabelHint: "Tühjaks jättes: „Leia oma koolitus“.",
       ctaHref: "Nupp viib",
@@ -2219,13 +2230,15 @@ export const adminEt = {
       hint: "Tühjaks jättes lõiku avalehel ei näidata.",
     },
     teaser: {
-      title: "Koolitaja kaart avalehel",
+      // S4-7
+      title: "Koolitaja kaart",
       lead: "Lühike tekst avalehe koolitaja kaardil nime all. Nimi, foto ja numbrid tulevad lehelt Koolitaja.",
       field: "Tekst",
       hint: "Tühjaks jättes näidatakse koolitaja tutvustuse esimest lõiku.",
     },
     faq: {
-      title: "Korduma kippuvad küsimused",
+      // S4-7
+      title: "KKK",
       lead: "Küsimused ja vastused avalehe lõpus, selles järjekorras. Esimene on lahti.",
       item: "Küsimus {n}",
       question: "Küsimus",
@@ -2235,11 +2248,15 @@ export const adminEt = {
       down: "Liiguta küsimus {n} alla",
       remove: "Eemalda küsimus {n}",
       empty: "Küsimusi pole. Ilma küsimusteta plokki avalehel ei näidata.",
+      // S4-11: a row's state when its question and its answer both have their Russian text; else „RU puudub“ (sectionMap.ru)
+      both: "ET · RU",
     },
     trainer: {
       title: "Koolitaja plokk",
-      text: "Avalehe koolitaja plokk näitab koolitaja portreed, nime, tutvustuse esimest lõiku ja numbreid. Neid muudad lehel Koolitaja.",
-      link: "Ava Koolitaja",
+      // S4-8: the link row under the title (its fields are Koolitaja's)
+      link: "Muuda lehel Koolitaja →",
+      // S4-7: the section map's value for the link row
+      mapValue: "→",
     },
   },
 

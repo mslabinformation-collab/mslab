@@ -1,5 +1,5 @@
 import type { TestInfo } from "@playwright/test";
-import { holdLocalLock, LOCK_WAIT_MS, PRACTICE_DRAFTS_LOCK, removePracticeDrafts, removeTrainerDrafts, TRAINER_DRAFTS_LOCK } from "./fixtures";
+import { HOME_DRAFTS_LOCK, holdLocalLock, LOCK_WAIT_MS, PRACTICE_DRAFTS_LOCK, removeHomeDrafts, removePracticeDrafts, removeTrainerDrafts, TRAINER_DRAFTS_LOCK } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { test as base } from "./test";
 
@@ -39,8 +39,19 @@ async function draftsTurn(lock: string, remove: () => Promise<number>, provide: 
  * `trainerDrafts` (piece 4a, Task 5): the same for Koolitaja's drafts (fixtures.ts TRAINER_DRAFTS_LOCK), taken after the practice turn and given back
  * before it, so the turns are always taken in one order. Its value may name the one project whose run of the test makes the drafts ("chromium-edit"):
  * the other project's run, which skips itself in its body, takes no turn (the fixtures are set up before the body, so it would wait for nothing).
+ *
+ * `homeDrafts` (piece 4a, Task 6): the same for Avaleht's drafts (fixtures.ts HOME_DRAFTS_LOCK), taken after the trainer turn and given back before
+ * it, and named by project the same way.
  */
-export const test = base.extend<{ editTurn: void; practiceDrafts: boolean; practiceTurn: void; trainerDrafts: boolean | "chromium-edit" | "mobile-edit"; trainerTurn: void }>({
+export const test = base.extend<{
+  editTurn: void;
+  practiceDrafts: boolean;
+  practiceTurn: void;
+  trainerDrafts: boolean | "chromium-edit" | "mobile-edit";
+  trainerTurn: void;
+  homeDrafts: boolean | "chromium-edit" | "mobile-edit";
+  homeTurn: void;
+}>({
   editTurn: [
     async ({}, provide, info) => {
       if (!PROD_BUILD) return provide();
@@ -71,6 +82,15 @@ export const test = base.extend<{ editTurn: void; practiceDrafts: boolean; pract
       void practiceTurn; // (after the edit and the practice turns, and given back before them: one order for every test)
       if (!trainerDrafts || (trainerDrafts !== true && trainerDrafts !== info.project.name)) return provide();
       await draftsTurn(TRAINER_DRAFTS_LOCK, removeTrainerDrafts, provide, info);
+    },
+    { auto: true },
+  ],
+  homeDrafts: [false, { option: true }],
+  homeTurn: [
+    async ({ homeDrafts, trainerTurn }, provide, info) => {
+      void trainerTurn; // (after the edit, practice and trainer turns, and given back before them: one order for every test)
+      if (!homeDrafts || (homeDrafts !== true && homeDrafts !== info.project.name)) return provide();
+      await draftsTurn(HOME_DRAFTS_LOCK, removeHomeDrafts, provide, info);
     },
     { auto: true },
   ],

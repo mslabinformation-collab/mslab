@@ -318,25 +318,46 @@ describe("lists and the FAQ follow the page", () => {
       "div",
       null,
       createElement(ListEditor, { title: "Õpiväljundid", itemLabel: "Õpiväljund", items, onChange: setItems, name: "outcomes" }),
-      createElement(FaqEditor, { items: faq, onChange: setFaq, err: () => undefined }),
+      createElement(FaqEditor, { items: faq, onUpdate: (fn: (f: FaqDraft[]) => FaqDraft[]) => setFaq(fn) }),
     );
   }
+  const answerToggle = (uid: string) => $<HTMLButtonElement>(`[data-faq-row="${uid}"] [data-faq-toggle]`)!;
 
-  test("ListEditor and FaqEditor rows have no switch of their own and take the page's language", async () => {
+  test("ListEditor and FaqEditor rows have no switch of their own and take the page's language (a FAQ answer is folded: its question shows)", async () => {
     await show(createElement(Lists));
     expect($$("[data-lang-switch]")).toHaveLength(0);
-    expect($$("[data-lang-field]").map((f) => f.getAttribute("data-lang-field"))).toEqual(["et", "et", "et", "et", "et", "et"]);
-    expect($$("[data-lang-field]").map((f) => (f as HTMLInputElement).value)).toEqual(["Esimene", "Teine", "Küsimus 1", "Vastus 1", "Küsimus 2", "Vastus 2"]);
+    expect($$("[data-lang-field]").map((f) => f.getAttribute("data-lang-field"))).toEqual(["et", "et", "et", "et"]);
+    expect($$("[data-lang-field]").map((f) => (f as HTMLInputElement).value)).toEqual(["Esimene", "Teine", "Küsimus 1", "Küsimus 2"]);
+    await click(answerToggle("a"));
+    expect($$("[data-lang-field]").map((f) => (f as HTMLInputElement).value)).toEqual(["Esimene", "Teine", "Küsimus 1", "Vastus 1", "Küsimus 2"]);
+    await click(answerToggle("a"));
     await click(seg("ru"));
-    expect($$("[data-lang-field]").map((f) => (f as HTMLInputElement).value)).toEqual(["", "Второй", "", "Ответ 1", "Вопрос 2", ""]);
-    // three of the six still lack Russian (a list row, an answer, a question)
+    expect($$("[data-lang-field]").map((f) => (f as HTMLInputElement).value)).toEqual(["", "Второй", "", "Вопрос 2"]);
+    // three still lack Russian: a list row, a question, and the folded answer 2 (counted though it is not on the page)
     expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
     await click(nextButton());
     expect(document.activeElement).toBe($$("[data-lang-field]")[0]);
     await click(nextButton());
-    expect(document.activeElement).toBe($$("[data-lang-field]")[2]);
+    expect(document.activeElement).toBe(field("faq.0.q"));
+  });
+
+  test("„Järgmine →“ reaches a folded answer whose Russian is missing, opens it and puts the cursor in its Russian text; written, it is counted no more", async () => {
+    await show(createElement(Lists));
+    await click(seg("ru"));
+    for (let i = 0; i < 2; i++) await click(nextButton());
+    expect(answerToggle("b").getAttribute("aria-expanded")).toBe("false");
     await click(nextButton());
-    expect(document.activeElement).toBe($$("[data-lang-field]")[5]);
+    expect(answerToggle("b").getAttribute("aria-expanded")).toBe("true");
+    const active = document.activeElement as HTMLTextAreaElement;
+    expect(active.getAttribute("data-i18n")).toBe("faq.1.a");
+    expect(active.getAttribute("data-lang-field")).toBe("ru");
+    expect(active.placeholder).toBe("Vastus 2");
+    expect(missingLine()!.textContent).toContain("RU puudub 3 väljal"); // opened, it is counted once, not twice
+    await type(active, "Ответ 2");
+    expect(missingLine()!.textContent).toContain("RU puudub 2 väljal");
+    // folded again with its Russian text: nothing more to count
+    await click(answerToggle("b"));
+    expect(missingLine()!.textContent).toContain("RU puudub 2 väljal");
   });
 
   test("a list row's reference and copy link work as a field's do", async () => {
@@ -350,7 +371,8 @@ describe("lists and the FAQ follow the page", () => {
 });
 
 describe("a collapsed slide", () => {
-  // The home page's slides start folded, and a slide's fields are only on the page once it is opened: the folded ones still count, and „Järgmine →“ opens one.
+  // The home page's slides are rows, and one slide at a time opens inline (piece 4a, C1): a closed slide's fields are not on the page, so the closed
+  // ones still count, and „Järgmine →“ opens one (the slide open before it closes).
   const slide = (uid: string, patch: Partial<SlideDraft>): SlideDraft => ({ ...newSlideDraft(uid), ...patch });
   const SLIDES: SlideDraft[] = [
     slide("s1", { kicker: { et: "Lisa 1", ru: "Доп 1" }, title: { et: "Pealkiri 1", ru: "" }, text: { et: "Tekst 1", ru: "Текст 1" }, ctaLabel: { et: "Vaata", ru: "Смотреть" } }),
@@ -362,27 +384,28 @@ describe("a collapsed slide", () => {
     return createElement(
       "div",
       null,
-      createElement(SlidesEditor, { slides, update: (fn: (s: SlideDraft[]) => SlideDraft[]) => setSlides(fn), err: () => undefined, hasErrors: () => false, links: [] }),
+      createElement(SlidesEditor, { slides, onUpdate: (fn: (s: SlideDraft[]) => SlideDraft[]) => setSlides(fn), links: [] }),
       createElement(I18nInput, { label: "Lause", name: "statement", value: { et: "Lause", ru: "" }, onChange: () => {} }),
     );
   }
-  const toggle = (uid: string) => $<HTMLButtonElement>(`[data-slide="${uid}"] [data-tool="toggle"]`)!;
+  const isOpen = (uid: string) => $(`[data-slide="${uid}"]`)!.hasAttribute("data-open");
+  const opener = (uid: string) => $<HTMLButtonElement>(`[data-slide="${uid}"] [data-slide-open]`)!;
 
-  test("the fields of folded slides are counted: ET text and no RU, wherever they stand", async () => {
+  test("the fields of closed slides are counted: ET text and no RU, wherever they stand", async () => {
     await show(createElement(Slides));
-    expect($$("[data-slide] [data-lang-field]")).toHaveLength(0); // all three are folded: none of their fields is on the page
+    expect($$("[data-slide] [data-lang-field]")).toHaveLength(0); // all three are closed: none of their fields is on the page
     expect(missingLine()).toBeNull(); // (ET mode)
     await click(seg("ru"));
     // slide 1's title, slide 3's kicker and text, and the field under the slides
     expect(missingLine()!.textContent).toBe("RU puudub 4 väljal" + "Järgmine →");
   });
 
-  test("„Järgmine →“ opens the slide and puts the cursor in its Russian field, slide by slide, in page order, and on round the page", async () => {
+  test("„Järgmine →“ opens the slide and puts the cursor in its Russian field, slide by slide (one open at a time), in page order, and on round the page", async () => {
     await show(createElement(Slides));
     await click(seg("ru"));
     await click(nextButton());
-    expect(toggle("s1").getAttribute("aria-expanded")).toBe("true");
-    expect(toggle("s2").getAttribute("aria-expanded")).toBe("false");
+    expect(isOpen("s1")).toBe(true);
+    expect(isOpen("s2")).toBe(false);
     let active = document.activeElement as HTMLInputElement;
     expect(active.getAttribute("data-i18n")).toBe("slides.0.title");
     expect(active.getAttribute("data-lang-field")).toBe("ru");
@@ -391,28 +414,34 @@ describe("a collapsed slide", () => {
     expect(missingLine()!.textContent).toContain("RU puudub 4 väljal"); // the opened slide's field is counted once, not twice
 
     await click(nextButton());
-    expect(toggle("s3").getAttribute("aria-expanded")).toBe("true");
-    expect(toggle("s2").getAttribute("aria-expanded")).toBe("false"); // the slide with nothing missing stays folded
+    expect(isOpen("s3")).toBe(true);
+    expect(isOpen("s1")).toBe(false); // one at a time: slide 1 closed, and its title is counted by its row again
+    expect(isOpen("s2")).toBe(false); // the slide with nothing missing stays closed
+    // (in the order of the open slide's box: „Pealkiri“, „Alapealkiri“, then the kicker)
     active = document.activeElement as HTMLInputElement;
-    expect(active.getAttribute("data-i18n")).toBe("slides.2.kicker");
+    expect(active.getAttribute("data-i18n")).toBe("slides.2.text");
+    expect(missingLine()!.textContent).toContain("RU puudub 4 väljal");
     await click(nextButton());
-    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.2.text");
+    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.2.kicker");
     await click(nextButton());
     expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("statement");
     await click(nextButton());
-    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.0.title"); // round: slide 1 is open already
+    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.0.title"); // round: slide 1 opens again
+    expect(isOpen("s1")).toBe(true);
+    expect(isOpen("s3")).toBe(false);
   });
 
-  test("a field written in an opened slide is no longer counted; a slide folded again counts what it still lacks", async () => {
+  test("a field written in an opened slide is no longer counted; a slide closed again counts what it still lacks", async () => {
     await show(createElement(Slides));
     await click(seg("ru"));
     await click(nextButton());
     await type(document.activeElement, "Заголовок 1");
     expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
-    await click(toggle("s3"));
-    await click(toggle("s3")); // opened and folded again: its two fields are counted by the folded slide now
+    await click(opener("s3")); // slide 1 closes (its title is written, so it adds nothing); slide 3's two fields count from its box
+    expect(isOpen("s1")).toBe(false);
     expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
-    await click(toggle("s1")); // folded: its title is written, so it adds nothing
+    await click(opener("s2")); // slide 3 closed again: its two fields are counted by its row now
+    expect(isOpen("s3")).toBe(false);
     expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
     await click(seg("et"));
     expect(missingLine()).toBeNull();

@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, type HTMLInputTypeAttribute } from "react";
+import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
+import ed from "./editor.module.css";
 
 type Props = {
   label: string;
@@ -21,17 +23,49 @@ type Props = {
   className?: string;
   /** The label for screen readers only (Koolitaja's number pairs, which the card's title names). */
   labelHidden?: boolean;
+  /**
+   * The field of a site editor's draft (Avaleht's slide link, piece 4a): given, the field is drawn as the two-language fields are (I18nInput), and
+   * true, its value waits for „Avalda muudatused“ — „· avaldamata“ after the label and the border in #9e8993 (README §1.8). Not given: as before.
+   */
+  unpublished?: boolean;
 };
 
 /** A one-language text field with its label, hint and error (names, amounts, links, e-mail, phone). */
-export function TextField({ label, value, onChange, hint, error, type = "text", inputMode, autoComplete = "off", maxLength, placeholder, suggestions, name, className, labelHidden }: Props) {
+export function TextField({
+  label,
+  value,
+  onChange,
+  hint,
+  error,
+  type = "text",
+  inputMode,
+  autoComplete = "off",
+  maxLength,
+  placeholder,
+  suggestions,
+  name,
+  className,
+  labelHidden,
+  unpublished,
+}: Props) {
   const id = useId();
-  const describedBy = [hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
+  const describedBy = [unpublished ? `${id}-unpublished` : "", hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
+  const drafted = unpublished !== undefined;
+  const own = (
+    <label htmlFor={id} className={labelHidden ? ui.sr : undefined}>
+      {label}
+    </label>
+  );
   return (
-    <div className={`${ui.field} ${className ?? ""}`}>
-      <label htmlFor={id} className={labelHidden ? ui.sr : undefined}>
-        {label}
-      </label>
+    <div className={[ui.field, drafted ? ed.i18n : "", className ?? ""].filter(Boolean).join(" ")} data-unpublished={unpublished ? "" : undefined}>
+      {drafted ? (
+        <div className={ed.i18nHead}>
+          {own}
+          {unpublished && <UnpublishedTag id={`${id}-unpublished`} />}
+        </div>
+      ) : (
+        own
+      )}
       <input
         id={id}
         className={ui.input}

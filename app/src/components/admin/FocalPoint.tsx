@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type MouseEvent } from "react";
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
 import { DEFAULT_FOCAL, formatFocal, parseFocal } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -26,8 +26,25 @@ export type FocalTarget = {
  * object-position). A click on the picture sets it; the two number fields (percent from the left and from the top) do
  * the same from the keyboard. One picture can have a point per view (the hero: desktop and phone), switched with the
  * pills. Under it, the picture as each view will cut it. `zoom`: the previews zoom in as the site does (seed portrait).
+ *
+ * `hint` replaces the words under the title (Avaleht's open slide: „Puuduta pilti, et valida fookus · Vaheta pilt“, piece4-texts S4-10, with the
+ * slide's upload in it); `titleHidden` keeps „Fookuspunkt“ for a screen reader only (the group's name), where the picture's column draws no title.
  */
-export function FocalPoint({ src, targets, zoom = false, error }: { src: string; targets: FocalTarget[]; zoom?: boolean; error?: string }) {
+export function FocalPoint({
+  src,
+  targets,
+  zoom = false,
+  error,
+  hint,
+  titleHidden = false,
+}: {
+  src: string;
+  targets: FocalTarget[];
+  zoom?: boolean;
+  error?: string;
+  hint?: ReactNode;
+  titleHidden?: boolean;
+}) {
   const t = adminEt.editor.focal;
   const id = useId();
   const [which, setWhich] = useState(0);
@@ -49,10 +66,12 @@ export function FocalPoint({ src, targets, zoom = false, error }: { src: string;
 
   return (
     <div className={styles.focal} role="group" aria-labelledby={`${id}-title`} data-focal-point="" data-invalid={error ? "" : undefined} tabIndex={error ? -1 : undefined}>
-      <p id={`${id}-title`} className={styles.label}>
+      <p id={`${id}-title`} className={titleHidden ? ui.sr : styles.label}>
         {t.title}
       </p>
-      <p className={ui.hint}>{t.hint}</p>
+      <p className={ui.hint} data-focal-hint="">
+        {hint ?? t.hint}
+      </p>
       {targets.length > 1 && (
         <span className={styles.pills} role="group" aria-label={t.which}>
           {targets.map((x, i) => (

@@ -184,84 +184,167 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
   });
 });
 
-test.describe("home page", () => {
-  test("slide 1 turns dark: the header turns white on it (A9); a slide without a picture is refused; the statement", async ({ page, context, visitorIp }, info) => {
+/** The answer to a home part's autosave (POST api/admin/sisu/home/0/osa/<part>): 200, or the status asked for (400, a refusal). */
+const homeSaved = (page: Page, part: string, status = 200) =>
+  page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/home/0/osa/${part}`) && r.request().method() === "POST" && r.status() === status);
+const homePublished = (page: Page) => page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/home/0/avalda") && r.request().method() === "POST");
+const homeDraftCount = () => one((sql) => sql<{ n: number }[]>`select count(*)::int as n from content_drafts where entity = 'home'`);
+const slideCount = () => one((sql) => sql<{ n: number }[]>`select count(*)::int as n from hero_slides`);
+
+// Avaleht (C1 on the draft layer; admin UX pass piece 4a, Task 6): every field autosaves into its part's draft (slides, statement, teaser, faq), and
+// the one bar's „Avalda muudatused“ publishes every home draft there is (R-e). One test at a time makes them (edit-lock.ts `homeDrafts`: desktop the
+// slides, the statement, the trainer card's text and the RU pass; the phone the FAQ — each in its own project only), and at its end none is left.
+test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", () => {
+  test.use({ homeDrafts: "chromium-edit" });
+
+  test("a new slide without a picture waits in the draft and „Avalda muudatused“ says „Puudub: slaid 6 pilt“; with its picture it publishes and the home page shows it; slide 1 turns dark (the header turns white on it); a script link is refused at its field; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the hero slides; the phone project the FAQ");
+    test.slow(); // one long flow: the editor, a held publish, an upload, a second width, the publish and the public page
     await changing(["hero_slides"], ["pages", { column: "key", value: "statement" }]);
     await page.emulateMedia({ reducedMotion: "reduce" }); // no autoplay: slide 1 stays on screen
     await page.goto("/");
     await expect(page.locator("[data-hero]")).toHaveAttribute("data-tone", "light");
     await expect.poll(() => page.locator("header").evaluate((el) => getComputedStyle(el).color)).not.toBe("rgb(255, 255, 255)");
+    expect(await slideCount(), "the seed's slides").toEqual({ n: 5 });
 
     await signIn(page, context, visitorIp);
     await page.goto("/admin/avaleht");
     await adminReady(page);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Avaleht");
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht");
+    await expect(page.locator("[data-home-editor] > section > h2")).toHaveText(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK", "Koolitaja plokk"]);
+    await expect(page.getByRole("link", { name: "Muuda lehel Koolitaja →", exact: true })).toHaveAttribute("href", "/admin/koolitaja");
+    await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+
+    // „+ Lisa slaid“: a new slide opens at the end with the cursor in its title; the list goes into the draft at once
     const slides = page.locator("[data-slide]");
     await expect(slides).toHaveCount(5);
-    // a new slide without a picture: refused, it is marked and gets the focus; nothing is saved
-    await page.getByRole("button", { name: "+ Lisa slaid" }).click();
+    let saved = homeSaved(page, "slides");
+    await page.getByRole("button", { name: "+ Lisa slaid", exact: true }).click();
+    await saved;
     await expect(slides).toHaveCount(6);
-    await expect(slides.nth(5).getByRole("button", { name: /^Slaid 6/ })).toBeFocused();
-    await slides.nth(5).getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill("E2E slaid");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
-    await expect(slides.nth(5).locator("[data-single-image]")).toBeFocused();
-    await expect(slides.nth(5).getByText("Lisa pilt.")).toBeVisible();
-    expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from hero_slides`)).toEqual({ n: 5 });
-    await page.getByRole("button", { name: "Eemalda slaid 6" }).click();
-    await expect(slides).toHaveCount(5);
+    const added = slides.nth(5);
+    await expect(added).toHaveAttribute("data-open", "");
+    const title = added.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    await expect(title).toBeFocused();
+    const name = `E2E slaid ${unique()}`;
+    saved = homeSaved(page, "slides");
+    await title.fill(name);
+    await title.blur();
+    await saved;
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(barWords(page)).toHaveText(draftWords("Slaidid"));
+    expect(await slideCount(), "live keeps its slides").toEqual({ n: 5 });
 
-    // slide 1: dark, with a desktop focal point
+    // „Avalda muudatused“ while the new slide has no picture: the slides are not published, and the bar says what is missing (R-d, S4-2)
+    let answer = homePublished(page);
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(page.locator("[data-blocked-missing]")).toHaveText("Puudub: slaid 6 pilt");
+    await expect(barWords(page)).toHaveText(draftWords("Slaidid"));
+    expect(await slideCount()).toEqual({ n: 5 });
+    expect(await homeDraftCount()).toEqual({ n: 1 });
+
+    // the picture, uploaded into the open slide: saved at once, and the „Puudub“ line goes with that save
+    const media = added.locator("[data-slide-media]");
+    saved = homeSaved(page, "slides");
+    await media.locator('input[type="file"]').setInputFiles([jpeg("brow-closeup.jpg")]);
+    await expect(media.locator("[data-upload-status]")).toHaveText("Pilt lisatud.");
+    await saved;
+    await expect(page.locator("[data-blocked-missing]")).toHaveCount(0);
+    await expect(media.locator("[data-focal-pick] img")).toHaveAttribute("src", /^\/media\/img\//);
+
+    // slide 1 opened (the new one closes: one at a time), dark, with a desktop focal point
     const first = slides.nth(0);
     await first.getByRole("button", { name: /^Slaid 1/ }).click();
-    await expect(first.getByRole("button", { name: /^Slaid 1/ })).toHaveAttribute("aria-expanded", "true");
-    await first.getByRole("radio", { name: "Tume" }).check();
-    await expect(first.locator("[data-slide-tone]")).toHaveText("Tume");
+    await expect(first).toHaveAttribute("data-open", "");
+    await expect(added).not.toHaveAttribute("data-open", "");
+    saved = homeSaved(page, "slides");
+    await first.getByRole("radio", { name: "Tume", exact: true }).check();
+    await saved;
     await first.locator('[data-focal-axis="desktop-x"]').fill("30");
     await expect(first.locator('[data-focal-preview="desktop"] img')).toHaveCSS("object-position", "30% 50%");
-    // a script link is refused, then a site path is accepted
+    // a script link is refused at its field (the draft's own check), then a site path is taken
     const cta = first.getByRole("combobox", { name: "Nupp viib", exact: true });
+    const refused = homeSaved(page, "slides", 400);
     await cta.fill("javascript:alert(1)");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
+    await cta.blur();
+    await refused;
     await expect(cta).toHaveAttribute("aria-invalid", "true");
-    await expect(cta).toBeFocused();
+    saved = homeSaved(page, "slides");
     await cta.fill("/praktika");
+    await cta.blur();
+    await saved;
+    await expect(cta).not.toHaveAttribute("aria-invalid", "true");
+    // the statement, into its own draft
     const statement = page.getByRole("textbox", { name: "Lause (eesti keeles)", exact: true });
-    await statement.fill("E2E lause, mis on avalehel kohe näha.");
+    saved = homeSaved(page, "statement");
+    await statement.fill("E2E lause, mis on avalehel pärast avaldamist.");
+    await statement.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Slaidid, Slaid 1 pilt, Slaid 1 nupp viib, Slaid 1 toon, MS LABi lause"));
     expect(await noOverflow(page)).toBe(true);
-    await save(page);
-    const stored = await one((sql) => sql<{ tone: string; pos: string; href: string }[]>`select tone, image_pos as pos, cta_href as href from hero_slides order by sort, id limit 1`);
-    expect(stored).toEqual({ tone: "dark", pos: "30% 50%", href: "/praktika" });
 
-    // the public home page, on its very next request
-    await page.goto("/");
-    const hero = page.locator("[data-hero]");
+    // 375 px: the open slide and the rows inside the screen, the map is the select „Jaotised · Slaidid ▾“, nothing scrolls sideways
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(first).toHaveAttribute("data-open", "");
+    await expect(page.locator("[data-section-face]")).toHaveText("Jaotised · Slaidid ▾");
+    for (const right of await slides.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().right))) expect(right).toBeLessThanOrEqual(375);
+    expect(await noOverflow(page)).toBe(true);
+
+    // „Avalda“ (the phone's bar): every home draft published, the bar goes, none is left
+    answer = homePublished(page);
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await homeDraftCount()).toEqual({ n: 0 });
+    const stored = await onLocalDb((sql) => sql<{ title: { et: string }; tone: string; pos: string; href: string; key: string }[]>`select title, tone, image_pos as pos, cta_href as href, image_key as key from hero_slides order by sort, id`);
+    expect(stored).toHaveLength(6);
+    expect(stored[0]).toMatchObject({ tone: "dark", pos: "30% 50%", href: "/praktika" });
+    expect(stored[5].title.et).toBe(name);
+    expect(stored[5].key).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+
+    // a visitor's home page: slide 1 dark (the header white on it) with its link, six slides, the new one sixth; the statement
+    const visitor = await context.newPage();
+    await visitor.emulateMedia({ reducedMotion: "reduce" });
+    await visitor.goto("/");
+    const hero = visitor.locator("[data-hero]");
     await expect(hero).toHaveAttribute("data-tone", "dark");
-    await expect(hero.getByText(/^01 \/ 05$/)).toBeVisible();
-    await expect(page.locator("html")).toHaveAttribute("data-hero-tone", "dark");
-    await expect.poll(() => page.locator("header").evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
+    await expect(hero.getByText(/^01 \/ 06$/)).toBeVisible();
+    await expect(visitor.locator("html")).toHaveAttribute("data-hero-tone", "dark");
+    await expect.poll(() => visitor.locator("header").evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
     await expect(hero.locator("[data-tone]").first()).toHaveAttribute("style", /--pos:\s*30% 50%/);
     await expect(hero.getByRole("link", { name: /Leia oma koolitus/ }).first()).toHaveAttribute("href", "/praktika");
-    await expect(page.getByText("E2E lause,")).toBeVisible();
-    await page.goto("/ru");
-    await expect(page.locator("[data-hero] [data-tone]").first().getByRole("link").first()).toHaveAttribute("href", "/ru/praktika");
+    await expect(hero.locator('[data-hero-slides] > [aria-label="6 / 6"]')).toContainText(name);
+    await expect(visitor.getByText("E2E lause,")).toBeVisible();
+    await visitor.close();
   });
 
-  test("the trainer card's text (C26): D's line by default; edited in ET and RU it is on / and /ru (round 2 item 5)", async ({ page, context, visitorIp }, info) => {
+  test("the trainer card's text (C26): typed in ET and RU it waits in its draft; published, it is on / and /ru", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the trainer card's text; the phone project the FAQ");
     await changing(["pages", { column: "key", value: "trainer_teaser" }]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/avaleht");
     await adminReady(page);
     const editor = page.locator("[data-teaser-editor]");
-    await expect(editor.getByRole("heading", { name: "Koolitaja kaart avalehel" })).toBeVisible();
+    await expect(editor.getByRole("heading", { level: 2 })).toHaveText("Koolitaja kaart");
     const et = editor.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     await expect(et).toHaveValue(/^Kulmu- ja ripsmetehnikate meister ja koolitaja\. Õpetan nii, nagu oleksin ise tahtnud õppida/);
     await et.fill("E2E koolitaja tekst.");
     await editLang(page, "ru");
-    await editor.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("E2E текст преподавателя.");
-    await save(page);
+    const ru = editor.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true });
+    await ru.fill("E2E текст преподавателя.");
+    const saved = homeSaved(page, "teaser");
+    await ru.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Koolitaja kaart"));
+    expect(await one((sql) => sql<{ body: { et: string } }[]>`select body from pages where key = 'trainer_teaser'`), "live keeps its text").not.toEqual({ body: { et: "E2E koolitaja tekst.", ru: "E2E текст преподавателя." } });
+    const answer = homePublished(page);
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
     expect(await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'trainer_teaser'`)).toEqual({ body: { et: "E2E koolitaja tekst.", ru: "E2E текст преподавателя." } });
     await page.goto("/");
     await expect(page.locator("[data-trainer-teaser]")).toContainText("E2E koolitaja tekst.");
@@ -269,42 +352,68 @@ test.describe("home page", () => {
     await expect(page.locator("[data-trainer-teaser]")).toContainText("E2E текст преподавателя.");
   });
 
-  test("„RU puudub“ counts the folded slides too, and „Järgmine →“ opens one and puts the cursor in its Russian field (nothing is saved)", async ({ page, context, visitorIp }) => {
+  test("„RU puudub“ counts a closed slide and a folded answer too; „Järgmine →“ opens each and puts the cursor in its Russian field (nothing is published)", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "the desktop project's turn on the home drafts");
     await signIn(page, context, visitorIp);
     await page.goto("/admin/avaleht");
     await adminReady(page);
     await editLang(page, "ru");
-    const first = page.locator("[data-slide]:visible").first();
-    const toggle = first.locator("[data-tool='toggle']");
     const line = page.locator("[data-ru-missing]:visible");
-    const count = async () => Number(/(\d+) väljal/.exec((await line.textContent()) ?? "")?.[1]);
-    // slide 1 opened, its Russian title emptied on the screen, and folded again: the field is gone from the page, the count still has it
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await toggle.click();
+    const missing = async () => ((await line.count()) ? Number(/(\d+) väljal/.exec((await line.textContent()) ?? "")?.[1]) : 0);
+    expect(await missing(), "the seed's home page is translated").toBe(0);
+    // slide 1 opened and its Russian title emptied; slide 2 opened: slide 1 closes (one at a time), and the count still has its title
+    const slides = page.locator("[data-slide]");
+    const first = slides.nth(0);
+    await first.getByRole("button", { name: /^Slaid 1/ }).click();
+    let saved = homeSaved(page, "slides");
     await first.locator('[data-i18n="slides.0.title"]').fill("");
-    await expect(line).toBeVisible();
-    const open = await count();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await slides.nth(1).getByRole("button", { name: /^Slaid 2/ }).click();
+    await saved;
+    await expect(first).not.toHaveAttribute("data-open", "");
     await expect(first.locator("[data-lang-field]")).toHaveCount(0);
-    await expect.poll(count).toBe(open);
-    // „Järgmine →“: the slide opens and the cursor is in one of its Russian fields (the first missing one on the page)
+    await expect.poll(missing).toBe(1);
+    // question 1's answer opened, its Russian text emptied, folded again: counted all the same
+    const row = page.locator("[data-faq-row]").first();
+    const toggle = row.locator("[data-faq-toggle]");
+    await toggle.click();
+    saved = homeSaved(page, "faq");
+    await row.locator('[data-i18n="faq.0.a"]').fill("");
+    await toggle.click();
+    await saved;
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(missing).toBe(2);
+    // „Järgmine →“: slide 1 opens with the cursor in its Russian title, then the answer opens with the cursor in its Russian text
+    await page.locator("[data-ru-next]:visible").click();
+    await expect(first).toHaveAttribute("data-open", "");
+    await expect(first.locator('[data-i18n="slides.0.title"][data-lang-field="ru"]')).toBeFocused();
     await page.locator("[data-ru-next]:visible").click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(first.locator('[data-lang-field="ru"]:focus')).toHaveCount(1);
-    expect(await count()).toBe(open); // opened, its fields count once, not twice
+    await expect(row.locator('[data-i18n="faq.0.a"][data-lang-field="ru"]')).toBeFocused();
+    expect(await missing()).toBe(2); // opened, each counts once, not twice
+    expect(await homeDraftCount()).toEqual({ n: 2 });
   });
+});
 
-  test("FAQ: a new question in ET and RU, moved to the top; the home page shows it first", async ({ page, context, visitorIp }, info) => {
+test.describe("home page, phone: the FAQ (C1 Avaleht on the draft layer)", () => {
+  test.use({ homeDrafts: "mobile-edit" });
+
+  test("a new question in ET and RU, moved to the top, waits in its draft; × and „Võta tagasi“; published, the home page shows it first", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "the phone project changes the FAQ; desktop the hero slides");
+    test.slow(); // the question typed in two languages, moved one place at a time, an undo, the publish and the public page
     await changing(["faq"]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/avaleht");
     await adminReady(page);
-    const faq = page.locator("[data-faq-editor]");
+    // the phone: the section map is the select „Jaotised · Slaidid ▾“
+    await expect(page.locator("[data-section-face]")).toHaveText("Jaotised · Slaidid ▾");
+    const faq = page.locator("#kkk");
+    await expect(faq.getByRole("heading", { level: 2 })).toHaveText("KKK");
     const rows = faq.locator("[data-faq-row]");
     const count = await rows.count();
-    await faq.getByRole("button", { name: "+ Lisa küsimus" }).click();
+    // „+ Lisa küsimus“: a row at the end with its answer open and the cursor in its question; saved into the draft at once
+    let saved = homeSaved(page, "faq");
+    await faq.getByRole("button", { name: "+ Lisa küsimus", exact: true }).click();
+    await saved;
     await expect(rows).toHaveCount(count + 1);
     const n = count + 1;
     await expect(faq.getByRole("textbox", { name: `Küsimus ${n} (eesti keeles)`, exact: true })).toBeFocused();
@@ -313,11 +422,43 @@ test.describe("home page", () => {
     await faq.getByRole("textbox", { name: `Vastus ${n} (eesti keeles)`, exact: true }).fill("E2E vastus.");
     await editLang(page, "ru");
     await faq.getByRole("textbox", { name: `Küsimus ${n} (vene keeles)`, exact: true }).fill("E2E вопрос?");
-    await faq.getByRole("textbox", { name: `Vastus ${n} (vene keeles)`, exact: true }).fill("E2E ответ.");
-    for (let i = n; i > 1; i--) await faq.getByRole("button", { name: `Liiguta küsimus ${i} üles` }).click();
-    await expect(faq.getByRole("button", { name: "Liiguta küsimus 1 üles" })).toHaveAttribute("aria-disabled", "true");
+    const answerRu = faq.getByRole("textbox", { name: `Vastus ${n} (vene keeles)`, exact: true });
+    await answerRu.fill("E2E ответ.");
+    saved = homeSaved(page, "faq");
+    await answerRu.blur();
+    await saved;
+    await editLang(page, "et");
+    // to the top, one place at a time, each move saved at once
+    for (let i = n; i > 1; i--) {
+      saved = homeSaved(page, "faq");
+      await faq.getByRole("button", { name: `Liiguta küsimus ${i} üles`, exact: true }).click();
+      await saved;
+    }
+    await expect(faq.getByRole("button", { name: "Liiguta küsimus 1 üles", exact: true })).toHaveAttribute("aria-disabled", "true");
+    await expect(faq.getByRole("textbox", { name: "Küsimus 1 (eesti keeles)", exact: true })).toHaveValue(q);
+    // × takes question 2 out at once with the UndoBar; „Võta tagasi“ puts it back with its text
+    const second = await faq.getByRole("textbox", { name: "Küsimus 2 (eesti keeles)", exact: true }).inputValue();
+    saved = homeSaved(page, "faq");
+    await faq.getByRole("button", { name: "Eemalda küsimus 2", exact: true }).click();
+    await saved;
+    await expect(rows).toHaveCount(count);
+    const undoBar = page.locator("[data-undo-bar]");
+    await expect(undoBar).toContainText("Küsimus eemaldatud.");
+    saved = homeSaved(page, "faq");
+    await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    await saved;
+    await expect(rows).toHaveCount(count + 1);
+    await expect(faq.getByRole("textbox", { name: "Küsimus 2 (eesti keeles)", exact: true })).toHaveValue(second);
+    await expect(page.locator("[data-publish-phone]")).toHaveText("Avaldamata 1 · Eelvaade");
     expect(await noOverflow(page)).toBe(true);
-    await save(page);
+    expect(await homeDraftCount()).toEqual({ n: 1 });
+
+    // „Avalda“: published, the bar goes, nothing is left in the draft
+    const answer = homePublished(page);
+    await page.locator("[data-publish-go]").click();
+    expect((await answer).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await homeDraftCount()).toEqual({ n: 0 });
     expect(await one((sql) => sql<{ q: { et: string; ru?: string } }[]>`select q from faq order by sort, id limit 1`)).toEqual({ q: { et: q, ru: "E2E вопрос?" } });
 
     await page.goto("/");

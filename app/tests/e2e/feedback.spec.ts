@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { DEV_REVIEW_KEY } from "../../src/server/review-key";
-import { adminReady, saveBarButton, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { LOCAL_FIXTURES, removeAdminRows } from "./fixtures";
 import { deleteLocalComments, E2E_COMMENT } from "./local-kv";
 import { E2E_REVIEW_KEY } from "./prod-build";
@@ -337,34 +337,40 @@ test.describe("comment widget in the admin", () => {
     expect(await commentById(page, ids[0])).toBeUndefined();
   });
 
-  // The bubble lifts itself above the admin's bars at the bottom of the screen; here the site editors' save bar (sticky at the foot, „Salvesta“ on
-  // its right, the bubble's corner), at a phone's size and a laptop's. Nothing of the bar may lie under the bubble.
+  // The bubble lifts itself above the admin's bars at the bottom of the screen; here a site editor's publish bar (Avaleht's, admin UX pass piece 4a: on a
+  // phone it is fixed at the foot of the screen with „Avalda“ on its right, the bubble's corner; on a laptop it stands under the H1), at a phone's size
+  // and a laptop's. Nothing of the bar may lie under the bubble. The bar is there as soon as a field differs from live; the field's autosave is answered
+  // here in the browser, so this test writes no draft (the edit projects' home tests take their turn on the home drafts: edit-lock.ts `homeDrafts`).
   for (const size of [{ width: 375, height: 812 }, { width: 1280, height: 800 }]) {
-    test(`the bubble covers no button of the save bar at ${size.width}×${size.height}`, async ({ page, context, visitorIp }, info) => {
+    test(`the bubble covers no button of the publish bar at ${size.width}×${size.height}`, async ({ page, context, visitorIp }, info) => {
       test.skip(info.project.name.startsWith("mobile"), "sets its own sizes: the desktop project only");
       submitsForms();
       await signInAsAdmin(page, context, visitorIp, created);
       await page.setViewportSize(size);
-      // (Avaleht's: Seaded has no save bar since admin UX pass piece 3b — its cards autosave and its legal texts are published by their own button)
+      await page.route("**/api/admin/sisu/home/0/osa/*", (route) => route.fulfill({ json: { ok: true, version: "d:0.1", savedAt: new Date().toISOString() } }));
       await page.goto("/admin/avaleht");
       await adminReady(page);
       await expect(bubble(page)).toBeVisible();
-      await expect(saveBarButton(page)).toBeVisible();
+      const statement = page.getByRole("textbox", { name: "Lause (eesti keeles)", exact: true });
+      await statement.fill(`${await statement.inputValue()} E2E`);
+      await expect(page.locator("[data-publish-go]")).toBeVisible();
+      // (the field is further down the page: back to the top, where a laptop's bar stands under the H1; a phone's is at the foot either way)
+      await page.evaluate(() => window.scrollTo(0, 0));
       await expect
         .poll(async () =>
           page.evaluate(() => {
             const fab = document.querySelector("#mslab-fb .fb-fab")!.getBoundingClientRect();
-            const bar = document.querySelector("[data-save-bar]")!;
+            const bar = document.querySelector("[data-publish-bar]")!;
             const hits = [...bar.querySelectorAll("button, a")]
               .filter((el) => {
                 const r = el.getBoundingClientRect();
                 return r.width > 0 && r.height > 0 && r.left < fab.right && fab.left < r.right && r.top < fab.bottom && fab.top < r.bottom;
               })
               .map((el) => el.textContent?.trim());
-            // the centre of „Salvesta“ is the button's own (not the bubble's)
-            const save = [...bar.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Salvesta")!.getBoundingClientRect();
-            const top = document.elementFromPoint(save.left + save.width / 2, save.top + save.height / 2);
-            return top && !top.closest("#mslab-fb") ? hits : [...hits, "covered: Salvesta"];
+            // the centre of „Avalda muudatused“ (the phone's „Avalda“) is the button's own (not the bubble's)
+            const go = bar.querySelector("[data-publish-go]")!.getBoundingClientRect();
+            const top = document.elementFromPoint(go.left + go.width / 2, go.top + go.height / 2);
+            return top && !top.closest("#mslab-fb") ? hits : [...hits, "covered: Avalda"];
           }),
         )
         .toEqual([]);
