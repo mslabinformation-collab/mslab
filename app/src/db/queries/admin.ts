@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "../client";
 import type * as schema from "../schema";
@@ -9,6 +9,7 @@ import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import { REQUEST_TABS, TAB_KIND, type TabKey } from "@/domain/requests";
 import { phoneQuery } from "@/domain/search";
+import type { SubscriberFilter, SubscriberState } from "@/domain/subscribers";
 import { pick, type I18n } from "@/i18n/field";
 import { ownFaultCount } from "@/server/testplan";
 import { assessmentCount } from "./assessment";
@@ -886,18 +887,44 @@ export async function setSetting(db: Q, key: string, value: unknown): Promise<vo
   await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
 }
 
-/** Newsletter subscribers, newest consent first; the whole list unless a range is given (the CSV export takes all). */
-export async function listSubscribers(db: Db, range?: Range): Promise<Subscriber[]> {
-  const q = db.select().from(subscribers).orderBy(desc(subscribers.consentAt), desc(subscribers.id));
+/**
+ * The filter of Tellijad (README B5, piece3-texts P-13): the address holds the text (ILIKE, `%` `_` `\` escaped: containsPattern, so "50%" finds "50%" and
+ * "_" an underscore), and the state: confirmed has a confirmation time, pending has none. Sample addresses (@example.test) are rows like the others
+ * (ruling R-h: only the send leaves them out).
+ */
+function subscriberWhere(filter: SubscriberFilter) {
+  const q = parseSearch(filter.search);
+  return and(
+    q ? ilike(subscribers.email, containsPattern(q)) : undefined,
+    filter.state === "confirmed" ? isNotNull(subscribers.confirmedAt) : filter.state === "pending" ? isNull(subscribers.confirmedAt) : undefined,
+  );
+}
+
+/** Newsletter subscribers, newest consent first; the whole list unless a range is given (the CSV export takes all). `filter`: the search and the state. */
+export async function listSubscribers(db: Db, filter: SubscriberFilter = {}, range?: Range): Promise<Subscriber[]> {
+  const q = db.select().from(subscribers).where(subscriberWhere(filter)).orderBy(desc(subscribers.consentAt), desc(subscribers.id));
   return range ? q.limit(range.limit).offset(range.offset) : q;
 }
 
-export async function countSubscribers(db: Db): Promise<number> {
-  const [{ n }] = await db.select({ n: count() }).from(subscribers);
+export async function countSubscribers(db: Db, filter: SubscriberFilter = {}): Promise<number> {
+  const [{ n }] = await db.select({ n: count() }).from(subscribers).where(subscriberWhere(filter));
   return Number(n);
 }
 
-/** One page of the subscriber list. */
-export async function pageSubscribers(db: Db, page: number, size: number = PAGE_SIZE): Promise<Paged<Subscriber>> {
-  return paged(page, size, () => countSubscribers(db), (range) => listSubscribers(db, range));
+/**
+ * The counts on Tellijad's two pills (B9): they count under the search and ignore the state chosen now, so a pill's count is the number of rows the
+ * list shows once that pill is chosen (and the two add up to the rows it shows with none chosen).
+ */
+export async function subscriberCounts(db: Db, filter: SubscriberFilter = {}): Promise<Record<SubscriberState, number>> {
+  const [row] = await db
+    .select({ confirmed: count(subscribers.confirmedAt), all: count() })
+    .from(subscribers)
+    .where(subscriberWhere({ search: filter.search }));
+  const confirmed = Number(row.confirmed);
+  return { confirmed, pending: Number(row.all) - confirmed };
+}
+
+/** One page of the subscriber list (the filter first, as on the registrations list). */
+export async function pageSubscribers(db: Db, filter: SubscriberFilter, page: number, size: number = PAGE_SIZE): Promise<Paged<Subscriber>> {
+  return paged(page, size, () => countSubscribers(db, filter), (range) => listSubscribers(db, filter, range));
 }

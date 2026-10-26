@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Db } from "@/db/client";
 import type { Subscriber } from "@/db/schema";
 import { changeRequestHandled, getRegistration, setRegistrationStatus } from "@/db/queries/admin";
+import type { SubscriberState } from "@/domain/subscribers";
 import { adminEt } from "@/i18n/dict/admin";
 import { formatStamp } from "@/i18n/format";
 import { toCsv } from "./csv";
@@ -74,18 +75,24 @@ export async function saveHandled(db: Db, input: unknown): Promise<HandledAnswer
   return changeRequestHandled(db, request, handled, expected, version);
 }
 
-/** The subscriber export: e-mail, locale, consent time, confirmed yes/no, confirmation time (Estonian time). */
-export function subscribersCsv(rows: Subscriber[], opts: { confirmedOnly: boolean }): string {
+/**
+ * The subscriber export: e-mail, locale, consent time, confirmed yes/no, confirmation time (Estonian time). It holds the rows it is given: the route
+ * reads them with the filter of the screen (Tellijad's search and state, domain/subscribers.ts), so the file is what the list shows, all of it.
+ */
+export function subscribersCsv(rows: Subscriber[]): string {
   const t = adminEt.newsletter.csv;
-  const list = opts.confirmedOnly ? rows.filter((r) => r.confirmedAt) : rows;
   return toCsv(
     t.header,
-    list.map((r) => [r.email, r.locale.toUpperCase(), formatStamp(r.consentAt), r.confirmedAt ? t.yes : t.no, r.confirmedAt ? formatStamp(r.confirmedAt) : ""]),
+    rows.map((r) => [r.email, r.locale.toUpperCase(), formatStamp(r.consentAt), r.confirmedAt ? t.yes : t.no, r.confirmedAt ? formatStamp(r.confirmedAt) : ""]),
   );
 }
 
-/** "mslab-uudiskiri-2026-10-01.csv" / "mslab-uudiskiri-kinnitatud-2026-10-01.csv" (Estonian date). */
-export function subscribersCsvName(now: Date, confirmedOnly: boolean): string {
+/**
+ * The file's name after the state it holds (piece3-texts P-13), with the Estonian date: "mslab-uudiskiri-2026-10-01.csv" (all),
+ * "mslab-uudiskiri-kinnitatud-2026-10-01.csv", "mslab-uudiskiri-ootab-kinnitust-2026-10-01.csv". (A search does not change the name.)
+ */
+export function subscribersCsvName(now: Date, state: SubscriberState | null): string {
   const t = adminEt.newsletter.csv;
-  return `${confirmedOnly ? t.filenameConfirmed : t.filename}-${formatStamp(now).slice(0, 10)}.csv`;
+  const name = state === "confirmed" ? t.filenameConfirmed : state === "pending" ? t.filenamePending : t.filename;
+  return `${name}-${formatStamp(now).slice(0, 10)}.csv`;
 }

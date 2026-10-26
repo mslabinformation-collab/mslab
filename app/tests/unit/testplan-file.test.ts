@@ -470,7 +470,10 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
       expect(markedSince(check.markedAt), id).toBe(true);
       expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).not.toBeNull();
     }
-    for (const id of ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) expect(item(id).markedAt, id).toBe("deploy");
+    // Piece 3b Task 7 (README B5, Tellijad): the list check gained the search of an address, the pills „Kinnitatud“ / „Ootab kinnitust“ with their counts and
+    // one „Laadi alla (CSV)“ of the current filter in place of the two fixed buttons: still a `redo` (a `reworded` would be weaker, and let an answer to
+    // the old page stand), now from the deploy.
+    for (const id of ["avalik-uudiskiri-resend", "avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) expect(item(id).markedAt, id).toBe("deploy");
     for (const id of reworded) expect(item(id), id).toMatchObject({ mark: "reworded", markedAt: "deploy" });
     expect(item("avalik-uudiskiri-kustuta")).toMatchObject({ mark: "new", markedAt: "deploy" });
     expect(item("avalik-uudiskiri-kampaania-ykslink").mark).toBe("new");
@@ -493,13 +496,18 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(IDS.map((id) => item(id).writes)).toEqual([false, true, true, true, true, true, true, true, true, true, true, false]);
   });
 
-  test("the list check quotes the page's words: the tab, the count line, the CSV button and the other view", () => {
+  test("the list check quotes the page's words: the tab, the search, the two pills, the count line, the one CSV button and the other view", () => {
     const n = adminEt.newsletter;
     expect(item("avalik-uudiskiri-resend").title).toBe("Tellijate loend ja CSV");
-    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.csvConfirmed}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.csvDownload}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.searchPlaceholder}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.col.confirmed}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.pending}“`);
     expect(text("avalik-uudiskiri-resend")).toContain(`„${n.count.replace("{n}", "…").replace("{confirmed}", "…")}“`);
     expect(text("avalik-uudiskiri-resend")).toContain(`„${n.views.subscribers}“`);
     expect(text("avalik-uudiskiri-resend")).toContain(`„${n.views.campaigns}“`);
+    // the two fixed buttons of the old page are gone from the words (piece 3b Task 7): one button, named for the filter it takes
+    expect(text("avalik-uudiskiri-resend")).not.toMatch(/Lae alla|kaks allalaadimise nuppu/);
   });
 
   test("they quote the page's and the mail's words: the editor, the buttons, the confirmation, the sent line, the test page and the footer", () => {

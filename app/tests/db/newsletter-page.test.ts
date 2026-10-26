@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
@@ -9,7 +10,8 @@ import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS } from "@/server/notify";
 import { makeTestDb } from "./helpers";
 
 // Maria's „Uudiskiri“ page and the student's drawer on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's):
-// the subscribers' view (the list, its count line, the two CSV buttons, and nothing of Resend: no sync, no counts, no marks on the rows), the
+// the subscribers' view (piece 3b Task 7, README B5: the search by a part of an address, the pills „Kinnitatud“ / „Ootab kinnitust“ with their counts, the
+// one „Laadi alla (CSV)“ of the current filter, and nothing of Resend: no sync, no counts, no marks on the rows), the
 // „Kirjad“ view (piece 3b Task 6, README B5: the tabs „Tellijad“ | „Kirjad“, the list with „Uus kiri +“ and each letter's state line, the editor of the
 // chosen one with its sends and the count on „Saada kõigile ({n})“, one going out with its progress, its failed and unknown counts and the refused mark, a
 // sent one read-only), and the student's drawer (its newsletter line, no mark). The
@@ -33,7 +35,13 @@ vi.mock("@/server/actions/admin-newsletter", () => ({
   stopSendAction: vi.fn(),
   sendTestAction: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }) }));
+// (the toolbar reads the address from `nav`, as the browser would give it)
+const nav = vi.hoisted(() => ({ search: "" }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/admin/uudiskiri",
+  useSearchParams: () => new URLSearchParams(nav.search),
+}));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ reissueCertificateAction: vi.fn() }));
@@ -51,7 +59,10 @@ const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
 
 let db: Db;
 
-const render = async (search: Record<string, string> = {}) => renderToStaticMarkup(await NewsletterPage({ searchParams: Promise.resolve(search) }));
+const render = async (search: Record<string, string> = {}) => {
+  nav.search = new URLSearchParams(search).toString();
+  return renderToStaticMarkup(await NewsletterPage({ searchParams: Promise.resolve(search) }));
+};
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 let n = 0;
@@ -77,26 +88,161 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The page for an address like „?otsi=kask&olek=ootab“, as a document. */
+async function open(query: Record<string, string> = {}) {
+  const document = new Window().document;
+  document.body.innerHTML = await render(query);
+  return document;
+}
+type Doc = Awaited<ReturnType<typeof open>>;
+/** The addresses of the rows on the screen, in order. */
+const shownRows = (doc: Doc) => [...doc.querySelectorAll("tr[data-subscriber] td:first-child")].map((e) => e.textContent!.trim());
+/** The two pills under „Staatus“: their words and counts, where each goes, and which one is current. */
+const statePills = (doc: Doc) => {
+  const row = [...doc.querySelectorAll("nav[data-list-pill-row]")].find((n) => n.getAttribute("aria-label") === "Staatus");
+  expect(row, "the pill row „Staatus“").toBeTruthy();
+  return [...row!.querySelectorAll("a")].map((a) => ({ text: a.textContent!, href: a.getAttribute("href")!, current: a.getAttribute("aria-current") === "true" }));
+};
+const csvLink = (doc: Doc) => doc.querySelector("a[data-csv]")!;
+
 describe("the subscribers' view", () => {
-  test("the list, its count line and the two CSV buttons; nothing of Resend on it: no sync, no counts, no marks on the rows", async () => {
-    const kati = await sub("kati@example.com");
-    await sub("mari@example.com", { confirmedAt: null });
+  test("the list, its count line, the search and the two pills; one „Laadi alla (CSV)“; nothing of Resend on it: no sync, no counts, no marks on the rows", async () => {
+    const kati = await sub("kati@example.test");
+    await sub("mari@example.test", { confirmedAt: null });
     const html = await render();
     expect(html).toContain(`data-subscriber="${kati.id}"`);
-    expect(text(html)).toContain("kati@example.com");
+    expect(text(html)).toContain("kati@example.test");
     expect(text(html)).toContain("Tellijaid: 2, neist kinnitatud 1");
-    expect(html).toContain('href="/api/admin/subscribers.csv?kinnitatud=1"');
-    expect(html).toContain('href="/api/admin/subscribers.csv"');
-    expect(html).toContain('data-csv="confirmed"');
-    expect(html).toContain('data-csv="all"');
     for (const gone of ["data-newsletter-sync", "data-sync-", "data-subscriber-suppressed", "data-subscriber-rejected"]) expect(html, gone).not.toContain(gone);
     expect(text(html)).not.toMatch(/Resend/i);
+    // the toolbar (P-13: the placeholder is the field's name)
+    const doc = await open();
+    const field = doc.querySelector('form[role="search"] input[type="search"]')!;
+    expect(field.getAttribute("placeholder")).toBe("Otsi e-posti järgi");
+    expect(field.getAttribute("aria-label")).toBe("Otsi e-posti järgi");
+    // the two pills with their counts, drawn without „Kõik“ (piece3-texts §4); nothing chosen
+    expect(statePills(doc)).toEqual([
+      { text: "Kinnitatud1", href: "/admin/uudiskiri?olek=kinnitatud", current: false },
+      { text: "Ootab kinnitust1", href: "/admin/uudiskiri?olek=ootab", current: false },
+    ]);
+    // one CSV button for the current filter replaces the two fixed ones
+    expect(doc.querySelectorAll("a[data-csv]")).toHaveLength(1);
+    expect(csvLink(doc).textContent!.trim()).toBe("Laadi alla (CSV)");
+    expect(csvLink(doc).getAttribute("href")).toBe("/api/admin/subscribers.csv");
+    expect(csvLink(doc).hasAttribute("download")).toBe(true);
+    expect(text(html)).not.toMatch(/Lae alla/);
   });
 
-  test("an empty list says so and still renders the CSV buttons", async () => {
-    const html = await render();
-    expect(text(html)).toContain("Tellijaid veel pole.");
-    expect(html).toContain('data-csv="all"');
+  test("the search finds an address by a part of it; the pills' counts follow the search; the CSV button carries it", async () => {
+    await sub("kati.kask@example.test");
+    await sub("kaie@example.test", { confirmedAt: null });
+    await sub("mari@sample.test");
+    const doc = await open({ otsi: "ka" });
+    expect(shownRows(doc)).toEqual(["kaie@example.test", "kati.kask@example.test"]);
+    expect(doc.querySelector('input[type="search"]')!.getAttribute("value")).toBe("ka");
+    expect(statePills(doc).map((p) => p.text)).toEqual(["Kinnitatud1", "Ootab kinnitust1"]);
+    expect(text(doc.body.innerHTML)).toContain("Tellijaid: 2, neist kinnitatud 1");
+    expect(csvLink(doc).getAttribute("href")).toBe("/api/admin/subscribers.csv?otsi=ka");
+    // the pills keep the search; the part of an address needs no word of the address's own
+    expect(statePills(doc).map((p) => p.href)).toEqual(["/admin/uudiskiri?otsi=ka&olek=kinnitatud", "/admin/uudiskiri?otsi=ka&olek=ootab"]);
+    expect(shownRows(await open({ otsi: "SAMPLE" }))).toEqual(["mari@sample.test"]);
+  });
+
+  test("a pill shows its own rows and toggles off at a second press; the other keeps its count; the CSV button carries the state", async () => {
+    await sub("kati@example.test", { consentAt: at(-10) });
+    await sub("kaie@example.test", { confirmedAt: null, consentAt: at(-20) });
+    await sub("mari@example.test", { confirmedAt: null, consentAt: at(-30) });
+    const confirmed = await open({ olek: "kinnitatud" });
+    expect(shownRows(confirmed)).toEqual(["kati@example.test"]);
+    expect(statePills(confirmed)).toEqual([
+      { text: "Kinnitatud1", href: "/admin/uudiskiri", current: true }, // (pressed again: the list as it was)
+      { text: "Ootab kinnitust2", href: "/admin/uudiskiri?olek=ootab", current: false },
+    ]);
+    expect(csvLink(confirmed).getAttribute("href")).toBe("/api/admin/subscribers.csv?olek=kinnitatud");
+    const pending = await open({ olek: "ootab", otsi: "ka" });
+    expect(shownRows(pending)).toEqual(["kaie@example.test"]);
+    expect(statePills(pending)).toEqual([
+      { text: "Kinnitatud1", href: "/admin/uudiskiri?otsi=ka&olek=kinnitatud", current: false },
+      { text: "Ootab kinnitust1", href: "/admin/uudiskiri?otsi=ka", current: true },
+    ]);
+    expect(csvLink(pending).getAttribute("href")).toBe("/api/admin/subscribers.csv?otsi=ka&olek=ootab");
+    // an address that says something else (a word that is no state) is no state
+    for (const olek of ["x", "constructor", "__proto__", "kinnitatud,ootab", ""]) {
+      const doc = await open({ olek });
+      expect(shownRows(doc), olek).toHaveLength(3);
+      expect(statePills(doc).some((p) => p.current), olek).toBe(false);
+      expect(csvLink(doc).getAttribute("href"), olek).toBe("/api/admin/subscribers.csv");
+    }
+  });
+
+  test("the former „Lae alla kinnitatud (CSV)“ link, ?kinnitatud=1, still means the confirmed ones on the page and in the file", async () => {
+    await sub("kati@example.test");
+    await sub("mari@example.test", { confirmedAt: null });
+    const doc = await open({ kinnitatud: "1" });
+    expect(shownRows(doc)).toEqual(["kati@example.test"]);
+    expect(csvLink(doc).getAttribute("href")).toBe("/api/admin/subscribers.csv?olek=kinnitatud");
+  });
+
+  test("R-h: the counts are the rows — every row, sample addresses too — whatever is chosen; a percent sign or an underscore in the search is itself", async () => {
+    await sub("kati@example.test");
+    await sub("mari@example.test", { confirmedAt: null });
+    await sub("liis@sample.example.test");
+    await sub("50%off@example.test");
+    await sub("a_b@example.test", { confirmedAt: null });
+    await sub("axb@example.test", { confirmedAt: null });
+    const count = (doc: Doc, i: number) => Number(statePills(doc)[i].text.replace(/\D/g, ""));
+    const none = await open();
+    expect(shownRows(none)).toHaveLength(count(none, 0) + count(none, 1));
+    expect(statePills(none).map((p) => p.text)).toEqual(["Kinnitatud3", "Ootab kinnitust3"]);
+    for (const [query, state] of [
+      [{ olek: "kinnitatud" }, 0],
+      [{ olek: "ootab" }, 1],
+      [{ otsi: "example.test", olek: "kinnitatud" }, 0],
+      [{ otsi: "sample", olek: "ootab" }, 1],
+    ] as const) {
+      const doc = await open(query);
+      expect(shownRows(doc), JSON.stringify(query)).toHaveLength(count(doc, state));
+    }
+    expect(shownRows(await open({ otsi: "%" }))).toEqual(["50%off@example.test"]);
+    expect(shownRows(await open({ otsi: "_" }))).toEqual(["a_b@example.test"]);
+    expect(shownRows(await open({ otsi: "a_b", olek: "ootab" }))).toEqual(["a_b@example.test"]);
+    const percent = await open({ otsi: "%" });
+    expect(statePills(percent).map((p) => p.text)).toEqual(["Kinnitatud1", "Ootab kinnitust0"]);
+    expect(csvLink(percent).getAttribute("href")).toBe("/api/admin/subscribers.csv?otsi=%25");
+  });
+
+  test("the pager keeps the search and the state; a new search or pill starts at page 1", async () => {
+    for (let i = 0; i < 52; i++) await sub(`s${String(i).padStart(2, "0")}@example.test`, { consentAt: at(-i - 1), confirmedAt: i % 2 === 0 ? at(-i - 1) : null });
+    const doc = await open({ otsi: "example", olek: "kinnitatud" });
+    expect(shownRows(doc)).toHaveLength(26);
+    expect(doc.querySelector("[data-pager]")).toBeNull();
+    const all = await open({ otsi: "example", leht: "2" });
+    expect(shownRows(all)).toHaveLength(2);
+    expect(statePills(all).map((p) => p.href)).toEqual(["/admin/uudiskiri?otsi=example&olek=kinnitatud", "/admin/uudiskiri?otsi=example&olek=ootab"]); // (no ?leht=)
+    expect(all.querySelector('[data-pager] a[rel="prev"]')!.getAttribute("href")).toBe("/admin/uudiskiri?otsi=example");
+    const first = await open({ otsi: "example" });
+    expect(first.querySelector('[data-pager] a[rel="next"]')!.getAttribute("href")).toBe("/admin/uudiskiri?otsi=example&leht=2");
+    const pendingPage = await open({ olek: "ootab" });
+    expect(shownRows(pendingPage)).toHaveLength(26);
+    const dense = await open({ otsi: "s", leht: "2" });
+    expect(dense.querySelector('[data-pager] a[rel="prev"]')!.getAttribute("href")).toBe("/admin/uudiskiri?otsi=s");
+  });
+
+  test("an empty list says so and still renders the CSV button; a search with no hit and a state with none say so, with the way back (P-13, the shared lists texts)", async () => {
+    const none = await open();
+    expect(text(none.body.innerHTML)).toContain("Tellijaid veel pole.");
+    expect(none.querySelector("[data-list-empty] a")).toBeNull(); // (nothing is chosen: nothing to clear)
+    expect(csvLink(none).getAttribute("href")).toBe("/api/admin/subscribers.csv");
+    expect(statePills(none).map((p) => p.text)).toEqual(["Kinnitatud0", "Ootab kinnitust0"]);
+    await sub("kati@example.test");
+    const nobody = await open({ otsi: "xyz" });
+    expect(text(nobody.body.innerHTML)).toContain("„xyz“ järgi tellijaid ei leitud.");
+    expect(nobody.querySelector("[data-list-empty] a")!.getAttribute("href")).toBe("/admin/uudiskiri");
+    expect(nobody.querySelector("[data-list-empty] a")!.textContent).toBe("Tühjenda otsing ja filtrid");
+    expect(csvLink(nobody).getAttribute("href")).toBe("/api/admin/subscribers.csv?otsi=xyz");
+    const pending = await open({ olek: "ootab" });
+    expect(text(pending.body.innerHTML)).toContain("Selle valikuga tellijaid pole.");
+    expect(pending.querySelector("[data-list-empty] a")!.getAttribute("href")).toBe("/admin/uudiskiri");
   });
 
   test("120 seconds: „Saada kõigile“ is a server action of this page and runs the first batch (PRESS_BUDGET_MS, a send begun at its end included)", () => {

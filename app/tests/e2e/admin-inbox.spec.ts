@@ -1397,32 +1397,104 @@ test.describe("signed in", () => {
     expect(await noOverflow(page)).toBe(true);
   });
 
-  test("newsletter: the subscribers and the CSV downloads (formula cells defused)", async ({ page, context, visitorIp }, info) => {
+  // Tellijad (admin UX pass, piece 3b Task 7; README B5): the search of an address, the pills „Kinnitatud“ / „Ootab kinnitust“ with their counts, and the one
+  // „Laadi alla (CSV)“ of the current filter. The fixture's two addresses hold its tag, so a search for the tag leaves exactly this test's rows whatever the
+  // other project and the other tests have put into the table.
+  test("newsletter: Tellijad — search by a part of an address, the pills with their counts, the CSV of the current filter (formula cells defused)", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudiskiri");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskirja tellijad");
-    const ok = page.locator("tr", { hasText: f.subscribers.confirmed });
-    const waiting = page.locator("tr", { hasText: f.subscribers.pending });
-    await expect(ok).toBeVisible();
-    await expect(waiting).toContainText("Ootab kinnitust");
+    await adminReady(page);
+    const field = page.getByRole("searchbox", { name: "Otsi e-posti järgi" });
+    const rows = page.locator("tr[data-subscriber]");
+    const ok = rows.filter({ hasText: f.subscribers.confirmed });
+    const waiting = rows.filter({ hasText: f.subscribers.pending });
+    const pills = page.getByRole("navigation", { name: "Staatus", exact: true });
+    const csv = page.locator("a[data-csv]");
+    const tag = f.tag.toUpperCase(); // (the search is typed in capitals: it finds the lower-case address all the same)
+    /** Types the text and waits until the address holds it and the page on the screen is the one for it (its CSV button carries it). */
+    const search = async (text: string) => {
+      await field.fill(text);
+      await expect.poll(() => new URL(page.url()).searchParams.get("otsi")).toBe(text);
+      await expect(csv).toHaveAttribute("href", `/api/admin/subscribers.csv?otsi=${encodeURIComponent(text)}${new URL(page.url()).searchParams.has("olek") ? `&olek=${new URL(page.url()).searchParams.get("olek")}` : ""}`);
+    };
+    /** The file the button gives: its name and its text (the byte order mark taken off). */
+    const download = async () => {
+      const [file] = await Promise.all([page.waitForEvent("download"), csv.click()]);
+      return { name: file.suggestedFilename(), text: readFileSync((await file.path())!, "utf8") };
+    };
+    const addressesIn = (text: string) =>
+      text
+        .split("\r\n")
+        .slice(1)
+        .filter(Boolean)
+        .map((line) => line.split(",")[0]);
+
+    // one button, no state yet; the two pills without „Kõik“ (everyone is listed until one is pressed)
+    await expect(csv).toHaveCount(1);
+    await expect(csv).toHaveText("Laadi alla (CSV)");
+    await expect(csv).toHaveAttribute("href", "/api/admin/subscribers.csv");
+    await expect(pills.getByRole("link")).toHaveCount(2);
     expect(await noOverflow(page)).toBe(true);
 
-    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Lae alla kõik (CSV)" }).click()]);
-    expect(download.suggestedFilename()).toMatch(/^mslab-uudiskiri-\d{4}-\d{2}-\d{2}\.csv$/);
-    const all = readFileSync((await download.path())!, "utf8");
-    expect(all.startsWith("\uFEFFE-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg\r\n")).toBe(true);
-    expect(all).toContain(`${f.subscribers.confirmed},ET,`);
-    expect(all).toContain(`${f.subscribers.pending},'=1+1,`); // a formula-like cell gets an apostrophe
+    // a part of an address, typed in capitals: this test's two rows, and the pills' counts are the rows each would show
+    await search(tag);
+    await expect(rows).toHaveCount(2);
+    await expect(ok).toBeVisible();
+    await expect(waiting).toContainText("Ootab kinnitust");
+    const confirmedPill = pills.getByRole("link", { name: /^Kinnitatud/ });
+    const pendingPill = pills.getByRole("link", { name: /^Ootab kinnitust/ });
+    await expect(confirmedPill).toHaveText("Kinnitatud1");
+    await expect(pendingPill).toHaveText("Ootab kinnitust1");
+    await expect(page.locator("main")).toContainText("Tellijaid: 2, neist kinnitatud 1");
+    const all = await download();
+    expect(all.name).toMatch(/^mslab-uudiskiri-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(all.text.startsWith("﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg\r\n")).toBe(true);
+    expect(addressesIn(all.text.slice(1)).sort()).toEqual([f.subscribers.confirmed, f.subscribers.pending].sort());
+    expect(all.text).toContain(`${f.subscribers.confirmed},ET,`);
+    expect(all.text).toContain(`${f.subscribers.pending},'=1+1,`); // a formula-like cell gets an apostrophe
 
-    const confirmed = await page.request.get("/api/admin/subscribers.csv?kinnitatud=1");
-    expect(confirmed.status()).toBe(200);
-    expect(confirmed.headers()["content-type"]).toContain("text/csv");
-    expect(confirmed.headers()["cache-control"]).toContain("no-store");
-    expect(confirmed.headers()["content-disposition"]).toMatch(/^attachment; filename="mslab-uudiskiri-kinnitatud-\d{4}-\d{2}-\d{2}\.csv"$/);
-    const body = await confirmed.text();
-    expect(body).toContain(f.subscribers.confirmed);
-    expect(body).not.toContain(f.subscribers.pending);
+    // „Kinnitatud“: its one row; the other pill keeps its count; the file is the confirmed one, named for it
+    await confirmedPill.click();
+    await expect(confirmedPill).toHaveAttribute("aria-current", "true");
+    await expect(rows).toHaveCount(1);
+    await expect(ok).toBeVisible();
+    await expect(pendingPill).toHaveText("Ootab kinnitust1");
+    await expect(csv).toHaveAttribute("href", `/api/admin/subscribers.csv?otsi=${tag}&olek=kinnitatud`);
+    const confirmed = await download();
+    expect(confirmed.name).toMatch(/^mslab-uudiskiri-kinnitatud-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(addressesIn(confirmed.text.slice(1))).toEqual([f.subscribers.confirmed]);
+
+    // „Ootab kinnitust“ from there: the other row; its file
+    await pendingPill.click();
+    await expect(pendingPill).toHaveAttribute("aria-current", "true");
+    await expect(rows).toHaveCount(1);
+    await expect(waiting).toBeVisible();
+    await expect(csv).toHaveAttribute("href", `/api/admin/subscribers.csv?otsi=${tag}&olek=ootab`);
+    const pending = await download();
+    expect(pending.name).toMatch(/^mslab-uudiskiri-ootab-kinnitust-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(addressesIn(pending.text.slice(1))).toEqual([f.subscribers.pending]);
+    expect(pending.text).toContain(`${f.subscribers.pending},'=1+1,`);
+
+    // the same address asked for directly gives the same file (the route reads the address as the page does)
+    const direct = await page.request.get(`/api/admin/subscribers.csv?olek=kinnitatud&otsi=${f.tag}`);
+    expect(direct.status()).toBe(200);
+    expect(direct.headers()["content-type"]).toContain("text/csv");
+    expect(direct.headers()["cache-control"]).toContain("no-store");
+    expect(addressesIn(await direct.text())).toEqual([f.subscribers.confirmed]);
+
+    // a second press on the chosen pill takes it off: both rows are back; a search that finds nothing says so, and the button returns
+    await pendingPill.click();
+    await expect(pendingPill).not.toHaveAttribute("aria-current", "true");
+    await expect(rows).toHaveCount(2);
+    await search("ei-leidu-kunagi-sellist-aadressi");
+    await expect(rows).toHaveCount(0);
+    await expect(page.locator("[data-list-empty]")).toContainText("„ei-leidu-kunagi-sellist-aadressi“ järgi tellijaid ei leitud.");
+    await expect(confirmedPill).toHaveText("Kinnitatud0");
+    await page.locator("[data-list-empty]").getByRole("link", { name: "Tühjenda otsing ja filtrid" }).click();
+    await expect(page).toHaveURL(/\/admin\/uudiskiri$/);
+    expect(await noOverflow(page)).toBe(true);
   });
 
   // „Kirjad“ (newsletter campaigns, Task 4; admin UX pass piece 3b, Task 6: README B5): „Uus kiri +“ makes the draft at once, the editor autosaves and its

@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
-import { AdminIcon } from "@/components/admin/AdminIcon";
 import { CampaignsPanel, campaignEditorView, campaignListRow } from "@/components/admin/CampaignsPanel";
-import { getAdminCounts } from "@/components/admin/data";
 import { LangSwitch } from "@/components/admin/EditLang";
+import { ListEmpty } from "@/components/admin/ListStates";
+import { ListToolbar, type ListPill } from "@/components/admin/ListToolbar";
 import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
 import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { pageSubscribers } from "@/db/queries/admin";
+import { pageSubscribers, subscriberCounts } from "@/db/queries/admin";
 import { normalizeEmail } from "@/domain/email";
 import { parsePage } from "@/domain/paging";
+import { PARAM_OF_STATE, subscriberFilterOf, type SubscriberState } from "@/domain/subscribers";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
@@ -42,15 +43,15 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
 
 /**
  * „Uudiskiri“: two views. The subscribers (no ?vaade=): e-mail, language, consent time, confirmed or not (new sign-ups are confirmed at once; "not" is
- * a row of the old double opt-in that was never confirmed), newest first, and the CSV downloads (confirmed only — the addresses a newsletter may go
- * to — or all). 50 a page (?leht=); the CSV has all.
+ * a row of the old double opt-in that was never confirmed), newest first, under the search of an address and the pills „Kinnitatud“ / „Ootab kinnitust“
+ * with their counts (?otsi=, ?olek=), and „Laadi alla (CSV)“ of that filter. 50 a page (?leht=); the CSV has all the rows the filter finds.
  * „Kirjad“ (?vaade=kampaaniad, the address kept: README B5): the letters and the editor of the one chosen (&kampaania=<id>; components/admin/CampaignsPanel.tsx).
  * The two views are tabs („Tellijad“ | „Kirjad“, TabPills).
  */
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
   const search = await searchParams;
-  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(email, search);
+  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(search);
 }
 
 /** The two views as tabs (README B5: „Tellijad“ | „Kirjad“; every tab a page of its own). */
@@ -67,12 +68,54 @@ function Views({ view }: { view: "subscribers" | "campaigns" }) {
   );
 }
 
-/** The subscribers' view. (A function of the page, not a component: it reads.) */
-async function subscribersPage(email: string, search: Search) {
+/** The filter of a Tellijad view as address parameters: its search (?otsi=) and its state (?olek=); nothing for what is not chosen. */
+function filterParams(view: { otsi: string; state: SubscriberState | undefined }): URLSearchParams {
+  const q = new URLSearchParams();
+  if (view.otsi) q.set("otsi", view.otsi);
+  if (view.state) q.set("olek", PARAM_OF_STATE[view.state]);
+  return q;
+}
+
+/** The address of a Tellijad view: its filter and its page (?leht=, 50 a page). */
+function subscribersHref(view: { otsi: string; state: SubscriberState | undefined; leht?: number }): string {
+  const q = filterParams(view);
+  if (view.leht && view.leht > 1) q.set("leht", String(view.leht));
+  const s = q.toString();
+  return `/admin/uudiskiri${s ? `?${s}` : ""}`;
+}
+
+/** The CSV of the same view: the filter, not the page (the file has every row the filter finds). */
+function subscribersCsvHref(view: { otsi: string; state: SubscriberState | undefined }): string {
+  const s = filterParams(view).toString();
+  return `/api/admin/subscribers.csv${s ? `?${s}` : ""}`;
+}
+
+/**
+ * The subscribers' view (README B5, piece3-texts P-13). (A function of the page, not a component: it reads.) ListToolbar with the search of an address
+ * (?otsi=, a part of it; the query matches it literally) and the pills „Kinnitatud“ / „Ootab kinnitust“ with their counts (?olek=), drawn without „Kõik“:
+ * everyone is listed until a pill is pressed, and a pressed pill toggles off. The counts are the rows each pill shows under the search, every row
+ * counted, sample addresses too (ruling R-h: only the send leaves them out). „Laadi alla (CSV)“ is the file of the view on the screen: the same search
+ * and state go to api/admin/subscribers.csv, which reads them with the same domain/subscribers.ts subscriberFilterOf, so the file holds the rows the list
+ * shows, all of them. The count line keeps its words („Tellijaid: {n}, neist kinnitatud {confirmed}“), now of the rows shown.
+ */
+async function subscribersPage(search: Search) {
   const db = getDb();
-  const [list, counts] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts(email)]);
+  const filter = subscriberFilterOf(search);
+  const view = { otsi: filter.search, state: filter.state };
+  const [list, counts] = await Promise.all([pageSubscribers(db, filter, parsePage(search.leht)), subscriberCounts(db, filter)]);
   const rows = list.rows;
   const t = adminEt.newsletter;
+  const filtered = view.otsi !== "" || view.state !== undefined;
+  // each pill goes to the list with that pill chosen and the search kept, from page 1; the chosen pill goes to the list without it
+  const pills: ListPill[] = ([
+    { key: "confirmed", label: t.col.confirmed },
+    { key: "pending", label: t.pending },
+  ] as const).map((p) => ({
+    href: subscribersHref({ ...view, state: view.state === p.key ? undefined : p.key }),
+    label: p.label,
+    count: counts[p.key],
+    current: view.state === p.key,
+  }));
 
   return (
     <div className={ui.page}>
@@ -83,21 +126,19 @@ async function subscribersPage(email: string, search: Search) {
           <p className={ui.lead}>{t.lead}</p>
         </div>
         <div className={styles.downloads}>
-          <a className={ui.btn} href="/api/admin/subscribers.csv?kinnitatud=1" download data-csv="confirmed">
-            {t.csvConfirmed}
-            <AdminIcon name="arrow" />
-          </a>
-          <a className={`${ui.btn} ${ui.secondary}`} href="/api/admin/subscribers.csv" download data-csv="all">
-            {t.csvAll}
+          <a className={`${ui.btn} ${ui.secondary}`} href={subscribersCsvHref(view)} download data-csv="">
+            {t.csvDownload}
           </a>
         </div>
       </div>
       <Views view="subscribers" />
 
+      <ListToolbar placeholder={t.searchPlaceholder} pillRows={[{ label: t.statusLabel, pills }]} />
+
       <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
-        <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: counts.subscribers, confirmed: counts.confirmedSubscribers })}</p>
+        <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: list.total, confirmed: view.state === "pending" ? 0 : counts.confirmed })}</p>
         {rows.length === 0 ? (
-          <p className={ui.empty}>{t.empty}</p>
+          <ListEmpty things={t.things} filtered={filtered} search={view.otsi} clearHref="/admin/uudiskiri" />
         ) : (
           <table className={`${ui.table} ${styles.table}`}>
             <thead>
@@ -130,7 +171,7 @@ async function subscribersPage(email: string, search: Search) {
             </tbody>
           </table>
         )}
-        <Pager info={list} href={(n) => `/admin/uudiskiri${n > 1 ? `?leht=${n}` : ""}`} />
+        <Pager info={list} href={(n) => subscribersHref({ ...view, leht: n })} />
       </section>
     </div>
   );

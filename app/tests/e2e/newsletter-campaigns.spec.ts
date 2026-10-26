@@ -180,8 +180,12 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     await page.goto("/admin/uudiskiri");
     await adminReady(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskirja tellijad");
-    await expect(page.locator('[data-csv="confirmed"]')).toHaveAttribute("href", "/api/admin/subscribers.csv?kinnitatud=1");
-    await expect(page.locator('[data-csv="all"]')).toHaveAttribute("href", "/api/admin/subscribers.csv");
+    // Tellijad (piece 3b Task 7): the search of an address, the two pills, and one „Laadi alla (CSV)“ of the current filter in place of the two fixed buttons
+    await expect(page.getByRole("searchbox", { name: "Otsi e-posti järgi" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Staatus", exact: true }).getByRole("link")).toHaveCount(2);
+    await expect(page.locator("[data-csv]")).toHaveCount(1);
+    await expect(page.locator("[data-csv]")).toHaveText("Laadi alla (CSV)");
+    await expect(page.locator("[data-csv]")).toHaveAttribute("href", "/api/admin/subscribers.csv");
     await expect(page.locator("[data-newsletter-sync], [data-sync-off], [data-sync-run], [data-subscriber-suppressed], [data-subscriber-rejected]")).toHaveCount(0);
     await expect(page.locator("main")).not.toContainText("Resend");
     // the tabs „Tellijad“ | „Kirjad“ (the address keeps ?vaade=kampaaniad)
@@ -645,7 +649,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     await signIn(page, context, visitorIp);
     // `shows`: what the screen must show before it is measured; `first`: what is pressed first (the panel of „Peata saatmine“), then shown too
     const screens: { url: string; scope: string; shows: string[]; first?: { press: string; shows: string } }[] = [
-      { url: "/admin/uudiskiri", scope: "main", shows: ["[data-tab-pills]", '[data-csv="all"]'] },
+      { url: "/admin/uudiskiri", scope: "main", shows: ["[data-tab-pills]", "[data-csv]", "[data-list-toolbar] input[type=search]", "[data-list-pill-row]"] },
       { url: CAMPAIGNS, scope: "main", shows: ["[data-campaign-new]", `[data-campaign-row="${draft}"]`] },
       { url: `${CAMPAIGNS}&kampaania=${draft}`, scope: "main", shows: ["[data-campaign-form]", "[data-test-send]", "[data-test-target]", "[data-send-buttons]", "[data-campaign-delete]"] },
       { url: `${CAMPAIGNS}&kampaania=${draft}`, scope: "main", shows: ["[data-campaign-form]"], first: { press: "[data-campaign-delete]", shows: "[data-campaign-delete-part] [data-confirm-panel]" } },

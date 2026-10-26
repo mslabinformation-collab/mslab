@@ -4,14 +4,17 @@ import type { Db } from "@/db/client";
 import { courses, courseSessions, registrations, requests, subscribers } from "@/db/schema";
 import {
   adminCounts,
+  countSubscribers,
   getRegistration,
   listCourseNames,
   listRequests,
   listSessionsByIds,
+  listSubscribers,
   pageRegistrations,
   pageRequests,
   pageSubscribers,
   setRequestHandled,
+  subscriberCounts,
 } from "@/db/queries/admin";
 import { NOTE_MAX } from "@/domain/registration";
 import { cancel, saveHandled, saveStatus, subscribersCsv, subscribersCsvName } from "@/server/admin";
@@ -182,12 +185,12 @@ describe("pages of 50 (?leht=)", () => {
   });
 
   test("subscribers: pages of the given size, newest consent first; empty is one empty page", async () => {
-    expect(await pageSubscribers(db, 5)).toMatchObject({ page: 1, pages: 1, total: 0, rows: [] });
+    expect(await pageSubscribers(db, {}, 5)).toMatchObject({ page: 1, pages: 1, total: 0, rows: [] });
     await db.insert(subscribers).values(Array.from({ length: 5 }, (_, i) => ({ email: `s${i}@example.com`, token: `t${i}`, consentAt: new Date(Date.UTC(2026, 9, 1, i)) })));
-    const p1 = await pageSubscribers(db, 1, 2);
+    const p1 = await pageSubscribers(db, {}, 1, 2);
     expect(p1.rows.map((r) => r.email)).toEqual(["s4@example.com", "s3@example.com"]);
-    expect((await pageSubscribers(db, 3, 2)).rows.map((r) => r.email)).toEqual(["s0@example.com"]);
-    expect(await pageSubscribers(db, 0, 2)).toMatchObject({ page: 1 });
+    expect((await pageSubscribers(db, {}, 3, 2)).rows.map((r) => r.email)).toEqual(["s0@example.com"]);
+    expect(await pageSubscribers(db, {}, 0, 2)).toMatchObject({ page: 1 });
   });
 });
 
@@ -235,21 +238,104 @@ describe("adminCounts", () => {
 });
 
 describe("subscriber export", () => {
-  test("all or only confirmed; Estonian time; formula cells defused", async () => {
+  test("the rows it is given, in Estonian time, formula cells defused; the file is named after the state (piece3-texts P-13)", async () => {
     await db.insert(subscribers).values([
-      { email: "ok@example.com", locale: "ru", token: "t1", consentAt: new Date("2026-09-30T09:00:00Z"), confirmedAt: new Date("2026-09-30T09:10:00Z") },
-      { email: "wait@example.com", locale: "=cmd", token: "t2", consentAt: new Date("2026-10-01T11:05:00Z") },
+      { email: "ok@example.test", locale: "ru", token: "t1", consentAt: new Date("2026-09-30T09:00:00Z"), confirmedAt: new Date("2026-09-30T09:10:00Z") },
+      { email: "wait@example.test", locale: "=cmd", token: "t2", consentAt: new Date("2026-10-01T11:05:00Z") },
     ]);
-    const rows = await db.select().from(subscribers);
-    const all = subscribersCsv(rows, { confirmedOnly: false });
-    expect(all.split("\r\n")).toEqual([
-      "\uFEFFE-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
-      "ok@example.com,RU,2026-09-30 12:00,jah,2026-09-30 12:10",
-      "wait@example.com,'=CMD,2026-10-01 14:05,ei,",
+    expect(subscribersCsv(await listSubscribers(db)).split("\r\n")).toEqual([
+      "﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
+      "wait@example.test,'=CMD,2026-10-01 14:05,ei,",
+      "ok@example.test,RU,2026-09-30 12:00,jah,2026-09-30 12:10",
       "",
     ]);
-    expect(subscribersCsv(rows, { confirmedOnly: true })).not.toContain("wait@example.com");
-    expect(subscribersCsvName(new Date("2026-10-01T22:30:00Z"), false)).toBe("mslab-uudiskiri-2026-10-02.csv");
-    expect(subscribersCsvName(new Date("2026-10-01T10:00:00Z"), true)).toBe("mslab-uudiskiri-kinnitatud-2026-10-01.csv");
+    // (a state is chosen by the query now, not by a flag of the file: the rows are what the file holds)
+    expect(subscribersCsv(await listSubscribers(db, { state: "confirmed" })).split("\r\n")).toEqual([
+      "﻿E-post,Keel,Nõusolek,Kinnitatud,Kinnitamise aeg",
+      "ok@example.test,RU,2026-09-30 12:00,jah,2026-09-30 12:10",
+      "",
+    ]);
+    const day = new Date("2026-10-01T22:30:00Z"); // (already 2 October in Tallinn)
+    expect(subscribersCsvName(day, null)).toBe("mslab-uudiskiri-2026-10-02.csv");
+    expect(subscribersCsvName(day, "confirmed")).toBe("mslab-uudiskiri-kinnitatud-2026-10-02.csv");
+    expect(subscribersCsvName(day, "pending")).toBe("mslab-uudiskiri-ootab-kinnitust-2026-10-02.csv");
+  });
+});
+
+// Tellijad (admin UX pass, piece 3b Task 7; README B5, piece3-texts P-13, ruling R-h): the search by a part of an address, the two states, and the
+// pills' counts.
+describe("subscribers: search by address, the two states, the counts", () => {
+  const at = (hour: number) => new Date(Date.UTC(2026, 9, 1, hour));
+  let tokens = 0;
+  const add = (email: string, confirmed: boolean, hour: number) =>
+    db.insert(subscribers).values({ email, token: `tok${++tokens}`, consentAt: at(hour), confirmedAt: confirmed ? at(hour) : null });
+  const emails = async (filter: Parameters<typeof listSubscribers>[1]) => (await listSubscribers(db, filter)).map((r) => r.email);
+
+  test("the search finds an address by a part of it, in either case; empty text and spaces are no search; a part of nothing finds nothing", async () => {
+    await add("kati.kask@example.test", true, 1);
+    await add("mari@sample.example.test", false, 2);
+    await add("TIINA@Example.TEST", true, 3);
+    expect(await emails({ search: "kask" })).toEqual(["kati.kask@example.test"]);
+    expect(await emails({ search: "KATI.K" })).toEqual(["kati.kask@example.test"]);
+    expect(await emails({ search: "tiina@example" })).toEqual(["TIINA@Example.TEST"]);
+    expect(await emails({ search: "@sample." })).toEqual(["mari@sample.example.test"]);
+    expect(await emails({ search: "example.test" })).toEqual(["TIINA@Example.TEST", "mari@sample.example.test", "kati.kask@example.test"]); // (newest consent first)
+    expect(await emails({ search: "" })).toHaveLength(3);
+    expect(await emails({ search: "   " })).toHaveLength(3);
+    expect(await emails({ search: undefined })).toHaveLength(3);
+    expect(await emails({ search: "olematu" })).toEqual([]);
+  });
+
+  test("a percent sign, an underscore or a backslash in the search is the character itself, never a wildcard", async () => {
+    await add("a_b@example.test", true, 1);
+    await add("axb@example.test", true, 2);
+    await add("50%off@example.test", true, 3);
+    await add("500off@example.test", true, 4);
+    await add("back\\slash@example.test", false, 5);
+    expect(await emails({ search: "a_b" })).toEqual(["a_b@example.test"]);
+    expect(await emails({ search: "_" })).toEqual(["a_b@example.test"]);
+    expect(await emails({ search: "50%" })).toEqual(["50%off@example.test"]);
+    expect(await emails({ search: "%" })).toEqual(["50%off@example.test"]);
+    expect(await emails({ search: "k\\s" })).toEqual(["back\\slash@example.test"]);
+    expect(await emails({ search: "\\" })).toEqual(["back\\slash@example.test"]);
+    expect(await emails({ search: "%%" })).toEqual([]);
+    expect(await emails({ search: "_%_" })).toEqual([]);
+  });
+
+  test("the state: „Kinnitatud“ has a confirmation time, „Ootab kinnitust“ has none; with the search; the page and the rows agree", async () => {
+    await add("kati@example.test", true, 1);
+    await add("kaie@example.test", false, 2);
+    await add("mari@example.test", false, 3);
+    await add("juta@example.test", true, 4);
+    expect(await emails({ state: "confirmed" })).toEqual(["juta@example.test", "kati@example.test"]);
+    expect(await emails({ state: "pending" })).toEqual(["mari@example.test", "kaie@example.test"]);
+    expect(await emails({ search: "ka", state: "confirmed" })).toEqual(["kati@example.test"]);
+    expect(await emails({ search: "ka", state: "pending" })).toEqual(["kaie@example.test"]);
+    expect(await emails({ search: "ka" })).toEqual(["kaie@example.test", "kati@example.test"]);
+    expect((await pageSubscribers(db, { search: "ka", state: "pending" }, 1)).rows.map((r) => r.email)).toEqual(["kaie@example.test"]);
+    expect(await pageSubscribers(db, { state: "pending" }, 1, 1)).toMatchObject({ total: 2, pages: 2 });
+  });
+
+  test("the counts are the rows each pill shows: under the search, whatever state is chosen; sample addresses count like the rest (R-h)", async () => {
+    await add("kati@example.test", true, 1);
+    await add("kaie@example.test", false, 2);
+    await add("mari@example.test", false, 3);
+    await add("juta@sample.test", true, 4);
+    await add("liis@sample.test", true, 5);
+    expect(await subscriberCounts(db, {})).toEqual({ confirmed: 3, pending: 2 });
+    expect(await subscriberCounts(db, { search: "ka" })).toEqual({ confirmed: 1, pending: 1 });
+    expect(await subscriberCounts(db, { search: "sample" })).toEqual({ confirmed: 2, pending: 0 });
+    expect(await subscriberCounts(db, { search: "nobody" })).toEqual({ confirmed: 0, pending: 0 });
+    // (the state chosen now is no part of the counts: both pills keep their numbers)
+    expect(await subscriberCounts(db, { search: "ka", state: "confirmed" })).toEqual({ confirmed: 1, pending: 1 });
+    for (const search of [undefined, "ka", "sample", "example.test", "%", "nobody"]) {
+      const counts = await subscriberCounts(db, { search });
+      expect(counts.confirmed, `${search}: confirmed`).toBe((await listSubscribers(db, { search, state: "confirmed" })).length);
+      expect(counts.pending, `${search}: pending`).toBe((await listSubscribers(db, { search, state: "pending" })).length);
+      expect(counts.confirmed + counts.pending, `${search}: all`).toBe((await listSubscribers(db, { search })).length);
+      expect(await countSubscribers(db, { search }), `${search}: count`).toBe(counts.confirmed + counts.pending);
+      expect(await countSubscribers(db, { search, state: "confirmed" })).toBe(counts.confirmed);
+      expect(await countSubscribers(db, { search, state: "pending" })).toBe(counts.pending);
+    }
   });
 });

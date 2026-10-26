@@ -1931,16 +1931,22 @@ export const adminEt = {
     eyebrow: "Uudiskiri",
     title: "Uudiskirja tellijad",
     lead: "Tellijad liituvad ise, aadressi sisestades: kinnituskirja enam ei saadeta. Tervituskirjas on loobumislink. „Ootab kinnitust“ on aadress, mis liitus vanal viisil ega ole kinnituslinki avanud.",
-    csvConfirmed: "Lae alla kinnitatud (CSV)",
-    csvAll: "Lae alla kõik (CSV)",
+    // Tellijad (admin UX pass, piece 3b Task 7; README B5, piece3-texts P-13): the one „Laadi alla (CSV)“ of the current filter in place of „Lae alla
+    // kinnitatud (CSV)“ and „Lae alla kõik (CSV)“, the search field's placeholder, the word of the empty lines („Tellijaid veel pole.“, „Selle valikuga
+    // tellijaid pole.“: components/admin/ListStates.tsx fills `things`), and the two pills „Kinnitatud“ (col.confirmed) / „Ootab kinnitust“ (pending)
+    // with their counts; the pill row's name is the lists' word „Staatus“ (registrations.statusLabel). {n} the rows shown, {confirmed} those of them confirmed.
+    csvDownload: "Laadi alla (CSV)",
+    searchPlaceholder: "Otsi e-posti järgi",
+    things: "tellijaid",
+    statusLabel: "Staatus",
     count: "Tellijaid: {n}, neist kinnitatud {confirmed}",
     col: { email: "E-post", locale: "Keel", consent: "Nõusolek", confirmed: "Kinnitatud" },
     pending: "Ootab kinnitust",
-    empty: "Tellijaid veel pole.",
-    // CSV export: header row and the yes/no column (the file is for Maria and mailing tools).
+    // CSV export: header row and the yes/no column (the file is for Maria and mailing tools); the file is named after the state it holds (P-13)
     csv: {
       filename: "mslab-uudiskiri",
       filenameConfirmed: "mslab-uudiskiri-kinnitatud",
+      filenamePending: "mslab-uudiskiri-ootab-kinnitust",
       header: ["E-post", "Keel", "Nõusolek", "Kinnitatud", "Kinnitamise aeg"],
       yes: "jah",
       no: "ei",

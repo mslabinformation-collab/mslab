@@ -484,20 +484,24 @@
       "href": "/admin/uudiskiri",
       "steps": [
         "Ava halduses „Uudiskiri“.",
-        "Vaata tellijate loendit ja rida loendi kohal.",
-        "Vajuta „Lae alla kinnitatud (CSV)“ ja ava fail."
+        "Vaata tellijate loendit, otsinguvälja ja rida loendi kohal.",
+        "Kirjuta otsinguvälja „Otsi e-posti järgi“ tekst „proov3“.",
+        "Vajuta nuppu „Kinnitatud“.",
+        "Vajuta „Laadi alla (CSV)“ ja ava fail."
       ],
       "expect": [
         "Loendis on Proov 3 aadress koos keele, nõusoleku aja ja kinnitusajaga.",
         "Loendi kohal on rida „Tellijaid: …, neist kinnitatud …“.",
-        "Lehe ülaosas on vaated „Tellijad“ ja „Kirjad“ ning kaks allalaadimise nuppu.",
-        "Fail sisaldab kinnitatud tellijaid, ka Proov 3 aadressi."
+        "Lehe ülaosas on vaated „Tellijad“ ja „Kirjad“ ning üks nupp „Laadi alla (CSV)“.",
+        "Nuppudel „Kinnitatud“ ja „Ootab kinnitust“ on arv ning vajutatud nupu arv on loendi ridade arv.",
+        "Loendis on ainult aadressid, milles on „proov3“, ja ainult kinnitatud tellijad.",
+        "Fail sisaldab samu ridu, ka Proov 3 aadressi."
       ],
       "why": "Maria saab tellijate aadressid alati kätte ja kiri läheb ainult nendele.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-20T15:31:39.437Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania",
