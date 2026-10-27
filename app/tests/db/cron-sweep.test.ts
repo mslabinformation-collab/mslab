@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clientLoginTokens, clients, clientSessions, courseModules, courses, kvEntries, lessonFiles, lessons, mailQuota, payments } from "@/db/schema";
+import { clientLoginTokens, clients, clientSessions, courseModules, courses, kvEntries, lessonFiles, lessons, mailQuota, payments, reviews } from "@/db/schema";
 import { sweepClientRows } from "@/server/client-auth";
 import { PgKv, sweepExpired } from "@/server/kv";
 import { fakeMediaStore, stubFetch } from "../fakes";
@@ -103,8 +103,12 @@ describe("GET /api/cron/sweep", () => {
     const res = await call(`Bearer ${SECRET}`);
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false });
-    // the sweep's one line, and the lesson files' purge's own (it never throws, it logs): the class and the code, nothing else
-    expect(log.mock.calls.map((c) => c[0]).sort()).toEqual(["[cron] sweep failed: Error (code ECONNREFUSED)", "[lesson-files] removed files not purged: Error (code ECONNREFUSED)"]);
+    // the sweep's one line, and the lesson files' and the reviews' purges' own (they never throw, they log): the class and the code, nothing else
+    expect(log.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "[cron] sweep failed: Error (code ECONNREFUSED)",
+      "[lesson-files] removed files not purged: Error (code ECONNREFUSED)",
+      "[reviews] removed reviews not purged: Error (code ECONNREFUSED)",
+    ]);
   });
 
   test("with payments set up the same call runs the daily check: a pending payment of 14 days is failed and counted (phase 2b)", async () => {
@@ -319,6 +323,40 @@ describe("GET /api/cron/sweep: the removed lesson files (piece 3a, R-f)", () => 
     const res = await call(`Bearer ${SECRET}`);
     expect([res.status, (await res.json()).files]).toEqual([200, 1]);
     expect(error.mock.calls.map(String)).toEqual(["[lesson-files] a removed file's object was not deleted: Error"]);
+  });
+});
+
+describe("GET /api/cron/sweep: the removed reviews (piece 4c, R-b)", () => {
+  const ago = (sec: number) => new Date(Date.now() - sec * 1000);
+  /** Reviews Maria added to a course, each "removed" `sec` seconds ago (null: not removed). */
+  async function reviewsWith(removed: Record<string, number | null>) {
+    const [c] = await db.insert(courses).values({ slug: "kulmud", type: "contact", level: "basic", title: { et: "K" }, summary: { et: "" }, body: { et: "" } }).returning();
+    for (const [name, sec] of Object.entries(removed))
+      await db.insert(reviews).values({ courseId: c.id, kind: "manual", text: "Tore.", name, locale: "et", writtenAt: ago(86_400), status: "published", note: "paberil", removedAt: sec === null ? null : ago(sec) });
+  }
+  const names = async () => (await db.select().from(reviews).orderBy(reviews.id)).map((r) => r.name);
+
+  test("the daily call purges the reviews removed 10 s or more ago and answers their count under `reviews`; a younger one and a kept one stay; the log has the count only", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await reviewsWith({ "Läinud L.": 3600, "Noor N.": 3, "Jääb J.": null });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_FILES, reviews: 1, ...NO_PAYMENTS });
+    expect(await names()).toEqual(["Noor N.", "Jääb J."]);
+    expect(info.mock.calls.map(String)).toEqual([
+      "[cron] sweep: 1 expired kv entries, 0 login codes, 0 sessions, 0 mail counters, 0 stuck video uploads deleted, 0 stuck processing videos found ready, 0 marked failed, 0 video rows left for the next run",
+      "[cron] sweep: 1 removed reviews purged",
+    ]);
+  });
+
+  test("nothing to purge: no `reviews` key in the answer and no line in the log", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await reviewsWith({ "Noor N.": 3, "Jääb J.": null });
+    const answer = await (await call(`Bearer ${SECRET}`)).json();
+    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_FILES, ...NO_PAYMENTS });
+    expect(answer).not.toHaveProperty("reviews");
+    expect(info.mock.calls.map(String).filter((l) => l.includes("review"))).toEqual([]);
+    expect(await names()).toEqual(["Noor N.", "Jääb J."]);
   });
 });
 

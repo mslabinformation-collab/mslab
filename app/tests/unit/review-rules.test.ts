@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   COURSE_REVIEWS_MAX, COURSE_REVIEWS_SHOWN, HOME_REVIEWS_MAX, REVIEW_NAME_MAX, REVIEW_NOTE_MAX, REVIEW_TEXT_MAX,
-  checkConsent, checkManualReview, reviewMonth, shownNameFrom,
+  checkConsent, checkManualReview, reviewMonth, shownNameFrom, starsOf,
 } from "@/domain/review";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
 
@@ -220,6 +220,16 @@ describe("reviewMonth: the month and year a review shows, in Tallinn time (D5)",
     expect(reviewMonth(new Date("2026-12-31T21:59:59Z"), "et")).toBe("dets 2026");
     expect(reviewMonth(new Date("2026-12-31T22:00:00Z"), "et")).toBe("jaan 2027");
     expect(reviewMonth(new Date("2026-12-31T22:00:00Z"), "ru")).toBe("янв. 2027");
+  });
+});
+
+describe("starsOf: a review card's stars from the student's „Hinne“ (piece 4c, S4-Q5 = B)", () => {
+  test("9–10 → 5, 7–8 → 4, 5–6 → 3, 3–4 → 2, 0–2 → 1", () => {
+    const stars = Object.fromEntries([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((score) => [score, starsOf(score)]));
+    expect(stars).toEqual({ 10: 5, 9: 5, 8: 4, 7: 4, 6: 3, 5: 3, 4: 2, 3: 2, 2: 1, 1: 1, 0: 1 });
+  });
+  test("no score, no stars: undefined, null (a review Maria added), and what is no score of 0–10", () => {
+    for (const score of [undefined, null, -1, 11, Number.NaN, Number.POSITIVE_INFINITY]) expect(starsOf(score), String(score)).toBe(0);
   });
 });
 

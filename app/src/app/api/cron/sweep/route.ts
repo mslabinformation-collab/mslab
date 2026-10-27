@@ -12,6 +12,7 @@ import { checkPendingPayments, NO_PAYMENT_SWEEP, type PaymentSweep } from "@/ser
 import { paymentProvider } from "@/server/payments/montonio";
 import { revalidatePublic } from "@/server/public-cache";
 import { keyMatches } from "@/server/review-key";
+import { purgeRemovedReviews } from "@/server/review-purge";
 
 export const dynamic = "force-dynamic";
 // Hobby's functions may run up to 300 s; 60 is our own guard. The Bunny part stays inside it: no new row is started after
@@ -67,10 +68,13 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
  *   none is due: at most 25 batches (500 files) and no new batch after SWEEP_DEADLINE_MS, so a backlog cannot build (what a bound leaves goes with the
  *   next run, and a log line says so). The action that follows a removal purges them too, so this is the backstop for the last removal of a session.
  *   Never fails the sweep: it logs and counts 0.
+ * - the reviews Maria removed (admin UX pass piece 4c, R-b: „Kustuta“ only marks a review she added, so the UndoBar can bring it back): those marked
+ *   10 s ago or more are deleted (server/review-purge.ts; at most REVIEW_PURGE_BATCH a run, the rest goes with the next one), the backstop for the
+ *   last „Kustuta“ of a session. Counted under `reviews` and logged only when there was something to purge. Never fails the sweep: it logs and counts 0.
  * Vercel sends `Authorization: Bearer <CRON_SECRET>` when the project has the CRON_SECRET variable; anything else, and every
  * request while CRON_SECRET is not set, is a 401.
- * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, files, paymentsChecked,
- * paymentsSettled, paymentsExpired, paymentsLeft, paymentsErrors }` (counts; `deleted` is the kv entries; the payment counts are zeros
+ * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, files, reviews?, paymentsChecked,
+ * paymentsSettled, paymentsExpired, paymentsLeft, paymentsErrors }` (counts; `deleted` is the kv entries; `reviews` only when some were purged; the payment counts are zeros
  * without online payments; `paymentsErrors`: payments that could not be settled, each one counted and logged by id and error class, none
  * of them a 500); 500 `{ ok: false }` when the database fails. The log line has the counts only, no ids.
  */
@@ -81,12 +85,13 @@ export async function GET(request: Request): Promise<Response> {
     const db = getDb();
     const now = new Date();
     const until = now.getTime() + SWEEP_DEADLINE_MS;
-    const [deleted, accounts, videos, checked, purge] = await Promise.all([
+    const [deleted, accounts, videos, checked, purge, removedReviews] = await Promise.all([
       sweepExpired(db, now),
       sweepClientRows(db, now),
       sweepVideos(db, bunnyConfig(), now, until),
       sweepPayments(db, now, until),
       drainRemovedLessonFiles(db, mediaStore(), now, { until }),
+      purgeRemovedReviews(db, now),
     ]);
     const files = purge.purged;
     console.info(
@@ -97,6 +102,8 @@ export async function GET(request: Request): Promise<Response> {
     if (files > 0) console.info(`[cron] sweep: ${files} removed lesson files purged`);
     // a bound ended the drain (25 batches, or the deadline) while files may still be due: said once, so that a backlog is seen and not guessed at
     if (purge.stopped) console.info("[cron] sweep: more removed lesson files are due than one run takes; the rest goes with the next run");
+    // the reviews' line, and their key in the answer, only when some were purged (R-b: the log lines and the answer of a sweep with none stay as they were)
+    if (removedReviews > 0) console.info(`[cron] sweep: ${removedReviews} removed reviews purged`);
     // the payments' line only with online payments set up: without them the existing log lines are all there is (tests/db/cron-sweep.test.ts
     // counts them: toHaveBeenCalledTimes(1), the exact list of two), and the answer's payment counts are zeros
     if (checked) {
@@ -115,6 +122,7 @@ export async function GET(request: Request): Promise<Response> {
       processingFailed: videos.processingFailed,
       videosLeft: videos.left,
       files,
+      ...(removedReviews > 0 ? { reviews: removedReviews } : {}),
       paymentsChecked: paid.checked,
       paymentsSettled: paid.settled,
       paymentsExpired: paid.expired,

@@ -25,6 +25,10 @@ export type ReviewRowView = {
   note: string | null;
   /** A student's review has its proof; one Maria added has none. */
   proof: ReviewProofView | null;
+  /** The feedback answer a student's review was made from (piece 4c); null for one Maria added. */
+  feedbackId: number | null;
+  /** That answer's „Hinne“, 0–10: the card's stars (domain/review.ts starsOf). Null for one Maria added and for an answer without a score. */
+  score: number | null;
 };
 
 /** A course „Lisa arvustus“ can name: its id and the words in the list (a draft says so). */
@@ -47,5 +51,7 @@ export function reviewRowView(row: AdminReviewRow): ReviewRowView {
     course: { id: row.course.id, title: pick(row.course.title, "et"), published: row.course.published },
     note: row.note,
     proof: proof === null ? null : "completedAt" in proof ? { kind: "completed", completedAt: proof.completedAt.toISOString() } : { kind: "registration", status: proof.registrationStatus, protocolSent: proof.protocolSent },
+    feedbackId: row.feedbackId,
+    score: row.score,
   };
 }

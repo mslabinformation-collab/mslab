@@ -13,13 +13,16 @@ import { contactStudent, RECOMMEND, submit } from "./reviews-fixtures";
 // toggle, „Lisa arvustus“ (new and edited) and „Kustuta“, each through adminAction (a stand-in here: the guard is tests/unit/admin-guards.test.ts's).
 // What each answers, what it stores, that a success revalidates the pages of the review's course (both of them when an edit moves it) and then
 // refreshes the open page, that a refusal revalidates nothing, and that a review the student has just withdrawn is answered in words, with the page
-// refreshed so the row is gone: no 500 and no stale row.
+// refreshed so the row is gone: no 500 and no stale row. Piece 4c (admin UX pass, Task 1): a decision answers what its „Võta tagasi“ needs and the
+// undo is refused when the review moved since (R-a, Review Focus 1); „Kustuta“ is a soft delete with its own undo, and the purge of what is due runs
+// after the answer (R-b).
 
-const state = vi.hoisted(() => ({ db: null as unknown }));
+const state = vi.hoisted(() => ({ db: null as unknown, after: [] as (() => Promise<void>)[] }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("next/cache", () => cache);
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: (fn: () => Promise<void>) => void state.after.push(fn) }));
 vi.mock("@/server/public-cache", () => pub);
 vi.mock("@/server/auth", () => ({ adminAction: (fn: (admin: unknown, ...args: unknown[]) => unknown) => (...args: unknown[]) => fn({ email: "admin@example.test" }, ...args) }));
 
@@ -31,6 +34,7 @@ let logged: () => string;
 beforeEach(async () => {
   db = await makeTestDb();
   state.db = db;
+  state.after = [];
   cache.refresh.mockReset();
   pub.revalidatePublic.mockReset();
   const spies = (["info", "warn", "error"] as const).map((method) => vi.spyOn(console, method).mockImplementation(() => {}));
@@ -67,9 +71,12 @@ const form = (courseId: number, over: Record<string, unknown> = {}) =>
 describe("decideReviewAction: „Avalda“ and „Peida“", () => {
   test("„Avalda“ on a pending review: it is published, decided now; the course's pages are revalidated, then the open page is refreshed", async () => {
     const { review, course } = await pendingOf();
-    expect(await actions.decideReviewAction({ id: review.id, decision: "publish" })).toEqual({ ok: true });
-    expect(await reviewOf(review.id)).toMatchObject({ status: "published", featured: false, text: RECOMMEND, name: "Mari M." });
-    expect((await reviewOf(review.id)).decidedAt).toBeInstanceOf(Date);
+    const answer = await actions.decideReviewAction({ id: review.id, decision: "publish" });
+    const row = await reviewOf(review.id);
+    expect(row).toMatchObject({ status: "published", featured: false, text: RECOMMEND, name: "Mari M." });
+    expect(row.decidedAt).toBeInstanceOf(Date);
+    // (piece 4c, R-a: what its „Võta tagasi“ sends back: the row as the press left it, and what the press replaced)
+    expect(answer).toEqual({ ok: true, expected: { status: "published", updatedAt: row.updatedAt.toISOString(), previous: { status: "pending", decidedAt: null } } });
     expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
     expect(cache.refresh).toHaveBeenCalledTimes(1);
     // the pages are marked stale before the open page is rendered again
@@ -80,10 +87,10 @@ describe("decideReviewAction: „Avalda“ and „Peida“", () => {
     const { review, course } = await pendingOf();
     await actions.decideReviewAction({ id: review.id, decision: "publish" });
     expect(await actions.setFeaturedAction({ id: review.id, featured: true })).toEqual({ ok: true });
-    expect(await actions.decideReviewAction({ id: review.id, decision: "hide" })).toEqual({ ok: true });
+    expect(await actions.decideReviewAction({ id: review.id, decision: "hide" })).toMatchObject({ ok: true });
     expect(await reviewOf(review.id)).toMatchObject({ status: "hidden", featured: true });
-    expect(await actions.decideReviewAction({ id: review.id, decision: "hide" })).toEqual({ ok: true });
-    expect(await actions.decideReviewAction({ id: review.id, decision: "publish" })).toEqual({ ok: true });
+    expect(await actions.decideReviewAction({ id: review.id, decision: "hide" })).toMatchObject({ ok: true });
+    expect(await actions.decideReviewAction({ id: review.id, decision: "publish" })).toMatchObject({ ok: true });
     expect(await reviewOf(review.id)).toMatchObject({ status: "published", featured: true });
     expect(revalidated()).toEqual(Array.from({ length: 5 }, () => ({ kind: "reviews", course: course.slug })));
     expect(cache.refresh).toHaveBeenCalledTimes(5);
@@ -301,9 +308,191 @@ describe("deleteManualReviewAction: „Kustuta“", () => {
   });
 });
 
+describe("piece 4c, R-a: undoDecisionAction, „Võta tagasi“ of „Avalda“ / „Peida“", () => {
+  /** A decision through its action, and the `expected` its answer carries. */
+  async function decided(id: number, decision: "publish" | "hide") {
+    const answer = await actions.decideReviewAction({ id, decision });
+    if (!answer.ok) throw new Error(`not decided: ${answer.error}`);
+    return answer.expected;
+  }
+
+  test("after a hide of a waiting review: pending again with its old decided_at (none); the decision and the undo each revalidate the course's pages once, then refresh", async () => {
+    const { review, course } = await pendingOf();
+    const expected = await decided(review.id, "hide");
+    expect(await actions.undoDecisionAction({ id: review.id, expected })).toEqual({ ok: true });
+    expect(await reviewOf(review.id)).toMatchObject({ status: "pending", decidedAt: null, featured: false });
+    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }, { kind: "reviews", course: course.slug }]);
+    expect(cache.refresh).toHaveBeenCalledTimes(2);
+    expect(pub.revalidatePublic.mock.invocationCallOrder[1]).toBeLessThan(cache.refresh.mock.invocationCallOrder[1]);
+  });
+
+  test("after „Avalda“ on a hidden review: hidden again, with the decided_at it had", async () => {
+    const { review } = await pendingOf();
+    await decided(review.id, "hide");
+    const hiddenAt = (await reviewOf(review.id)).decidedAt;
+    const expected = await decided(review.id, "publish");
+    expect(await actions.undoDecisionAction({ id: review.id, expected })).toEqual({ ok: true });
+    expect(await reviewOf(review.id)).toMatchObject({ status: "hidden", decidedAt: hiddenAt });
+  });
+
+  test("Review Focus 1: hidden in one tab, published again in another; the first tab's „Võta tagasi“ is S4-38's `changed` in words, nothing is overwritten, the page refreshes", async () => {
+    const { review } = await pendingOf();
+    const firstTab = await decided(review.id, "hide");
+    await decided(review.id, "publish"); // (the other tab)
+    const before = await reviewOf(review.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    const answer = await actions.undoDecisionAction({ id: review.id, expected: firstTab });
+    expect(answer).toEqual({ ok: false, error: "changed", text: "Arvustust muudeti vahepeal. Vaata see üle." });
+    expect(E.changed).toBe("Arvustust muudeti vahepeal. Vaata see üle.");
+    expect(await reviewOf(review.id)).toEqual(before);
+    expect(before.status).toBe("published");
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("a review gone since the press (the student took her permission back) is `gone` in words, with the page refreshed", async () => {
+    const { review, client } = await pendingOf();
+    const expected = await decided(review.id, "hide");
+    await withdrawReview(db, client.id, review.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    expect(await actions.undoDecisionAction({ id: review.id, expected })).toEqual({ ok: false, error: "gone", text: E.gone });
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("an undo the page never sends is `gone` without touching anything: a bad id, a status that is none, an instant that is none, a missing part", async () => {
+    const { review } = await pendingOf();
+    const expected = await decided(review.id, "hide");
+    const before = await reviewOf(review.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    const bads = [
+      { id: 0, expected },
+      { id: String(review.id), expected },
+      { id: review.id },
+      { id: review.id, expected: { ...expected, status: "deleted" } },
+      { id: review.id, expected: { ...expected, updatedAt: "yesterday" } },
+      { id: review.id, expected: { ...expected, previous: { status: "pending" } } },
+      { id: review.id, expected: { ...expected, previous: { status: "removed", decidedAt: null } } },
+      { id: review.id, expected: { ...expected, previous: { status: "pending", decidedAt: "soon" } } },
+      null,
+      "undo",
+    ];
+    for (const bad of bads) expect(await actions.undoDecisionAction(bad as never), JSON.stringify(bad)).toMatchObject({ ok: false, error: "gone", text: E.gone });
+    expect(await reviewOf(review.id)).toEqual(before);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("a throw is `server` in words, logged by the review's id and the error's class only", async () => {
+    state.db = { transaction: () => Promise.reject(new TypeError("boom: Mari M.")) };
+    const expected = { status: "hidden" as const, updatedAt: "2026-10-21T10:00:00.000Z", previous: { status: "pending" as const, decidedAt: null } };
+    expect(await actions.undoDecisionAction({ id: 7, expected })).toEqual({ ok: false, error: "server", text: E.server });
+    expect(logged()).toContain("review 7");
+    expect(logged()).toContain("TypeError");
+    expect(logged()).not.toContain("Mari");
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("piece 4c, R-b: removeReviewAction and undoRemoveReviewAction, „Kustuta“ and its „Võta tagasi“", () => {
+  /** A review Maria added, through her form; its id. */
+  async function added() {
+    const { course } = await protocolCourse(db);
+    const answer = await actions.saveManualReviewAction(form(course.id));
+    if (!answer.ok || !("id" in answer)) throw new Error("not added");
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    return { id: answer.id, course };
+  }
+  const runAfter = async () => {
+    for (const job of state.after.splice(0)) await job();
+  };
+
+  test("„Kustuta“ marks the review (the row stays until the purge); the course's pages are revalidated once, then the page refreshes; the purge waits for the answer", async () => {
+    const { id, course } = await added();
+    expect(await actions.removeReviewAction({ id })).toEqual({ ok: true });
+    expect((await reviewOf(id)).removedAt).toBeInstanceOf(Date);
+    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(pub.revalidatePublic.mock.invocationCallOrder[0]).toBeLessThan(cache.refresh.mock.invocationCallOrder[0]);
+    expect(state.after).toHaveLength(1);
+    // (the purge that runs after the answer takes what was removed 10 s ago or more, never this one)
+    await db
+      .insert(reviews)
+      .values({ courseId: course.id, kind: "manual", text: "Vana.", name: "Vana V.", locale: "et", writtenAt: new Date("2026-09-01T09:00:00Z"), status: "published", note: "kiri", removedAt: new Date(Date.now() - 11_000) });
+    expect(await all()).toHaveLength(2);
+    await runAfter();
+    expect((await all()).map((r) => r.id)).toEqual([id]);
+  });
+
+  test("„Võta tagasi“ within the UndoBar's time brings it back; its course's pages are revalidated once, then the page refreshes", async () => {
+    const { id, course } = await added();
+    await actions.removeReviewAction({ id });
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    expect(await actions.undoRemoveReviewAction({ id })).toEqual({ ok: true });
+    expect(await reviewOf(id)).toMatchObject({ removedAt: null, status: "published" });
+    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("„Võta tagasi“ after the purge: `manualGone` in words, the page refreshed, nothing revalidated", async () => {
+    const { id } = await added();
+    await actions.removeReviewAction({ id });
+    await db.update(reviews).set({ removedAt: new Date(Date.now() - 11_000) }).where(eq(reviews.id, id)); // (11 s have passed)
+    await actions.removeReviewAction({ id: 4242 }); // (another „Kustuta“: its purge runs after its answer)
+    await runAfter();
+    expect(await all()).toEqual([]);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    expect(await actions.undoRemoveReviewAction({ id })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("a student's words are not Maria's to delete: `notManual` in words, nothing written, nothing revalidated", async () => {
+    const { review } = await pendingOf();
+    expect(await actions.removeReviewAction({ id: review.id })).toEqual({ ok: false, error: "notManual", text: E.notManual });
+    expect(await all()).toEqual([review]);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("one that is already gone (removed in another tab) is `manualGone`, the page refreshed; an id the page never sends is the same, untouched and without a refresh", async () => {
+    const { id } = await added();
+    await actions.removeReviewAction({ id });
+    cache.refresh.mockClear();
+    pub.revalidatePublic.mockClear();
+    expect(await actions.removeReviewAction({ id })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    cache.refresh.mockClear();
+    for (const bad of [{ id: 0 }, { id: "5" }, {}, null]) {
+      expect(await actions.removeReviewAction(bad as never), JSON.stringify(bad)).toMatchObject({ ok: false, error: "manualGone" });
+      expect(await actions.undoRemoveReviewAction(bad as never), JSON.stringify(bad)).toMatchObject({ ok: false, error: "manualGone" });
+    }
+    expect(cache.refresh).not.toHaveBeenCalled();
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+  });
+
+  test("a throw is `server` in words, logged by the review's id and the error's class only; nothing is revalidated or refreshed", async () => {
+    state.db = { transaction: () => Promise.reject(new RangeError("boom: Anu A.")) };
+    expect(await actions.removeReviewAction({ id: 9 })).toEqual({ ok: false, error: "server", text: E.server });
+    expect(await actions.undoRemoveReviewAction({ id: 9 })).toEqual({ ok: false, error: "server", text: E.server });
+    expect(logged()).toContain("review 9");
+    expect(logged()).toContain("RangeError");
+    expect(logged()).not.toContain("Anu");
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+});
+
 describe("the words", () => {
   test("every refusal has Estonian words of its own, and no text is a code", () => {
-    for (const code of ["gone", "notPublished", "manualGone", "notManual", "server"] as const) {
+    for (const code of ["gone", "notPublished", "manualGone", "notManual", "changed", "server"] as const) {
       expect(E[code], code).toMatch(/\S/);
       expect(E[code], code).not.toBe(code);
     }

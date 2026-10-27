@@ -1222,6 +1222,8 @@ export const adminEt = {
       notPublished: "Avalehel saab olla ainult avaldatud arvustus.",
       manualGone: "Seda arvustust enam pole.",
       notManual: "Õpilase sõnu ei saa muuta ega kustutada. Kui ei taha neid näidata, peida arvustus.",
+      // (piece 4c, S4-38) „Võta tagasi“ of „Avalda“ / „Peida“ refused: the review moved since the press (another tab, „Avalehel“, an edit)
+      changed: "Arvustust muudeti vahepeal. Vaata see üle.",
       server: "Salvestamine ei õnnestunud. Proovi uuesti.",
     },
   },

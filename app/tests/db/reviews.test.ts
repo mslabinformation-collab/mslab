@@ -1,18 +1,23 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clients, courseFeedback, courses, courseSessions, protocols, registrations, reviews } from "@/db/schema";
 import { COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, REVIEW_NAME_MAX } from "@/domain/review";
 import { submitFeedback } from "@/server/course-feedback";
+import { deleteDueReviews, purgeRemovedReviews } from "@/server/review-purge";
 import {
-  adminReviews, courseReviews, decideReview, deleteManualReview, homeReviews, pendingReviewCount, saveManualReview, setFeatured, withdrawReview,
+  adminReviews, courseReviews, decideReview, deleteManualReview, homeReviews, pendingReviewCount, removeManualReview, restoreManualReview, restoreReviewDecision,
+  reviewCounts, reviewCourseSlugs, reviewsOfClient, reviewsOfFeedback, saveManualReview, setFeatured, withdrawReview,
 } from "@/server/reviews";
 import { makeTestDb } from "./helpers";
 import { protocolCourse } from "./protocols-fixtures";
 import { contactStudent, graduate, NOW, RECOMMEND, studentOf, submit } from "./reviews-fixtures";
 
 // Student reviews, the server side (spec §2 D1–D4, §4, §5): the consent in the feedback submit, the student's withdrawal, Maria's decisions and
-// manual reviews, the admin's list, and the two public reads (a course's block, the home page's section).
+// manual reviews, the admin's list, and the two public reads (a course's block, the home page's section). Piece 4c (admin UX pass, Task 1): „Kustuta“
+// on a review Maria added is a soft delete (removed_at, R-b) that „Võta tagasi“ undoes until the purge, every reader leaves a removed review out
+// (Review Focus 2), a decision's „Võta tagasi“ puts back what the press replaced unless the review moved since (R-a, Review Focus 1), the counts
+// by status, and the student's score on the admin's list.
 
 let db: Db;
 let logged: () => string;
@@ -206,10 +211,18 @@ describe("withdrawReview: her permission taken back", () => {
 describe("Maria's decisions", () => {
   test("publish and hide a review: the status and decided_at change, the text and the name never do; the course's slug is returned", async () => {
     const { course, review } = await pendingOf();
-    expect(await decideReview(db, review.id, "publish", LATER)).toEqual({ ok: true, courseSlug: course.slug });
-    expect(await reviewOf(review.id)).toEqual({ ...review, status: "published", decidedAt: LATER, updatedAt: expect.any(Date) });
+    expect(await decideReview(db, review.id, "publish", LATER)).toEqual({
+      ok: true,
+      courseSlug: course.slug,
+      expected: { status: "published", updatedAt: LATER.toISOString(), previous: { status: "pending", decidedAt: null } },
+    });
+    expect(await reviewOf(review.id)).toEqual({ ...review, status: "published", decidedAt: LATER, updatedAt: LATER });
     const hiddenAt = new Date("2026-10-21T10:00:00Z");
-    expect(await decideReview(db, review.id, "hide", hiddenAt)).toEqual({ ok: true, courseSlug: course.slug });
+    expect(await decideReview(db, review.id, "hide", hiddenAt)).toEqual({
+      ok: true,
+      courseSlug: course.slug,
+      expected: { status: "hidden", updatedAt: hiddenAt.toISOString(), previous: { status: "published", decidedAt: LATER.toISOString() } },
+    });
     expect(await reviewOf(review.id)).toMatchObject({ status: "hidden", decidedAt: hiddenAt, text: RECOMMEND, name: "Mari M.", writtenAt: NOW });
     expect(await decideReview(db, review.id, "publish", hiddenAt)).toMatchObject({ ok: true }); // a hidden one is published again
     expect((await reviewOf(review.id)).status).toBe("published");
@@ -385,9 +398,25 @@ describe("adminReviews and pendingReviewCount", () => {
     expect(byId[marisReview.id]).toEqual({
       id: marisReview.id, kind: "student", status: "published", featured: false, text: RECOMMEND, name: "Mari M.", locale: "et", writtenAt: NOW,
       course: { id: mari.course.id, slug: mari.course.slug, title: mari.course.title, published: true }, note: null, proof: { registrationStatus: "confirmed", protocolSent: true },
+      feedbackId: marisReview.feedbackId, score: 9,
     });
-    expect(byId[katisReview.id]).toMatchObject({ kind: "student", proof: { completedAt: new Date("2026-10-10T09:00:00Z") }, course: { id: kati.course.id, slug: "kulmud-e" }, note: null });
-    expect(byId[manual.id]).toMatchObject({ kind: "manual", note: "paberil", proof: null });
+    expect(byId[katisReview.id]).toMatchObject({ kind: "student", proof: { completedAt: new Date("2026-10-10T09:00:00Z") }, course: { id: kati.course.id, slug: "kulmud-e" }, note: null, feedbackId: katisReview.feedbackId, score: 9 });
+    expect(byId[manual.id]).toMatchObject({ kind: "manual", note: "paberil", proof: null, feedbackId: null, score: null });
+  });
+
+  test("piece 4c, S4-Q5: the score is the student's „Hinne“ of the answer the review was made from; none without one, none for a review Maria added", async () => {
+    const mari = await contactStudent(db);
+    await submit(db, mari.client.id, { registrationId: mari.registration.id }, { name: "Mari M." }, { answers: { score: 3, recommend: RECOMMEND } });
+    const anu = await studentOf(db, mari.course, mari.session, "Anu Aas");
+    await submit(db, anu.client.id, { registrationId: anu.registration.id }, { name: "Anu A." }, { answers: { recommend: RECOMMEND } });
+    const liis = await studentOf(db, mari.course, mari.session, "Liis Lepp");
+    await submit(db, liis.client.id, { registrationId: liis.registration.id }, { name: "Liis L." }, { answers: { score: 10, recommend: RECOMMEND } });
+    const [marisReview, anusReview, liisReview] = await all();
+    // (an answer whose score is not a whole number, as no form stores it, is no score either: the list is read, not refused)
+    await db.update(courseFeedback).set({ answers: { score: 9.5, recommend: RECOMMEND } }).where(eq(courseFeedback.id, liisReview.feedbackId!));
+    const manual = await addReview(mari.course.id);
+    const scores = Object.fromEntries((await adminReviews(db, {})).map((r) => [r.id, r.score]));
+    expect(scores).toEqual({ [marisReview.id]: 3, [anusReview.id]: null, [liisReview.id]: null, [manual.id]: null });
   });
 
   test("each review carries whether its course is published (the final review's M2): a review of a draft says so, and follows the course when it is published", async () => {
@@ -511,5 +540,214 @@ describe("the public reads", () => {
     const review = await addReview(course.id, { featured: true });
     const [fromCourse, fromHome] = await db.transaction(async (tx) => [await courseReviews(tx, course.id), await homeReviews(tx)]);
     expect([fromCourse[0].id, fromHome[0].id]).toEqual([review.id, review.id]);
+  });
+});
+
+describe("piece 4c, R-b: „Kustuta“ on a review Maria added is a soft delete, undone until the purge", () => {
+  const at = (ms: number) => new Date(LATER.getTime() + ms);
+
+  test("the review is only marked: the row stays, the course's slug is returned, and it leaves the home page, the course page, the admin's list and the counts", async () => {
+    const { course } = await protocolCourse(db);
+    const review = await addReview(course.id, { featured: true });
+    expect((await homeReviews(db)).map((r) => r.id)).toEqual([review.id]);
+    expect(await removeManualReview(db, review.id, LATER)).toEqual({ ok: true, courseSlug: course.slug });
+    expect(await reviewOf(review.id)).toEqual({ ...review, removedAt: LATER, updatedAt: LATER });
+    expect(await homeReviews(db)).toEqual([]);
+    expect(await courseReviews(db, course.id)).toEqual([]);
+    expect(await adminReviews(db, {})).toEqual([]);
+    expect(await reviewCounts(db)).toEqual({ pending: 0, published: 0, hidden: 0 });
+    expect(logged()).toContain(`[reviews] review ${review.id}: removed`);
+  });
+
+  test("a removed review reads as gone to every other change: a second „Kustuta“, a decision, „Avalehel“, an edit, the old delete", async () => {
+    const { course } = await protocolCourse(db);
+    const review = await addReview(course.id);
+    await removeManualReview(db, review.id, LATER);
+    expect(await removeManualReview(db, review.id, at(1000))).toEqual({ ok: false, error: "gone" });
+    expect(await decideReview(db, review.id, "hide", at(1000))).toEqual({ ok: false, error: "gone" });
+    expect(await setFeatured(db, review.id, true, at(1000))).toEqual({ ok: false, error: "gone" });
+    expect(await saveManualReview(db, review.id, { courseId: course.id, name: "Anu A.", text: "Uus.", writtenAt: "2026-09-15", locale: "et", note: "kiri" }, at(1000))).toEqual({ ok: false, fields: { form: "gone" } });
+    expect(await deleteManualReview(db, review.id)).toEqual({ ok: false });
+    expect(await reviewOf(review.id)).toEqual({ ...review, removedAt: LATER, updatedAt: LATER }); // (nothing written)
+    expect(await removeManualReview(db, 99_999, LATER)).toEqual({ ok: false, error: "gone" });
+  });
+
+  test("a student's words are never Maria's to delete: `notManual`, nothing written", async () => {
+    const { review } = await pendingOf();
+    expect(await removeManualReview(db, review.id, LATER)).toEqual({ ok: false, error: "notManual" });
+    expect(await all()).toEqual([review]);
+  });
+
+  test("„Võta tagasi“ within 10 s brings it back as it was (status, „Avalehel“, text); after the purge (11 s) it is gone and the restore answers `gone`", async () => {
+    const { course } = await protocolCourse(db);
+    const review = await addReview(course.id, { featured: true, status: "published" });
+    await removeManualReview(db, review.id, LATER);
+    expect(await purgeRemovedReviews(db, at(9_000))).toBe(0); // (9 s: the UndoBar may still be open)
+    expect(await restoreManualReview(db, review.id, at(9_000))).toEqual({ ok: true, courseSlug: course.slug });
+    expect(await reviewOf(review.id)).toEqual({ ...review, removedAt: null, updatedAt: at(9_000) });
+    expect((await homeReviews(db)).map((r) => r.id)).toEqual([review.id]);
+    expect(logged()).toContain(`[reviews] review ${review.id}: restored`);
+    // (the restore of a review that is not removed, or not there, is `gone`: nothing to bring back)
+    expect(await restoreManualReview(db, review.id, at(9_500))).toEqual({ ok: false, error: "gone" });
+    expect(await restoreManualReview(db, 99_999, at(9_500))).toEqual({ ok: false, error: "gone" });
+
+    await removeManualReview(db, review.id, at(20_000));
+    expect(await purgeRemovedReviews(db, at(31_000))).toBe(1);
+    expect(await all()).toEqual([]);
+    expect(await restoreManualReview(db, review.id, at(31_500))).toEqual({ ok: false, error: "gone" });
+  });
+
+  test("purgeRemovedReviews takes the marks 10 s old or older only, the oldest first, at most `limit`; a younger mark and a review not removed stay", async () => {
+    const { course } = await protocolCourse(db);
+    const kept = await addReview(course.id, { name: "Jääb J." });
+    const young = await addReview(course.id, { name: "Noor N.", removedAt: at(-9_999) });
+    const exactly = await addReview(course.id, { name: "Täpselt T.", removedAt: at(-10_000) });
+    const old = await addReview(course.id, { name: "Vana V.", removedAt: at(-3_600_000) });
+    expect(await purgeRemovedReviews(db, LATER, 1)).toBe(1);
+    // (the oldest mark went first, though its row is the newest: the order is the marks')
+    expect((await all()).map((r) => r.id)).toEqual([kept.id, young.id, exactly.id]);
+    expect(old.id).toBeGreaterThan(exactly.id);
+    expect(await purgeRemovedReviews(db, LATER)).toBe(1);
+    expect((await all()).map((r) => r.id)).toEqual([kept.id, young.id]);
+    expect(await purgeRemovedReviews(db, LATER)).toBe(0);
+  });
+
+  test("the purge's DELETE checks the mark again outside its candidate list: a review „Võta tagasi“ brought back, or marked again since the cut-off, stays", async () => {
+    const { course } = await protocolCourse(db);
+    const restored = await addReview(course.id, { name: "Tagasi T.", removedAt: at(-60_000) });
+    const again = await addReview(course.id, { name: "Uuesti U.", removedAt: at(-60_000) });
+    const due = await addReview(course.id, { name: "Läheb L.", removedAt: at(-60_000) });
+    const cutOff = at(-10_000).toISOString();
+    // (the candidates as a statement read them; then „Võta tagasi“ and a new „Kustuta“ come in between)
+    await restoreManualReview(db, restored.id, LATER);
+    await db.update(reviews).set({ removedAt: at(-2_000) }).where(eq(reviews.id, again.id));
+    const gone = await deleteDueReviews(db, sql`select ${reviews.id} from ${reviews} where ${reviews.id} in (${restored.id}, ${again.id}, ${due.id})`, cutOff);
+    expect(gone.map((r) => r.id)).toEqual([due.id]);
+    expect((await all()).map((r) => r.id)).toEqual([restored.id, again.id]);
+  });
+
+  test("purgeRemovedReviews never throws: a database that fails is logged by class and code, and answers 0", async () => {
+    const failing = { delete: () => ({ where: () => ({ returning: () => Promise.reject(Object.assign(new Error("connect ECONNREFUSED db.example.test"), { code: "ECONNREFUSED" })) }) }) };
+    expect(await purgeRemovedReviews(failing as never, LATER)).toBe(0);
+    expect(logged()).toContain("[reviews] removed reviews not purged: Error (code ECONNREFUSED)");
+    expect(logged()).not.toContain("db.example.test");
+  });
+});
+
+describe("piece 4c, Review Focus 2: every reader leaves a removed review out", () => {
+  // (only a review Maria added can be removed, and it is never pending nor a student's: these rows are marked by hand, to pin each reader's filter)
+  test("the waiting count, the counts by status, the admin's list, the student's account reads, the account deletion's pages and the answer's link", async () => {
+    const mari = await contactStudent(db);
+    await submit(db, mari.client.id, { registrationId: mari.registration.id }, { name: "Mari M." });
+    const [review] = await all();
+    const owners = { registrationIds: [mari.registration.id], accessIds: [] };
+    expect(await pendingReviewCount(db)).toBe(1);
+    expect(await reviewCounts(db)).toEqual({ pending: 1, published: 0, hidden: 0 });
+    expect((await adminReviews(db, {})).map((r) => r.id)).toEqual([review.id]);
+    expect((await reviewsOfClient(db, mari.client.id)).map((r) => r.id)).toEqual([review.id]);
+    expect(await reviewCourseSlugs(db, owners)).toEqual([mari.course.slug]);
+    expect([...(await reviewsOfFeedback(db, [review.feedbackId!])).keys()]).toEqual([review.feedbackId]);
+
+    await db.update(reviews).set({ removedAt: LATER }).where(eq(reviews.id, review.id));
+    expect(await pendingReviewCount(db)).toBe(0);
+    expect(await reviewCounts(db)).toEqual({ pending: 0, published: 0, hidden: 0 });
+    expect(await adminReviews(db, {})).toEqual([]);
+    expect(await adminReviews(db, { status: "pending" })).toEqual([]);
+    expect(await reviewsOfClient(db, mari.client.id)).toEqual([]);
+    expect(await reviewCourseSlugs(db, owners)).toEqual([]);
+    expect((await reviewsOfFeedback(db, [review.feedbackId!])).size).toBe(0);
+  });
+});
+
+describe("piece 4c, R-e: reviewCounts", () => {
+  test("the reviews by status, of every course, published or not; nothing is zeros", async () => {
+    expect(await reviewCounts(db)).toEqual({ pending: 0, published: 0, hidden: 0 });
+    const { course } = await protocolCourse(db);
+    const { course: draft } = await graduate(db, { published: false });
+    const rows = [
+      await addReview(course.id, { status: "pending", kind: "student", note: null }),
+      await addReview(draft.id, { status: "pending", kind: "student", note: null }),
+      await addReview(course.id, { status: "published" }),
+      await addReview(draft.id, { status: "published", featured: true }),
+      await addReview(course.id, { status: "published" }),
+      await addReview(course.id, { status: "hidden" }),
+    ];
+    const byStatus = { pending: 0, published: 0, hidden: 0 };
+    for (const r of await all()) byStatus[r.status] += 1;
+    expect(rows).toHaveLength(6);
+    expect(await reviewCounts(db)).toEqual(byStatus);
+    expect(byStatus).toEqual({ pending: 2, published: 3, hidden: 1 });
+  });
+});
+
+describe("piece 4c, R-a: „Võta tagasi“ of „Avalda“ / „Peida“", () => {
+  const HIDDEN_AT = new Date("2026-10-21T10:00:00Z");
+  const UNDONE_AT = new Date("2026-10-21T10:00:05Z");
+
+  test("after a hide of a waiting review: it is pending again, decided_at null as before, the course's slug returned", async () => {
+    const { course, review } = await pendingOf();
+    const hidden = await decideReview(db, review.id, "hide", HIDDEN_AT);
+    if (!hidden.ok) throw new Error("not hidden");
+    expect(await restoreReviewDecision(db, review.id, hidden.expected, UNDONE_AT)).toEqual({ ok: true, courseSlug: course.slug });
+    expect(await reviewOf(review.id)).toEqual({ ...review, status: "pending", decidedAt: null, updatedAt: UNDONE_AT });
+    expect(await pendingReviewCount(db)).toBe(1);
+    expect(logged()).toContain(`[reviews] review ${review.id}: back to pending`);
+  });
+
+  test("after a hide of a published review: published again with its old decided_at, and „Avalehel“ as it was", async () => {
+    const { review } = await pendingOf();
+    await decideReview(db, review.id, "publish", LATER);
+    await setFeatured(db, review.id, true, LATER);
+    const hidden = await decideReview(db, review.id, "hide", HIDDEN_AT);
+    if (!hidden.ok) throw new Error("not hidden");
+    expect(await restoreReviewDecision(db, review.id, hidden.expected, UNDONE_AT)).toMatchObject({ ok: true });
+    expect(await reviewOf(review.id)).toMatchObject({ status: "published", decidedAt: LATER, featured: true });
+    expect((await homeReviews(db)).map((r) => r.id)).toEqual([review.id]);
+  });
+
+  test("Review Focus 1: hidden in one tab and published again in another, the first tab's undo is `changed` and overwrites nothing", async () => {
+    const { review } = await pendingOf();
+    const hidden = await decideReview(db, review.id, "hide", HIDDEN_AT);
+    if (!hidden.ok) throw new Error("not hidden");
+    const publishedAt = new Date("2026-10-21T10:00:02Z");
+    await decideReview(db, review.id, "publish", publishedAt); // (the other tab)
+    const before = await reviewOf(review.id);
+    expect(await restoreReviewDecision(db, review.id, hidden.expected, UNDONE_AT)).toEqual({ ok: false, error: "changed" });
+    expect(await reviewOf(review.id)).toEqual(before);
+    expect(before).toMatchObject({ status: "published", decidedAt: publishedAt });
+  });
+
+  test("the row moved with the same status (the same press again in another tab, or „Avalehel“): `changed` too; a second undo of the same press is `changed`", async () => {
+    const { review } = await pendingOf();
+    const first = await decideReview(db, review.id, "hide", HIDDEN_AT);
+    if (!first.ok) throw new Error("not hidden");
+    await decideReview(db, review.id, "hide", new Date("2026-10-21T10:00:01Z"));
+    expect(await restoreReviewDecision(db, review.id, first.expected, UNDONE_AT)).toEqual({ ok: false, error: "changed" });
+
+    const published = await decideReview(db, review.id, "publish", new Date("2026-10-21T10:01:00Z"));
+    if (!published.ok) throw new Error("not published");
+    await setFeatured(db, review.id, true, new Date("2026-10-21T10:01:01Z"));
+    expect(await restoreReviewDecision(db, review.id, published.expected, UNDONE_AT)).toEqual({ ok: false, error: "changed" });
+    expect(await reviewOf(review.id)).toMatchObject({ status: "published", featured: true });
+
+    const again = await decideReview(db, review.id, "hide", new Date("2026-10-21T10:02:00Z"));
+    if (!again.ok) throw new Error("not hidden");
+    expect(await restoreReviewDecision(db, review.id, again.expected, new Date("2026-10-21T10:02:03Z"))).toMatchObject({ ok: true });
+    expect(await restoreReviewDecision(db, review.id, again.expected, new Date("2026-10-21T10:02:04Z"))).toEqual({ ok: false, error: "changed" });
+  });
+
+  test("a review that is gone (the student took her permission back, or Maria's was removed): `gone`", async () => {
+    const { client, review } = await pendingOf();
+    const hidden = await decideReview(db, review.id, "hide", HIDDEN_AT);
+    if (!hidden.ok) throw new Error("not hidden");
+    await withdrawReview(db, client.id, review.id);
+    expect(await restoreReviewDecision(db, review.id, hidden.expected, UNDONE_AT)).toEqual({ ok: false, error: "gone" });
+
+    const { course } = await protocolCourse(db, { slug: "ripsmed", title: { et: "Ripsmed" } });
+    const manual = await addReview(course.id);
+    const hiddenManual = await decideReview(db, manual.id, "hide", HIDDEN_AT);
+    if (!hiddenManual.ok) throw new Error("not hidden");
+    await removeManualReview(db, manual.id, HIDDEN_AT);
+    expect(await restoreReviewDecision(db, manual.id, hiddenManual.expected, UNDONE_AT)).toEqual({ ok: false, error: "gone" });
   });
 });

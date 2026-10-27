@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { courseAccess, courseFeedback, courses, protocols, registrations, reviews } from "@/db/schema";
 import { tallinnInstant } from "@/domain/calendar";
-import { checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, type ReviewKind, type ReviewStatus } from "@/domain/review";
+import { checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, type DecisionExpected, type ReviewKind, type ReviewStatus } from "@/domain/review";
 import type { I18n } from "@/i18n/field";
 
 // The student reviews (spec §2, §4, §5), without Next.js: the student's withdrawal, Maria's decisions and her own reviews, the admin's list, and the
@@ -10,8 +10,14 @@ import type { I18n } from "@/i18n/field";
 // chose; nothing here changes its text or name: Maria changes only `status`, `featured` and `decided_at`, and only a `manual` review is editable.
 // Every change answers the course's slug: the caller (an action or a route) refreshes that course's pages and the home page with it
 // (cache-targets.ts, { kind: "reviews" }). Logs carry the review's id only: no names, no texts.
+// Admin UX pass piece 4c: Maria's „Kustuta“ only marks a review she added (`removed_at`, R-b), so that „Võta tagasi“ can bring it back until
+// server/review-purge.ts deletes it; every read here leaves a marked review out (NOT_REMOVED), and to every change a marked review is not there.
+// A decision can be undone while the review is still as the press left it (restoreReviewDecision, R-a).
 
 const log = (id: number, what: string): void => console.info(`[reviews] review ${id}: ${what}`);
+
+/** A review Maria has not removed: what every read and every change of this file takes (a removed one waits for the purge, seen by nobody). */
+const NOT_REMOVED = isNull(reviews.removedAt);
 
 // ---------- the student takes her permission back (D6) ----------
 
@@ -52,7 +58,7 @@ export async function reviewsOfClient(q: Q, clientId: number): Promise<{ id: num
     .innerJoin(courseFeedback, eq(reviews.feedbackId, courseFeedback.id))
     .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
     .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
-    .where(or(eq(registrations.clientId, clientId), eq(courseAccess.clientId, clientId)));
+    .where(and(NOT_REMOVED, or(eq(registrations.clientId, clientId), eq(courseAccess.clientId, clientId))));
 }
 
 /**
@@ -68,19 +74,24 @@ export async function reviewCourseSlugs(q: Q, owners: { registrationIds: number[
     .from(reviews)
     .innerJoin(courseFeedback, eq(reviews.feedbackId, courseFeedback.id))
     .innerJoin(courses, eq(reviews.courseId, courses.id))
-    .where(or(...mine));
+    .where(and(NOT_REMOVED, or(...mine)));
   return rows.map((r) => r.slug).sort();
 }
 
 // ---------- Maria's decisions (D2) ----------
 
-/** A review row FOR UPDATE with its course's slug, or null when there is none (the student took her permission back, or Maria deleted it). */
+/**
+ * A review row FOR UPDATE with its course's slug, or null when there is none (the student took her permission back, Maria deleted it) or Maria
+ * removed it (piece 4c, R-b: a removed review reads as gone to every change until „Võta tagasi“ brings it back).
+ */
 async function lockReview(tx: Tx, id: number) {
   const [row] = await tx
-    .select({ id: reviews.id, kind: reviews.kind, status: reviews.status, courseId: reviews.courseId, slug: courses.slug })
+    .select({
+      id: reviews.id, kind: reviews.kind, status: reviews.status, decidedAt: reviews.decidedAt, updatedAt: reviews.updatedAt, courseId: reviews.courseId, slug: courses.slug,
+    })
     .from(reviews)
     .innerJoin(courses, eq(reviews.courseId, courses.id))
-    .where(eq(reviews.id, id))
+    .where(and(eq(reviews.id, id), NOT_REMOVED))
     .for("update", { of: reviews });
   return row ?? null;
 }
@@ -90,19 +101,50 @@ export type ReviewDecision = "publish" | "hide";
 /**
  * „Avalda“ or „Peida“: the review becomes published or hidden, whatever it was (pending, or the other of the two: a hidden one is published
  * again, and the same press twice is harmless), and `decided_at` is now. Hiding keeps `featured` (spec §5). `gone`: the row does not exist (any
- * more). A review of an unpublished course can be decided too: it is shown when the course is.
+ * more). A review of an unpublished course can be decided too: it is shown when the course is. `expected` is what the press's „Võta tagasi“ sends
+ * back (piece 4c, R-a; restoreReviewDecision): the row as this press left it, and the status and `decided_at` it replaced.
  */
-export async function decideReview(db: Db, id: number, decision: ReviewDecision, now: Date): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" }> {
+export async function decideReview(
+  db: Db,
+  id: number,
+  decision: ReviewDecision,
+  now: Date,
+): Promise<{ ok: true; courseSlug: string; expected: DecisionExpected } | { ok: false; error: "gone" }> {
   const status: ReviewStatus = decision === "publish" ? "published" : "hidden";
-  const slug = await db.transaction(async (tx) => {
+  const done = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
     if (!row) return null;
     await tx.update(reviews).set({ status, decidedAt: now, updatedAt: now }).where(eq(reviews.id, id));
-    return row.slug;
+    const expected: DecisionExpected = { status, updatedAt: now.toISOString(), previous: { status: row.status, decidedAt: row.decidedAt?.toISOString() ?? null } };
+    return { slug: row.slug, expected };
   });
-  if (slug === null) return { ok: false, error: "gone" };
+  if (done === null) return { ok: false, error: "gone" };
   log(id, status);
-  return { ok: true, courseSlug: slug };
+  return { ok: true, courseSlug: done.slug, expected: done.expected };
+}
+
+/**
+ * „Võta tagasi“ of „Avalda“ or „Peida“ (piece 4c, R-a): the status and `decided_at` the press replaced (`expected.previous`) are put back, while the
+ * review is still as that press left it: its status and its `updated_at` are `expected`'s. Anything since (a decision in another tab, the same
+ * press again, „Avalehel“, an edit) is `changed`, and nothing is written: the bar says S4-38's „Arvustust muudeti vahepeal. Vaata see üle.“.
+ * `featured` is not touched (a decision never changes it). `gone`: the review is not there (any more), or Maria removed it. Under the row's lock,
+ * so that two undos, or an undo and a decision, queue.
+ */
+export async function restoreReviewDecision(db: Db, id: number, expected: DecisionExpected, now: Date): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "changed" }> {
+  const { previous } = expected;
+  const result = await db.transaction(async (tx) => {
+    const row = await lockReview(tx, id);
+    if (!row) return "gone" as const;
+    if (row.status !== expected.status || row.updatedAt.getTime() !== Date.parse(expected.updatedAt)) return "changed" as const;
+    await tx
+      .update(reviews)
+      .set({ status: previous.status, decidedAt: previous.decidedAt === null ? null : new Date(previous.decidedAt), updatedAt: now })
+      .where(eq(reviews.id, id));
+    return { slug: row.slug };
+  });
+  if (result === "gone" || result === "changed") return { ok: false, error: result };
+  log(id, `back to ${previous.status}`);
+  return { ok: true, courseSlug: result.slug };
 }
 
 /**
@@ -171,7 +213,7 @@ export async function saveManualReview(
   return { ok: true, id: saved.id, courseSlug: saved.courseSlug, ...(saved.previousCourseSlug ? { previousCourseSlug: saved.previousCourseSlug } : {}) };
 }
 
-/** Deletes a review Maria added. `{ ok: false }`: it does not exist, or it is a student's (not hers to delete: the student can take her permission back). */
+/** Deletes a review Maria added. `{ ok: false }`: it does not exist (or is removed), or it is a student's (not hers to delete: the student can take her permission back). */
 export async function deleteManualReview(db: Db, id: number): Promise<{ ok: true; courseSlug: string } | { ok: false }> {
   const slug = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
@@ -184,11 +226,53 @@ export async function deleteManualReview(db: Db, id: number): Promise<{ ok: true
   return { ok: true, courseSlug: slug };
 }
 
+/**
+ * „Kustuta“ on a review Maria added (piece 4c, R-b; S4-38 „Arvustus kustutatud.“ with „Võta tagasi“): the row is only marked (`removed_at = now`),
+ * so every read leaves it out and restoreManualReview can bring it back; server/review-purge.ts deletes it once the mark is 10 s old. `notManual`: a
+ * student's words are never Maria's to delete (she can hide them; the student takes her permission back). `gone`: no such review, or removed already.
+ */
+export async function removeManualReview(db: Db, id: number, now: Date): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "notManual" }> {
+  const result = await db.transaction(async (tx) => {
+    const row = await lockReview(tx, id);
+    if (!row) return "gone" as const;
+    if (row.kind !== "manual") return "notManual" as const;
+    await tx.update(reviews).set({ removedAt: now, updatedAt: now }).where(eq(reviews.id, id));
+    return { slug: row.slug };
+  });
+  if (result === "gone" || result === "notManual") return { ok: false, error: result };
+  log(id, "removed");
+  return { ok: true, courseSlug: result.slug };
+}
+
+/**
+ * „Võta tagasi“ of „Kustuta“ (piece 4c, R-b): the mark is cleared while the row is still there, under the row's lock, so the purge either finds it
+ * cleared (its DELETE checks the mark again) or has taken it first. The review comes back as it was: its status, `featured` and text. `gone`: it was
+ * purged already, or it is not a removed review of Maria's.
+ */
+export async function restoreManualReview(db: Db, id: number, now: Date): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" }> {
+  const slug = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ slug: courses.slug })
+      .from(reviews)
+      .innerJoin(courses, eq(reviews.courseId, courses.id))
+      .where(and(eq(reviews.id, id), eq(reviews.kind, "manual"), isNotNull(reviews.removedAt)))
+      .for("update", { of: reviews });
+    if (!row) return null;
+    await tx.update(reviews).set({ removedAt: null, updatedAt: now }).where(eq(reviews.id, id));
+    return row.slug;
+  });
+  if (slug === null) return { ok: false, error: "gone" };
+  log(id, "restored");
+  return { ok: true, courseSlug: slug };
+}
+
 // ---------- the admin's list ----------
 
 /**
  * One review for Maria's „Arvustused“. `proof`: what she judges a student by (D2) — the registration's status and whether a protocol was sent for a
- * contact course, when the access was completed for an e-course; null for one she added herself.
+ * contact course, when the access was completed for an e-course; null for one she added herself. `feedbackId` and `score` (piece 4c): the answer
+ * the review was made from and its „Hinne“ (0–10), the card's stars (domain/review.ts starsOf); both null for one she added, `score` null too for an
+ * answer without one.
  */
 export type AdminReviewRow = {
   id: number;
@@ -203,7 +287,12 @@ export type AdminReviewRow = {
   course: { id: number; slug: string; title: I18n; published: boolean };
   note: string | null;
   proof: { registrationStatus: string; protocolSent: boolean } | { completedAt: Date } | null;
+  feedbackId: number | null;
+  score: number | null;
 };
+
+/** The answer's „Hinne“ as a whole number, or null: none in the answer, or a value no form stores (the list is read, never refused for it). */
+const SCORE = sql<number | null>`case when ${courseFeedback.answers}->>'score' ~ '^[0-9]{1,2}$' then (${courseFeedback.answers}->>'score')::int end`;
 
 /** The reviews by status (waiting for Maria, then published, then hidden: spec D2), the newest written first within each; `status` and `courseId` narrow the list. */
 export async function adminReviews(db: Db, filter: { status?: ReviewStatus; courseId?: number }): Promise<AdminReviewRow[]> {
@@ -218,6 +307,8 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
       locale: reviews.locale,
       writtenAt: reviews.writtenAt,
       note: reviews.note,
+      feedbackId: reviews.feedbackId,
+      score: SCORE,
       courseId: courses.id,
       slug: courses.slug,
       title: courses.title,
@@ -232,7 +323,7 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
     .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
     .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
     .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
-    .where(and(filter.status === undefined ? undefined : eq(reviews.status, filter.status), filter.courseId === undefined ? undefined : eq(reviews.courseId, filter.courseId)))
+    .where(and(NOT_REMOVED, filter.status === undefined ? undefined : eq(reviews.status, filter.status), filter.courseId === undefined ? undefined : eq(reviews.courseId, filter.courseId)))
     .orderBy(sql`case ${reviews.status} when 'pending' then 0 when 'published' then 1 else 2 end`, desc(reviews.writtenAt), desc(reviews.id));
   return rows.map((r) => ({
     id: r.id,
@@ -246,6 +337,8 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
     course: { id: r.courseId, slug: r.slug, title: r.title, published: r.coursePublished },
     note: r.note,
     proof: r.kind === "manual" ? null : r.registrationStatus !== null ? { registrationStatus: r.registrationStatus, protocolSent: r.protocolSentAt !== null } : r.completedAt !== null ? { completedAt: r.completedAt } : null,
+    feedbackId: r.feedbackId,
+    score: r.score === null ? null : Number(r.score),
   }));
 }
 
@@ -263,14 +356,22 @@ export async function reviewsOfFeedback(q: Q, feedbackIds: number[]): Promise<Ma
   const rows = await q
     .select({ feedbackId: reviews.feedbackId, id: reviews.id, status: reviews.status, featured: reviews.featured })
     .from(reviews)
-    .where(inArray(reviews.feedbackId, feedbackIds));
+    .where(and(inArray(reviews.feedbackId, feedbackIds), NOT_REMOVED));
   return new Map(rows.flatMap((r) => (r.feedbackId === null ? [] : [[r.feedbackId, { id: r.id, status: r.status, featured: r.featured }] as const])));
 }
 
 /** How many reviews wait for Maria (the „Tagasiside“ page's heading), of every course. */
 export async function pendingReviewCount(db: Db): Promise<number> {
-  const [row] = await db.select({ n: count() }).from(reviews).where(eq(reviews.status, "pending"));
+  const [row] = await db.select({ n: count() }).from(reviews).where(and(eq(reviews.status, "pending"), NOT_REMOVED));
   return Number(row.n);
+}
+
+/** The reviews by status, of every course (piece 4c, R-e: the numbers of „Arvustused“'s pills); a status with none is 0. */
+export async function reviewCounts(db: Db): Promise<Record<ReviewStatus, number>> {
+  const rows = await db.select({ status: reviews.status, n: count() }).from(reviews).where(NOT_REMOVED).groupBy(reviews.status);
+  const counts: Record<ReviewStatus, number> = { pending: 0, published: 0, hidden: 0 };
+  for (const r of rows) if (r.status in counts) counts[r.status] = Number(r.n);
+  return counts;
 }
 
 // ---------- the public reads (D5) ----------
@@ -299,7 +400,7 @@ const NEWEST = [desc(reviews.writtenAt), desc(reviews.id)] as const;
 /** A course page's block: its published reviews, newest first, at most COURSE_REVIEWS_MAX. Nothing while the course is not published (spec §5). */
 export async function courseReviews(q: Q, courseId: number): Promise<PublicReview[]> {
   const rows = await publicReviews(q)
-    .where(and(eq(reviews.courseId, courseId), eq(reviews.status, "published"), eq(courses.published, true)))
+    .where(and(eq(reviews.courseId, courseId), eq(reviews.status, "published"), eq(courses.published, true), NOT_REMOVED))
     .orderBy(...NEWEST)
     .limit(COURSE_REVIEWS_MAX);
   return rows.map(toPublic);
@@ -308,7 +409,7 @@ export async function courseReviews(q: Q, courseId: number): Promise<PublicRevie
 /** The home page's section: published reviews marked „Avalehel“, of published courses, newest first, at most HOME_REVIEWS_MAX. */
 export async function homeReviews(q: Q): Promise<PublicReview[]> {
   const rows = await publicReviews(q)
-    .where(and(eq(reviews.status, "published"), eq(reviews.featured, true), eq(courses.published, true)))
+    .where(and(eq(reviews.status, "published"), eq(reviews.featured, true), eq(courses.published, true), NOT_REMOVED))
     .orderBy(...NEWEST)
     .limit(HOME_REVIEWS_MAX);
   return rows.map(toPublic);

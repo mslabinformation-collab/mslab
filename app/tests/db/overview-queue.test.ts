@@ -178,6 +178,11 @@ describe("reviews: waiting for „Avalda“", () => {
     ]);
     expect((await queue()).reviews).toEqual({ count: 3, oldest: { at: oct(3), name: "Liis T." } });
   });
+
+  test("piece 4c, Review Focus 2: a removed review is neither counted nor the oldest (marked by hand: only Maria's own can be removed, and they are never pending)", async () => {
+    await db.insert(reviews).values([review("pending", "Kristel M.", oct(14)), { ...review("pending", "Eemaldatud E.", oct(1)), removedAt: oct(20) }]);
+    expect((await queue()).reviews).toEqual({ count: 1, oldest: { at: oct(14), name: "Kristel M." } });
+  });
 });
 
 describe("the numbers are the menu badges'", () => {

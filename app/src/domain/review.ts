@@ -139,3 +139,24 @@ export function checkManualReview(raw: unknown): { ok: true; value: ManualReview
 export function reviewMonth(writtenAt: Date, locale: "et" | "ru"): string {
   return formatMonthYear(writtenAt, locale);
 }
+
+/**
+ * A review card's stars on Maria's „Arvustused“ (admin UX pass piece 4c, S4-Q5 = B): from the student's „Hinne“ (0–10) of the answer the review
+ * was made from, 9–10 → 5, 7–8 → 4, 5–6 → 3, 3–4 → 2, 0–2 → 1. No score — a review Maria added, an answer without one, or a number outside
+ * 0–10 — is 0: no stars. Admin only: the public pages show no score of any kind.
+ */
+export function starsOf(score: number | null | undefined): 0 | 1 | 2 | 3 | 4 | 5 {
+  if (typeof score !== "number" || !(score >= 0 && score <= 10)) return 0;
+  if (score >= 9) return 5;
+  if (score >= 7) return 4;
+  if (score >= 5) return 3;
+  if (score >= 3) return 2;
+  return 1;
+}
+
+/**
+ * What „Võta tagasi“ of „Avalda“ / „Peida“ sends back (admin UX pass piece 4c, R-a), as the decision answered it: the review as the press left it
+ * (`status`, `updatedAt`: the undo goes through only while it still is, so a change made since — in another tab too — is never overwritten), and
+ * what the press replaced (`previous`), which the undo puts back. Instants as ISO strings: the answer goes to the browser and comes back.
+ */
+export type DecisionExpected = { status: ReviewStatus; updatedAt: string; previous: { status: ReviewStatus; decidedAt: string | null } };

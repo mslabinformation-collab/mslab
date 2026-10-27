@@ -1,4 +1,4 @@
-import { asc, count, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../client";
 import { payments, registrations, requestKind, requests, reviews } from "../schema";
 import { isCheckReason, type CheckReason } from "@/domain/payments";
@@ -79,7 +79,7 @@ async function pendingReviews(db: Db): Promise<OverviewQueue["reviews"]> {
   const [row] = await db
     .select({ n: total, at: reviews.writtenAt, name: reviews.name })
     .from(reviews)
-    .where(eq(reviews.status, "pending"))
+    .where(and(eq(reviews.status, "pending"), isNull(reviews.removedAt))) // (a review Maria removed is left out: piece 4c)
     .orderBy(asc(reviews.writtenAt), asc(reviews.id))
     .limit(1);
   return row ? { count: row.n, oldest: { at: row.at, name: row.name } } : { count: 0, oldest: null };

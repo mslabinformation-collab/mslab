@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courses, pages, reviews } from "@/db/schema";
 import { COURSE_REVIEWS_MAX, COURSE_REVIEWS_SHOWN, HOME_REVIEWS_MAX } from "@/domain/review";
+import { removeManualReview, restoreManualReview } from "@/server/reviews";
 import { makeTestDb } from "./helpers";
 import { protocolCourse } from "./protocols-fixtures";
 
@@ -153,6 +154,23 @@ describe("the course page", () => {
     expect(shown(await course("et"))).toEqual([a.id]);
     await db.delete(reviews).where(eq(reviews.id, a.id));
     expect(await course("et")).not.toContain(BLOCK);
+  });
+
+  test("piece 4c, Review Focus 2: a review Maria removed shows on neither page between its „Kustuta“ and the purge, and comes back with „Võta tagasi“", async () => {
+    const { course: made } = await protocolCourse(db);
+    const kept = await addReview(made.id, 3, { featured: true });
+    const removed = await addReview(made.id, 4, { featured: true });
+    expect(shown(await course("et"))).toEqual([removed.id, kept.id]);
+    expect(shown(await home("et"))).toEqual([removed.id, kept.id]);
+    const at = new Date();
+    expect(await removeManualReview(db, removed.id, at)).toMatchObject({ ok: true });
+    for (const locale of ["et", "ru"] as const) {
+      expect(shown(await course(locale)), locale).toEqual([kept.id]);
+      expect(shown(await home(locale)), locale).toEqual([kept.id]);
+    }
+    expect(await restoreManualReview(db, removed.id, new Date(at.getTime() + 5_000))).toMatchObject({ ok: true });
+    expect(shown(await course("et"))).toEqual([removed.id, kept.id]);
+    expect(shown(await home("et"))).toEqual([removed.id, kept.id]);
   });
 
   test("the Russian page: Russian heading, notice and month; a review is shown as written and marked with its own language", async () => {

@@ -211,10 +211,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(certificateExports).toEqual(["reissueCertificateAction"]);
     expect(violations(certificateActions.path, certificateActions.source)).toEqual([]);
     expect([...strip(certificateActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(certificateExports);
-    // student reviews, Task 4: Maria's „Avalda“ / „Peida“, „Avalehel“, „Lisa arvustus“ / „Muuda“ and „Kustuta“
+    // student reviews, Task 4: Maria's „Avalda“ / „Peida“, „Avalehel“, „Lisa arvustus“ / „Muuda“ and „Kustuta“; admin UX pass piece 4c, Task 1: the
+    // „Võta tagasi“ of a decision (R-a), and „Kustuta“ as a soft delete with its „Võta tagasi“ (R-b)
     const reviewActions = files().find((f) => f.path === "server/actions/admin-reviews.ts")!;
     const reviewExports = [...strip(reviewActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(reviewExports).toEqual(["decideReviewAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction"]);
+    expect(reviewExports).toEqual(["decideReviewAction", "undoDecisionAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction", "removeReviewAction", "undoRemoveReviewAction"]);
     expect(violations(reviewActions.path, reviewActions.source)).toEqual([]);
     expect([...strip(reviewActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(reviewExports);
     // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle had an action; since piece 3b, Task 4 it autosaves on api/admin/seaded/financing

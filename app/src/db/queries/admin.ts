@@ -742,8 +742,8 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
     assessmentCount(db),
     todaySessions(db, now),
-    // (the number of the Tagasiside heading: server/reviews.ts pendingReviewCount)
-    db.select({ n: count() }).from(reviews).where(eq(reviews.status, "pending")),
+    // (the number of the Tagasiside heading: server/reviews.ts pendingReviewCount; a review Maria removed is not counted, piece 4c)
+    db.select({ n: count() }).from(reviews).where(and(eq(reviews.status, "pending"), isNull(reviews.removedAt))),
     // (payment-checks.ts: the unbilled paid payments, the held ones and the ones voided after they were paid)
     db.select({ n: count() }).from(payments).where(NEEDS_ATTENTION),
     ownFaultCount(db, email),

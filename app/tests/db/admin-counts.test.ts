@@ -61,6 +61,16 @@ describe("waitingReviews", () => {
     await db.insert(reviews).values([review("pending", 1), review("pending", 2), review("published", 3), review("hidden", 4)]);
     expect((await counts()).waitingReviews).toBe(2);
   });
+
+  test("piece 4c, Review Focus 2: a removed review is not counted (marked by hand: only Maria's own can be removed, and they are never pending)", async () => {
+    const [removed] = await db
+      .insert(reviews)
+      .values({ courseId: fixture.course.id, kind: "student", text: "Arvustus", name: "Kati", locale: "et", writtenAt: new Date("2026-10-01T09:00:00Z"), status: "pending" })
+      .returning();
+    expect((await counts()).waitingReviews).toBe(1);
+    await db.update(reviews).set({ removedAt: new Date("2026-10-27T09:00:00Z") }).where(eq(reviews.id, removed.id));
+    expect((await counts()).waitingReviews).toBe(0);
+  });
 });
 
 describe("paymentsAttention", () => {

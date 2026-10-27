@@ -41,10 +41,12 @@ const student = (over: Partial<ReviewRowView> = {}): ReviewRowView => ({
   course: { id: 3, title: "Kulmude lamineerimine", published: true },
   note: null,
   proof: { kind: "registration", status: "confirmed", protocolSent: true },
+  feedbackId: 11,
+  score: 9,
   ...over,
 });
 const manual = (over: Partial<ReviewRowView> = {}): ReviewRowView =>
-  student({ id: 2, kind: "manual", status: "published", name: "Anu A.", text: "Väga hea koolitus.", locale: "ru", writtenAt: "2026-09-19T21:00:00.000Z", note: "Paberil vormil, 20.09.2026", proof: null, ...over });
+  student({ id: 2, kind: "manual", status: "published", name: "Anu A.", text: "Väga hea koolitus.", locale: "ru", writtenAt: "2026-09-19T21:00:00.000Z", note: "Paberil vormil, 20.09.2026", proof: null, feedbackId: null, score: null, ...over });
 
 let container: HTMLDivElement;
 let root: Root;

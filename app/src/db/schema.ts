@@ -494,6 +494,8 @@ export const courseFeedback = pgTable(
  * published (shown, when its course is published) or hidden; `featured` also puts a published review on the home page and keeps its value while
  * hidden. `writtenAt` is the feedback's submit time, or the date Maria gives. Deleted when the student takes her permission back, with its
  * feedback (so with the registration, the access or the account it belongs to) and with its course. One review per feedback (reviews_feedback).
+ * Maria's „Kustuta“ of a manual review only sets `removedAt` (admin UX pass piece 4c, R-b): every reader leaves a marked review out, „Võta
+ * tagasi“ clears it, and server/review-purge.ts deletes the row once the mark is 10 s old.
  */
 export const reviews = pgTable(
   "reviews",
@@ -519,6 +521,8 @@ export const reviews = pgTable(
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** When Maria's „Kustuta“ marked this manual review (piece 4c, R-b); null while it is not removed. Never set on a student's review. */
+    removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("reviews_feedback").on(t.feedbackId),
