@@ -25,7 +25,9 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 //   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
 // - adopt(name, value): the page read again holds another value for a field nobody typed in (a server rule moved it, piece 3b): it becomes the
 //   field's confirmed text, nothing is sent;
-// - confirmedVersion(): the server's version as the form last heard it, which a publish of the part goes from (piece 3b, the legal texts).
+// - confirmedVersion(): the server's version as the form last heard it, which a publish of the part goes from (piece 3b, the legal texts);
+// - stop() (the screen goes): a save on its way may finish, nothing more is sent — a save queued behind it stays in the copy for the next visit
+//   (piece 4b R-i).
 // Old iPads run it: no regex lookbehind, no crypto.randomUUID (tests/unit/old-safari.test.ts). The server's side is server/autosave-route.ts.
 
 export { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
@@ -181,6 +183,8 @@ export class AutosaveEngine {
   private chain: Promise<boolean> | null = null;
   private storage: Storage | null = null;
   private running = false;
+  /** stop() ran and start() has not run again: nothing new is sent (piece 4b R-i); the copy keeps the text for the next visit. */
+  private stopped = false;
   private resumed = false;
   /** Other tabs' copies read by resume: removed once this form's text is confirmed, each only if nobody wrote it since. */
   private taken: { key: string; raw: string }[] = [];
@@ -205,6 +209,7 @@ export class AutosaveEngine {
   start(storage: Storage | null): void {
     this.storage = storage;
     this.running = true;
+    this.stopped = false;
     window.addEventListener("online", this.onBack);
     window.addEventListener("focus", this.onBack);
     window.addEventListener("pagehide", this.onPageHide);
@@ -217,9 +222,14 @@ export class AutosaveEngine {
     this.refresh();
   }
 
-  /** Stops: no listener, no timer. A save on its way still has its answer taken; the copy stays for the next visit. */
+  /**
+   * Stops: no listener, no timer. A save on its way still has its answer taken, but nothing more is sent (piece 4b R-i: Uudised unmounts an editor
+   * as Maria moves to the next post) — neither a save queued behind it nor the text its answer would send next, nor a flush asked for after this:
+   * the copy keeps that text for the next visit, which resumes it.
+   */
   stop(): void {
     this.running = false;
+    this.stopped = true;
     window.removeEventListener("online", this.onBack);
     window.removeEventListener("focus", this.onBack);
     window.removeEventListener("pagehide", this.onPageHide);
@@ -378,12 +388,15 @@ export class AutosaveEngine {
     return Object.fromEntries(Object.keys(this.fields).map((n) => [n, v[n]]));
   }
 
-  /** One save after the one on its way. `keepalive` (pagehide) only when none is on its way: it goes at once. */
+  /**
+   * One save after the one on its way. `keepalive` (pagehide) only when none is on its way: it goes at once. After stop() it is not sent, also when it
+   * was queued before (R-i): its text is in the copy.
+   */
   private queue(keepalive: boolean): Promise<boolean> {
     this.clearDebounce();
     const before = this.chain;
-    const go = () => this.sendNow(false);
-    const next = before ? before.then(go, go) : this.sendNow(keepalive);
+    const go = (ka: boolean): Promise<boolean> | boolean => (this.stopped ? this.parked() : this.sendNow(ka));
+    const next = before ? before.then(() => go(false), () => go(false)) : Promise.resolve(go(keepalive));
     this.chain = next;
     void next.then(
       () => {
@@ -504,9 +517,17 @@ export class AutosaveEngine {
     this.answered();
   }
 
-  /** After a confirmed save: what is still changed goes at once, unless it is still being typed (its 1.5 s wait runs). */
+  /**
+   * After a confirmed save: what is still changed goes at once, unless it is still being typed (its 1.5 s wait runs) or the screen has gone (stop:
+   * R-i, the copy keeps it).
+   */
   private goOn(): Promise<boolean> | boolean {
-    if (this.debounce === null && this.sendable()) return this.sendNow(false);
+    if (!this.stopped && this.debounce === null && this.sendable()) return this.sendNow(false);
+    return this.parked();
+  }
+
+  /** Nothing is sent now: the copy and the status as they are; true when the server holds the form's text. */
+  private parked(): boolean {
     this.rest();
     return this.unconfirmed() === null;
   }

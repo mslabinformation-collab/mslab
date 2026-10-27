@@ -1,0 +1,145 @@
+/* C3 Uudised (admin UX pass piece 4b, Task 2; the Part 4 C3 frame; ruling R-f): the list, and from 1180 px with a post open the 320 px list at the
+   left of the editor, 22 px apart (`320px minmax(0,1fr)`, drawn); below 1180 px with a post open the editor is the screen alone (the list is the other
+   screen, „← Uudised“). With no post open the list is the page. A row (drawn): radius 16, padding 10, the 64 × 52 thumbnail (radius 10) and 12 px to
+   the title (600 13 px) over `{staatus} · {dd.mm}` (600 11 px in the status's colour); the open row white with a 1 px #222 border; the admin's row
+   highlight #faf6f8 under the pointer and while pressed. Colours from tokens.css; „Mustand“ is the neutral grey of the save status (#5e5559, as the
+   course list's draft tag). Nothing here is fixed or sticky. */
+
+.screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  min-width: 0;
+}
+
+/* a post open, below 1180 px: two screens — the editor is this one */
+.screen[data-open] > .list {
+  display: none;
+}
+
+.editor {
+  min-width: 0;
+}
+
+@media (min-width: 1180px) {
+  .screen[data-open] {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+
+  .screen[data-open] > .list {
+    display: grid;
+  }
+}
+
+/* beside an editor: the frame's „Uudised“ (Jost 300, 36 px) with „Lisa postitus +“ at its right */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font: 300 36px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.add {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* with no post open, the rows keep a reading width */
+.screen:not([data-open]) .rows {
+  max-width: 760px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  color: var(--ink);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .row:hover {
+    background: var(--row-highlight);
+  }
+}
+
+.row:active {
+  background: var(--row-highlight);
+}
+
+.row[aria-current="page"] {
+  border-color: var(--ink);
+  background: var(--paper);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.thumb {
+  display: block;
+  width: 64px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--first);
+  object-fit: cover;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font: 600 13px/1.35 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.line {
+  font: 600 11px/1.35 var(--font-body);
+}
+
+.line[data-status="published"] {
+  color: var(--ok);
+}
+
+.line[data-status="draft"] {
+  color: #5e5559;
+}
+
+.line[data-status="changes"] {
+  color: var(--warn);
+}

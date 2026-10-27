@@ -1582,21 +1582,56 @@
       "title": "Uus postitus",
       "href": "/admin/uudised",
       "steps": [
-        "Ava „Uudised“ ja vajuta „Lisa postitus“.",
-        "Kirjuta „Pealkiri“: Proov 1 ja „Lühitekst“: Proov 1.",
-        "Vajuta „Salvesta“.",
-        "Vajuta „Kaanepilt“ all „Vali pilt“ ja märgi „Avaldatud“.",
-        "Vajuta „Salvesta“ ja ava avalik „Uudised“.",
-        "Vajuta postituses „Kustuta postitus“ ja „Jah, kustuta“."
+        "Ava „Uudised“ ja vajuta „Lisa postitus +“.",
+        "Kirjuta „Pealkiri“: Proov 1, „Tekst“: Proov 1 tekst ja „Kategooria“: Proov.",
+        "Lülita kaardil „Avaldamine“ „Avaldatud“ sisse.",
+        "Vali „Kaanepilt“ all pilt, vali päises RU ja kirjuta pealkiri ja tekst vene keeles.",
+        "Lülita „Avaldatud“ uuesti sisse ja ava avalik „Uudised“.",
+        "Vajuta postituse kaardi all „Kustuta postitus“ ja „Jah, kustuta“."
       ],
       "expect": [
-        "Pärast esimest salvestamist näed „Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.“.",
-        "Avaldatud postitus Proov 1 on blogis ja avalehel.",
+        "„Lisa postitus +“ avab kohe postituse „Uus postitus“ ja kursor on väljal „Pealkiri“.",
+        "Näed rida „Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.“.",
+        "Kaardi all on „Mustand · /uudised/proov-1“ ja loendis on Proov 1 olekuga „Mustand“.",
+        "Laial ekraanil on loend postituse kõrval, kitsal on pealkirja kohal „← Uudised“.",
+        "Esimesel korral jääb lüliti välja ja selle all on „Puudub: kaanepilt, pealkiri (RU), tekst (RU)“.",
+        "Teisel korral on loendis Proov 1 olekuga „Avaldatud“ ning postitus on blogis ja avalehel.",
         "Pärast kustutamist näed „Postitus kustutatud.“ ja blogis seda pole."
       ],
       "why": "Maria kirjutab uudiseid ise.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-uudised-mustand-eelvaade",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Avaldatud postituse muutmine ja eelvaade",
+      "href": "/admin/uudised",
+      "steps": [
+        "Ava „Uudised“ ja vali loendist mõni avaldatud postitus.",
+        "Lisa „Tekst“ lõppu sõna Proov ja oota, kuni olek on „Mustand salvestatud“.",
+        "Ava sama postitus teises brauseris, kus sa pole sisse logitud.",
+        "Vajuta halduses pealkirja all ribal „Eelvaade ↗“.",
+        "Tule tagasi ja vajuta ribal „Avalda muudatused“, siis laadi teise brauseri leht uuesti.",
+        "Kustuta sõna Proov ja vajuta uuesti „Avalda muudatused“."
+      ],
+      "expect": [
+        "Riba on „Avaldamata muudatused: 1 · Tekst. Avalikul lehel on näha eelmine versioon.“.",
+        "Loendis on selle postituse olek „Avaldamata muudatused“.",
+        "Teises brauseris pole sõna Proov.",
+        "Eelvaade avaneb uues aknas: tekstis on sõna Proov ja all riba „Avaldamata 1“.",
+        "Pärast „Avalda muudatused“ on sõna Proov ka teises brauseris, riba kaob ja olek on „Avaldatud“.",
+        "Pärast tagasimuutmist ja avaldamist on sõna kadunud."
+      ],
+      "why": "Avaldatud postituse muudatus on blogis näha alles pärast „Avalda muudatused“.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-praktika",

@@ -2330,28 +2330,36 @@ export const adminEt = {
     addText: "Lisa tekst",
   },
 
+  // C3 Uudised (admin UX pass piece 4b, Task 2; piece4-texts S4-18…S4-24): the list's rows (the table and its columns go, S4-18) with the title search,
+  // „Lisa postitus +“ (the button's text and the „+“), the row line `{staatus} · {dd.mm}` (`—` without a date), and the lists' empty frames
+  // (lists.empty / emptySearch with `things`). The status words: „Avaldatud“, „Mustand“ (never published) and „Avaldamata muudatused“ (a published
+  // post with a draft, as courses.changes; never „Mustand“, behaviours B2).
   news: {
     eyebrow: "Blogi",
     title: "Uudised",
     lead: "Kõik postitused, ka mustandid, uuemad eespool. Blogis ja avalehel on näha avaldatud postitused.",
     add: "Lisa postitus",
-    col: { post: "Postitus", category: "Kategooria", date: "Kuupäev", status: "Staatus" },
+    search: "Otsi pealkirja järgi",
+    things: "postitusi",
     published: "Avaldatud",
     draft: "Mustand",
-    edit: "Muuda: {name}",
-    empty: "Postitusi veel pole.",
-    count: "Postitusi: {n}",
+    changes: "Avaldamata muudatused",
+    rowLine: "{status} · {date}",
+    noDate: "—",
     deleted: "Postitus kustutatud.",
   },
 
+  // The post editor (S4-19…S4-24; every field and hint as before): „← Uudised“ below 1180 px (S4-21; from 1180 px the list is beside it), the footer
+  // line (S4-20), „Kustuta postitus“'s ConfirmPanel (S4-23: the public line only for a published post), SaveStatus's „gone“ word (S4-4).
   post: {
-    crumb: "Uudised",
     editCrumb: "Muuda postitust",
-    newCrumb: "Uus postitus",
     newTitle: "Uus postitus",
     created: "Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.",
     notFound: "Seda postitust ei leitud.",
-    back: "Tagasi uudiste juurde",
+    back: "← Uudised",
+    thing: "postitust",
+    // {date}: dd.mm.yyyy; {slug}: the address
+    foot: { published: "Avaldatud {date} · /uudised/{slug}", draft: "Mustand · /uudised/{slug}" },
     sections: { text: "Tekst", cover: "Kaanepilt", publish: "Avaldamine" },
     title: "Pealkiri",
     slug: "Aadress",
@@ -2371,9 +2379,11 @@ export const adminEt = {
     publishedHint: "Avaldatud postitus on blogis ja avalehel nähtav. Mustandit näed ainult siin.",
     remove: {
       button: "Kustuta postitus",
-      confirm: "Kas kustutan selle postituse? Seda ei saa tagasi võtta.",
+      question: "Kas kustutan selle postituse?",
+      // only for a published post: what changes in public (P1 §3.3)
+      public: "Postitus kaob blogist ja avalehelt.",
+      final: "Seda ei saa tagasi võtta.",
       yes: "Jah, kustuta",
-      no: "Ei",
     },
   },
 

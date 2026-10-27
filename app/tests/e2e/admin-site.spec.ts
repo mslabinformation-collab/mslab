@@ -628,57 +628,139 @@ test.describe("trainer page, phone: a story (C2 Koolitaja on the draft layer)", 
   });
 });
 
+/** The answer 200 to a post's autosave (POST api/admin/sisu/post/<id>/osa/post). */
+const postSaved = (page: Page, id: number) =>
+  page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/post/${id}/osa/post`) && r.request().method() === "POST" && r.status() === 200);
+
+// C3 Uudised (admin UX pass piece 4b, Task 2; README §4 C3; the Part 4 C3 frame; S4-18…S4-24; rulings R-a, R-b, R-f, R-g): „Lisa postitus +“ makes the post
+// at once; it saves straight to its row until „Avaldatud“ publishes it (S4-Q1 A: the cover, the title and the text in ET and RU); a published post's
+// edits wait in its draft — the public page keeps the old text until „Avalda muudatused“. Each project makes, publishes and deletes its own post (its
+// title names the project, so its address is `e2e-uudis-<project>-…`); one post's drafts are its own, so the two projects never meet.
 test.describe("news", () => {
-  test("a new post: the address from its title, a draft until published, the cover required to publish; delete", async ({ page, context, visitorIp }, info) => {
+  test("„Lisa postitus +“, a title, a cover, ET and RU text; „Avaldatud“ on lists it on /uudised; an edit of the published text waits for „Avalda muudatused“; from 1180 px the list beside the post, at 375 px two screens with „← Uudised“; delete", async ({ page, context, visitorIp }, info) => {
+    test.slow(); // one long flow: the editor, the public pages, a publish, two widths
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudised");
     await adminReady(page);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudised");
     await expect(page.locator("[data-post-row]")).not.toHaveCount(0);
+
+    // „Lisa postitus +“: the post at once (S4-19), ADM:2273's line, the cursor in „Pealkiri“; no bar, the switch off
     await page.locator("[data-add-post]").click();
-    await expect(page).toHaveURL(/\/admin\/uudised\/uus$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uus postitus");
+    await expect(page).toHaveURL(/\/admin\/uudised\/\d+\?loodud=1$/);
+    const id = Number(new URL(page.url()).pathname.split("/").at(-1));
+    undo.push(() => onLocalDb((sql) => sql`delete from content_drafts where entity = 'post' and entity_id = ${id}`).then(() => onLocalDb((sql) => sql`delete from posts where id = ${id}`)));
+    await adminReady(page);
+    await expect(page.locator("[data-post-created]")).toHaveText("Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.");
+    const titleField = page.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    await expect(titleField).toBeFocused();
+    await expect(titleField).toHaveValue("Uus postitus");
+    await expect(publishBar(page)).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: "Avaldatud" })).not.toBeChecked();
+
+    // the title: the address follows it (R-g), and the list's row says it once saved
     const title = `E2E uudis ${info.project.name} ${unique()}`;
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     expect(slug.startsWith(`${POST_SLUG_PREFIX}${info.project.name}-`)).toBe(true);
-    await page.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill(title);
-    await page.getByRole("textbox", { name: "Kategooria (eesti keeles)", exact: true }).fill("Uudis");
-    await page.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true }).fill("Esimene lõik.\n\nTeine lõik.");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/uudised\/\d+\?loodud=1$/);
-    const editor = new URL(page.url()).pathname;
-    await expect(page.getByText("Postitus loodud.")).toBeVisible();
+    let saved = postSaved(page, id);
+    await titleField.fill(title);
     await expect(page.getByRole("textbox", { name: "Aadress", exact: true })).toHaveValue(slug);
-    await expect(page.locator("[data-post-state]")).toHaveText("Mustand");
-    expect((await page.goto(`/uudised/${slug}`))!.status()).toBe(404);
+    await titleField.blur();
+    await saved;
+    await expect(page.locator("[data-post-where]")).toHaveText(`Mustand · /uudised/${slug}`);
+    expect(await one((sql) => sql<{ slug: string; published: boolean }[]>`select slug, published from posts where id = ${id}`)).toEqual({ slug, published: false });
 
-    await page.goto(editor);
-    await page.getByRole("checkbox", { name: "Avaldatud" }).check();
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
-    await expect(page.locator('[data-single-image="cover"]')).toBeFocused();
-    await expect(page.getByText("Lisa pilt.")).toBeVisible();
+    // the text, the category and the cover in Estonian; then „Avaldatud“: refused for the Russian title and text (S4-22)
+    saved = postSaved(page, id);
+    await page.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true }).fill("Esimene lõik.\n\nTeine lõik.");
+    await page.getByRole("textbox", { name: "Kategooria (eesti keeles)", exact: true }).fill("Uudis");
+    await page.getByRole("textbox", { name: "Kategooria (eesti keeles)", exact: true }).blur();
+    await saved;
     const cover = page.locator('[data-single-image="cover"]');
+    saved = postSaved(page, id);
     await cover.locator('input[type="file"]').setInputFiles([jpeg("brow-closeup.jpg")]);
     await expect(cover.locator("[data-upload-status]")).toHaveText("Pilt lisatud.");
+    await saved;
+    const switched = () => page.waitForResponse((r) => r.url().endsWith(`/api/admin/uudised/${id}/avaldatud`) && r.request().method() === "POST");
+    let answer = switched();
+    await page.getByRole("switch", { name: "Avaldatud" }).click();
+    await answer;
+    await expect(page.locator("[data-switch-error]")).toHaveText("Puudub: pealkiri (RU), tekst (RU)");
+    await expect(page.getByRole("switch", { name: "Avaldatud" })).not.toBeChecked();
+
+    // the Russian title and text, then „Avaldatud“ on: the post is public, with its bar's header now (no changes: no bar)
+    await editLang(page, "ru");
+    saved = postSaved(page, id);
+    await page.getByRole("textbox", { name: "Pealkiri (vene keeles)", exact: true }).fill("E2E новость");
+    await page.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("Первый абзац.");
+    await page.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).blur();
+    await saved;
+    await editLang(page, "et");
+    answer = switched();
+    await page.getByRole("switch", { name: "Avaldatud" }).click();
+    expect((await answer).status()).toBe(200);
+    await expect(page.getByRole("switch", { name: "Avaldatud" })).toBeChecked();
+    await expect(page.locator("[data-site-view]")).toHaveAttribute("href", `/uudised/${slug}`);
+    await expect(page.locator("[data-post-where]")).toHaveText(new RegExp(`^Avaldatud \\d\\d\\.\\d\\d\\.\\d{4} · /uudised/${slug}$`));
+    await expect(page.locator(`[data-post-row="${id}"] [data-post-state]`)).toHaveText(/^Avaldatud · \d\d\.\d\d$/);
+    const visitor = await context.newPage();
+    await visitor.goto("/uudised");
+    await expect(visitor.locator(`[data-news-card][href="/uudised/${slug}"]`)).toContainText(title);
+    await visitor.goto(`/uudised/${slug}`);
+    await expect(visitor.getByRole("heading", { level: 1 })).toHaveText(title);
+    await expect(visitor.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik."]);
+
+    // the published text edited: its draft, on the bar („Tekst“, S4-24), the row „Avaldamata muudatused“; the public page keeps the old text until
+    // „Avalda muudatused“
+    saved = postSaved(page, id);
+    const body = page.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
+    await body.fill("Esimene lõik.\n\nTeine lõik.\n\nKolmas lõik.");
+    await body.blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Tekst"));
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(page.locator(`[data-post-row="${id}"] [data-post-state]`)).toHaveText(/^Avaldamata muudatused · \d\d\.\d\d$/);
+    await visitor.reload();
+    await expect(visitor.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik."]);
+    const published = page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/post/${id}/avalda`) && r.request().method() === "POST");
+    await page.locator("[data-publish-go]").click();
+    expect((await published).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    await expect(page.locator(`[data-post-row="${id}"] [data-post-state]`)).toHaveText(/^Avaldatud · /);
+    await visitor.reload();
+    await expect(visitor.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik.", "Kolmas lõik."]);
+    await visitor.close();
+
+    // from 1180 px the list (320 px) stays at the left of the open post, its row marked; below that the post is a screen of its own
+    if (!phone(info)) {
+      const [list, editor] = [(await page.locator("[data-news-list]").boundingBox())!, (await page.locator("[data-news-editor]").boundingBox())!];
+      expect(Math.round(list.width)).toBe(320);
+      expect(list.x + list.width).toBeLessThanOrEqual(editor.x);
+      await expect(page.locator(`[data-post-row="${id}"]`)).toHaveAttribute("aria-current", "page");
+      await expect(page.locator("[data-post-back]")).toBeHidden();
+      expect(await noOverflow(page)).toBe(true);
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(page.locator("[data-news-list]")).toBeHidden();
+    const back = page.locator("[data-post-back] a");
+    await expect(back).toHaveText("← Uudised");
     expect(await noOverflow(page)).toBe(true);
-    await save(page);
-    await expect(page.locator("[data-post-state]")).toHaveText("Avaldatud");
-    const row = await one((sql) => sql<{ cover: string; published: boolean }[]>`select cover_key as cover, published from posts where slug = ${slug}`);
-    expect(row.published).toBe(true);
-    expect(row.cover).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+    await back.click();
+    await expect(page).toHaveURL(/\/admin\/uudised$/);
+    await expect(page.locator("[data-news-list]")).toBeVisible();
+    await expect(page.locator("[data-news-editor]")).toHaveCount(0);
+    expect(await noOverflow(page)).toBe(true);
+    await page.locator(`[data-post-row="${id}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/admin/uudised/${id}$`));
+    await adminReady(page);
 
-    await page.goto("/uudised");
-    await expect(page.locator(`[data-news-card][href="/uudised/${slug}"]`)).toContainText(title);
-    await page.goto(`/uudised/${slug}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-    await expect(page.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik."]);
-    await expect(page.locator("[data-article-cover] img")).toHaveAttribute("src", `/media/${row.cover}`);
-
-    await page.goto(editor);
+    // „Kustuta postitus“ (S4-23): the question, then the list says so; the post's page is gone
     await page.getByRole("button", { name: "Kustuta postitus" }).click();
+    await expect(page.locator("[data-confirm-panel] li")).toHaveText(["Postitus kaob blogist ja avalehelt.", "Seda ei saa tagasi võtta."]);
     await page.getByRole("button", { name: "Jah, kustuta" }).click();
     await expect(page).toHaveURL(/\/admin\/uudised\?kustutatud=1$/);
-    await expect(page.getByText("Postitus kustutatud.")).toBeVisible();
+    await expect(page.locator("[data-post-deleted]")).toHaveText("Postitus kustutatud.");
+    await expect(page.locator(`[data-post-row="${id}"]`)).toHaveCount(0);
     expect((await page.goto(`/uudised/${slug}`))!.status()).toBe(404);
   });
 });
@@ -1203,7 +1285,9 @@ test.describe("every editor at phone width", () => {
   test("no sideways scrolling, every control at least 44 px tall, no 'Tulekul'", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "390 px");
     await signIn(page, context, visitorIp);
-    for (const path of ["/admin/avaleht", "/admin/praktika", "/admin/koolitaja", "/admin/uudised", "/admin/uudised/uus", "/admin/kampaania", "/admin/seaded"]) {
+    // (a post's editor: the seed's first post; a new post is made at once now, piece 4b)
+    const post = await one((sql) => sql<{ id: number }[]>`select id from posts order by published_at desc, id desc limit 1`);
+    for (const path of ["/admin/avaleht", "/admin/praktika", "/admin/koolitaja", "/admin/uudised", `/admin/uudised/${post.id}`, "/admin/kampaania", "/admin/seaded"]) {
       await page.goto(path);
       if (path === "/admin/avaleht") await page.locator("[data-slide]").first().getByRole("button", { name: /^Slaid 1/ }).click();
       expect(await noOverflow(page), path).toBe(true);

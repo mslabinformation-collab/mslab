@@ -1,6 +1,6 @@
 import type { Q } from "@/db/client";
 import type { PreviewBarProps, PreviewBarTexts, PreviewLabelTexts } from "@/components/site/PreviewBar";
-import { SITE_ENTITY_ID, type SiteEntity } from "@/domain/site-entities";
+import { siteRowOf, type SiteTarget } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { previewChangeCount } from "./course-parts";
@@ -44,13 +44,14 @@ export async function previewBarProps(db: Q, courseId: number, path: string): Pr
 }
 
 /**
- * A site page's bar (R-f): the entity the page is the public page of (the home page → home, /koolitaja → trainer, /praktika → practice), its changes'
- * count (site-preview.ts siteChangeCount: what its PublishBar counts), „Loobu muudatustest“ through its discard route with this browser's copies of it
- * (POST api/admin/sisu/<entity>/0/loobu: every draft of the entity, R-e), and the way out to `path` (as previewBarProps).
+ * A site page's bar (R-f): the target the page is the public page of (the home page → home, /koolitaja → trainer, /praktika → practice, a post's page →
+ * that post, piece 4b), its changes' count (site-preview.ts siteChangeCount: what its PublishBar counts), „Loobu muudatustest“ through its discard route
+ * with this browser's copies of it (POST api/admin/sisu/<entity>/<id>/loobu: every draft of the target, R-e), and the way out to `path` (as previewBarProps).
  */
-export async function sitePreviewBarProps(db: Q, entity: SiteEntity, path: string): Promise<PreviewBarProps> {
-  const count = await siteChangeCount(db, entity);
-  return { discardHref: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/loobu`, copies: { site: entity }, count, exitHref: exitOf(path), t: barTexts(count) };
+export async function sitePreviewBarProps(db: Q, target: SiteTarget, path: string): Promise<PreviewBarProps> {
+  const count = await siteChangeCount(db, target);
+  const { entity, id } = siteRowOf(target);
+  return { discardHref: `/api/admin/sisu/${entity}/${id}/loobu`, copies: { site: target }, count, exitHref: exitOf(path), t: barTexts(count) };
 }
 
 /** The catalogue's bar (D-4): „Eelvaade“ and the way out to `path` (this catalogue page as the visitor sees it, with the Russian page's prefix). */

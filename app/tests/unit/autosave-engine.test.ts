@@ -152,6 +152,116 @@ describe("when it saves, and what a save sends", () => {
   });
 });
 
+// Piece 4b, ruling R-i: Uudised mounts and unmounts an editor as Maria moves from post to post. A save already on its way when the screen goes may
+// finish; a save waiting behind it (a flush, the text typed meanwhile that its answer would send next) is not sent after stop(): its text stays in
+// this browser's copy, and the next mount resumes it.
+describe("a save queued behind the one on its way, when the screen goes (piece 4b R-i)", () => {
+  test("a flush queued behind it is not sent after stop(); the one on its way finishes, and the queued text's copy is resumed by the next mount", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls).toHaveLength(1);
+    e.setField("title", "AB");
+    const queued = e.flush();
+    await tick();
+    expect(s.calls).toHaveLength(1);
+    e.stop();
+    s.calls[0].answer(ok("v2"));
+    expect(await queued).toBe(false);
+    await tick(RETRY_MS[RETRY_MS.length - 1]);
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { title: "A" } }]);
+    // the copy: her text on the version the save on its way got
+    expect(stored()).toMatchObject({ version: "v2", fields: { title: "AB", body: "Tekst" } });
+    const next = new AutosaveEngine({ owner: "course", key: "12", version: "v2", fields: { title: "A", body: "Tekst" }, send: s.send, tab: "t2" });
+    engine = next;
+    next.start(localStorage);
+    expect(next.snapshot().fields.title).toBe("AB");
+    await tick();
+    expect(s.calls[1].body).toEqual({ version: "v2", patch: { title: "AB" } });
+    s.calls[1].answer(ok("v3"));
+    await tick();
+    expect(next.snapshot().status.kind).toBe("saved");
+    expect(localStorage.length).toBe(0);
+  });
+
+  test("the text typed while a save was on its way (its 1.5 s wait running) is not sent by that save's answer after stop()", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    await tick(DEBOUNCE_MS);
+    e.setField("title", "AB");
+    e.stop();
+    s.calls[0].answer(ok("v2"));
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(1);
+    expect(stored()).toMatchObject({ version: "v2", fields: { title: "AB" } });
+  });
+
+  test("the save on its way's own failure is not tried again after stop(), and a flush after stop() sends nothing; the copy keeps the text", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    await tick(DEBOUNCE_MS);
+    e.stop();
+    s.calls[0].answer(null);
+    await tick(RETRY_MS[RETRY_MS.length - 1]);
+    expect(await e.flush()).toBe(false);
+    await tick();
+    expect(s.calls).toHaveLength(1);
+    expect(stored()).toMatchObject({ version: "v1", fields: { title: "A" }, sent: [{ title: "A", body: "Tekst" }] });
+  });
+
+  test("started again (React's strict mode: stop, then start), the queued text goes at once", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    await tick(DEBOUNCE_MS);
+    e.setField("title", "AB");
+    void e.flush();
+    e.stop();
+    s.calls[0].answer(ok("v2"));
+    await tick();
+    expect(s.calls).toHaveLength(1);
+    e.start(localStorage);
+    await tick();
+    expect(s.calls[1].body).toEqual({ version: "v2", patch: { title: "AB" } });
+  });
+
+  test("useAutosave: a screen unmounted with a save on its way and one queued behind it sends nothing more", async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const probe: { current: ReturnType<typeof useAutosave> | null } = { current: null };
+    const s = server();
+    function Probe() {
+      const result = useAutosave({ owner: "course", key: "12", version: "v1", fields: FIELDS, save: s.send, label: (f) => f });
+      useEffect(() => {
+        probe.current = result;
+      });
+      return null;
+    }
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => probe.current!.setField("title", "A"));
+    await act(async () => {
+      await tick(DEBOUNCE_MS);
+    });
+    await act(async () => {
+      probe.current!.setField("title", "AB");
+      void probe.current!.flush();
+    });
+    await act(async () => root.unmount());
+    container.remove();
+    s.calls[0].answer(ok("v2"));
+    await tick(60_000);
+    expect(s.calls).toHaveLength(1);
+    const copies = Object.keys(localStorage).filter((k) => k.startsWith("mslab-draft:course:12:"));
+    expect(copies).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(copies[0])!)).toMatchObject({ version: "v2", fields: { title: "AB" } });
+  });
+});
+
 describe("the browser's copy", () => {
   test("keeps a local copy at mslab-draft:{owner}:{key}:{tab} until the server confirms", async () => {
     expect(draftKey("course", "12", "t1")).toBe(KEY);

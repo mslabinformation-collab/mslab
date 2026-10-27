@@ -5,18 +5,19 @@ import { patchSender, type Fields, type SendPatch, type Unconfirmed } from "@/co
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { sameSiteValue, siteChangeLabels, siteFieldLabel, siteRowFields } from "@/domain/site-changes";
-import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
+import { siteRowOf, type SiteDraftEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { siteCopyOwner } from "@/lib/site-copies";
 import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRefusals";
 
 // One part's autosave on a site editor (admin UX pass piece 4a, Task 2; README §1.3, B2; rulings R-a, R-b, R-d): the shared engine (autosave/
-// useAutosave.ts, used as it is) on POST /api/admin/sisu/<entity>/0/osa/<part> (server/site-drafts.ts writeSitePart: every save goes to the part's
-// draft, under the loose check), from the part's version the page read. As a course's card does, with the same hook (../useFieldRefusals.ts): a
+// useAutosave.ts, used as it is) on POST /api/admin/sisu/<entity>/<id>/osa/<part> (server/site-drafts.ts writeSitePart: every save goes to the part's
+// draft, under the loose check; a post that is not published saves straight to its row, piece 4b R-a), from the part's version the page read. The
+// target is Avaleht, Koolitaja or Praktika by name (id 0), or a post `{ entity: "post", id }` (piece 4b). As a course's card does, with the same hook (../useFieldRefusals.ts): a
 // 400's field codes are kept with the value each refused field was sent with (the engine holds those fields back and saves the rest), so a card can
 // say at the field what was refused and a list can place it on the row it is about (by the row's key in what was sent); a field typed in again or
-// saved loses its words. The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>` (the owner is lib/site-copies.ts', which the public
-// preview bar's „Loobu muudatustest“ drops by too).
+// saved loses its words. The copy in this browser is `mslab-draft:site:<entity>:<part>:<tab>`, a post's `mslab-draft:site:post:<id>:<part>:<tab>` (the
+// owner is lib/site-copies.ts', which the public preview bar's „Loobu muudatustest“ drops by too).
 //
 // A field the leave guard names („Muudatust „Slaid 2 pealkiri“ ei saanud veel salvestada.“, piece4-texts S4-1 note) is named row by row, as the
 // PublishBar names it: the first change of that field since its last save the server took (else since live), by domain/site-changes.ts.
@@ -26,8 +27,11 @@ import { useFieldEdits, useFieldRefusals, useLatestFields } from "../useFieldRef
 // (TextField); else the field's first control held back (`aria-invalid`). A row that holds its controls out of sight (Avaleht's closed slide, a
 // folded answer: piece 4a Task 6, review I-2) says so with `data-reveals` and opens itself on REVEAL_FIELD, then the focus goes into the control.
 
-/** The autosave route of an entity's part. */
-export const sitePartUrl = (entity: SiteEntity, part: string): string => `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/osa/${encodeURIComponent(part)}`;
+/** The autosave route of a target's part. */
+export function sitePartUrl(target: SiteTarget, part: string): string {
+  const { entity, id } = siteRowOf(target);
+  return `/api/admin/sisu/${entity}/${id}/osa/${encodeURIComponent(part)}`;
+}
 
 /** A part's way for its cards: what they show and how they change it (as course/types.ts PartApi, for a part that is always drafted). */
 export type SitePartApi<V extends Record<string, unknown> = Record<string, unknown>> = {
@@ -68,6 +72,11 @@ export type SitePartApi<V extends Record<string, unknown> = Record<string, unkno
   unconfirmed(): Unconfirmed | null;
   /** The part's version as the server last confirmed it (engine.ts confirmedVersion): after a flush, that of the text on the screen — the publish sends it. */
   versionNow(): string;
+  /**
+   * The page read again holds `value` for the field `name`, which a rule of the server set (piece 4b R-g: a post's address that follows its title, made
+   * from the new title, numbered when taken): taken as the field's saved text, nothing sent, only while nothing typed in it waits (engine.ts adopt).
+   */
+  adopt(name: string, value: unknown): void;
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -142,7 +151,7 @@ export function focusSiteField(part: string, field: string, row: number | null =
  * A list field's first row that differs from `before` (a row followed by its key `uid` where it has one, else by its place), by its place now, and the
  * row's first field that differs (in the order its labels are listed, domain/site-changes.ts siteRowFields; none for a new row or a plain text row).
  */
-function changedCell(entity: SiteEntity, part: string, before: unknown, now: unknown): { row: number; sub: string | null } | null {
+function changedCell(entity: SiteDraftEntity, part: string, before: unknown, now: unknown): { row: number; sub: string | null } | null {
   if (!Array.isArray(now)) return null;
   const was = Array.isArray(before) ? before : [];
   const uid = (r: unknown) => (isRecord(r) && typeof r.uid === "string" ? r.uid : null);
@@ -167,28 +176,42 @@ export type SitePartOptions = {
   validate?: (fields: Fields) => Record<string, string>;
   /** Where a field is (by default focusSiteField). */
   focusField?: (name: string) => void;
+  /** The words of a refusal's code at this part's fields (by default refusalText; a post says „See aadress on juba teisel postitusel.“ for `slugTaken`). */
+  errorText?: (code: string) => string;
+  /** Told after each save the server took: what it sent, and the part's version after it (Uudised reads the page again when the list's row changed). */
+  saved?: (patch: Fields, version: string) => void;
 };
 
 /**
- * `entity`'s part `part` from `seed` (its version, its value, live's value as the page read them), with the options above. All are read at mount, as
- * useAutosave reads them: a new seed needs a new mount (a React `key`).
+ * `target`'s part `part` from `seed` (its version, its value, live's value as the page read them), with the options above. All but `saved` are read at
+ * mount, as useAutosave reads them: a new seed needs a new mount (a React `key`).
  */
-export function useSitePart<V extends Record<string, unknown> = Record<string, unknown>>(o: { entity: SiteEntity; part: string; seed: SitePartState } & SitePartOptions): SitePartApi<V> {
-  const { entity, part, seed } = o;
+export function useSitePart<V extends Record<string, unknown> = Record<string, unknown>>(o: { target: SiteTarget; part: string; seed: SitePartState } & SitePartOptions): SitePartApi<V> {
+  const { target, part, seed } = o;
+  const entity = siteRowOf(target).entity;
   // each refused field's code and the value the refused save sent, the saves the server took (../useFieldRefusals.ts, shared with the course cards)
   const { codes, saves, savedNow, hear, clear } = useFieldRefusals();
   const live = useMemo(() => (isRecord(seed.live) ? seed.live : {}), [seed.live]);
   /** The part's value as the server last took it (from the page's read, then each save it took): what the leave guard's label compares with. */
   const confirmed = useRef<Record<string, unknown>>(isRecord(seed.value) ? seed.value : {});
+  // the screen's ear for the saves the server took, as it is now
+  const heard = useRef(o.saved);
+  useLayoutEffect(() => {
+    heard.current = o.saved;
+  });
+  const url = sitePartUrl(target, part);
   const send = useMemo<SendPatch>(() => {
-    const base = patchSender(sitePartUrl(entity, part));
+    const base = patchSender(url);
     return async (body, opts) => {
       const answer = await base(body, opts);
-      if (answer?.status === 200 && isRecord(answer.body) && answer.body.ok === true) confirmed.current = { ...confirmed.current, ...body.patch };
+      const reply = answer && isRecord(answer.body) ? answer.body : null;
+      const took = answer?.status === 200 && reply?.ok === true;
+      if (took) confirmed.current = { ...confirmed.current, ...body.patch };
       hear(body.patch, answer);
+      if (took && typeof reply.version === "string") heard.current?.(body.patch, reply.version);
       return answer;
     };
-  }, [entity, part, hear]);
+  }, [url, hear]);
   // what the newest render holds: an upload that ends after other changes adds to the list as it is then; and the field's label as it is now
   const latest = useLatestFields(isRecord(seed.value) ? seed.value : {});
   const own = o.label;
@@ -204,7 +227,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     [own, entity, part, live, latest],
   );
   const auto = useAutosave({
-    owner: siteCopyOwner(entity),
+    owner: siteCopyOwner(target),
     key: part,
     version: seed.version,
     fields: (isRecord(seed.value) ? seed.value : {}) as Fields,
@@ -225,7 +248,8 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     latest.move(fields);
   });
 
-  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow } = auto;
+  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt } = auto;
+  const words = o.errorText ?? refusalText;
   // a field typed in (its refusal's words go, the engine has it); a change worked out from the field as it lands (../useFieldRefusals.ts)
   const { take, update } = useFieldEdits({ latest, setField, flush, clear });
   return useMemo<SitePartApi<V>>(() => {
@@ -239,7 +263,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
         void flush();
       },
       flush: () => flush(),
-      error: (name) => (codes[name] ? refusalText(codes[name].code) : undefined),
+      error: (name) => (codes[name] ? words(codes[name].code) : undefined),
       refusedValue: (name) => codes[name]?.sent,
       unpublished: (name) => !sameSiteValue((fields as Record<string, unknown>)[name], live[name]),
       conflict: conflict !== null,
@@ -251,6 +275,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
       savedNow,
       unconfirmed,
       versionNow,
+      adopt: (name, value) => void adopt(name, value),
     };
-  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, codes, live, saves, savedNow]);
+  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt, codes, words, live, saves, savedNow]);
 }

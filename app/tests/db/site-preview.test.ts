@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { getHomeData, getPracticePackages, getTrainerPage } from "@/db/queries/public";
-import { courses, type PracticePackage } from "@/db/schema";
+import { getHomeData, getPost, getPracticePackages, getTrainerPage, listPosts } from "@/db/queries/public";
+import { courses, posts, type PracticePackage } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { newSlideDraft, type FaqDraft, type PackageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
-import type { SiteEntity } from "@/domain/site-entities";
+import type { PostPartValue, SiteEntity } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { createSession } from "@/server/auth";
 import { saveDraftPart } from "@/server/drafts";
@@ -51,6 +52,8 @@ vi.mock("next/navigation", async (original) => ({
 import HomePage from "@/app/[locale]/(site)/page";
 import TrainerPage from "@/app/[locale]/(site)/koolitaja/page";
 import PracticePage from "@/app/[locale]/(site)/praktika/page";
+import NewsPage from "@/app/[locale]/(site)/uudised/page";
+import PostPage from "@/app/[locale]/(site)/uudised/[slug]/page";
 import SiteLayout from "@/app/[locale]/(site)/layout";
 import { previewActive } from "@/server/preview";
 import { publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
@@ -360,6 +363,90 @@ describe("the pages in the admin's preview: the drafts and the bar of the page's
     expect(state.cookieReads).toBe(0);
     const source = readFileSync("src/app/[locale]/(site)/layout.tsx", "utf8");
     expect(source).not.toMatch(/previewActive|draftMode|site-preview|withSiteDrafts|next\/headers|drafts:/);
+  });
+});
+
+// Piece 4b, Task 2: the posts on the draft layer (one entity row per post). A published post's drafts show in her preview — on /uudised, on the post's own
+// page (under the post's bar) and in the home page's carousel — as „Avalda muudatused“ would store them (S4-Q1 A's check: a draft that fails it shows
+// live), at the post's LIVE address; every other request is live and has no bar.
+describe("the posts in the admin's preview (piece 4b): each published post's drafts, at its live address; everyone else: live, no bar", () => {
+  const SLUG = "kuidas-valida-endale-sobiv-kulmukoolitus";
+  const postPage = (locale: "et" | "ru" = "et", slug = SLUG) => PostPage({ params: Promise.resolve({ locale, slug }) }).then((tree) => renderToStaticMarkup(tree));
+  const newsPage = () => NewsPage({ params: Promise.resolve({ locale: "et" }) }).then((tree) => renderToStaticMarkup(tree));
+  const idOf = async (slug = SLUG) => (await db.select({ id: posts.id }).from(posts).where(eq(posts.slug, slug)))[0].id;
+  /** A save of the post's part from the version its editor holds now: a published post's goes to its draft. */
+  async function savePost(id: number, patch: Partial<PostPartValue>) {
+    const target = { entity: "post" as const, id };
+    const answer = await writeSitePart(db, target, "post", patch, (await readSiteEditor(db, target)).parts.post.version, ME, NOW);
+    expect(answer.ok, JSON.stringify(answer)).toBe(true);
+  }
+  const drafted = { title: { et: "Kulmukoolituse valik, uus pealkiri", ru: "Новый заголовок" }, body: { et: "Esimene uus lõik.\n\nTeine uus lõik.", ru: "Новый текст." } };
+
+  test("listPosts, getPost and the home page's carousel: the drafted title and text, at the live address; without draft mode, live", async () => {
+    const id = await idOf();
+    await savePost(id, { ...drafted, slug: "uus-aadress" });
+    const live = await getPost(db, SLUG);
+    const shown = await getPost(db, SLUG, { drafts: true });
+    expect(shown).toMatchObject({ id, slug: SLUG, title: drafted.title, body: drafted.body, published: true });
+    expect(live).toMatchObject({ id, slug: SLUG, title: { et: "Kuidas valida endale sobiv kulmukoolitus?" } });
+    expect(await getPost(db, "uus-aadress", { drafts: true })).toBeNull();
+    const list = await listPosts(db, undefined, { drafts: true });
+    expect(list.map((p) => p.id)).toEqual((await listPosts(db)).map((p) => p.id));
+    expect(list.find((p) => p.id === id)).toMatchObject({ slug: SLUG, title: drafted.title });
+    expect((await getHomeData(db, { drafts: true })).posts.find((p) => p.id === id)).toMatchObject({ slug: SLUG, title: drafted.title });
+    expect((await getHomeData(db)).posts.find((p) => p.id === id)?.title).toEqual(live!.title);
+  });
+
+  test("a draft that fails S4-Q1 A's check (its Russian text emptied) shows live; what passes shows as „Avalda muudatused“ stores it", async () => {
+    const id = await idOf();
+    await savePost(id, { body: { et: "Uus tekst.", ru: "" } });
+    expect((await getPost(db, SLUG, { drafts: true }))?.body).toEqual((await getPost(db, SLUG))?.body);
+    await savePost(id, { body: { et: " Uus tekst. ", ru: " Новый. " } });
+    const shown = await getPost(db, SLUG, { drafts: true });
+    expect((await publishSite(db, { entity: "post", id }, { post: (await readSiteEditor(db, { entity: "post", id })).parts.post.version })).blocked).toEqual([]);
+    expect(shown).toEqual(await getPost(db, SLUG));
+  });
+
+  test("/uudised/<slug>: the drafted text under the post's bar („Avaldamata 2“, its discard and the way out); a visitor's page and a stranger's: live, no bar", async () => {
+    const id = await idOf();
+    await savePost(id, drafted);
+    await asAdmin();
+    const page = await postPage();
+    expect(page).toMatch(/<h1[^>]*>Kulmukoolituse valik, uus pealkiri<\/h1>/);
+    expect(page).toContain("Esimene uus lõik.");
+    expect(page).toContain(BAR);
+    expect(page).toContain("Avaldamata 2");
+    expect(page).toContain("Loobu muudatustest");
+    expect(page).toContain(`href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fuudised%2F${SLUG}"`);
+    expect(await postPage("ru")).toContain(`href="/api/admin/eelvaade?lopeta=1&amp;tee=%2Fru%2Fuudised%2F${SLUG}"`);
+    const { sitePreviewBarProps } = await import("@/server/preview-bar");
+    expect(await sitePreviewBarProps(db, { entity: "post", id }, `/uudised/${SLUG}`)).toMatchObject({ discardHref: `/api/admin/sisu/post/${id}/loobu`, copies: { site: { entity: "post", id } }, count: 2 });
+    state.cookie = await createSession(db, ME);
+    state.draftOn = false;
+    state.cookieReads = 0;
+    const visitor = await postPage();
+    expect(state.cookieReads).toBe(0);
+    state.draftOn = true;
+    state.cookie = undefined;
+    for (const other of [visitor, await postPage()]) {
+      expect(other).toMatch(/<h1[^>]*>Kuidas valida endale sobiv kulmukoolitus\?<\/h1>/);
+      expect(other).not.toContain("Esimene uus lõik.");
+      expect(other).not.toContain(BAR);
+    }
+  });
+
+  test("/uudised: the drafted title under „Eelvaade · Lõpeta eelvaade“ (nothing of its own to discard); a visitor's: live, no bar", async () => {
+    await savePost(await idOf(), drafted);
+    await asAdmin();
+    const page = await newsPage();
+    expect(page).toContain("Kulmukoolituse valik, uus pealkiri");
+    expect(page).toContain(`href="/uudised/${SLUG}"`);
+    expect(page).toContain("Lõpeta eelvaade");
+    expect(page).not.toContain("Loobu muudatustest");
+    state.draftOn = false;
+    const visitor = await newsPage();
+    expect(visitor).not.toContain("Kulmukoolituse valik, uus pealkiri");
+    expect(visitor).not.toContain("Lõpeta eelvaade");
   });
 });
 

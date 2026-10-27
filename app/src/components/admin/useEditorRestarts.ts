@@ -66,13 +66,27 @@ export async function post(url: string, signal: AbortSignal, body?: unknown): Pr
 export const failedLine = (action: "publish" | "discard", signedOut: boolean) =>
   signedOut ? adminEt.leave.reasons.signedOut : action === "publish" ? adminEt.publish.publishFailed : adminEt.publish.discardFailed;
 
-/** A part „Avalda muudatused“ left in its draft: changed meanwhile, or missing what its strict check asks for; `fields`, the labels. */
-export type HeldPart = { part: string; reason: "changed" | "missing"; fields: string[] };
+/**
+ * A part „Avalda muudatused“ left in its draft: changed meanwhile, missing what its strict check asks for, or "invalid" — the strict check passed but a
+ * rule against other rows refused a field (piece 4b, server/site-drafts.ts SiteBlockedPart: a post's address another post has, `errors: { slug:
+ * "slugTaken" }`, ADM:2281); `fields`, the labels; `errors`, an "invalid" part's codes by the field's name in the part, said at those fields.
+ */
+export type HeldPart = { part: string; reason: "changed" | "missing" | "invalid"; fields: string[]; errors?: Record<string, string> };
 
-/** The PublishBar's blocked list of a publish's answer (S3-P3-b): the missing fields' labels, the labels of the parts changed meanwhile. */
+/**
+ * The PublishBar's blocked list of a publish's answer (S3-P3-b): the missing fields' labels, the labels of the parts changed meanwhile. An "invalid"
+ * part is said at its fields (heldErrors), not on the bar: with nothing missing or changed there is no list at all, never an empty notice.
+ */
 export function blockedOf(parts: readonly HeldPart[] | null): { missing: string[]; changed: string[] } | undefined {
   if (!parts || parts.length === 0) return undefined;
-  return { missing: parts.filter((p) => p.reason === "missing").flatMap((p) => p.fields), changed: parts.filter((p) => p.reason === "changed").flatMap((p) => p.fields) };
+  const missing = parts.filter((p) => p.reason === "missing").flatMap((p) => p.fields);
+  const changed = parts.filter((p) => p.reason === "changed").flatMap((p) => p.fields);
+  return missing.length > 0 || changed.length > 0 ? { missing, changed } : undefined;
+}
+
+/** The codes an "invalid" hold of `part` refused, by the field's name in the part (`{ slug: "slugTaken" }`); {} when it holds none. */
+export function heldErrors(parts: readonly HeldPart[], part: string): Record<string, string> {
+  return Object.assign({}, ...parts.filter((p) => p.part === part && p.reason === "invalid").map((p) => p.errors ?? {})) as Record<string, string>;
 }
 
 /** A part's start: its version, its value (the draft's, else live's), live's value. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import type { SiteEntity } from "@/domain/site-entities";
+import type { SiteTarget } from "@/domain/site-entities";
 import { dropCourseCopies } from "@/lib/course-copies";
 import { dropSiteCopies } from "@/lib/site-copies";
 import styles from "./PreviewBar.module.css";
@@ -15,8 +15,8 @@ export type PreviewBarTexts = { count: string; exit: string; discard: string; qu
 /** The catalogue's bar's words: its name and the way out. */
 export type PreviewLabelTexts = { label: string; exit: string };
 
-/** Whose editor copies in this browser a discard drops with the drafts: a course's (lib/course-copies.ts) or a site entity's (lib/site-copies.ts). */
-export type PreviewCopies = { course: number } | { site: SiteEntity };
+/** Whose editor copies in this browser a discard drops with the drafts: a course's (lib/course-copies.ts) or a site target's, a post's too (lib/site-copies.ts). */
+export type PreviewCopies = { course: number } | { site: SiteTarget };
 
 /** The bar's props, as the server makes them (server/preview-bar.ts previewBarProps, sitePreviewBarProps). */
 export type PreviewBarProps = { discardHref: string | null; copies: PreviewCopies | null; count: number; exitHref: string; t: PreviewBarTexts };
@@ -30,16 +30,16 @@ const dropCopies = (copies: PreviewCopies | null): void => {
 /**
  * The bar of the admin's draft preview on a public page that shows drafts: the course page (admin UX pass piece 3a, Task 6 review; spec C3: „Loobu
  * muudatustest“ on the preview page is shown only in draft mode; README §1.8, B2 Part 4: the phone's PublishBar leaves „Loobu muudatustest“ behind
- * „Eelvaade“), and the home page, /koolitaja and /praktika (piece 4a, Task 3; ruling R-f: the bar of the page's entity, home, trainer or practice). The
- * page renders it only for a request that is the admin's preview (server/preview.ts previewActive), so a visitor's page, and the page Next keeps, never
- * has it.
+ * „Eelvaade“), the home page, /koolitaja and /praktika (piece 4a, Task 3; ruling R-f: the bar of the page's entity, home, trainer or practice), and a
+ * post's page (piece 4b: the bar of that post). The page renders it only for a request that is the admin's preview (server/preview.ts previewActive), so
+ * a visitor's page, and the page Next keeps, never has it.
  *
  * - `count`: how many unpublished changes the page's thing has (its PublishBar's count); „Avaldamata {n}“ (`t.count`), and „Loobu muudatustest“, are there
  *   when it is not 0.
  * - the way out is the link `exitHref` (api/admin/eelvaade?lopeta=1&tee=<this page>): draft mode off, the same page as a visitor sees it, „Lõpeta
  *   eelvaade“ (`t.exit`, Dim 24.10 D-1).
  * - „Loobu muudatustest“ (only with a `discardHref`) asks in the PublishBar's ConfirmPanel (the same words), then discards the drafts (POST `discardHref`:
- *   api/admin/koolitus/<id>/loobu, the course's; api/admin/sisu/<entity>/0/loobu, a site entity's, R-e), drops this browser's editor copies of them
+ *   api/admin/koolitus/<id>/loobu, the course's; api/admin/sisu/<entity>/<id>/loobu, a site entity's or a post's, R-e), drops this browser's editor copies of them
  *   (`copies`), and ends the preview. A discard that fails leaves the question open (as the PublishBar's does) and says so in the bar, as an alert, in
  *   the PublishBar's words: `t.failed` („Muudatustest loobumine ei õnnestunud. Proovi uuesti.“, D-2), or `t.signedOut` for a session that ended
  *   (withAdmin's 401; the leave guard's „Logi uuesti sisse.“).

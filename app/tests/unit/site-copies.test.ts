@@ -50,6 +50,20 @@ describe("dropSiteCopies", () => {
     expect(keysOf(storage)).toEqual(others);
   });
 
+  it("a post's copies (piece 4b: one entity row per post) are `site:post:<id>`: that post's go, never another post's (1 is not 12) or a site entity's", () => {
+    const one = { entity: "post", id: 1 } as const;
+    expect(siteCopyOwner(one)).toBe("site:post:1");
+    const mine = ["t1", "t2"].map((tab) => draftKey(siteCopyOwner(one), "post", tab));
+    const others = [draftKey(siteCopyOwner({ entity: "post", id: 12 }), "post", "t1"), draftKey(siteCopyOwner("home"), "faq", "t1"), "mslab-draft:site:post:1:post"];
+    const storage = memoryStorage([...mine, ...others]);
+    dropSiteCopies(one, storage);
+    expect(keysOf(storage)).toEqual(others);
+    // and the site entities' drop never takes a post's
+    const posts = memoryStorage(mine);
+    for (const entity of ["home", "trainer", "practice"] as const) dropSiteCopies(entity, posts);
+    expect(keysOf(posts)).toEqual(mine);
+  });
+
   it("a storage that throws, or none: nothing thrown", () => {
     const broken = {
       get length(): number {

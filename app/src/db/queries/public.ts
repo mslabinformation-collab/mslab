@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { TERMS_PAGE_KEY } from "@/domain/course-terms";
+import { POST_PART } from "@/domain/site-entities";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import { campaign, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "../schema";
@@ -113,8 +114,9 @@ export async function listUpcomingSessions(db: Db, fromDate: Date, only?: { slug
 }
 
 // ---------- the site content in the admin's draft preview (admin UX pass piece 4a, Task 3; ruling R-f) ----------
-// `opts.drafts` on the readers of the home page, /koolitaja and /praktika: the signed-in admin's preview lays the drafts of the entities home, trainer
-// and practice over the live data, each part as „Avalda muudatused“ would store it, a part whose draft fails its check left live
+// `opts.drafts` on the readers of the home page, /koolitaja, /praktika and the posts (/uudised, /uudised/<slug>, the home page's carousel; piece 4b): the
+// signed-in admin's preview lays the drafts of the entities home, trainer, practice and each post over the live data, each part as „Avalda muudatused“
+// would store it, a part whose draft fails its check left live
 // (server/site-preview.ts withSiteDrafts). Only a page that has asked server/preview.ts previewActive passes it; the draft layer is loaded only then, so
 // every other reader (and the static pages) never touch it. The `pick`s below put each part's stored value where the reader keeps it.
 
@@ -161,7 +163,7 @@ export async function getTrainerPage(db: Db, opts: { drafts?: boolean } = {}): P
 
 /**
  * The home page's data in the admin's preview: its own drafts (home: the hero slides, shown ones only, the statement, the trainer card's text, the
- * FAQ), the trainer's (the card's setting and the bio its text falls back to) and the packages', each from its own entity.
+ * FAQ), the trainer's (the card's setting and the bio its text falls back to), the packages' and the carousel's posts', each from its own entity.
  */
 async function homeWithDrafts(db: Db, live: HomeData): Promise<HomeData> {
   const { withSiteDrafts } = await import("@/server/site-preview");
@@ -180,18 +182,33 @@ async function homeWithDrafts(db: Db, live: HomeData): Promise<HomeData> {
     settings: Object.hasOwn(p, "trainer") ? { ...home.settings, trainer: p.trainer } : home.settings,
     pages: Object.hasOwn(p, "bio") ? { ...home.pages, trainer_bio: p.bio as Page } : home.pages,
   }));
-  return withSiteDrafts(db, "practice", trainer, (p) => ({ ...trainer, practice: packagesOver(trainer.practice)(p) }));
+  const practice = await withSiteDrafts(db, "practice", trainer, (p) => ({ ...trainer, practice: packagesOver(trainer.practice)(p) }));
+  // the blog carousel's posts, each with its own drafts (piece 4b)
+  return { ...practice, posts: await Promise.all(practice.posts.map((post) => postWithDrafts(db, post))) };
 }
 
-/** Published posts, newest first. */
-export async function listPosts(db: Db, limit?: number): Promise<Post[]> {
+/**
+ * A published post with its drafts laid over it, in the admin's preview (piece 4b, Task 2; the entity "post", one row per post): as „Avalda muudatused“
+ * would store it (server/site-preview.ts withSiteDrafts, S4-Q1 A's check: a draft that fails it shows live), at its LIVE address — a drafted address is
+ * the post's only after the publish, as a course's (piece 3a). The lists keep their live order.
+ */
+async function postWithDrafts(db: Db, post: Post): Promise<Post> {
+  const { withSiteDrafts } = await import("@/server/site-preview");
+  return withSiteDrafts(db, { entity: "post", id: post.id }, post, (p) => (Object.hasOwn(p, POST_PART) ? { ...(p[POST_PART] as Post), slug: post.slug } : post));
+}
+
+/** Published posts, newest first; `opts.drafts`: the admin's preview (each post's drafts, above: postWithDrafts). */
+export async function listPosts(db: Db, limit?: number, opts: { drafts?: boolean } = {}): Promise<Post[]> {
   const q = db.select().from(posts).where(eq(posts.published, true)).orderBy(desc(posts.publishedAt), desc(posts.id));
-  return limit ? q.limit(limit) : q;
+  const list = await (limit ? q.limit(limit) : q);
+  return opts.drafts ? Promise.all(list.map((post) => postWithDrafts(db, post))) : list;
 }
 
-export async function getPost(db: Db, slug: string): Promise<Post | null> {
+/** A published post by its (live) address; `opts.drafts`: the admin's preview (its drafts, above: postWithDrafts). */
+export async function getPost(db: Db, slug: string, opts: { drafts?: boolean } = {}): Promise<Post | null> {
   const [row] = await db.select().from(posts).where(and(eq(posts.slug, slug), eq(posts.published, true))).limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return opts.drafts ? postWithDrafts(db, row) : row;
 }
 
 export async function getPage(db: Db, key: string): Promise<Page | null> {

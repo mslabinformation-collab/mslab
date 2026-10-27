@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { Icon } from "@/components/site/Icon";
 import { NewsGrid } from "@/components/site/NewsCard";
+import { PreviewBar } from "@/components/site/PreviewBar";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getPost, listPosts } from "@/db/queries/public";
@@ -15,6 +16,7 @@ import { href } from "@/i18n/href";
 import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "../news.module.css";
+import { previewActive } from "@/server/preview";
 import { shareMetadata } from "@/server/share-meta";
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
@@ -27,9 +29,13 @@ export function generateStaticParams(): { slug: string }[] {
 /** Number of other posts under "Loe veel". */
 const MORE = 3;
 
-// One post query per request, shared by generateMetadata and the page.
+// Is this request the signed-in admin's draft preview (api/admin/eelvaade; admin UX pass piece 4b, Task 2)? `previewActive()` is true only with draft mode
+// on AND a live admin session; it reads no cookie otherwise, so a visitor's page, and the one Next keeps, stays the cached render. Asked once per request.
+const inPreview = cache(() => previewActive());
+
+// One post query per request, shared by generateMetadata and the page: in the preview with the post's drafts, at its live address (db/queries/public.ts).
 const loadPost = cache(async (slug: string) => {
-  return getPost(getDb(), slug);
+  return getPost(getDb(), slug, { drafts: await inPreview() });
 });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -48,7 +54,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * A blog post (Task 9, B1) on prototype D `pArticle`: crumb, date · category, title, 16:9 cover, the stored text as
  * paragraphs (split on blank lines), "Vaata koolitusi", then "Loe veel" with the three newest other posts.
- * Russian falls back to the Estonian text field by field. Unknown or unpublished slug → 404.
+ * Russian falls back to the Estonian text field by field. Unknown or unpublished slug → 404. In the admin's draft preview the post (and the others
+ * under it) shows its drafts, under the post's bar: „Avaldamata {n}“, „Loobu muudatustest“ and the way out (piece 4b, Task 2).
  */
 export default async function PostPage({ params }: Props) {
   const { locale, slug } = await params;
@@ -57,7 +64,14 @@ export default async function PostPage({ params }: Props) {
   if (!post) notFound();
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
-  const others = (await listPosts(getDb())).filter((p) => p.id !== post.id).slice(0, MORE);
+  const db = getDb();
+  const drafts = await inPreview();
+  const others = (await listPosts(db, undefined, { drafts })).filter((p) => p.id !== post.id).slice(0, MORE);
+  let previewBar: React.ReactNode = null;
+  if (drafts) {
+    const { sitePreviewBarProps } = await import("@/server/preview-bar");
+    previewBar = <PreviewBar {...await sitePreviewBarProps(db, { entity: "post", id: post.id }, to(`/uudised/${post.slug}`))} />;
+  }
 
   const title = pick(post.title, locale);
   const category = pick(post.category, locale);
@@ -120,6 +134,7 @@ export default async function PostPage({ params }: Props) {
           />
         </section>
       )}
+      {previewBar}
     </>
   );
 }
