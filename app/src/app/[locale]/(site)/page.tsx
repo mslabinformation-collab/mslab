@@ -22,7 +22,7 @@ import { UpcomingStrip } from "@/components/site/UpcomingStrip";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getHomeData, listUpcomingSessions } from "@/db/queries/public";
-import { NEWSLETTER_LANDING_PARAM, newsletterPopupView } from "@/domain/campaign";
+import { NEWSLETTER_LANDING_PARAM, newsletterPopupView, POPUP_PREVIEW_BAR, PREVIEW_BAR_PARAM } from "@/domain/campaign";
 import { firstParagraph, nextSessionByCourse, nextSessions, pickHomeCourses } from "@/domain/home";
 import { linkFor } from "@/domain/site-editor";
 import { formatEUR } from "@/domain/money";
@@ -39,7 +39,7 @@ import { shareMetadata } from "@/server/share-meta";
 import styles from "./home.module.css";
 import { upcomingFrom } from "@/domain/calendar";
 
-type Props = { params: Promise<{ locale: string }> };
+type Props = { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /**
  * This page lists course dates, and a date is listed only until its session begins. So it is rendered again when it is
@@ -62,7 +62,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * → contact. The newsletter lives in the footer (layout).
  * The layout provides <main> and the transparent header that the hero slides under.
  */
-export default async function Home({ params }: Props) {
+export default async function Home({ params, searchParams }: Props) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const d = getDict(locale);
@@ -124,12 +124,15 @@ export default async function Home({ params }: Props) {
   // "Minu andmed" lands here with #konto-kustutatud after deleting the account (a fragment: the server never sees it).
   const accountNotices: Record<string, FlashMessage> = { [DELETED_MARK]: { tone: "ok", title: d.account.details.deleted } };
 
-  // The admin's draft preview only (R-f): the home page's bar (its changes, „Loobu muudatustest“ of its drafts, the way out). For a visitor, and for the
-  // page Next keeps, there is none: nothing of the draft layer is loaded unless the request is the preview.
+  // The admin's draft preview only (R-f): the home page's bar (its changes, „Loobu muudatustest“ of its drafts, the way out) — or, opened from Hüpikaken
+  // („Eelvaade ↗“ adds ?riba=hupikaken; piece 4b, ruling c1), the popup's (popup/0), so that bar never counts or discards Avaleht's drafts. For a visitor,
+  // and for the page Next keeps, there is none: nothing of the draft layer, and not the query either, is read unless the request is the preview (the
+  // page stays the one cached by revalidation).
   let previewBar: React.ReactNode = null;
   if (drafts) {
     const { sitePreviewBarProps } = await import("@/server/preview-bar");
-    previewBar = <PreviewBar {...await sitePreviewBarProps(db, "home", to("/"))} />;
+    const bar = (await searchParams)[PREVIEW_BAR_PARAM] === POPUP_PREVIEW_BAR ? "popup" : "home";
+    previewBar = <PreviewBar {...await sitePreviewBarProps(db, bar, to("/"))} />;
   }
 
   return (
@@ -274,7 +277,7 @@ export default async function Home({ params }: Props) {
 
       <FlashNotice param={NEWSLETTER_LANDING_PARAM} notices={newsletterNotices} fragments={accountNotices} closeLabel={d.common.close} />
 
-      {/* (the admin's draft preview opens it at once and leaves the 30-day stamp alone, R-e) */}
+      {/* (the admin's draft preview opens it at once in any browser, signed up or not, and leaves the 30-day stamp alone: R-e, ruling c2) */}
       {newsletterPopup && <NewsletterPopup n={newsletterPopup} locale={locale} preview={drafts} t={{ close: d.common.close, form: popupFormTexts(d, welcomeCode) }} />}
       {previewBar}
     </>

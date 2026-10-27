@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { getHomeData, getPost, getPracticePackages, getTrainerPage, listPosts } from "@/db/queries/public";
-import { campaign, courses, posts, settings, type PracticePackage } from "@/db/schema";
+import { campaign, contentDrafts, courses, posts, settings, type PracticePackage } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { newSlideDraft, type FaqDraft, type PackageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { PostPartValue, SiteEntity } from "@/domain/site-entities";
@@ -57,6 +57,8 @@ import NewsPage from "@/app/[locale]/(site)/uudised/page";
 import PostPage from "@/app/[locale]/(site)/uudised/[slug]/page";
 import SiteLayout from "@/app/[locale]/(site)/layout";
 import { NewsletterPopup } from "@/components/site/NewsletterPopup";
+import { PreviewBar } from "@/components/site/PreviewBar";
+import { POST as discardRoute } from "@/app/api/admin/sisu/[entity]/[id]/loobu/route";
 import { previewActive } from "@/server/preview";
 import { publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
 import { withSiteDrafts } from "@/server/site-preview";
@@ -277,7 +279,7 @@ describe("what the preview shows is what „Avalda muudatused“ stores (one def
 describe("the pages in the admin's preview: the drafts and the bar of the page's entity; everyone else: live, no bar", () => {
   const practicePage = (locale: "et" | "ru" = "et") => PracticePage({ params: Promise.resolve({ locale }) }).then((tree) => renderToStaticMarkup(tree));
   const trainerPage = (locale: "et" | "ru" = "et") => TrainerPage({ params: Promise.resolve({ locale }) }).then((tree) => renderToStaticMarkup(tree));
-  const homePage = (locale: "et" | "ru" = "et") => HomePage({ params: Promise.resolve({ locale }) }).then((tree) => renderToStaticMarkup(tree));
+  const homePage = (locale: "et" | "ru" = "et") => HomePage({ params: Promise.resolve({ locale }), searchParams: Promise.resolve({}) }).then((tree) => renderToStaticMarkup(tree));
   /** A visitor's page (draft mode off, a session or not) and a stranger's (draft mode on, no session): both live, no bar. */
   async function others(render: () => Promise<string>) {
     state.cookie = await createSession(db, ME);
@@ -454,13 +456,16 @@ describe("the posts in the admin's preview (piece 4b): each published post's dra
 
 describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R-e, S4-Q4)", () => {
   const show = (on: boolean) => db.update(campaign).set({ active: on }).where(eq(campaign.id, 2));
-  const homeTree = (locale: "et" | "ru" = "et") => HomePage({ params: Promise.resolve({ locale }) });
-  /** The page's NewsletterPopup element (a client component: nothing of it is in the server's HTML), or null. */
-  function popupOf(node: unknown): { n: { title: string }; preview: boolean; t: { form: { submit: string } } } | null {
-    if (!isValidElement(node)) return Array.isArray(node) ? (node.map(popupOf).find(Boolean) ?? null) : null;
-    if (node.type === NewsletterPopup) return node.props as never;
-    return popupOf((node.props as { children?: unknown }).children);
+  const homeTree = (locale: "et" | "ru" = "et", query: Record<string, string> = {}) => HomePage({ params: Promise.resolve({ locale }), searchParams: Promise.resolve(query) });
+  /** The props of the page's first element of `type` (a client component: nothing of it is in the server's HTML), or null. */
+  function propsOf<P>(node: unknown, type: unknown): P | null {
+    if (!isValidElement(node)) return Array.isArray(node) ? (node.map((child) => propsOf<P>(child, type)).find(Boolean) ?? null) : null;
+    if (node.type === type) return node.props as P;
+    return propsOf<P>((node.props as { children?: unknown }).children, type);
   }
+  const popupOf = (node: unknown) => propsOf<{ n: { title: string }; preview: boolean; t: { form: { submit: string } } }>(node, NewsletterPopup);
+  const barOf = (node: unknown) => propsOf<{ discardHref: string; copies: unknown; count: number; t: { count: string } }>(node, PreviewBar);
+  const draftsOf = async (entity: string) => (await db.select().from(contentDrafts).where(eq(contentDrafts.entity, entity))).length;
 
   test("the offer's draft over the shown popup, as its publish would store it; a draft that fails the strict check (no picture), an off popup and the old campaign offer: as live", async () => {
     await show(true);
@@ -497,6 +502,31 @@ describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R
     expect(popupOf(await homeTree("ru"))?.t.form.submit).toBe("Получить код");
     await show(false);
     expect(popupOf(await homeTree())).toBeNull();
+  });
+
+  test("„Eelvaade ↗“ from Hüpikaken (?riba=hupikaken, ruling c1): the popup's bar — its count, its „Loobu muudatustest“, which leaves Avaleht's drafts alone; without it, Avaleht's bar; a visitor: no bar, the query unread", async () => {
+    await show(true);
+    await save("home", "statement", { body: { et: "Uus lause avalehel." } });
+    await save("popup", "offer", { title: { et: "Uus pakkumine" }, discountPercent: "15" });
+    await asAdmin();
+    const popupBar = barOf(await homeTree("et", { riba: "hupikaken" }));
+    expect(popupBar).toMatchObject({ discardHref: "/api/admin/sisu/popup/0/loobu", copies: { site: "popup" }, count: 2, t: { count: "Avaldamata 2" } });
+    expect(barOf(await homeTree("ru", { riba: "hupikaken" }))).toMatchObject({ discardHref: "/api/admin/sisu/popup/0/loobu" });
+    // the home page's own preview (Avaleht's „Eelvaade ↗“, or any other value): Avaleht's bar
+    for (const query of [{}, { riba: "muu" }] as Record<string, string>[]) expect(barOf(await homeTree("et", query)), JSON.stringify(query)).toMatchObject({ discardHref: "/api/admin/sisu/home/0/loobu", copies: { site: "home" }, count: 1 });
+    // its „Loobu muudatustest“ (the bar's route) throws the popup's drafts away and leaves Avaleht's
+    const [, entity, id] = /^\/api\/admin\/sisu\/(\w+)\/(\d+)\/loobu$/.exec(popupBar!.discardHref)!;
+    type Route = (r: Request, c: { params: Promise<Record<string, string>> }) => Promise<Response>;
+    const res = await (discardRoute as unknown as Route)(new Request(`https://mslab.example${popupBar!.discardHref}`, { method: "POST" }), { params: Promise.resolve({ entity, id }) });
+    expect(res.status).toBe(200);
+    expect(await draftsOf("popup")).toBe(0);
+    expect(await draftsOf("home")).toBe(1);
+    // a visitor with the parameter: no bar, and the page never looked for a session
+    state.draftOn = false;
+    state.cookie = undefined;
+    state.cookieReads = 0;
+    expect(barOf(await homeTree("et", { riba: "hupikaken" }))).toBeNull();
+    expect(state.cookieReads).toBe(0);
   });
 });
 

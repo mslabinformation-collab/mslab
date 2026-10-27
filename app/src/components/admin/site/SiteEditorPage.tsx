@@ -76,19 +76,22 @@ export type InstantResult = { kind: "done" | "held" | "unsaved" | "late" | "busy
 
 /**
  * What a screen's own press gets of the page (`render`'s second argument).
- * - `instant(url, body, outcome, { flush })`: an instant press (a post's „Avaldatud“, piece 4b R-b; made for Hüpikaken's „Lehel näidatakse“ too), as
- *   „Avalda muudatused“ goes (../useEditorRestarts.ts usePublishPresses): the cards wait from the press within one bound (SAVE_TIMEOUT_MS); every
- *   part's waiting save is sent first (unless `flush: false`) and one that did not go through stops it — the chip says why and is brought into view
- *   with the focus on its „Näita“; then POST `url` with `body`; the answer, read by `outcome`, is done (the page read again from its stamp, the cards
+ * - `instant(url, body, outcome, { flush })`: an instant press (a post's „Avaldatud“, piece 4b R-b; Hüpikaken's „Lehel näidatakse“), as „Avalda
+ *   muudatused“ goes (../useEditorRestarts.ts usePublishPresses): the cards wait from the press within one bound (SAVE_TIMEOUT_MS); every part's
+ *   waiting save is sent first and one that did not go through stops it — the chip says why and is brought into view with the focus on its „Näita“
+ *   (`flush: false`: nothing is sent or waited for; `flush: "settle"`: every save is sent and waited for, but one that did not go through stops nothing —
+ *   a press on the live row only, which no draft can block, still never lands between a save on its way and its answer); then POST `url` with `body`; the answer, read by `outcome`, is done (the page read again from its stamp, the cards
  *   starting over), held (said as a publish's: missing and changed on the bar, "invalid" at its field — read again when a part was changed meanwhile,
  *   else the cards take typing), or failed (its line: signed out, else the save line). What the last press held is cleared at the press.
  * - `held`: the parts the last press held (a publish's or the screen's own), until each one's next save.
- * - `waitingNow()`: the cards wait now (a press is on its way, or its read).
+ * - `waitingNow()`: the cards wait now (a press is on its way, or its read); `whenFree()`: resolves once they take typing again (the same wait for every
+ *   generation of the cards, so a press made after they started over — an UndoBar's undo — can wait for it).
  */
 export type SitePage = {
-  instant: (url: string, body: unknown, outcome: (answer: Record<string, unknown>) => InstantOutcome, o?: { flush?: boolean }) => Promise<InstantResult>;
+  instant: (url: string, body: unknown, outcome: (answer: Record<string, unknown>) => InstantOutcome, o?: { flush?: boolean | "settle" }) => Promise<InstantResult>;
   held: HeldPart[];
   waitingNow: () => boolean;
+  whenFree: () => Promise<void>;
 };
 
 /** What the bar says; it stays when the form starts over (a publish that held some parts lists them after the read). */
@@ -267,7 +270,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
     if (o.flush !== false) {
       const saved = await orLate(flushAll(), signal);
       if (saved === LATE) return { kind: "late" };
-      if (saved.some((ok) => !ok)) {
+      if (o.flush !== "settle" && saved.some((ok) => !ok)) {
         waits.release();
         setPointed((n) => n + 1);
         return { kind: "unsaved" };
@@ -295,7 +298,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
     waits.release();
     return { kind: "failed", line: adminEt.common.saveError };
   };
-  const page: SitePage = { instant, held, waitingNow: waits.waitingNow };
+  const page: SitePage = { instant, held, waitingNow: waits.waitingNow, whenFree: waits.whenFree };
 
   // (straight to the row: nothing waits for „Avalda muudatused“, so there is no bar and nothing is „· avaldamata“)
   const changed = drafted

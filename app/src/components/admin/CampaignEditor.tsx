@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { NewsletterForm } from "@/components/site/NewsletterForm";
 import { NewsletterPopupCard, POPUP_FORM_CLASS, popupFormTexts } from "@/components/site/NewsletterPopupCard";
+import { POPUP_PREVIEW_PATH } from "@/domain/campaign";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import type { PopupOfferValue, SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
@@ -15,10 +16,10 @@ import { PlainField } from "./course/PlainField";
 import { useEditLang } from "./EditLang";
 import { I18nInput } from "./I18nInput";
 import { SingleImage } from "./SingleImage";
+import { InstantSwitch } from "./site/InstantSwitch";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SitePage } from "./site/SiteEditorPage";
 import type { SitePartApi } from "./site/useSitePart";
-import { Switch } from "./Switch";
 import { useUndo } from "./UndoBar";
 import { stampOf } from "./useEditorRestarts";
 import ui from "./ui.module.css";
@@ -27,16 +28,18 @@ import styles from "./CampaignEditor.module.css";
 // C4 Hüpikaken (admin UX pass piece 4b, Task 4; README §4 C4 "the „Lehel näidatakse“ choice is instant with UndoBar; one preview that follows LangSwitch;
 // the „Reeglid“ text stays", the Part 4 C4 frame; piece4-texts S4-25…S4-30, S4-Q2…Q4; spec D3; rulings R-c, R-d, builder notes §5). One popup, the
 // newsletter sign-up: page.tsx (requireAdmin, readSiteEditor of the entity "popup", readPopupSwitch, Seaded's code) → this wrapper → SiteEditorPage
-// (the header „Turundus“ / „Hüpikaken“ with ET | RU, the chip and „Vaata lehel ↗“ to the home page; the PublishBar with S4-30's labels; the part
-// `offer` on the draft layer) → the cards, in the screen's marker `data-campaign-editor` (admin-inbox.spec.ts opens the section by it):
-// - „Lehel näidatakse“ with S4-25's line, a card of its own on top: an instant switch on the live row (server/site-drafts.ts switchPopup), pressed as the
-//   page's instant press with `flush: false` (SitePage.instant: the cards wait from the press to the read from its answer's stamp; what is typed is not
-//   saved first — the switch never reads or publishes a draft, and the drafts' versions do not move, so nothing typed is lost over the read). Off: the
-//   UndoBar „Hüpikaken peidetud.“, whose „Võta tagasi“ switches it on again from the version the hide left; on: no bar (its own reverse), and a hide's
-//   bar still up goes (S4-26). Refused on, the live popup lacks a field a shown one needs: `Puudub: pilt` under it, never on the bar (S4-30: the
-//   switch is never on the bar), until the next press or the page's next read (a publish that brings the picture). Refused because another tab changed
-//   the popup: „Hüpikakent muudeti vahepeal. Vaata see üle.“ under it, and the page is read so the switch shows the row as it is; the line stays over
-//   that read. A failure says its line there.
+// (the header „Turundus“ / „Hüpikaken“ with ET | RU, the chip and „Vaata lehel ↗“ to the home page; the PublishBar with S4-30's labels; „Eelvaade ↗“
+// the home page in draft mode under the popup's own preview bar, `?riba=hupikaken`, ruling c1; the part `offer` on the draft layer) → the cards, in the
+// screen's marker `data-campaign-editor` (admin-inbox.spec.ts opens the section by it):
+// - „Lehel näidatakse“ with S4-25's line, a card of its own on top: an instant switch on the live row (server/site-drafts.ts switchPopup;
+//   site/InstantSwitch.tsx), pressed as the page's instant press with `flush: "settle"` (SitePage.instant: the cards wait from the press to the read
+//   from its answer's stamp; every save on its way is waited for, so the read never lands before a save the server has not answered, but none has to
+//   go through — the switch never reads or publishes a draft, so a field held back cannot stop it). Off: the UndoBar „Hüpikaken peidetud.“, whose
+//   „Võta tagasi“ switches it on again from the version the hide left, once the hide's read is in; on: no bar (its own reverse), and a hide's bar
+//   still up goes (S4-26). Refused on, the live popup lacks a field a shown one needs: `Puudub: pilt` under it, never on the bar (S4-30: the switch is
+//   never on the bar), until the next press or the page's next read (a publish that brings the picture). Refused because another tab changed the
+//   popup — the switch or its undo: „Hüpikakent muudeti vahepeal. Vaata see üle.“ under it (an undo's bar goes: its version is stale), and the page
+//   is read so the switch shows the row as it is; the line stays over that read. A failure says its line there.
 // - Below, `minmax(0,1fr) 440px` from 1180 px (one column under it, the preview under the card): „Pakkumine“ — „Silt“ and „Pilt“ (kept, builder notes
 //   §5), „Pealkiri“, „Tekst“, then „Soodustus (%)“ and „Kood kehtib (päeva)“ side by side (R-c, S4-Q2 A, S4-Q3 A) with S4-28 under them — and the
 //   preview: the home page's card (components/site/NewsletterPopupCard.tsx) of the fields as typed, in the language of the page's ET | RU, its button
@@ -73,10 +76,10 @@ type SwitchPress =
   | { kind: "late" | "busy" };
 
 /**
- * POST /api/admin/hupikaken/naita `{ on, version }` as the page's instant press, with no save first: done (the row's new version; the page is read from
- * the answer's stamp), refused on with the fields the live popup lacks (the cards take typing again, nothing is read), refused as changed meanwhile
- * (the page is read, so the switch shows the row as it is), failed with its line, past the bound (the page is read), or not pressed at all because the
- * cards wait for another press.
+ * POST /api/admin/hupikaken/naita `{ on, version }` as the page's instant press, every save on its way answered first (`flush: "settle"`): done (the
+ * row's new version; the page is read from the answer's stamp), refused on with the fields the live popup lacks (the cards take typing again, nothing
+ * is read), refused as changed meanwhile (the page is read, so the switch shows the row as it is), failed with its line, past the bound (the page is
+ * read), or not pressed at all because the cards wait for another press.
  */
 async function pressSwitch(page: SitePage, on: boolean, version: string): Promise<SwitchPress> {
   let answer: Record<string, unknown> = {};
@@ -90,30 +93,20 @@ async function pressSwitch(page: SitePage, on: boolean, version: string): Promis
       if (Array.isArray(a.missing)) return { held: [] };
       return null;
     },
-    { flush: false },
+    { flush: "settle" },
   );
   if (result.kind === "done") return answer.ok === true ? { kind: "done", version: answer.version as string } : { kind: "changed" };
   if (result.kind === "held") return { kind: "missing", fields: (answer.missing as unknown[]).filter((f): f is string => typeof f === "string") };
   if (result.kind === "failed") return result;
   if (result.kind === "late" || result.kind === "busy") return { kind: result.kind };
-  return { kind: "failed", line: adminEt.common.saveError }; // ("unsaved" cannot be: nothing is saved first)
+  return { kind: "failed", line: adminEt.common.saveError }; // ("unsaved" cannot be: "settle" stops for no save)
 }
 
 const missingLine = (fields: string[]) => fill(adminEt.publish.missing, { fields: fields.join(", ") });
 
-/**
- * The page as soon as its cards take typing again — the read the last press asked for has come, or its bound has passed (useEditorRestarts: the wait
- * ends by SAVE_TIMEOUT_MS) — or null when there is none by then. „Võta tagasi“ comes while the hide's own read may still be on its way.
- */
-async function whenFree(latest: () => SitePage | null): Promise<SitePage | null> {
-  const until = Date.now() + SAVE_TIMEOUT_MS + 1000;
-  for (;;) {
-    const page = latest();
-    if (page && !page.waitingNow()) return page;
-    if (Date.now() > until) return null;
-    await new Promise((done) => setTimeout(done, 100));
-  }
-}
+/** True once the cards take typing again (SitePage.whenFree), false when they still wait after the wait's own bound (the editor has gone meanwhile). */
+const free = (page: SitePage): Promise<boolean> =>
+  Promise.race([page.whenFree().then(() => true), new Promise<boolean>((later) => setTimeout(() => later(!page.waitingNow()), SAVE_TIMEOUT_MS + 1000))]);
 
 /** The editor of the home page's popup, from the page's read (readSiteEditor's `parts` and `stamp`, as they came), the switch's and Seaded's code. */
 export function CampaignEditor({ parts, stamp, shown, code }: { parts: Record<string, SitePartState>; stamp: number; shown: PopupSwitchState; code: boolean }) {
@@ -124,18 +117,32 @@ export function CampaignEditor({ parts, stamp, shown, code }: { parts: Record<st
   const withdraw = useRef<(() => void) | null>(null);
   // an editor that goes takes its offer with it (UndoBar.tsx)
   useEffect(() => () => withdraw.current?.(), []);
-  // the page's reads, counted (a new `parts` object is a new read), and the line under the switch with the last read it holds for
+  // the page's reads, counted (a new `parts` object is a new read), and the line under the switch with the last read it holds for; the count as of
+  // now, for an answer that comes after a render (an undo's)
   const [reads, setReads] = useState({ parts, n: 0 });
   if (reads.parts !== parts) setReads({ parts, n: reads.n + 1 });
+  const readsNow = useRef(0);
+  useLayoutEffect(() => {
+    readsNow.current = reads.n;
+  });
   const [line, setLine] = useState<{ text: string; until: number } | null>(null);
-  /** „Võta tagasi“ of a hide: on again, from the version the hide left, once the hide's read is in; a refusal is said in the bar. */
+  const say = (text: string | null, overRead = false) => setLine(text === null ? null : { text, until: readsNow.current + (overRead ? 1 : 0) });
+  /**
+   * „Võta tagasi“ of a hide: on again, from the version the hide left, once the hide's read is in; a refusal is said in the bar — but changed meanwhile
+   * (another tab switched it or published the offer), the bar goes, so its stale version is never sent again, and the line is said under the switch.
+   */
   const undoHide = async (version: string): Promise<boolean | string> => {
-    const page = await whenFree(() => latest.current);
-    if (!page) return false;
-    setLine(null);
-    const press = await pressSwitch(page, true, version);
+    const page = latest.current;
+    if (!page || !(await free(page))) return false;
+    say(null);
+    const press = await pressSwitch(latest.current ?? page, true, version);
     if (press.kind === "done") return true;
-    if (press.kind === "changed") return t.changed;
+    if (press.kind === "changed") {
+      say(t.changed, true);
+      withdraw.current?.();
+      withdraw.current = null;
+      return t.changed;
+    }
     if (press.kind === "missing") return missingLine(press.fields);
     if (press.kind === "failed") return press.line;
     return false;
@@ -149,7 +156,7 @@ export function CampaignEditor({ parts, stamp, shown, code }: { parts: Record<st
       withdraw.current = on ? null : undo.show({ text: t.hidden, undo: () => undoHide(version) });
     },
     said: line && reads.n <= line.until ? line.text : null,
-    say: (text, overRead = false) => setLine(text === null ? null : { text, until: reads.n + (overRead ? 1 : 0) }),
+    say,
   };
   return (
     <SiteEditorPage<Popup>
@@ -157,7 +164,7 @@ export function CampaignEditor({ parts, stamp, shown, code }: { parts: Record<st
       eyebrow={t.eyebrow}
       title={t.title}
       viewHref="/"
-      previewPath="/"
+      previewPath={POPUP_PREVIEW_PATH}
       parts={parts}
       stamp={stamp}
       render={(apis, now) => <PopupCards api={apis.offer} page={now} shown={shown} code={code} memory={memory} />}
@@ -178,43 +185,28 @@ function PopupCards({ api, page, shown, code, memory }: { api: SitePartApi<Popup
   );
 }
 
-/** „Lehel näidatakse“ (S4-25, S4-26): the switch shows what was asked until the cards start over from the page's read, or the press ends otherwise. */
+/** „Lehel näidatakse“ (S4-25, S4-26), the page's instant switch (site/InstantSwitch.tsx). */
 function ShownCard({ page, shown, memory }: { page: SitePage; shown: PopupSwitchState; memory: SwitchMemory }) {
   const t = adminEt.campaign;
-  const uid = useId();
-  const [asked, setAsked] = useState<boolean | null>(null);
   const { keep, said } = memory;
   useLayoutEffect(() => keep(page));
 
-  const switchTo = async (on: boolean) => {
-    if (asked !== null || page.waitingNow()) return;
-    setAsked(on);
+  const press = async (on: boolean): Promise<boolean> => {
     memory.say(null);
-    const press = await pressSwitch(page, on, shown.version);
-    if (press.kind === "done") {
-      // the bar (off) or none (on); the cards start over from the page's read, this card with them
-      memory.switched(on, press.version);
-      return;
-    }
+    const pressed = await pressSwitch(page, on, shown.version);
+    // the bar (off) or none (on); the cards start over from the page's read, this card with them
+    if (pressed.kind === "done") memory.switched(on, pressed.version);
     // (past the bound the page is read, the outcome unknown: the cards start over from it)
-    if (press.kind === "late") return;
-    setAsked(null);
-    if (press.kind === "changed") memory.say(t.changed, true);
-    else if (press.kind === "missing") memory.say(missingLine(press.fields));
-    else if (press.kind === "failed") memory.say(press.line);
+    if (pressed.kind === "done" || pressed.kind === "late") return true;
+    if (pressed.kind === "changed") memory.say(t.changed, true);
+    else if (pressed.kind === "missing") memory.say(missingLine(pressed.fields));
+    else if (pressed.kind === "failed") memory.say(pressed.line);
+    return false;
   };
 
   return (
     <div className={`${ui.card} ${styles.shown}`} data-popup-shown="">
-      <Switch label={t.shown} checked={asked ?? shown.on} onChange={(on) => void switchTo(on)} describedBy={said ? `${uid}-hint ${uid}-said` : `${uid}-hint`} data-popup-switch="" />
-      <p id={`${uid}-hint`} className={ui.hint}>
-        {t.shownHint}
-      </p>
-      {said && (
-        <p id={`${uid}-said`} role="alert" className={ui.error} data-switch-error="">
-          {said}
-        </p>
-      )}
+      <InstantSwitch page={page} label={t.shown} checked={shown.on} hint={t.shownHint} said={said} press={press} data-popup-switch="" />
     </div>
   );
 }

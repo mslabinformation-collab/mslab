@@ -856,6 +856,18 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     expect((await preview.locator("[data-newsletter-notice]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expect(page.locator("[data-popup-rules]")).toHaveText("Reeglid: kood saadetakse e-postiga kohe pärast liitumist; üks kasutus tellija kohta; ei liitu teiste soodustustega.");
 
+    // „Eelvaade ↗“ (ruling c1): the home page in draft mode, the popup at once with its draft, under the popup's own bar (popup/0's three changes, not
+    // Avaleht's); then draft mode off again, so this browser's visitor tab below is a visitor's
+    const previewHref = await page.locator("[data-publish-preview]").getAttribute("href");
+    expect(previewHref).toBe("/api/admin/eelvaade?tee=%2F%3Friba%3Dhupikaken");
+    const previewTab = await context.newPage();
+    await previewTab.goto(previewHref!);
+    await expect(previewTab).toHaveURL((url) => url.pathname === "/" && url.search === "?riba=hupikaken");
+    await expect(previewTab.getByRole("dialog", { name: "E2E hüpikaken" })).toBeVisible({ timeout: 5000 });
+    await expect(previewTab.locator("[data-preview-count]")).toHaveText("Avaldamata 3");
+    await previewTab.goto(await previewTab.locator("[data-preview-exit]").getAttribute("href") ?? "/api/admin/eelvaade?lopeta=1");
+    await previewTab.close();
+
     // „Avalda muudatused“: the row and the discount go live, the bar goes
     const published = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/popup/0/avalda") && r.request().method() === "POST");
     await page.locator("[data-publish-go]").click();

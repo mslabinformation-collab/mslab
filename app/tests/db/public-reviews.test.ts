@@ -49,7 +49,7 @@ async function addReview(courseId: number, n: number, over: Over = {}) {
   return row;
 }
 const course = (locale: "et" | "ru", slug = "kulmude-lami") => CoursePage({ params: Promise.resolve({ locale, slug }) }).then((tree) => renderToStaticMarkup(tree));
-const home = (locale: "et" | "ru") => HomePage({ params: Promise.resolve({ locale }) }).then((tree) => renderToStaticMarkup(tree));
+const home = (locale: "et" | "ru") => HomePage({ params: Promise.resolve({ locale }), searchParams: Promise.resolve({}) }).then((tree) => renderToStaticMarkup(tree));
 /** The ids of the reviews in a page, in the order shown. */
 const shown = (html: string) => [...html.matchAll(/data-review="(\d+)"/g)].map((m) => Number(m[1]));
 const BLOCK = 'data-reviews="course"';

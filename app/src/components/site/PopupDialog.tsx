@@ -41,8 +41,8 @@ function storedState(): { seen: string | null; signed: string | null } | null {
  * appears, once in 30 days per browser (localStorage "mslab-popup", the time it was shown, set when it is shown), never again in a browser that signed
  * up from it ("mslab-nl"; domain/campaign.ts popupDue); without storage at most once per page load, also across client-side moves back home. It waits
  * while another modal (the phone menu, a lightbox) is open, and fetches `image` meanwhile. `skip()` true: this page load does not get it at all (a
- * newsletter landing). `preview`: the signed-in admin's draft preview — at once, whatever the stamp says, and no stamp written; a sign-up here still
- * keeps it away. [open, close].
+ * newsletter landing). `preview`: the signed-in admin's draft preview — at once, whatever the stamp or a sign-up here says, and no stamp written
+ * (ruling c2). [open, close].
  */
 export function usePopupOpen(image: string, o: { skip?: () => boolean; preview?: boolean } = {}): [boolean, () => void] {
   const [open, setOpen] = useState(false);

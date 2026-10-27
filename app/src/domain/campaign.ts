@@ -34,13 +34,22 @@ export function popupSeenWithin(stamp: string | null, now: number): boolean {
 
 /**
  * Whether the popup is due in this browser (R-e), from what its storage holds: never again after a sign-up here (`signed`, NEWSLETTER_SIGNED_KEY's
- * value "1"), and not within 30 days of its last showing (`seen`, POPUP_SEEN_KEY's). The admin's draft preview (`preview`) skips the stamp, so it shows
- * the popup at once; a sign-up here still keeps it away.
+ * value "1"), and not within 30 days of its last showing (`seen`, POPUP_SEEN_KEY's). The admin's draft preview (`preview`) skips both, so it shows the
+ * popup at once in any browser (ruling c2: her own browser may well have signed up).
  */
 export function popupDue(stored: { seen: string | null; signed: string | null }, now: number, o: { preview?: boolean } = {}): boolean {
+  if (o.preview === true) return true;
   if (stored.signed === "1") return false;
-  return o.preview === true || !popupSeenWithin(stored.seen, now);
+  return !popupSeenWithin(stored.seen, now);
 }
+
+/**
+ * Hüpikaken's „Eelvaade ↗“ (admin UX pass piece 4b, ruling c1): the home page with `?riba=hupikaken`, whose preview bar is the popup's (popup/0: its
+ * count, its „Loobu muudatustest“), not Avaleht's. Read only in the admin's preview (app/[locale]/(site)/page.tsx), never for a visitor.
+ */
+export const PREVIEW_BAR_PARAM = "riba";
+export const POPUP_PREVIEW_BAR = "hupikaken";
+export const POPUP_PREVIEW_PATH = `/?${PREVIEW_BAR_PARAM}=${POPUP_PREVIEW_BAR}`;
 
 /** What the newsletter popup's card shows (components/site/NewsletterPopupCard), in the page's language (phase 2c). */
 export type NewsletterPopupView = { image: string; kicker: string; title: string; text: string };

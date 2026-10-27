@@ -227,7 +227,7 @@ describe("once in 30 days per browser (R-e)", () => {
   });
 });
 
-describe("the admin's draft preview (R-e: the time and the stamp skipped)", () => {
+describe("the admin's draft preview (R-e, ruling c2: the time, the stamp and the sign-up skipped)", () => {
   test("it opens at once, though this browser saw it a day ago, and it writes no stamp", async () => {
     window.__mslabCampaignDelay = 5000; // (a visitor would wait long)
     const seen = String(Date.now() - DAY);
@@ -238,10 +238,19 @@ describe("the admin's draft preview (R-e: the time and the stamp skipped)", () =
     expect(localStorage.getItem("mslab-popup")).toBe(seen);
   });
 
-  test("a browser that signed up still sees none, as a visitor's", async () => {
+  test("a browser that signed up sees it too, at once (her own browser may have signed up); it leaves the sign-up mark and the stamp as they were", async () => {
+    window.__mslabCampaignDelay = 5000;
     localStorage.setItem("mslab-nl", "1");
     await loadHome("/", true);
-    await wait(100);
+    await wait(60);
+    expect($("[data-newsletter-popup]")).not.toBeNull();
+    expect(localStorage.getItem("mslab-nl")).toBe("1");
+    expect(localStorage.getItem("mslab-popup")).toBeNull();
+    // the same browser as a visitor: none
+    await leave();
+    window.__mslabCampaignDelay = 30;
+    await loadHome("/");
+    await wait(200);
     expect($("[data-newsletter-popup]")).toBeNull();
   });
 });

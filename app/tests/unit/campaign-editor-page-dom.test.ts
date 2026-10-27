@@ -51,6 +51,8 @@ const remote = {
   refuse: null as null | Record<string, string>,
   naita: (body: { on: boolean; version: string }): Response => Response.json({ ok: true, version: `${body.version}+`, stamp: 5 }),
   log: [] as { version: string; patch: Record<string, unknown> }[],
+  /** While set, a save waits for it before the route answers (a save on its way). */
+  gate: null as Promise<void> | null,
 };
 function resetRemote() {
   remote.version = "l:offer";
@@ -59,14 +61,20 @@ function resetRemote() {
   remote.refuse = null;
   remote.naita = (body) => Response.json({ ok: true, version: `${body.version}+`, stamp: 5 });
   remote.log = [];
+  remote.gate = null;
 }
-const respond = (url: string, init: RequestInit | undefined): Response => {
+const respond = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   if (url === "/api/admin/sisu/popup/0/avalda") return Response.json({ stamp: 5, published: ["offer"], blocked: [] });
   if (url === "/api/admin/sisu/popup/0/loobu") return Response.json({ stamp: 5 });
   if (url === SWITCH) return remote.naita(JSON.parse(String(init?.body)) as { on: boolean; version: string });
   if (url !== SAVE) return Response.json({ ok: false }, { status: 404 });
   const body = JSON.parse(String(init?.body)) as { version: string; patch: Record<string, unknown> };
   remote.log.push(body);
+  const gate = remote.gate;
+  return gate ? gate.then(() => saveAnswer(body)) : saveAnswer(body);
+};
+/** The part's route's answer to a save (the version check, the value merged, the new version). */
+const saveAnswer = (body: { version: string; patch: Record<string, unknown> }): Response => {
   if (remote.refuse) return Response.json({ ok: false, error: "invalid", fields: remote.refuse }, { status: 400 });
   if (body.version !== remote.version) return Response.json({ ok: false, error: "conflict", version: remote.version, value: remote.value }, { status: 409 });
   remote.n += 1;
@@ -141,6 +149,13 @@ afterEach(async () => {
 });
 
 describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
+  it("„Eelvaade ↗“ opens the home page in draft mode under the popup's own bar (?riba=hupikaken, ruling c1), never Avaleht's", async () => {
+    await show();
+    await type(field("offer.discountPercent"), "15");
+    await leave(field("offer.discountPercent"));
+    expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe("/api/admin/eelvaade?tee=%2F%3Friba%3Dhupikaken");
+  });
+
   it("„Turundus“ over the H1 „Hüpikaken“, no lead; „Vaata lehel ↗“ opens the home page; no „Salvesta“, no bar while nothing waits; nowhere the word „kampaania“", async () => {
     await show();
     expect(text($("[data-site-eyebrow]"))).toBe("Turundus");
@@ -254,18 +269,19 @@ describe("the offer waits for „Avalda muudatused“ (S4-30); the switch never 
 });
 
 describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
-  it("off: the switch route at once with the version read (nothing saved first); „Hüpikaken peidetud.“; „Võta tagasi“ switches it on from the answer's version", async () => {
+  it("off: what is typed is saved first, then the switch route with the version read; „Hüpikaken peidetud.“; „Võta tagasi“ switches it on from the answer's version", async () => {
     await show();
-    await type(field("offer.kicker"), "Uus silt"); // typed, not saved yet: the switch acts on the live row, so it does not wait for it
+    await type(field("offer.kicker"), "Uus silt"); // typed, not saved yet: sent first (flush "settle"), so the read after the switch has it
     await click(toggle());
-    expect(posts().map((c) => c.url)).toEqual([SWITCH]);
-    expect(posts()[0].body).toEqual({ on: false, version: "v1" });
+    expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
+    expect(posts()[1].body).toEqual({ on: false, version: "v1" });
     expect(toggle()?.checked).toBe(false);
     expect(text(undoBar())).toContain("Hüpikaken peidetud.");
     // the page is read again; until then the cards wait
     expect(router.refresh).toHaveBeenCalledTimes(1);
     expect($("[data-cards-waiting]")).not.toBeNull();
-    await show({ parts: partsOf(), stamp: 5, shown: { on: false, version: "v1+" } });
+    const typed = { ...OFFER, kicker: { ...OFFER.kicker, et: "Uus silt" } };
+    await show({ parts: partsOf(typed, OFFER, "d:1.1"), stamp: 5, shown: { on: false, version: "v1+" } });
     expect($("[data-cards-waiting]")).toBeNull();
     expect(toggle()?.checked).toBe(false);
     expect(field("offer.kicker")!.value).toBe("Uus silt"); // what she typed is still hers
@@ -340,13 +356,50 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
     expect(said()).toBeNull();
   });
 
-  it("„Võta tagasi“ refused, the popup changed meanwhile: the bar says „Hüpikakent muudeti vahepeal. Vaata see üle.“", async () => {
+  it("„Võta tagasi“ refused, the popup changed meanwhile: the bar goes (its version is stale: nothing is sent again), „Hüpikakent muudeti vahepeal. Vaata see üle.“ under the switch over the read", async () => {
     await show();
     await click(toggle());
     await show({ parts: partsOf(), stamp: 5, shown: { on: false, version: "v1+" } });
     remote.naita = () => Response.json({ ok: false, error: "changed", stamp: 8 });
     await click(undoButton());
-    expect(text(undoBar())).toContain("Hüpikakent muudeti vahepeal. Vaata see üle.");
+    expect(posts().filter((c) => c.url === SWITCH)).toHaveLength(2);
+    expect(undoBar()).toBeNull();
+    expect(router.refresh).toHaveBeenCalledTimes(2);
+    await show({ parts: partsOf(), stamp: 8, shown: { on: true, version: "v7" } });
+    expect(text(said())).toBe("Hüpikakent muudeti vahepeal. Vaata see üle.");
+    expect(toggle()?.checked).toBe(true);
+  });
+
+  it("a field's save on its way when the switch is pressed (the focus left it): the switch goes once that save is answered, so the read after it starts the cards from the saved version (m4)", async () => {
+    await show();
+    let open: () => void = () => {};
+    remote.gate = new Promise<void>((done) => (open = done));
+    await type(field("offer.title"), "Uus pealkiri");
+    await leave(field("offer.title")); // (the save leaves, and waits at the gate)
+    expect(posts().map((c) => c.url)).toEqual([SAVE]);
+    await click(toggle());
+    await act(async () => void (await new Promise((r) => setTimeout(r, 150))));
+    expect(posts().map((c) => c.url)).toEqual([SAVE]); // the switch waits for the save's answer
+    await act(async () => open());
+    await settle();
+    expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
+    remote.gate = null;
+    // the read the switch asked for has the saved draft: the next save goes from its version, no conflict
+    const typed = { ...OFFER, title: { ...OFFER.title, et: "Uus pealkiri" } };
+    await show({ parts: partsOf(typed, OFFER, remote.version), stamp: 5, shown: { on: false, version: "v1+" } });
+    await type(field("offer.title"), "Uus pealkiri 2");
+    await leave(field("offer.title"));
+    expect(remote.log.at(-1)).toEqual({ version: "d:1.1", patch: { title: { ...OFFER.title, et: "Uus pealkiri 2" } } });
+    expect(remote.version).toBe("d:1.2");
+  });
+
+  it("a field the server holds back (a discount of 150) never stops the switch: it goes anyway (flush „settle“), and the field keeps its words", async () => {
+    await show();
+    remote.refuse = { discountPercent: "whole" };
+    await type(field("offer.discountPercent"), "150");
+    await click(toggle());
+    expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
+    expect(text(undoBar())).toContain("Hüpikaken peidetud.");
   });
 
   it("a press that fails says the save line under the switch, which shows what it was", async () => {

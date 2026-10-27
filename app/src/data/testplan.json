@@ -415,15 +415,15 @@
       "href": "/",
       "steps": [
         "Kontrolli, et halduses „Hüpikaken“ on „Lehel näidatakse“ sees.",
-        "Ava avaleht uues privaatses aknas ja oota 8 sekundit.",
+        "Ava uues privaatses aknas kõigepealt leht „Koolitused“ ja oota 8 sekundit.",
+        "Mine samas aknas avalehele ja oota 8 sekundit.",
         "Sulge aken ✕ nupuga, värskenda lehte ja oota jälle 8 sekundit.",
-        "Ava samas aknas „Koolitused“ ja oota 8 sekundit.",
         "Ava avaleht veel ühes uues privaatses aknas ja libista aken sõrmega alla."
       ],
       "expect": [
-        "Umbes 8 sekundi pärast avaneb aken halduse „Pakkumine“ pealkirja ja pildiga.",
-        "✕ sulgeb akna ja pärast värskendamist see ei avane: samas brauseris tuleb see kord 30 päeva jooksul.",
         "Lehel „Koolitused“ akent ei tule: see avaneb ainult avalehel.",
+        "Avalehel avaneb umbes 8 sekundi pärast aken halduse „Pakkumine“ pealkirja ja pildiga.",
+        "✕ sulgeb akna ja pärast värskendamist see ei avane: samas brauseris tuleb see kord 30 päeva jooksul.",
         "Uues privaatses aknas avaneb aken jälle ja alla libistamine sulgeb selle."
       ],
       "why": "Hüpikaken pakub uudiskirja uuele külastajale, kuid ei tüüta korduvalt.",
@@ -463,16 +463,17 @@
       "title": "Liitumine uudiskirjaga",
       "href": "/",
       "steps": [
+        "Ava avaleht uues privaatses aknas, oota 8 sekundit, vaata hüpikakna nuppu ja sulge aken.",
         "Keri lehe lõppu plokini „MS LABi kirjad“.",
         "Kirjuta väljale „Sinu e-post“ oma aadress, kuhu lisad enne @-märki +proov3.",
         "Vajuta „Liitu“.",
         "Ava halduses „Uudiskiri“."
       ],
       "expect": [
+        "Jaluse nupp on alati „Liitu“; hüpikakna nupp on „Saa kood“, kui Seadetes on „Tervituskood“.",
         "Näed teadet „Aitäh, oled liitunud!“ ja „Saatsime sulle tervituskirja.“.",
         "Postkasti tuleb kiri „Tere tulemast MS LABi!“.",
-        "Halduse tellijate loendis on see aadress.",
-        "Jaluse nupp on alati „Liitu“; hüpikakna nupp on „Saa kood“, kui Seadetes on „Tervituskood“."
+        "Halduse tellijate loendis on see aadress."
       ],
       "why": "Uudiskiri on Maria otsene tee õpilaste juurde.",
       "risk": "med",
@@ -1743,6 +1744,7 @@
         "Lülita „Lehel näidatakse“ välja ja vajuta all ribal „Võta tagasi“.",
         "Kirjuta „Pealkiri“ lõppu: proov ja „Soodustus (%)“: 15, siis liigu väljalt edasi.",
         "Vali päises RU ja vaata eelvaadet, siis vali uuesti ET.",
+        "Vajuta „Eelvaade ↗“, vaata avanenud avalehte ja sulge see vahekaart.",
         "Vajuta „Avalda muudatused“, ava avaleht uues privaatses aknas ja oota 8 sekundit.",
         "Pane „Pealkiri“ ja „Soodustus (%)“ tagasi endiseks ja vajuta „Avalda muudatused“."
       ],
@@ -1751,6 +1753,7 @@
         "Välja lülitades tuleb all riba „Hüpikaken peidetud.“; „Võta tagasi“ lülitab akna uuesti sisse.",
         "Päise all on „Avaldamata muudatused: 2 · Pealkiri, Soodustus“; avalehel on veel vana pealkiri.",
         "RU valikul on eelvaates venekeelne tekst ja nupp, ET valikul eestikeelne.",
+        "Eelvaates avaneb aken kohe uue pealkirjaga ja eelvaate riba ütleb „Avaldamata 2“.",
         "Umbes 8 sekundi pärast avaneb aken uue pealkirjaga ja jaluses on „15% tervitussoodustus“.",
         "Lehel pole nuppu „Salvesta“ ega kuskil sõna „kampaania“."
       ],

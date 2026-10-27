@@ -36,7 +36,8 @@ function landingOfThisLoad(): string | null {
  * form's place, and this browser never sees the popup again. The welcome code is never here: the welcome mail brings it.
  * A page load that arrives with ?uudiskiri= (the confirmation link's landing, any value) shows no popup: it would ask her to sign up over
  * the notice, with her code in it. "kinnitatud" also marks this browser as signed up (localStorage "mslab-nl"), like a sign-up here.
- * `preview`: the signed-in admin's draft preview (R-e): it opens at once, and leaves this browser's 30-day stamp alone.
+ * `preview`: the signed-in admin's draft preview (R-e, ruling c2): it opens at once, in a browser that signed up too, and leaves this browser's
+ * 30-day stamp alone.
  */
 export function NewsletterPopup({ n, locale, t, preview = false }: { n: NewsletterPopupView; locale: Locale; t: NewsletterPopupTexts; preview?: boolean }) {
   const [landed] = useState(landingOfThisLoad);

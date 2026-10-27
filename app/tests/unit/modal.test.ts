@@ -56,8 +56,10 @@ describe("trapTab: Tab stays inside a modal", () => {
     expect(e.preventDefault).not.toHaveBeenCalled();
   });
 
-  test("FOCUSABLE: buttons and inputs unless disabled, links, and tabindex except -1; never a hidden input, nor one out of the tab order (the honeypot)", () => {
-    expect(FOCUSABLE).toBe('button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])');
+  test("FOCUSABLE: buttons, inputs, text areas and selects unless disabled, links, and tabindex except -1; never a hidden input, nor one out of the tab order (the honeypot)", () => {
+    expect(FOCUSABLE).toBe(
+      'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
+    );
   });
 });
 

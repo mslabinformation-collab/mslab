@@ -1154,6 +1154,11 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     for (const words of [t.shown, t.shownHint, t.hidden, adminEt.common.undo, t.discount, adminEt.publish.publish, "8 sekundit", "privaatses aknas"]) expect(whole("haldus-hupikaken"), words).toContain(words);
     // the three-way choice and „Salvesta“ are gone, and no admin screen says „kampaania“ (only this check, which asks for it to be missing)
     expect(whole("haldus-hupikaken")).not.toMatch(/Väljas|„Kampaania“|„Uudiskiri“|„Salvesta“ ja|6 sekund/);
+    // „Eelvaade ↗“ (ruling c1): the popup at once under the popup's own bar, which counts the two drafted fields
+    const preview = check.steps.findIndex((s) => s.includes("„Eelvaade ↗“"));
+    expect(preview).toBeGreaterThan(check.steps.findIndex((s) => s.includes("„Soodustus (%)“: 15")));
+    expect(preview).toBeLessThan(check.steps.findIndex((s) => s.startsWith("Vajuta „Avalda muudatused“")));
+    expect(check.expect.find((l) => l.startsWith("Eelvaates"))).toContain("„Avaldamata 2“");
   });
 
   test("avalik-hupikaken (redo): 8 s, once in 30 days per browser, the home page only — new visitors in a private window", () => {
@@ -1163,6 +1168,11 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     const text = whole("avalik-hupikaken");
     for (const words of ["8 sekundit", "30 päeva", "privaatses aknas", "„Koolitused“", "ainult avalehel"]) expect(text, words).toContain(words);
     expect(text).not.toMatch(/6 sekund|kampaania|Samas vahekaardis/);
+    // "home only" can fail (review m1): „Koolitused“ first, in a new private window that has not seen the popup, then the home page in that window
+    const courses = check.steps.findIndex((s) => s.includes("„Koolitused“"));
+    expect(check.steps[courses]).toMatch(/uues privaatses aknas kõigepealt/);
+    expect(check.steps[courses + 1]).toMatch(/^Mine samas aknas avalehele/);
+    expect(check.expect[0]).toContain("ainult avalehel");
   });
 
   test("avalik-uudiskiri (reworded): the footer's button stays „Liitu“; the popup's follows Seaded's code (S4-Q4)", () => {
@@ -1172,6 +1182,8 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     const line = check.expect.find((l) => l.includes(`„${et.newsletter.popupSubmitCode}“`));
     expect(line).toContain(`„${et.newsletter.submit}“`);
     expect(line).toContain("„Tervituskood“");
+    // a step shows the popup's button (review m2): the home page in a new private window, the site's 8 s
+    expect(check.steps[0]).toMatch(/^Ava avaleht uues privaatses aknas, oota 8 sekundit, vaata hüpikakna nuppu/);
   });
 
   test("haldus-seaded-uudiskiri: the code in capitals is checked after a reload (the save's answer carries no value); still a new check", () => {

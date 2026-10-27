@@ -143,6 +143,8 @@ export type Waits<S, P extends string = string> = {
   hold: () => AbortSignal;
   /** The cards wait now (a press is on its way, or its read): the hold as the handlers see it, set in the same turn as the press. */
   waitingNow: () => boolean;
+  /** Resolves once the cards take typing again — the read a press asked for has come, the press was refused, or its bound passed — at once when they do now. */
+  whenFree: () => Promise<void>;
   /** A refusal or a failure: the cards take typing again, nothing is read. */
   release: () => void;
   /**
@@ -196,6 +198,12 @@ export function useEditorRestarts<S extends Record<string, Seed>, P extends stri
   useLayoutEffect(() => {
     holding.current = hold;
   }, [hold]);
+  // whenFree's waiters: told once the cards take typing again (the hold gone, by a read, a release or its bound)
+  const freeWaiters = useRef<(() => void)[]>([]);
+  useEffect(() => {
+    if (hold === null) for (const told of freeWaiters.current.splice(0)) told();
+  }, [hold]);
+  const whenFree = useCallback(() => (holding.current === null ? Promise.resolve() : new Promise<void>((told) => void freeWaiters.current.push(told))), []);
   useEffect(() => {
     discarded.current = null;
   }, [generation]);
@@ -307,7 +315,7 @@ export function useEditorRestarts<S extends Record<string, Seed>, P extends stri
     seeds,
     generation,
     waiting: hold !== null,
-    waits: { hold: beginHold, waitingNow, release, reload, stampSeen, reread, route, onScreen, late: { take: takeLate, tick: lateTick } },
+    waits: { hold: beginHold, waitingNow, whenFree, release, reload, stampSeen, reread, route, onScreen, late: { take: takeLate, tick: lateTick } },
     refocus,
   };
 }

@@ -2,10 +2,12 @@
 // keeping Tab inside, and keeping the page behind still.
 
 /**
- * The elements a modal moves the focus between: what Tab reaches — not a hidden input, nor anything taken out of the tab order (tabindex -1: the
- * newsletter form's honeypot field, which people never see or fill, in the home page's popup).
+ * The elements a modal moves the focus between: what Tab reaches — buttons, links, inputs, text areas and selects (the account's change request:
+ * its message), but not a hidden input, nor anything taken out of the tab order (tabindex -1: the newsletter form's honeypot field, which people never
+ * see or fill, in the home page's popup).
  */
-export const FOCUSABLE = 'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
+export const FOCUSABLE =
+  'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
 
 type TabKey = { key: string; shiftKey: boolean; preventDefault(): void };
 

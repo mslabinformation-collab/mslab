@@ -54,10 +54,13 @@ describe("when the popup opens (R-e)", () => {
     expect(popupDue({ seen: String(NOW - 400 * DAY), signed: "1" }, NOW)).toBe(false);
   });
 
-  test("the admin's draft preview skips the stamp, not the sign-up: shown seen or not, never in a browser that signed up", () => {
+  test("the admin's draft preview skips the stamp and the sign-up (ruling c2): shown seen or not, signed up or not; a visitor's sign-up still keeps it away", () => {
     expect(popupDue({ seen: String(NOW - DAY), signed: null }, NOW, { preview: true })).toBe(true);
     expect(popupDue({ seen: String(NOW), signed: null }, NOW, { preview: true })).toBe(true);
-    expect(popupDue({ seen: null, signed: "1" }, NOW, { preview: true })).toBe(false);
+    expect(popupDue({ seen: null, signed: "1" }, NOW, { preview: true })).toBe(true);
+    expect(popupDue({ seen: String(NOW), signed: "1" }, NOW, { preview: true })).toBe(true);
+    expect(popupDue({ seen: null, signed: "1" }, NOW)).toBe(false);
+    expect(popupDue({ seen: null, signed: "1" }, NOW, { preview: false })).toBe(false);
   });
 });
 
