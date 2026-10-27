@@ -2188,6 +2188,34 @@
       "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
+      "id": "haldus-lahkumine-sisu",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Lahkumine Praktikast, Koolitajalt ja Avalehelt salvestamata tekstiga",
+      "href": "/admin/praktika",
+      "steps": [
+        "Ava „Praktika“, vali arendaja tööriistades (F12) Network all „Offline“ ja kirjuta paketi MINI „Lühitekst“ lõppu Proov.",
+        "Vajuta menüüs „Koolitaja“, siis brauseri nuppu Tagasi; iga küsimuse järel vajuta „Jää siia“.",
+        "Vali Network all „No throttling“ ja oota, kuni päises on „Mustand salvestatud“.",
+        "Vajuta menüüs „Koolitaja“.",
+        "Tee sama lehtedel „Koolitaja“ (väli „Nimi“) ja „Avaleht“ (avatud slaidi „Pealkiri“).",
+        "Vajuta igal lehel ribal „Loobu muudatustest“ ja kinnita."
+      ],
+      "expect": [
+        "Ühenduseta küsivad menüü ja Tagasi ülaosas: „Muudatust „MINI lühitekst“ ei saanud veel salvestada.“.",
+        "„Jää siia“ jätab lehe lahti, kirjutatud tekst on alles ja kursor on väljal „Lühitekst“.",
+        "Ühendusega on päises „Mustand salvestatud“ ja menüü viib järgmisele lehele ilma küsimuseta.",
+        "Koolitajal ja Avalehel küsib leht samamoodi ja „Jää siia“ viib kursori väljale, mida küsimus nimetab.",
+        "Pärast loobumist on väljad endised ja riba on kadunud."
+      ],
+      "why": "Kolm lehte salvestavad nüüd ise ja hoiavad kirjutatud teksti alles.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-loend-terve-rida",
       "area": "haldus",
       "who": "dim",

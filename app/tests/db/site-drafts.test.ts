@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { readSlides, saveSlides } from "@/db/queries/admin-site";
@@ -428,5 +430,40 @@ describe("the routes", () => {
     expect(await discardCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number) } });
     expect(await drafts()).toHaveLength(0);
     expect((await read("home")).parts.statement.live).toMatchObject({ body: { et: "Uus lause." } });
+  });
+});
+
+// docs/deploy.md section 25, item 2 (the rollback): the older Avaleht, Koolitaja and Praktika read none of the site drafts, so before an earlier
+// deployment is promoted every site draft is published or discarded, and this read-only query must return no row. The test runs the query as the doc
+// prints it.
+describe("the rollback check of deploy.md §25 item 2: the site drafts that are left", () => {
+  const docQuery = (): string => {
+    const doc = readFileSync(join(process.cwd(), "..", "docs", "deploy.md"), "utf8");
+    const section = doc.slice(doc.indexOf("\n## 25. "));
+    const found = /`(select entity, count\(\*\) from content_drafts where entity in \('home','trainer','practice'\) group by 1)`/.exec(section);
+    if (!found) throw new Error("the query is not in docs/deploy.md section 25");
+    return found[1];
+  };
+  const left = async (): Promise<Record<string, number>> => {
+    const res = (await db.execute(sql.raw(docQuery()))) as unknown as { rows?: { entity: string; count: string | number }[] } & { entity: string; count: string | number }[];
+    return Object.fromEntries(((res.rows ?? res) as { entity: string; count: string | number }[]).map((r) => [r.entity, Number(r.count)]));
+  };
+
+  test("no row when nothing waits; a row for each screen that holds drafts, with its parts; a course's draft is no site draft; published or discarded, no row again", async () => {
+    expect(await left()).toEqual({});
+    const items = await liveFaq();
+    expect((await save("home", "faq", { faq: items.slice(0, 5) })).ok).toBe(true);
+    expect((await save("home", "statement", { body: { et: "Uus lause." } })).ok).toBe(true);
+    expect((await save("trainer", "bio", { body: { et: "Uus tutvustus." } })).ok).toBe(true);
+    expect((await save("practice", "MAXI", { price: "160" })).ok).toBe(true);
+    // (a course's draft is the course editor's own: section 23, item 2)
+    expect(await saveDraftPart(db, { entity: "course", entityId: 1, part: "basics", value: {}, baseVersion: "x", version: null, by: ADMIN })).toMatchObject({ ok: true });
+    expect(await left()).toEqual({ home: 2, trainer: 1, practice: 1 });
+    await publishSite(db, "home");
+    await discardSite(db, "trainer");
+    expect(await left()).toEqual({ practice: 1 });
+    await publishSite(db, "practice");
+    expect(await left()).toEqual({});
+    expect(await drafts()).toHaveLength(1); // the course's, untouched
   });
 });

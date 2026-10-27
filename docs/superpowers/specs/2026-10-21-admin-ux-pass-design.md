@@ -139,7 +139,7 @@ The README names three mechanisms that the code does differently, with the same 
 - **`removed_at`** on the tables whose rows get an UndoBar removal (B5): lesson files and manual reviews. Rows are purged after 10 s, plus the daily sweep. Each table gets its column in the piece that adds its UndoBar.
 - **On `payments`:** status `replaced` (B22) and `check_reason`, which holds „Topeltmakse — tagasta".
 
-**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waited on Montonio, so the pass's drafts table took 0017 (`content_drafts`, piece 1) and the instalments 0018 (`financing`). Piece 2 built the `payments` part as **0019** (`0019_payments_replaced`: the status `replaced` and `check_reason`; `docs/deploy.md` section 22). Piece 3a built the "not yet published" flag and `removed_at` on lesson files as **0020** (`0020_course_drafts`: `course_modules.unpublished`, `lessons.unpublished` and `lesson_files.removed_at`, plus `lessons.video_progress` for S6's „Töötlemisel {n}%“, which this list did not name; `docs/deploy.md` section 23). `removed_at` on reviews is still to come and takes the next free number (0021 or later) in the piece that adds it (piece 4). Piece 3b needs no migration. Each migration is applied on Railway before the push (`docs/deploy.md`).
+**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waited on Montonio, so the pass's drafts table took 0017 (`content_drafts`, piece 1) and the instalments 0018 (`financing`). Piece 2 built the `payments` part as **0019** (`0019_payments_replaced`: the status `replaced` and `check_reason`; `docs/deploy.md` section 22). Piece 3a built the "not yet published" flag and `removed_at` on lesson files as **0020** (`0020_course_drafts`: `course_modules.unpublished`, `lessons.unpublished` and `lesson_files.removed_at`, plus `lessons.video_progress` for S6's „Töötlemisel {n}%“, which this list did not name; `docs/deploy.md` section 23). `removed_at` on reviews is still to come and takes the next free number (0021 or later) in the piece that adds it (piece 4). Piece 3b needs no migration, and neither does piece 4a (its site drafts are rows of `content_drafts`; `docs/deploy.md` section 25). Each migration is applied on Railway before the push (`docs/deploy.md`).
 
 ## 8. Delivery
 
@@ -158,7 +158,10 @@ The design's order is global components first, then the A screens, then B, then 
 3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files. **Split into 3a and 3b on 23.10**, each with its own plan, build, review and deploy:
    - **3a:** B1 Koolitused, B2 the course editor and the lesson drawer, with B18 (plan `docs/superpowers/plans/2026-10-23-admin-ux-courses.md`). It carries the whole of this item's migration (0020, §7) and the draft-mode preview of the course page and the catalogue (C3). Deploy notes: `docs/deploy.md` section 23.
    - **3b:** B3 Kalender, B4 Seaded and B5 Uudiskiri, with B9, B17 and B21's Seaded side (plan `docs/superpowers/plans/2026-10-23-admin-ux-calendar-settings-newsletter.md`). No migration. Deploy notes: `docs/deploy.md` section 24.
-4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews.
+4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews. **Split into 4a, 4b and 4c in the 4a plan (26.10)**, each with its own plan, build, review and deploy:
+   - **4a:** C5 Praktika, C2 Koolitaja and C1 Avaleht, with the draft layer for the site content that they share (the entities `home`, `trainer` and `practice` on `content_drafts`), the site-editor template and the draft preview of the home page, `/koolitaja` and `/praktika` (plan `docs/superpowers/plans/2026-10-26-admin-ux-site-content.md`). No migration. Deploy notes: `docs/deploy.md` section 25.
+   - **4b:** Uudised and Hüpikaken on the same layer, which takes out the old save bar (`SaveBar`, `useSiteDraft`) and its actions.
+   - **4c:** Tagasiside, Testimine and the sign-in.
 
 **B21 goes first. Dim (21.10): "Yes, first."** Invoice numbers per year belong to the Seaded screen in piece 3. But the server part must be live before 1 December 2026, because today a December invoice silently erases a next-year number preset. So B21 is the opening commit of piece 1, and the rest of the Seaded screen comes with piece 3.
 
@@ -182,7 +185,7 @@ Each is amended in the commit that changes its rule:
 - **newsletter-simple:** „Kampaaniad" becomes „Kirjad", and the send's ConfirmPanel changes. Done in piece 3b (26.10): `2026-10-20-newsletter-simple-design.md` §1 and §3.
 - **reviews:** undo and focus (C6 screen).
 - **the sign-in:** the new sent text and rate-limit message (C8, S4).
-- **vercel-move:** the freshness rule becomes "the next public request after „Avalda muudatused" shows the change".
+- **vercel-move:** the freshness rule becomes "the next public request after „Avalda muudatused" shows the change". It moves editor by editor: the course editor (piece 3a), Seaded's legal texts (3b) and Avaleht, Koolitaja and Praktika (4a) publish with „Avalda muudatused“ and revalidate their pages once after the commit (`docs/deploy.md` sections 23 to 25), while Uudised and Hüpikaken keep „Salvesta“ until 4b. The line "the next request after „Salvesta" shows the change" in `2026-10-02-vercel-move-design.md` is amended in the commit that takes the last „Salvesta“ out (4b).
 - **instalments:** its migration number, and B22's „Asendatud" covers a järelmaks attempt too.
 
 ## 10. What changes for Maria and Dim by following the design
