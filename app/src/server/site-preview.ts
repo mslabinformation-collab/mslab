@@ -1,6 +1,6 @@
 import type { Q } from "@/db/client";
 import { siteChangeLabels } from "@/domain/site-changes";
-import { SITE_ENTITY_ID, type SiteEntity } from "@/domain/site-entities";
+import { siteRowOf, type SiteTarget } from "@/domain/site-entities";
 import { readDrafts } from "./drafts";
 import { partsOf, readSiteEditor, strictDraft } from "./site-drafts";
 
@@ -20,10 +20,11 @@ import { partsOf, readSiteEditor, strictDraft } from "./site-drafts";
  * Drafts of a part the entity no longer has (a package deleted meanwhile) are left out. Changed live meanwhile is not checked: the preview shows the
  * draft, as the course's does (the publish holds such a part back and says so).
  */
-export async function withSiteDrafts<T>(db: Q, entity: SiteEntity, live: T, pick: (parts: Record<string, unknown>) => T): Promise<T> {
-  const drafts = await readDrafts(db, entity, SITE_ENTITY_ID);
+export async function withSiteDrafts<T>(db: Q, target: SiteTarget, live: T, pick: (parts: Record<string, unknown>) => T): Promise<T> {
+  const { entity, id } = siteRowOf(target);
+  const drafts = await readDrafts(db, entity, id);
   if (drafts.length === 0) return live;
-  const parts = await partsOf(db, entity);
+  const parts = await partsOf(db, target);
   const shown: Record<string, unknown> = {};
   for (const draft of drafts) {
     const def = Object.hasOwn(parts, draft.part) ? parts[draft.part] : undefined;
@@ -40,7 +41,7 @@ export async function withSiteDrafts<T>(db: Q, entity: SiteEntity, live: T, pick
  * (domain/site-changes.ts siteChangeLabels over every part's draft against live, as components/admin/site/SiteEditorPage.tsx counts them). 0 without
  * drafts.
  */
-export async function siteChangeCount(db: Q, entity: SiteEntity): Promise<number> {
-  const { parts } = await readSiteEditor(db, entity);
-  return siteChangeLabels(entity, Object.entries(parts).map(([part, s]) => ({ part, live: s.live, draft: s.value }))).length;
+export async function siteChangeCount(db: Q, target: SiteTarget): Promise<number> {
+  const { parts } = await readSiteEditor(db, target);
+  return siteChangeLabels(siteRowOf(target).entity,Object.entries(parts).map(([part, s]) => ({ part, live: s.live, draft: s.value }))).length;
 }

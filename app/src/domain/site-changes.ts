@@ -1,7 +1,7 @@
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { stableJson } from "@/lib/version";
-import { HOME_PARTS, TRAINER_PARTS, type SiteEntity } from "./site-entities";
+import { HOME_PARTS, TRAINER_PARTS, type SiteDraftEntity } from "./site-entities";
 
 // The site editors' field labels (admin UX pass piece 4a; piece4-texts S4-1, S4-2, S4-12, S4-17, S4-34; ruling R-i), pure: the server's publish
 // names a blocked part's fields with them (server/site-drafts.ts), and the editors' PublishBar lists the changes with them (siteChangeLabels, the
@@ -29,7 +29,7 @@ const SLIDE_FIELDS: Record<string, keyof typeof T.home.slideFields> = {
  * The fields of a list part's row in the order its labels are listed (S4-12: a slide's picture with its focal points, kicker, title, text, button,
  * link, tone, „Näidatakse avalehel“; a question, then its answer): the leave guard's field in a row is the first of them that changed.
  */
-export const siteRowFields = (entity: SiteEntity, part: string): readonly string[] =>
+export const siteRowFields = (entity: SiteDraftEntity, part: string): readonly string[] =>
   entity === "home" && part === "slides" ? Object.keys(SLIDE_FIELDS) : entity === "home" && part === "faq" ? ["q", "a"] : [];
 
 /** The trainer card's fields → their labels (S4-17: the picture and its focal point are „Portree“, every stat is „Numbrid“). */
@@ -38,16 +38,32 @@ const TRAINER_FIELDS: Record<string, string> = { portraitKey: T.trainer.portrait
 /** A package's fields → their labels' templates (S4-34). */
 const PACKAGE_FIELDS: Record<string, string> = { name: T.practice.name, tagline: T.practice.tagline, models: T.practice.models, durationLabel: T.practice.durationLabel, price: T.practice.price };
 
+/** A post's fields → their labels (S4-24), in the bar's order. */
+const POST_FIELDS: Record<string, string> = {
+  title: T.post.title,
+  slug: T.post.slug,
+  category: T.post.category,
+  excerpt: T.post.excerpt,
+  body: T.post.body,
+  publishedAt: T.post.publishedAt,
+  coverKey: T.post.coverKey,
+};
+
 /** A row's place in the draft as the label says it (from 1), or null when the path names no row. */
 const rowNumber = (s: string | undefined): number | null => (s !== undefined && /^\d{1,4}$/.test(s) ? Number(s) + 1 : null);
 
 /**
- * S4-1's label of a field of a site part, as S4-12 (Avaleht), S4-17 (Koolitaja) and S4-34 (Praktika) give it: `Slaid 3 pilt`, `KKK vastus 6`,
- * `MAXI punkt 4`, `Nimi`; the list's card title for a list as a whole (`Slaidid`, `KKK`, `Galerii`, `Numbrid`, `MAXI punktid`). `path`: the field's
- * path in the part's editor value (a path this does not know is named by its part or list).
+ * S4-1's label of a field of a site part, as S4-12 (Avaleht), S4-17 (Koolitaja), S4-34 (Praktika) and S4-24 (a post) give it: `Slaid 3 pilt`,
+ * `KKK vastus 6`, `MAXI punkt 4`, `Nimi`, `Kaanepilt`; the list's card title for a list as a whole (`Slaidid`, `KKK`, `Galerii`, `Numbrid`, `MAXI
+ * punktid`). A post's Russian side, which its publish asks for (S4-Q1 A: the path `title.ru`, `body.ru`), is `{silt} (RU)`: `Pealkiri (RU)`. `path`:
+ * the field's path in the part's editor value (a path this does not know is named by its part or list).
  */
-export function siteFieldLabel(entity: SiteEntity, part: string, path: string): string {
+export function siteFieldLabel(entity: SiteDraftEntity, part: string, path: string): string {
   const [field, row, sub] = path.split(".");
+  if (entity === "post") {
+    const label = Object.hasOwn(POST_FIELDS, field) ? POST_FIELDS[field] : T.post.title;
+    return row === "ru" ? fill(T.ru, { label }) : label;
+  }
   const n = rowNumber(row);
   if (entity === "home") {
     if (part === "slides") return n !== null && sub !== undefined && Object.hasOwn(SLIDE_FIELDS, sub) ? fill(T.home.slide, { n, field: T.home.slideFields[SLIDE_FIELDS[sub]] }) : T.home.slides;
@@ -118,6 +134,7 @@ const SLIDE_ORDER = ["imageKey", "imagePos", "imagePosMobile", "kicker", "title"
 const FAQ_ORDER = ["q", "a"];
 const PACKAGE_ORDER = ["name", "tagline", "price", "models", "durationLabel", "items"];
 const TRAINER_ORDER = ["portraitKey", "portraitPos", "name", "role", "stats"];
+const POST_ORDER = Object.keys(POST_FIELDS);
 /** A list row's keys that are no field of the screen (the row's client key and its stored id). */
 const ROW_KEYS = ["uid", "id"];
 
@@ -178,12 +195,12 @@ function listLabels(add: (label: string, diff: Diff) => void, live: unknown, dra
 
 /**
  * The PublishBar's labels of an entity's drafts (`changed`; README §1.8, S4-1, R-i): each part's draft against its live value, row by row, as S4-12
- * (Avaleht), S4-17 (Koolitaja) and S4-34 (Praktika) name them, in the cards' order and once each. A row is numbered by its place in the draft,
+ * (Avaleht), S4-17 (Koolitaja), S4-34 (Praktika) and S4-24 (a post) name them, in the cards' order and once each. A row is numbered by its place in the draft,
  * from 1 (`Slaid 2 pealkiri`, `KKK küsimus 4`, `MAXI punkt 4`); rows added, removed or moved name the list's card (`Slaidid`, `KKK`, `Galerii`,
  * `Numbrid`, `MAXI punktid`); a label whose only change is the Russian text says so (`Slaid 2 pealkiri (RU)`). A Russian text typed and emptied
  * again is no change. `parts`: each part's name, live value and draft value, as the editor holds them (domain/site-entities.ts).
  */
-export function siteChangeLabels(entity: SiteEntity, parts: readonly { part: string; live: unknown; draft: unknown }[]): string[] {
+export function siteChangeLabels(entity: SiteDraftEntity, parts: readonly { part: string; live: unknown; draft: unknown }[]): string[] {
   const labels = new Labels();
   // the parts in the cards' order: Avaleht's and Koolitaja's fixed, Praktika's packages as they come (the packages' order)
   const rank = (part: string) => {
@@ -207,6 +224,9 @@ export function siteChangeLabels(entity: SiteEntity, parts: readonly { part: str
       // the cards: „Portree ja tutvustus“ (the portrait, name and role, then the bio), „Numbrid“ (the trainer's stats), „Galerii“, the two stories
       const card = (f: string) => (part === "trainer" ? (f === "stats" ? 1 : 0) : part === "bio" ? 0 : part === "works" ? 2 : part === "center_story" ? 3 : part === "trainer_journey" ? 4 : 5);
       for (const f of keysOf(live, draft, part === "trainer" ? TRAINER_ORDER : [])) labels.add(label(f), diffOf(live[f], draft[f]), card(f));
+    } else if (entity === "post") {
+      // one card, its fields in S4-24's order
+      for (const f of keysOf(live, draft, POST_ORDER)) labels.add(label(f), diffOf(live[f], draft[f]), 0);
     } else {
       const add = (text: string, diff: Diff) => labels.add(text, diff, i);
       for (const f of keysOf(live, draft, PACKAGE_ORDER)) {

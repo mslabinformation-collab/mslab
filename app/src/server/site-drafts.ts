@@ -1,15 +1,18 @@
 import { sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
-import { lockTables, type SiteTable } from "@/db/queries/admin-site";
+import { deletePostRow, insertPost, lockTables, readPost, updatePost, type SiteTable } from "@/db/queries/admin-site";
 import type { SaveAnswer } from "@/domain/autosave";
 import { missingCase, sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
 import { MISSING_CODES } from "@/domain/site-checks";
-import { fromEditorValue, isListPart, SITE_ENTITY_ID, toEditorValue, type SiteEntity, type SitePartState } from "@/domain/site-entities";
+import { fromEditorValue, isListPart, POST_PART, siteDraftLockKey, siteRowOf, toEditorValue, type SiteDraftEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
+import { adminEt } from "@/i18n/dict/admin";
+import { slugify } from "@/lib/slug";
 import { contentVersion } from "@/lib/version";
-import { homeParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
-import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, readDrafts, type DraftPart, type Publisher } from "./drafts";
+import { homeParts, postParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
+import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, publishDraftsIn, readDrafts, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
+import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
 import { readStamp, stampOrNull } from "./read-stamp";
 
@@ -28,32 +31,51 @@ import { readStamp, stampOrNull } from "./read-stamp";
 // - Versions (R-b), as server/course-parts.ts': "l:<hash>" while a part has no draft, the hash being lib/version.ts contentVersion of the part's
 //   DRAFT-SHAPED live value (its editor value, never the stored row: a column outside the part, like the trainer setting's contactPhotoKey, never
 //   blocks its draft); "d:<draft row id>.<n>" with one. The row's id keeps a new draft's versions apart from an ended one's.
-// - Locks (R-c): a save and a discard take only the entity's advisory lock (`site-draft:<entity>:0`, a transaction lock), never a table lock: the
+// - Locks (R-c): a save and a discard take only the entity's advisory lock (`site-draft:<entity>:<id>`, a transaction lock), never a table lock: the
 //   settings table also holds number series other writers lock. The publish takes the same advisory lock first, then every table of the entity's
 //   parts at once (lockTables: EXCLUSIVE, in alphabetical order, as every site save locks them), before it reads a draft or a live value.
-// No Next.js here but the revalidation (server/public-cache.ts, mocked in the tests): tests/db/site-drafts.test.ts runs it on PGlite.
+// Piece 4b (Task 1; rulings R-a, R-b, R-g, R-h) adds the posts: the entity "post" with the post's id (a SiteTarget `{ entity: "post", id }`; the three
+// above are named by themselves, row 0), one part `post`. Its rules, beside the above:
+// - A post that is not published saves straight to its row (Part.live, R-a): no draft and no bar. Its save takes the post's advisory lock, then the
+//   posts table (as every post writer locks it), reads the row again under it, checks it as any save (schema, loose check) and its address against
+//   the other posts (Part.rowCheck: `slugTaken`, held at the field), and writes the row. A draft left on such a post (by an earlier way of saving) is
+//   neither shown nor saved; the switch on drops it.
+// - A published post saves into its draft as the other parts do; „Avalda muudatused“ runs S4-Q1 A's strict check (Part.check), then the address
+//   against the other posts: a taken one is held back as "invalid" with its code (`errors: { slug: "slugTaken" }`, ADM:2281).
+// - „Avaldatud“ (switchPostPublished, R-b), „Lisa postitus +“ (createPost, S4-19) and „Kustuta postitus“ (deletePost, R-h): at the end of this file.
+// No Next.js here but the revalidation (server/public-cache.ts, mocked in the tests): tests/db/site-drafts.test.ts and post-drafts.test.ts run it on
+// PGlite.
 
-export { isSiteEntity, SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
+export { isSiteEntity, parseSiteTarget, SITE_ENTITY_ID, siteRowOf, type SiteDraftEntity, type SiteEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
 
-/** An entity's parts by name, in its screen's order: Praktika's are read from the packages. */
-export async function partsOf(q: Q, entity: SiteEntity): Promise<Parts> {
-  if (entity === "home") return homeParts;
-  if (entity === "trainer") return trainerParts;
-  return practiceParts(q);
+/** A target's parts by name, in its screen's order: Praktika's are read from the packages; a post's is its one part, none when the post is gone. */
+export async function partsOf(q: Q, target: SiteTarget): Promise<Parts> {
+  if (target === "home") return homeParts;
+  if (target === "trainer") return trainerParts;
+  if (target === "practice") return practiceParts(q);
+  return postParts(q, target.id);
 }
 
-/** Is `part` one of the entity's parts (the routes' 404)? */
-export async function hasSitePart(q: Q, entity: SiteEntity, part: string): Promise<boolean> {
-  return Object.hasOwn(await partsOf(q, entity), part);
+/** Is `part` one of the target's parts (the routes' 404)? */
+export async function hasSitePart(q: Q, target: SiteTarget, part: string): Promise<boolean> {
+  return Object.hasOwn(await partsOf(q, target), part);
 }
 
-/** The entity's advisory lock, first thing in every transaction that writes its drafts or publishes them (R-c). */
-const lockEntity = (tx: Tx, entity: SiteEntity) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`site-draft:${entity}:${SITE_ENTITY_ID}`}))`);
+/** Is the target there (the publish and discard routes' 404): Avaleht, Koolitaja and Praktika always, a post while its row is. */
+export async function siteTargetExists(q: Q, target: SiteTarget): Promise<boolean> {
+  return typeof target === "string" || (await readPost(q, target.id)) !== null;
+}
+
+/** The target's advisory lock, first thing in every transaction that writes its drafts or publishes them (R-c): `site-draft:<entity>:<id>`. */
+const lockEntity = (tx: Tx, target: SiteTarget) => {
+  const { entity, id } = siteRowOf(target);
+  return tx.execute(sql`select pg_advisory_xact_lock(hashtext(${siteDraftLockKey(entity, id)}))`);
+};
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** A part's live value as its editor holds it (its Part.draft of the stored value) and that value's hash (R-b). */
-async function liveOf(entity: SiteEntity, part: string, def: Part<unknown>, stored: unknown): Promise<{ live: Record<string, unknown>; hash: string }> {
+async function liveOf(entity: SiteDraftEntity, part: string, def: Part<unknown>, stored: unknown): Promise<{ live: Record<string, unknown>; hash: string }> {
   const live = toEditorValue(entity, part, def.draft(stored));
   return { live, hash: await contentVersion(live) };
 }
@@ -61,7 +83,7 @@ async function liveOf(entity: SiteEntity, part: string, def: Part<unknown>, stor
 /**
  * A stored draft's value read defensively (jsonb holds anything): its part's fields over live's, through the part's schema; live when it does not pass.
  */
-function draftValueOf(entity: SiteEntity, part: string, def: Part<unknown>, live: Record<string, unknown>, raw: unknown): Record<string, unknown> {
+function draftValueOf(entity: SiteDraftEntity, part: string, def: Part<unknown>, live: Record<string, unknown>, raw: unknown): Record<string, unknown> {
   const own = isRecord(raw) ? Object.fromEntries(Object.entries(raw).filter(([k]) => Object.hasOwn(live, k))) : {};
   const parsed = def.schema.safeParse(fromEditorValue(entity, part, { ...live, ...own }));
   return parsed.success ? toEditorValue(entity, part, parsed.data) : live;
@@ -72,30 +94,38 @@ function draftValueOf(entity: SiteEntity, part: string, def: Part<unknown>, live
  * the part's STRICT check (Part.check). `value`: the editor value checked; `check`: what it refused; `write`: the Write it answered (null: refused). The
  * publish's hold and the admin's preview of the public pages (server/site-preview.ts, R-f) decide by it alike.
  */
-export function strictDraft(entity: SiteEntity, part: string, def: Part<unknown>, stored: unknown, raw: unknown): { value: Record<string, unknown>; check: Check; write: Write | null } {
+export function strictDraft(entity: SiteDraftEntity, part: string, def: Part<unknown>, stored: unknown, raw: unknown): { value: Record<string, unknown>; check: Check; write: Write | null } {
   const value = draftValueOf(entity, part, def, toEditorValue(entity, part, def.draft(stored)), raw);
   const check = new Check();
   const write = def.check(check, fromEditorValue(entity, part, value), part);
   return { value, check, write };
 }
 
-type PartState = { live: Record<string, unknown>; liveHash: string; draft: DraftPart | null; version: string; value: Record<string, unknown> };
+/**
+ * A part as a save, the editor's read and the publish's labels see it: live (and its hash), its draft, the version and the value the editor holds.
+ * `direct`: the part's row saves straight (Part.live, R-a: a post that is not published), so a draft of it is not taken; `stored`: the stored value read.
+ */
+type PartState = { live: Record<string, unknown>; liveHash: string; draft: DraftPart | null; version: string; value: Record<string, unknown>; stored: unknown; direct: boolean };
 
-async function partStateOf(q: Q, entity: SiteEntity, part: string, def: Part<unknown>, drafts: DraftPart[]): Promise<PartState> {
-  const { live, hash } = await liveOf(entity, part, def, await def.read(q));
-  const draft = drafts.find((d) => d.part === part) ?? null;
-  if (!draft) return { live, liveHash: hash, draft: null, version: `l:${hash}`, value: live };
-  return { live, liveHash: hash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(entity, part, def, live, draft.value) };
+async function partStateOf(q: Q, entity: SiteDraftEntity, part: string, def: Part<unknown>, drafts: DraftPart[]): Promise<PartState> {
+  const stored = await def.read(q);
+  const { live, hash } = await liveOf(entity, part, def, stored);
+  const direct = def.live?.now(stored) ?? false;
+  const draft = direct ? null : (drafts.find((d) => d.part === part) ?? null);
+  if (!draft) return { live, liveHash: hash, draft: null, version: `l:${hash}`, value: live, stored, direct };
+  return { live, liveHash: hash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(entity, part, def, live, draft.value), stored, direct };
 }
 
 /**
  * The editor's start (Tasks 4–6; README B2): the read's stamp first (server/read-stamp.ts: a read at or past a press's answer shows what it did), then
- * every part of the entity, each with its version (R-b), its value (the draft over live) and live's value beside it, in the screen's order.
+ * every part of the target, each with its version (R-b), its value (the draft over live) and live's value beside it, in the screen's order. A post
+ * that is not published has its row's value and version (R-a); a post that is gone, no part.
  */
-export async function readSiteEditor(q: Q, entity: SiteEntity): Promise<{ stamp: number; parts: Record<string, SitePartState> }> {
+export async function readSiteEditor(q: Q, target: SiteTarget): Promise<{ stamp: number; parts: Record<string, SitePartState> }> {
+  const { entity, id } = siteRowOf(target);
   const stamp = await readStamp(q);
-  const parts = await partsOf(q, entity);
-  const drafts = await readDrafts(q, entity, SITE_ENTITY_ID);
+  const parts = await partsOf(q, target);
+  const drafts = await readDrafts(q, entity, id);
   const out: Record<string, SitePartState> = {};
   for (const [part, def] of Object.entries(parts)) {
     const s = await partStateOf(q, entity, part, def, drafts);
@@ -107,13 +137,13 @@ export async function readSiteEditor(q: Q, entity: SiteEntity): Promise<{ stamp:
 // ---------- a save ----------
 
 /** A check's field name (`<part>.<path>`, the strict check's; or a path already) → the path in the editor value (a list part's starts with its own name). */
-function pathOf(entity: SiteEntity, part: string, name: string): string {
+function pathOf(entity: SiteDraftEntity, part: string, name: string): string {
   if (isListPart(entity, part)) return name;
   return name.startsWith(`${part}.`) ? name.slice(part.length + 1) : name;
 }
 
 /** The field of the editor value a path is in: a list part's one field (its own name), a record's first key. */
-const fieldOf = (entity: SiteEntity, part: string, path: string): string =>
+const fieldOf = (entity: SiteDraftEntity, part: string, path: string): string =>
   isListPart(entity, part) && (path === part || path.startsWith(`${part}.`)) ? part : path.split(".")[0];
 
 /**
@@ -122,7 +152,7 @@ const fieldOf = (entity: SiteEntity, part: string, path: string): string =>
  * the fields `sent` is named (the problem is in a field the save did not carry: a stored value a limit refuses since), every field sent is named with
  * the first code, as course-parts.ts refusedFields does: the screen then holds them back and says so, instead of waiting with nothing held.
  */
-function refusal(entity: SiteEntity, part: string, problems: [path: string, code: string][], sent: string[]): SaveAnswer {
+function refusal(entity: SiteDraftEntity, part: string, problems: [path: string, code: string][], sent: string[]): SaveAnswer {
   const fields: Record<string, string> = {};
   for (const [path, code] of problems) {
     fields[path] ??= code;
@@ -134,7 +164,7 @@ function refusal(entity: SiteEntity, part: string, problems: [path: string, code
 }
 
 /** A schema's issue as a path and a code: over its length or its list's cap, or of the wrong type. */
-function issueOf(entity: SiteEntity, part: string, issue: z.core.$ZodIssue): [string, string] {
+function issueOf(entity: SiteDraftEntity, part: string, issue: z.core.$ZodIssue): [string, string] {
   const name = [part, ...issue.path.map(String)].join(".");
   const code = issue.code === "too_big" ? (issue.origin === "array" ? "tooMany" : "tooLong") : "invalid";
   return [pathOf(entity, part, name), code];
@@ -145,16 +175,26 @@ function issueOf(entity: SiteEntity, part: string, issue: z.core.$ZodIssue): [st
  * refused) over the part's value at `version`, under the entity's advisory lock, into its draft. The answers: ok with the part's version after it; a
  * conflict with the stored version and value (another tab, a publish or a discard meanwhile; a part that is gone: version "", value null); invalid
  * by field: the part's schema (types), then its loose check (R-d: nothing required, so an incomplete row is kept). The same value again writes
- * nothing; typed back to live, the draft goes ("l:" again). Never a live row, never a table lock (R-c). `admin`: the admin's e-mail.
+ * nothing; typed back to live, the draft goes ("l:" again). Never a live row, never a table lock (R-c) — but for a part whose row saves straight
+ * (Part.live, R-a: a post that is not published): its tables are locked after the advisory lock and it is read again under them, its value is checked
+ * against the stored rows too (Part.rowCheck: refused by field, `slugTaken`), and the row is written; the answer is the row's new version "l:<hash>".
+ * `admin`: the admin's e-mail.
  */
-export async function writeSitePart(db: Db, entity: SiteEntity, part: string, patch: unknown, version: string, admin: string, now: Date): Promise<SaveAnswer> {
+export async function writeSitePart(db: Db, target: SiteTarget, part: string, patch: unknown, version: string, admin: string, now: Date): Promise<SaveAnswer> {
   const savedAt = now.toISOString();
+  const { entity, id } = siteRowOf(target);
   return db.transaction(async (tx): Promise<SaveAnswer> => {
-    await lockEntity(tx, entity);
-    const parts = await partsOf(tx, entity);
+    await lockEntity(tx, target);
+    const parts = await partsOf(tx, target);
     const def = Object.hasOwn(parts, part) ? parts[part] : undefined;
     if (!def) return { ok: false, error: "conflict", version: "", value: null };
-    const s = await partStateOf(tx, entity, part, def, await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] }));
+    const stateNow = async () => partStateOf(tx, entity, part, def, await readDrafts(tx, entity, id, { only: [part] }));
+    let s = await stateNow();
+    if (s.direct) {
+      // the row is written: its tables locked as its other writers lock them (after the advisory lock, as the publish), and the row read again
+      await lockTables(tx, def.tables);
+      s = await stateNow();
+    }
     if (version !== s.version) return { ok: false, error: "conflict", version: s.version, value: s.value };
     const sent = isRecord(patch) ? patch : {};
     const names = Object.keys(sent);
@@ -166,10 +206,16 @@ export async function writeSitePart(db: Db, entity: SiteEntity, part: string, pa
     if (problems.length > 0) return refusal(entity, part, problems, names);
     const value = toEditorValue(entity, part, parsed.data);
     if (sameSiteValue(value, s.value)) return { ok: true, version: s.version, savedAt };
+    if (s.direct && def.live) {
+      const refused = Object.entries((await def.rowCheck?.(tx, parsed.data)) ?? {});
+      if (refused.length > 0) return refusal(entity, part, refused, names);
+      await def.live.write(tx, parsed.data, s.stored);
+      return { ok: true, version: `l:${(await liveOf(entity, part, def, await def.read(tx))).hash}`, savedAt };
+    }
     // typed back to what is live, the draft goes; else the draft is made or saved (server/drafts.ts finishDraftSave)
     return finishDraftSave(tx, {
       entity,
-      entityId: SITE_ENTITY_ID,
+      entityId: id,
       part,
       value,
       liveHash: s.liveHash,
@@ -177,7 +223,7 @@ export async function writeSitePart(db: Db, entity: SiteEntity, part: string, pa
       sameAsLive: sameSiteValue(value, s.live),
       by: admin,
       savedAt,
-      reread: async () => partStateOf(tx, entity, part, def, await readDrafts(tx, entity, SITE_ENTITY_ID, { only: [part] })),
+      reread: stateNow,
     });
   });
 }
@@ -187,15 +233,17 @@ export async function writeSitePart(db: Db, entity: SiteEntity, part: string, pa
 /**
  * A part „Avalda muudatused“ left in its draft (S3-P3-b): "changed", its draft is not the one the screen sent (another window saved it after the
  * screen's read) or its live value changed after the draft began, `fields` the labels of the draft's changes; "missing", its strict check refused
- * it, `fields` the refused fields' labels as „Puudub: …“ writes them (S4-2: `slaid 3 pilt`).
+ * it, `fields` the refused fields' labels as „Puudub: …“ writes them (S4-2: `slaid 3 pilt`); "invalid" (piece 4b, R-g), its value passed the strict
+ * check but a rule against the stored rows refused it (Part.rowCheck: a post's address another post has), `fields` the refused fields' labels as the
+ * bar names them (`Aadress`) and `errors` their codes by path (`{ slug: "slugTaken" }`: the editor says ADM:2281's text).
  */
-export type SiteBlockedPart = { part: string; reason: "changed" | "missing"; fields: string[] };
+export type SiteBlockedPart = { part: string; reason: "changed" | "missing" | "invalid"; fields: string[]; errors?: Record<string, FieldError> };
 
 /**
  * A strict check's refusal of a package's point without its Estonian text names the list (Check.list "listEt": its first such row, not empty): the
  * row it means, as the label numbers it (`MAXI punkt 2`). Any other path as it is (the list's own problems are the list's: `MAXI punktid`).
  */
-function rowOfList(entity: SiteEntity, path: string, code: string, value: Record<string, unknown>): string {
+function rowOfList(entity: SiteDraftEntity, path: string, code: string, value: Record<string, unknown>): string {
   if (entity !== "practice" || path !== "items" || code !== "listEt" || !Array.isArray(value.items)) return path;
   const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const i = (value.items as { et?: unknown; ru?: unknown }[]).findIndex((item) => isRecord(item) && !text(item.et) && text(item.ru) !== "");
@@ -207,7 +255,7 @@ function rowOfList(entity: SiteEntity, path: string, code: string, value: Record
  * then any other refusal. Those others cannot come from a draft the loose check let through, since it runs the same Check rules without `required`
  * (domain/site-checks.ts); one saved before a rule was tightened still holds its part back, named by its field.
  */
-function missingOf(entity: SiteEntity, part: string, errors: Record<string, FieldError>, value: Record<string, unknown>): string[] {
+function missingOf(entity: SiteDraftEntity, part: string, errors: Record<string, FieldError>, value: Record<string, unknown>): string[] {
   const entries = Object.entries(errors);
   const ordered = [...entries.filter(([, code]) => MISSING_CODES.includes(code)), ...entries.filter(([, code]) => !MISSING_CODES.includes(code))];
   const out: string[] = [];
@@ -218,24 +266,46 @@ function missingOf(entity: SiteEntity, part: string, errors: Record<string, Fiel
   return out;
 }
 
-/** The public pages an entity's publish revalidates (server/cache-targets.ts): Koolitaja's by the parts written. */
-function revalidateEntity(entity: SiteEntity, written: string[]): void {
+/** A part held as "invalid" (Part.rowCheck refused its value): the refused fields' labels as the bar names them, once each, with their codes. */
+function invalidOf(entity: SiteDraftEntity, part: string, errors: Record<string, FieldError>): Omit<SiteBlockedPart, "part"> {
+  const fields: string[] = [];
+  for (const path of Object.keys(errors)) {
+    const label = siteFieldLabel(entity, part, path);
+    if (!fields.includes(label)) fields.push(label);
+  }
+  return { reason: "invalid", fields, errors };
+}
+
+/** The public pages an entity's publish revalidates (server/cache-targets.ts): Koolitaja's by the parts written; a post's, the post pages. */
+function revalidateEntity(entity: SiteDraftEntity, written: string[]): void {
   if (entity === "home") revalidatePublic({ kind: "home" });
   else if (entity === "trainer") revalidatePublic({ kind: "trainer", parts: written });
+  else if (entity === "post") revalidatePublic({ kind: "posts" });
   else revalidatePublic({ kind: "practice" });
 }
 
 /**
- * The entity's Publisher (server/drafts.ts) with what it decided:
- * - lock (R-c): the entity's advisory lock, then every table of its parts at once (lockTables, alphabetical), before any draft is read;
- * - liveVersion: the hash of the part's draft-shaped live value (R-b), read under that lock (and kept for its write);
- * - hold: first, each part's draft against `versions`, the screen's (review I-1): a draft at another version than the one the screen sent, or one
- *   the screen sent none for, is newer than what the screen showed — held, and named as changed (blockedOf); then each other part's strict check
- *   (Part.check) on its draft's value; a part it refuses is held as "missing" with its fields' labels (R-d, R-i);
- * - write: the Write the check answered, with the stored value read under the lock;
- * - revalidate: once, after the commit, the entity's pages (Koolitaja's by the parts written).
+ * How a publish takes the drafts:
+ * - `versions`: the screen's (review I-1: a draft at another version, or one the screen sent none for, is held as changed); null for a publish that
+ *   takes the drafts as they are stored (a post's „Avaldatud“ switched off, R-b: no screen's bar is published, the pending drafts are kept);
+ * - `rule`: "strict", each part's strict check (Part.check) and its Write, then Part.rowCheck (the bar's publish); "row" (a post switched off: a
+ *   hidden post needs no cover or Russian text, as a course switched off needs no price), the save's own rules — the loose check and Part.rowCheck —
+ *   and the row written as a save of a post that is not published writes it (Part.live).
  */
-function makeSitePublisher(entity: SiteEntity, versions: Readonly<Record<string, string>>) {
+type PublishRules = { versions: Readonly<Record<string, string>> | null; rule: "strict" | "row" };
+
+/**
+ * The target's Publisher (server/drafts.ts) with what it decided:
+ * - lock (R-c): the target's advisory lock, then every table of its parts at once (lockTables, alphabetical), before any draft is read;
+ * - liveVersion: the hash of the part's draft-shaped live value (R-b), read under that lock (and kept for its write);
+ * - hold: first, each part's draft against the screen's `versions` (when given): one that is newer than what the screen showed is held, and named as
+ *   changed (blockedOf); then each other part's rules (`rule` above) on its draft's value: a part they refuse is held as "missing" with its fields'
+ *   labels (R-d, R-i), or as "invalid" with its codes (Part.rowCheck);
+ * - write: the Write the rules answered, with the stored value read under the lock;
+ * - revalidate: once, after the commit, the target's pages (Koolitaja's by the parts written).
+ */
+function makeSitePublisher(target: SiteTarget, o: PublishRules) {
+  const { entity } = siteRowOf(target);
   let parts: Parts | null = null;
   const stored = new Map<string, unknown>();
   const writes = new Map<string, Write>();
@@ -244,10 +314,29 @@ function makeSitePublisher(entity: SiteEntity, versions: Readonly<Record<string,
   const newer = new Set<string>();
   const written: string[] = [];
   const defOf = (part: string): Part<unknown> | undefined => (parts && Object.hasOwn(parts, part) ? parts[part] : undefined);
+  /** The save's rules on a draft (rule "row"): the Write into the row, or why it is held. */
+  const rowRules = async (tx: Tx, part: string, def: Part<unknown>, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> => {
+    const value = draftValueOf(entity, part, def, toEditorValue(entity, part, def.draft(stored.get(part))), raw);
+    const draft = fromEditorValue(entity, part, value);
+    const problems = (def.loose?.(draft) ?? {}) as Record<string, FieldError>;
+    if (Object.keys(problems).length > 0) return { reason: "missing", fields: missingOf(entity, part, problems, value) };
+    const refused = (await def.rowCheck?.(tx, draft)) ?? {};
+    if (Object.keys(refused).length > 0) return invalidOf(entity, part, refused);
+    const live = def.live;
+    if (!live) throw new Error(`[site-drafts] ${entity} ${part} has no row of its own to save into`);
+    return async (t: Tx, s: unknown) => live.write(t, draft, s);
+  };
+  /** The publish's rules on a draft (rule "strict"): the strict check's Write, or why it is held. */
+  const strictRules = async (tx: Tx, part: string, def: Part<unknown>, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> => {
+    const { value: shown, check: c, write } = strictDraft(entity, part, def, stored.get(part), raw);
+    if (!c.ok || !write) return { reason: "missing", fields: missingOf(entity, part, c.errors, shown) };
+    const refused = (await def.rowCheck?.(tx, fromEditorValue(entity, part, shown))) ?? {};
+    return Object.keys(refused).length > 0 ? invalidOf(entity, part, refused) : write;
+  };
   const publisher: Publisher = {
     async lock(tx) {
-      await lockEntity(tx, entity);
-      parts = await partsOf(tx, entity);
+      await lockEntity(tx, target);
+      parts = await partsOf(tx, target);
       const tables = new Set<SiteTable>(Object.values(parts).flatMap((p) => p.tables));
       await lockTables(tx, tables);
     },
@@ -259,18 +348,18 @@ function makeSitePublisher(entity: SiteEntity, versions: Readonly<Record<string,
       stored.set(part, value);
       return (await liveOf(entity, part, def, value)).hash;
     },
-    async hold(_tx, candidates) {
+    async hold(tx, candidates) {
       for (const { part, value: raw, id, version } of candidates) {
         const def = defOf(part);
         if (!def) continue;
         // (another window saved this draft after the screen read it, or the screen did not know of it: never published from a bar that did not show it)
-        if (!Object.hasOwn(versions, part) || versions[part] !== draftVersion(id, version)) {
+        if (o.versions && (!Object.hasOwn(o.versions, part) || o.versions[part] !== draftVersion(id, version))) {
           newer.add(part);
           continue;
         }
-        const { value: shown, check: c, write } = strictDraft(entity, part, def, stored.get(part), raw);
-        if (c.ok && write) writes.set(part, write);
-        else held.set(part, { reason: "missing", fields: missingOf(entity, part, c.errors, shown) });
+        const decided = o.rule === "row" ? await rowRules(tx, part, def, raw) : await strictRules(tx, part, def, raw);
+        if (typeof decided === "function") writes.set(part, decided);
+        else held.set(part, decided);
       }
       return [...held.keys(), ...newer];
     },
@@ -290,10 +379,11 @@ function makeSitePublisher(entity: SiteEntity, versions: Readonly<Record<string,
  * drafts' changes' labels row by row, as the PublishBar names them (domain/site-changes.ts siteChangeLabels: `Slaid 2 pealkiri`; read after the
  * publish).
  */
-async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<string, Omit<SiteBlockedPart, "part">>): Promise<SiteBlockedPart[]> {
+async function blockedOf(db: Q, target: SiteTarget, names: string[], held: Map<string, Omit<SiteBlockedPart, "part">>): Promise<SiteBlockedPart[]> {
   if (names.length === 0) return [];
-  const parts = await partsOf(db, entity);
-  const drafts = await readDrafts(db, entity, SITE_ENTITY_ID, { only: names });
+  const { entity, id } = siteRowOf(target);
+  const parts = await partsOf(db, target);
+  const drafts = await readDrafts(db, entity, id, { only: names });
   const out: SiteBlockedPart[] = [];
   for (const part of names) {
     const decided = held.get(part);
@@ -309,36 +399,153 @@ async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<s
 }
 
 /**
- * „Avalda muudatused“ of an entity (R-c, R-d): its drafts with its Publisher, in ONE transaction (server/drafts.ts publishDrafts: the locks, every
+ * „Avalda muudatused“ of a target (R-c, R-d): its drafts with its Publisher, in ONE transaction (server/drafts.ts publishDrafts: the locks, every
  * part's live version against its draft's base, the drafts against `versions`, the strict checks, the writes); the pages revalidated once after the
  * commit when anything was published (a failure there is logged: the publish stands). `versions`: every part's version as the screen holds it after
  * its flush (its engine's confirmed version: "d:<id>.<n>", or "l:<hash>" for a part with no draft on the screen) — a part whose draft is another
- * is held back as changed (review I-1: the bar publishes what it showed, never a newer text another window saved). The answer: the parts written,
- * those left in their drafts with why, in the order their drafts were first saved, and the database's clock after the commit (`stamp`,
- * server/read-stamp.ts, as the course's publish answers it: null when it cannot be read, the editor then takes the next read). The site's writers
- * store no time, so it takes none.
+ * is held back as changed (review I-1: the bar publishes what it showed, never a newer text another window saved). A post's draft goes through
+ * S4-Q1 A's check, then its address against the other posts ("invalid", `slugTaken`). The answer: the parts written, those left in their drafts with
+ * why, in the order their drafts were first saved, and the database's clock after the commit (`stamp`, server/read-stamp.ts, as the course's
+ * publish answers it: null when it cannot be read, the editor then takes the next read). The site's writers store no time, so it takes none.
  */
 export async function publishSite(
   db: Db,
-  entity: SiteEntity,
+  target: SiteTarget,
   versions: Readonly<Record<string, string>>,
 ): Promise<{ stamp: number | null; published: string[]; blocked: SiteBlockedPart[] }> {
-  const { publisher, held } = makeSitePublisher(entity, versions);
-  const result = await publishDrafts(db, entity, SITE_ENTITY_ID, publisher);
-  const blocked = await blockedOf(db, entity, result.blocked, held);
+  const { entity, id } = siteRowOf(target);
+  const { publisher, held } = makeSitePublisher(target, { versions, rule: "strict" });
+  const result = await publishDrafts(db, entity, id, publisher);
+  const blocked = await blockedOf(db, target, result.blocked, held);
   return { stamp: await stampOrNull(db), published: result.published, blocked };
 }
 
 // ---------- „Loobu muudatustest“ ----------
 
 /**
- * „Loobu muudatustest“ (R-e): every draft of the entity deleted under its advisory lock; live stays as it is, so nothing is revalidated. `stamp`: the
+ * „Loobu muudatustest“ (R-e): every draft of the target deleted under its advisory lock; live stays as it is, so nothing is revalidated. `stamp`: the
  * database's clock after the commit, null when it cannot be read (as the course's discard answers it).
  */
-export async function discardSite(db: Db, entity: SiteEntity): Promise<{ stamp: number | null }> {
+export async function discardSite(db: Db, target: SiteTarget): Promise<{ stamp: number | null }> {
+  const { entity, id } = siteRowOf(target);
   await db.transaction(async (tx) => {
-    await lockEntity(tx, entity);
-    await discardDrafts(tx, entity, SITE_ENTITY_ID);
+    await lockEntity(tx, target);
+    await discardDrafts(tx, entity, id);
   });
   return { stamp: await stampOrNull(db) };
+}
+
+// ---------- Uudised: „Lisa postitus +“, „Avaldatud“ and „Kustuta postitus“ (piece 4b, Task 1) ----------
+
+const postTarget = (id: number): SiteTarget => ({ entity: "post", id });
+
+/** The post pages revalidated (/uudised with each post's page, the home page's carousel: server/cache-targets.ts "posts"); a failure is logged, the change stands. */
+function revalidatePosts(what: string): void {
+  try {
+    revalidatePublic({ kind: "posts" });
+  } catch (e) {
+    logFailure(`[site-drafts] ${what}: revalidating the post pages failed`, e);
+  }
+}
+
+/**
+ * „Lisa postitus +“ (S4-19, R-g): a post made at once, not published, titled „Uus postitus“ (adminEt.post.newTitle) with no category, text or cover,
+ * dated `now`. Its address is its title's (`uus-postitus`), or the series' first free one (`uus-postitus-2`, `uus-postitus-3` …), found and inserted
+ * under the posts table's lock (db/queries/admin-site.ts insertPost): two presses at once, or two tabs, make two posts with two addresses, never a
+ * unique-index error. Nothing public changes, so nothing is revalidated.
+ */
+export async function createPost(db: Db, now: Date): Promise<{ id: number; slug: string }> {
+  const title = adminEt.post.newTitle;
+  const row = await db.transaction(async (tx) => {
+    await lockTables(tx, ["posts"]);
+    return insertPost(tx, { slug: slugify(title), title: { et: title }, excerpt: { et: "" }, body: { et: "" }, category: { et: "" }, coverKey: "", publishedAt: now, published: false });
+  });
+  return { id: row.id, slug: row.slug };
+}
+
+/**
+ * „Avaldatud“'s answer (R-b): done (also when the post was so already), with the database's clock after the commit (null when it cannot be read);
+ * refused on: `missing`, S4-Q1 A's fields the post lacks, as „Puudub: …“ lists them (S4-22: `kaanepilt, tekst, pealkiri (RU), tekst (RU)`), or
+ * `blocked` with the address another post has ("invalid", `slugTaken`); refused off: `blocked`, a pending draft that could not be published first
+ * ("changed" meanwhile, "invalid"); notFound for a post that is not there.
+ */
+export type PostSwitchResult =
+  | { ok: true; stamp: number | null }
+  | { ok: false; error: "notFound" }
+  | { ok: false; missing: string[] }
+  | { ok: false; blocked: SiteBlockedPart[] };
+
+/** A switch off refused: a pending draft could not be published (the transaction takes back what was). */
+class SwitchRefused extends Error {
+  constructor(readonly blocked: string[]) {
+    super("blocked");
+  }
+}
+
+/**
+ * A post's „Avaldatud“, instant (R-b), under the post's advisory lock, then the posts table (the lock order of its saves and its publish):
+ * - ON, for a post that is not published: the post's publish. Its row's value passes S4-Q1 A's strict check (Part.check: the cover, the title and the
+ *   text in Estonian and Russian, the category, the address's form and the day) and its address is no other post's (Part.rowCheck); then it is
+ *   written trimmed with `published` true, and a draft an earlier way of saving left on it is dropped (R-a: such a post holds none). Refused, nothing
+ *   is written.
+ * - OFF, on a published post: its pending drafts are published first in the same transaction, by the save's own rules (a hidden post needs no cover
+ *   or Russian text), then `published` is false; a draft that cannot be published (changed meanwhile, its address taken) refuses the switch, and
+ *   nothing is published or hidden (3a's switchCoursePublished rule) — the drafts are never lost.
+ * The post pages are revalidated once after a change. `now`: the request's time, as the course's switch takes it (a post stores no time of change).
+ */
+export async function switchPostPublished(db: Db, id: number, on: boolean, now: Date): Promise<PostSwitchResult> {
+  void now;
+  const target = postTarget(id);
+  if (on) {
+    const done = await db.transaction(async (tx): Promise<PostSwitchResult | "same" | "changed"> => {
+      await lockEntity(tx, target);
+      await lockTables(tx, ["posts"]);
+      const stored = await readPost(tx, id);
+      if (!stored) return { ok: false, error: "notFound" };
+      if (stored.published) return "same";
+      const def: Part<unknown> = (await partsOf(tx, target))[POST_PART];
+      const { live: value } = await liveOf("post", POST_PART, def, stored);
+      const c = new Check();
+      const write = def.check(c, fromEditorValue("post", POST_PART, value), POST_PART);
+      if (!c.ok || !write) return { ok: false, missing: missingOf("post", POST_PART, c.errors, value) };
+      const refused = (await def.rowCheck?.(tx, fromEditorValue("post", POST_PART, value))) ?? {};
+      if (Object.keys(refused).length > 0) return { ok: false, blocked: [{ part: POST_PART, ...invalidOf("post", POST_PART, refused) }] };
+      await write(tx, stored);
+      await updatePost(tx, id, { published: true });
+      await discardDrafts(tx, "post", id);
+      return "changed";
+    });
+    if (done === "changed") revalidatePosts(`post ${id} switched on`);
+    return done === "same" || done === "changed" ? { ok: true, stamp: await stampOrNull(db) } : done;
+  }
+  const { publisher, held } = makeSitePublisher(target, { versions: null, rule: "row" });
+  try {
+    const done = await db.transaction(async (tx): Promise<"notFound" | "same" | "changed"> => {
+      await lockEntity(tx, target);
+      await lockTables(tx, ["posts"]);
+      const stored = await readPost(tx, id);
+      if (!stored) return "notFound";
+      if (!stored.published) return "same";
+      const { blocked } = await publishDraftsIn(tx, "post", id, publisher);
+      if (blocked.length > 0) throw new SwitchRefused(blocked); // the transaction takes the published drafts back
+      await updatePost(tx, id, { published: false });
+      return "changed";
+    });
+    if (done === "notFound") return { ok: false, error: "notFound" };
+    if (done === "changed") revalidatePosts(`post ${id} switched off`);
+    return { ok: true, stamp: await stampOrNull(db) };
+  } catch (e) {
+    if (e instanceof SwitchRefused) return { ok: false, blocked: await blockedOf(db, target, e.blocked, held) };
+    throw e;
+  }
+}
+
+/**
+ * „Kustuta postitus“ (R-h): the post and its drafts deleted in one transaction (db/queries/admin-site.ts deletePostRow: the post's advisory lock, then
+ * the posts table); the post pages revalidated when it was published. False when there was no such post.
+ */
+export async function deletePost(db: Db, id: number): Promise<boolean> {
+  const row = await deletePostRow(db, id);
+  if (row?.published) revalidatePosts(`post ${id} deleted`);
+  return row !== null;
 }

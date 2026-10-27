@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { asc, eq } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { campaign, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "@/db/schema";
+import { campaign, contentDrafts, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { readSlides, saveSlides } from "@/db/queries/admin-site";
 import { getHomeData, getPage, getPracticePackages, getSettings, listPosts } from "@/db/queries/public";
@@ -23,14 +23,15 @@ import { saveDraftPart } from "@/server/drafts";
 import { discardSite, hasSitePart, publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
 import type { SaveAnswer } from "@/domain/autosave";
 import type { EditResult } from "@/server/edit-check";
-import type { SiteEntity } from "@/domain/site-entities";
+import type { PostPartValue, SiteEntity, SiteTarget } from "@/domain/site-entities";
 import { newPostDraft, type FaqDraft, type PackageDraft, type PostDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import { parsePrepayment } from "@/domain/account-cards";
 
 // Task 13B: the site content editors' rules on a real (PGlite) database with the prototype seed. Avaleht, Praktika and Koolitaja (admin UX pass piece 4a)
 // are pinned on the path they have now: a card's draft, then „Avalda muudatused“ (publishSite), which runs each part's strict check and writes it. The
-// loose check of a draft save, the drafts' versions and the routes are tests/db/site-drafts.test.ts'. Hüpikaken, Seaded and the posts still have the
-// form path (saveParts) and are pinned through it below.
+// loose check of a draft save, the drafts' versions and the routes are tests/db/site-drafts.test.ts'. Hüpikaken and Seaded still have the form path
+// (saveParts) and are pinned through it below; the posts have both until piece 4b's Task 5 (the old editor's form, and the draft layer: its rules are
+// tests/db/post-drafts.test.ts', and the strict check's own below).
 
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
@@ -819,6 +820,52 @@ describe("posts", () => {
     bad.set("id", "x");
     expect(await deletePostForm(db, bad)).toEqual({ ok: false, error: "invalid" });
     expect(await db.select().from(posts)).toHaveLength(5);
+  });
+});
+
+describe("posts on the draft layer (admin UX pass piece 4b, Task 1): the strict check at „Avalda muudatused“ (S4-Q1 A, R-g) and the delete (R-h)", () => {
+  const post = (id: number): SiteTarget => ({ entity: "post", id });
+  const readPost = (id: number) => readSiteEditor(db, post(id));
+  /** A draft put straight into the store (one the loose check would refuse): what the publish meets is the strict check alone. */
+  const forgePost = async (id: number, patch: Partial<PostPartValue>) => {
+    const { version, value } = (await readPost(id)).parts.post;
+    expect(version).toMatch(/^l:/);
+    const saved = await saveDraftPart(db, { entity: "post", entityId: id, part: "post", value: { ...(value as PostPartValue), ...patch }, baseVersion: version.slice(2), version: null, by: ADMIN });
+    expect(saved).toMatchObject({ ok: true });
+  };
+  const draftPost = async (id: number, patch: Partial<PostPartValue>) => {
+    expect(await writeSitePart(db, post(id), "post", patch, (await readPost(id)).parts.post.version, ADMIN, NOW)).toMatchObject({ ok: true, version: expect.stringMatching(/^d:/) });
+  };
+  const publishPost = async (id: number) => publishSite(db, post(id), { post: (await readPost(id)).parts.post.version });
+
+  test("a draft the loose check never saw is still held: the missing fields first (the category), then the other refusals (the address, the date)", async () => {
+    const [seed] = await listPosts(db);
+    await forgePost(seed.id, { category: { et: "" }, slug: "Mitte Nii!", publishedAt: "2026-02-30" });
+    expect(await publishPost(seed.id)).toMatchObject({ published: [], blocked: [{ part: "post", reason: "missing", fields: ["kategooria", "aadress", "kuupäev"] }] });
+    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0]).toEqual(seed);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+  });
+
+  test("the date at the publish: the same Estonian day keeps the stored time (that day's order), a new day starts at 09:00 Estonian time", async () => {
+    const [seed] = await listPosts(db);
+    const at = new Date("2026-09-22T11:37:00Z"); // 14:37 in Tallinn
+    await db.update(posts).set({ publishedAt: at }).where(eq(posts.id, seed.id));
+    await draftPost(seed.id, { excerpt: { et: "Sama päev." } });
+    expect(await publishPost(seed.id)).toMatchObject({ published: ["post"], blocked: [] });
+    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0]).toMatchObject({ publishedAt: at, excerpt: { et: "Sama päev." } });
+    await draftPost(seed.id, { publishedAt: "2026-09-23" });
+    expect(await publishPost(seed.id)).toMatchObject({ published: ["post"], blocked: [] });
+    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0].publishedAt.toISOString()).toBe("2026-09-23T06:00:00.000Z");
+  });
+
+  test("the old editor's „Kustuta postitus“ (deletePostForm) takes the post's drafts with it, another post's stay", async () => {
+    const [a, b] = await listPosts(db);
+    await draftPost(a.id, { excerpt: { et: "Uus." } });
+    await draftPost(b.id, { excerpt: { et: "Teine." } });
+    const del = new FormData();
+    del.set("id", String(a.id));
+    expect(await deletePostForm(db, del)).toMatchObject({ ok: true, deleted: true });
+    expect((await db.select().from(contentDrafts)).map((d) => [d.entity, d.entityId])).toEqual([["post", b.id]]);
   });
 });
 

@@ -1,6 +1,9 @@
+import { tallinnInstant } from "./calendar";
 import { Check, type FieldError } from "./field-check";
 import { isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
+import type { PostPartValue } from "./site-entities";
 import type { I18n } from "@/i18n/field";
+import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 
 // The site editors' LOOSE checks (admin UX pass piece 4a, ruling R-d): what a draft save of Avaleht, Koolitaja and Praktika refuses. A draft may be
 // incomplete — a new slide without its picture or title, a package with its price emptied, a FAQ row without its answer, a stat without its label —
@@ -14,6 +17,7 @@ import type { I18n } from "@/i18n/field";
 //
 // The names are the fields' paths in the part's value as its editor holds it (domain/site-entities.ts): a package's `price`, the trainer card's
 // `stats.0.label`, a list part's `slides.2.title`, and the list's own name (`slides`) for the list as a whole. Pure: the browser runs them too.
+// A post (piece 4b, loosePost below) is the one part with two fields held at every save: no post is stored without its Estonian title and its day.
 
 export type LooseProblems = Record<string, FieldError>;
 
@@ -118,4 +122,37 @@ export function loosePackage(v: PackageDraft): LooseProblems {
   for (const [i, item] of v.items.entries()) c.list(`items.${i}`, [item], L.item, 1);
   if (v.items.filter((item) => !blank(item)).length > L.packageItems) c.fail("items", "tooMany");
   return looseOf(c);
+}
+
+// ---------- Uudised: a post (piece 4b, rulings R-a, R-g) ----------
+
+/**
+ * A post's address as it is stored (today's rule, R-g): the typed one in small letters, or, typed empty, the one made from the Estonian title (at most
+ * SLUG_MAX, no dash at its end). The stored address must then be a slug (lib/slug.ts isSlug) that no other post has.
+ */
+export const postSlug = (typed: string, titleEt: string): string => typed.trim().toLowerCase() || slugify(titleEt.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
+
+/** Is the post's day a calendar day (YYYY-MM-DD, as the date field writes it)? The day is stored at 09:00 Estonian time (server/admin-site.ts). */
+export const isPostDay = (day: string): boolean => tallinnInstant(day.trim(), "09:00") !== null;
+
+/**
+ * A post's save (PostPartValue; piece 4b R-a), the same for a draft and for a post that saves straight to its row: the texts' lengths, a typed
+ * address's form, the cover's key. Two fields are held at the field even here, because no post can be stored without them (B3; S4-Q1: the Estonian
+ * title never reaches the publish's check): the Estonian title and the day. What waits for the publish (S4-Q1 A, „Puudub: …“): the cover, the
+ * category, the text, the Russian title and text — and so a text with only its Russian side (Check's "required"), as on the other site parts.
+ */
+export function loosePost(v: PostPartValue): LooseProblems {
+  const c = new Check();
+  c.text("title", v.title, L.postTitle, { required: true });
+  const typed = v.slug.trim();
+  if (typed && !isSlug(typed.toLowerCase())) c.fail("slug", "slugFormat");
+  c.text("category", v.category, L.category);
+  c.text("excerpt", v.excerpt, L.excerpt);
+  c.text("body", v.body, L.postBody);
+  c.image("coverKey", v.coverKey);
+  const day = v.publishedAt.trim();
+  if (!day) c.fail("publishedAt", "required");
+  else if (!isPostDay(day)) c.fail("publishedAt", "date");
+  const held = new Set(["title", "publishedAt"]);
+  return Object.fromEntries(Object.entries(c.errors).filter(([name, code]) => held.has(name) || !MISSING_CODES.includes(code)));
 }

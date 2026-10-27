@@ -60,14 +60,15 @@ import {
   type TrainerDraft,
   type WorkDraft,
 } from "@/domain/site-editor";
-import { looseBody, looseFaq, loosePackage, loosePage, looseSlides, looseTrainer, looseWorks } from "@/domain/site-checks";
+import { isPostDay, looseBody, looseFaq, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug } from "@/domain/site-checks";
+import { POST_PART, type PostPartValue } from "@/domain/site-entities";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 import type { SaveAnswer } from "@/domain/autosave";
 import { contentVersion } from "@/lib/version";
 import { fieldCodes } from "./autosave-route";
-import { Check, field, invalid, type EditResult, type SavedParts } from "./edit-check";
+import { Check, field, invalid, type EditResult, type FieldError, type SavedParts } from "./edit-check";
 
 // The site content editors' parts and form handling (Task 13B; admin UX pass piece 4a). Avaleht, Koolitaja and Praktika are made of PARTS (the hero
 // slides, the statement, the FAQ; MINI and MAXI; …) which their editors save into drafts (server/site-drafts.ts: a loose check at a draft save,
@@ -126,6 +127,18 @@ export type Part<V> = {
    * part's value as its editor holds it (domain/site-entities.ts), not prefixed. The parts on the draft layer have one: Avaleht's, Koolitaja's, Praktika's.
    */
   loose?: (value: V) => Record<string, string>;
+  /**
+   * The rules a value meets against the stored rows, by its fields' paths in the editor value ({} when it passes; piece 4b, ruling R-g): a post's
+   * address must be one (also when it is made from the title) and no other post's (`slugTaken`, ADM:2281). Run under the part's tables' lock, at a
+   * save that writes the row (`live`) and at „Avalda muudatused“ after the strict check (server/site-drafts.ts).
+   */
+  rowCheck?: (q: Q, value: V) => Promise<Record<string, FieldError>>;
+  /**
+   * A part whose row is saved straight while it is not published (piece 4b, ruling R-a: a post that is not published has no draft and no bar, as an
+   * unpublished course in 3a): `now(stored)`, whether a save of that stored value writes the row; `write`, the row's write of a value the schema, the
+   * loose check and `rowCheck` passed, under the part's tables' lock (the texts as typed: the publish's strict check trims them).
+   */
+  live?: { now: (stored: unknown) => boolean; write: (tx: Tx, value: V, stored: unknown) => Promise<void> };
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a page's parts have different draft types
 export type Parts = Record<string, Part<any>>;
@@ -604,6 +617,89 @@ export const saveLegalParts = (q: Q, sent: Partial<Record<LegalPart, { version: 
 
 // ---------- Uudised: posts ----------
 
+// A post on the draft layer (admin UX pass piece 4b, Task 1; rulings R-a, R-b, R-g; S4-Q1 A): the entity "post", entity_id the post's id, with the one
+// part `post` (PostPartValue: no `published`, no id). A post that is not published saves straight to its row (`live`); a published one into its
+// draft, which „Avalda muudatused“ writes through the strict check. The old editor's form path (savePostForm, deletePostForm, below) stays until Task 5.
+
+const postPartSchema = z.object({ title: i18n, slug: text(200), category: i18n, excerpt: i18n, body: i18n, coverKey: text(400), publishedAt: text(20) });
+
+/** A stored post as its editor holds it (R-a): its fields without `published` and the id, its date the Estonian day; an empty post when it is gone. */
+export function postPartValue(p: Post | null): PostPartValue {
+  if (!p) return { title: { et: "" }, slug: "", category: { et: "" }, excerpt: { et: "" }, body: { et: "" }, coverKey: "", publishedAt: "" };
+  return {
+    title: copyI18n(p.title),
+    slug: p.slug,
+    category: copyI18n(p.category),
+    excerpt: copyI18n(p.excerpt),
+    body: copyI18n(p.body),
+    coverKey: p.coverKey,
+    publishedAt: tallinnFormParts(p.publishedAt).date,
+  };
+}
+
+/** The instant a post's day is stored at: the stored one on the same Estonian day (the order of that day's posts stays), else 09:00 Estonian time; null for no day. */
+function postInstant(stored: Post | null, day: string): Date | null {
+  const d = day.trim();
+  const at = isPostDay(d) ? tallinnInstant(d, "09:00") : null;
+  if (!at) return null;
+  return stored && tallinnFormParts(stored.publishedAt).date === d ? stored.publishedAt : at;
+}
+
+/** The address's refusal of the stored rule (R-g): not one even when made from the title, or another post's (ADM:2281). */
+async function postAddress(q: Q, id: number, v: PostPartValue): Promise<Record<string, FieldError>> {
+  const slug = postSlug(v.slug, v.title.et);
+  if (!isSlug(slug)) return { slug: v.slug.trim() || v.title.et.trim() ? "slugFormat" : "required" };
+  return (await isPostSlugTaken(q, slug, id)) ? { slug: "slugTaken" } : {};
+}
+
+function postPart(id: number): Part<PostPartValue> {
+  return part<PostPartValue>({
+    tables: ["posts"],
+    schema: postPartSchema,
+    read: (q) => readPost(q, id),
+    draft: (stored) => postPartValue(stored as Post | null),
+    loose: loosePost,
+    rowCheck: (q, v) => postAddress(q, id, v),
+    /**
+     * S4-Q1 A, what a post needs to be public, refused in S4-22's order (the cover, then the Estonian fields as the editor has them, then the Russian
+     * title and text: `Puudub: kaanepilt, tekst, pealkiri (RU), tekst (RU)`): the cover; the title and the text in both languages; today's category
+     * (required, at most 40) and address rules (typed or made from the title, a slug: its being another post's is `rowCheck`'s); the excerpt's
+     * length; a day. The write stores the texts trimmed and keeps `published` as it is.
+     */
+    check: (c, v, name) => {
+      const p = `${name}.`;
+      const coverKey = c.image(`${p}coverKey`, v.coverKey, { required: true });
+      const title = c.text(`${p}title`, v.title, L.postTitle, { required: true });
+      const body = c.text(`${p}body`, v.body, L.postBody, { required: true });
+      const slug = postSlug(v.slug, v.title.et);
+      if (!isSlug(slug)) c.fail(`${p}slug`, v.slug.trim() || v.title.et.trim() ? "slugFormat" : "required");
+      const category = c.text(`${p}category`, v.category, L.category, { required: true });
+      const excerpt = c.text(`${p}excerpt`, v.excerpt, L.excerpt);
+      const day = v.publishedAt.trim();
+      if (!isPostDay(day)) c.fail(`${p}publishedAt`, day ? "date" : "required");
+      if (!(v.title.ru ?? "").trim()) c.fail(`${p}title.ru`, "required");
+      if (!(v.body.ru ?? "").trim()) c.fail(`${p}body.ru`, "required");
+      if (!c.ok || !title || !body || !category) return null;
+      const fields = { title, slug, category, excerpt: orEmpty(excerpt), body, coverKey };
+      const row = (stored: unknown): Post => ({ ...(stored as Post), ...fields, publishedAt: postInstant(stored as Post | null, day) ?? (stored as Post).publishedAt });
+      return writing(async (tx, stored) => updatePost(tx, id, { ...fields, publishedAt: row(stored).publishedAt }), row);
+    },
+    live: {
+      now: (stored) => stored !== null && !(stored as Post).published,
+      write: async (tx, v, stored) => {
+        const publishedAt = postInstant(stored as Post | null, v.publishedAt);
+        if (!publishedAt) throw new Error(`[admin-site] post ${id}: its day was not checked before its write`);
+        await updatePost(tx, id, { title: v.title, slug: postSlug(v.slug, v.title.et), category: v.category, excerpt: v.excerpt, body: v.body, coverKey: v.coverKey.trim(), publishedAt });
+      },
+    },
+  });
+}
+
+/** A post's parts (the draft layer's entity "post", server/site-drafts.ts): its one part `post`, or none when there is no such post. */
+export async function postParts(q: Q, id: number): Promise<Parts> {
+  return (await readPost(q, id)) ? { [POST_PART]: postPart(id) } : {};
+}
+
 const postSchema = z.object({
   id: z.number().int().positive().max(ID_MAX).nullable(),
   title: i18n,
@@ -616,14 +712,14 @@ const postSchema = z.object({
   published: z.boolean(),
 });
 
-/** A post's draft and version as the editor loads it (its date in Estonian time). */
-export async function postParts(post: Post): Promise<SavedParts & { values: { post: PostDraft } }> {
+/** A post's draft and version as the old editor's form loads it (its date in Estonian time; until piece 4b's Task 5). */
+async function postFormParts(post: Post): Promise<SavedParts & { values: { post: PostDraft } }> {
   return { values: { post: postDraft(post, tallinnFormParts(post.publishedAt).date) }, versions: { post: await contentVersion(post) } };
 }
 
 export async function loadPost(q: Q, id: number): Promise<(SavedParts & { values: { post: PostDraft } }) | null> {
   const post = await readPost(q, id);
-  return post ? postParts(post) : null;
+  return post ? postFormParts(post) : null;
 }
 
 /**

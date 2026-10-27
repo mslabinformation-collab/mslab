@@ -1,8 +1,10 @@
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
-import type { Q, Tx } from "../client";
-import { campaign, faq, galleryItems, heroSlides, pages, posts, practicePackages } from "../schema";
+import type { Db, Q, Tx } from "../client";
+import { campaign, contentDrafts, faq, galleryItems, heroSlides, pages, posts, practicePackages } from "../schema";
 import type { Campaign, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "../schema";
+import { siteDraftLockKey } from "@/domain/site-entities";
 import type { I18n } from "@/i18n/field";
+import { SLUG_MAX } from "@/lib/slug";
 
 // The site content editors' reads and writes (Task 13B): hero slides, FAQ, text pages, settings, practice packages, the
 // trainer works gallery, the campaign and posts. Callers must already have checked the admin session. The readers take
@@ -121,17 +123,45 @@ export async function updatePackage(tx: Tx, code: string, fields: PackageFields)
   await tx.update(practicePackages).set(fields).where(eq(practicePackages.code, code));
 }
 
+/**
+ * The first address of `slug`'s series no post has (admin UX pass piece 4b, ruling R-g; S4-19): `slug` itself, else `slug-2`, `slug-3` … (cut to
+ * SLUG_MAX before its number). Inside a transaction that has the posts table locked (lockTables), so nothing takes it before the insert.
+ */
+async function freePostSlug(q: Q, slug: string): Promise<string> {
+  if (!(await isPostSlugTaken(q, slug))) return slug;
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    const next = `${slug.slice(0, SLUG_MAX - suffix.length).replace(/-+$/, "")}${suffix}`;
+    if (!(await isPostSlugTaken(q, next))) return next;
+  }
+}
+
+/**
+ * Inserts a post (inside the save's transaction, the posts table locked: lockTables). An address another post has gets the series' first free one
+ * (freePostSlug: „Lisa postitus +“ pressed twice, or in two tabs, makes `uus-postitus` and `uus-postitus-2`, never a unique-index error). The row as
+ * stored, with its address.
+ */
 export async function insertPost(tx: Tx, fields: PostFields): Promise<Post> {
-  const [row] = await tx.insert(posts).values(fields).returning();
+  const [row] = await tx.insert(posts).values({ ...fields, slug: await freePostSlug(tx, fields.slug) }).returning();
   return row;
 }
 
-export async function updatePost(tx: Tx, id: number, fields: PostFields): Promise<void> {
+/** Writes the given columns of a post (the others stay). */
+export async function updatePost(tx: Tx, id: number, fields: Partial<PostFields>): Promise<void> {
   await tx.update(posts).set(fields).where(eq(posts.id, id));
 }
 
-/** Deletes a post; false when it did not exist. */
-export async function deletePostRow(q: Q, id: number): Promise<boolean> {
-  const rows = await q.delete(posts).where(eq(posts.id, id)).returning();
-  return rows.length > 0;
+/**
+ * Deletes a post and its drafts (admin UX pass piece 4b, ruling R-h) in one transaction (a savepoint of the caller's): the post's draft lock first, as
+ * its saves, publish and switch take it (domain/site-entities.ts siteDraftLockKey; server/site-drafts.ts), so no save writes a draft of a post that is
+ * going; then the posts table, as every post writer locks it. The deleted row; null when there was none.
+ */
+export async function deletePostRow(db: Q, id: number): Promise<Post | null> {
+  return (db as Db).transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${siteDraftLockKey("post", id)}))`);
+    await lockTables(tx, ["posts"]);
+    await tx.delete(contentDrafts).where(and(eq(contentDrafts.entity, "post"), eq(contentDrafts.entityId, id)));
+    const [row] = await tx.delete(posts).where(eq(posts.id, id)).returning();
+    return row ?? null;
+  });
 }

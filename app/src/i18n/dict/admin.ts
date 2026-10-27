@@ -282,6 +282,16 @@ export const adminEt = {
       item: "{code} punkt {n}",
       items: "{code} punktid",
     },
+    // a post's fields (S4-24); `Puudub: …` lists them in lower case (S4-22: `kaanepilt`, `tekst`, `pealkiri (RU)`, `tekst (RU)`)
+    post: {
+      title: "Pealkiri",
+      slug: "Aadress",
+      category: "Kategooria",
+      excerpt: "Lühitekst",
+      body: "Tekst",
+      publishedAt: "Kuupäev",
+      coverKey: "Kaanepilt",
+    },
     // S4-1: a label whose only change is the Russian text ({label}: any of the above, e.g. „Slaid 2 pealkiri (RU)“)
     ru: "{label} (RU)",
   },
