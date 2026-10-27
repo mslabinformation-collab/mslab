@@ -2293,7 +2293,7 @@
       "area": "haldus",
       "who": "dim",
       "device": "arvuti",
-      "title": "Salvestamata tekst Praktikas, Koolitajal ja Avalehel: lahkumine ja avaldamine",
+      "title": "Salvestamata tekst Praktikas, Koolitajal, Avalehel, Uudistes ja Hüpikaknas: lahkumine ja avaldamine",
       "href": "/admin/praktika",
       "steps": [
         "Ava „Praktika“, vali arendaja tööriistades (F12) Network all „Offline“ ja kirjuta paketi MINI „Lühitekst“ lõppu Proov.",
@@ -2302,7 +2302,7 @@
         "Vali Network all „No throttling“ ja oota, kuni päises on „Mustand salvestatud“.",
         "Kirjuta MAXI „Hind (€)“ asemele abc, vajuta ribal „Avalda muudatused“, siis klaviatuuril Enter ja kirjuta hind tagasi.",
         "Vajuta menüüs „Koolitaja“.",
-        "Tee sama lehtedel „Koolitaja“ (väli „Nimi“) ja „Avaleht“ (avatud slaidi „Pealkiri“).",
+        "Tee sama lehtedel „Koolitaja“ („Nimi“), „Avaleht“ (avatud slaidi „Pealkiri“), „Uudised“ (avaldatud postituse „Tekst“) ja „Hüpikaken“ („Pealkiri“).",
         "Vajuta igal lehel ribal „Loobu muudatustest“ ja kinnita."
       ],
       "expect": [
@@ -2312,14 +2312,14 @@
         "Hinnaga abc ei avaldata midagi ja päises on „Salvestamata — kontrolli märgitud välja“ koos nupuga „Näita“.",
         "Enter vajutab „Näita“: kursor on hinnaväljal; hinna tagasi kirjutamisel on päises jälle „Mustand salvestatud“.",
         "Ühendusega viib menüü järgmisele lehele ilma küsimuseta.",
-        "Koolitajal ja Avalehel küsib leht samamoodi ja „Jää siia“ viib kursori väljale, mida küsimus nimetab.",
+        "Koolitajal, Avalehel, Uudistes ja Hüpikaknas küsib leht samamoodi ja „Jää siia“ viib kursori väljale, mida küsimus nimetab.",
         "Pärast loobumist on väljad endised ja riba on kadunud."
       ],
-      "why": "Kolm lehte salvestavad nüüd ise ja hoiavad kirjutatud teksti alles.",
+      "why": "Viis lehte salvestavad nüüd ise ja hoiavad kirjutatud teksti alles.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-loend-terve-rida",

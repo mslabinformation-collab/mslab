@@ -407,6 +407,10 @@ describe("settings", () => {
     expect(await writeSettingsPart(db, "contact", { phone: "" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict", value: { phone: "+372 5555 0101" } });
     // the legal texts' writer (their publish, admin UX pass piece 3b, Task 5) takes only theirs
     expect(await saveLegalParts(db, { contact: { version: (await loadSettings(db)).versions.contact, value: good } } as never)).toEqual({ ok: false, error: "invalid" });
+    // and a part of its own whose value is not the part's shape (a title that is no text in two languages) is refused the same way, nothing written
+    const terms = await getPage(db, "terms");
+    expect(await saveLegalParts(db, { terms: { version: (await loadLegalParts(db)).versions.terms, value: { title: "Tingimused", body: { et: "Tekst." } } } })).toEqual({ ok: false, error: "invalid" });
+    expect(await getPage(db, "terms")).toEqual(terms);
   });
 
   // piece 4b, Task 3 (ruling c2): a card's version is the hash of its own fields, not of the whole row — the newsletter row's is pinned in

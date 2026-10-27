@@ -509,6 +509,27 @@ describe("the browser's copy", () => {
     expect(s.calls).toHaveLength(2);
   });
 
+  // Task 5 review m1: the same root as N-1 with her own typing as the newer value — an adopt waits behind an answer that confirms nothing (401), she
+  // types the field, and her save is confirmed: the waiting read must not be taken over her text.
+  test("adopt() that waits behind an answer that confirms nothing, then she types the field: her save is confirmed and her text stays", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    expect(e.adopt("title", "A")).toBe(true); // waits for the save on its way
+    s.calls[0].answer({ status: 401, body: { ok: false } });
+    await tick();
+    e.setField("title", "T");
+    window.dispatchEvent(new Event("focus")); // signed in again
+    await tick();
+    expect(s.calls[1].body).toEqual({ version: "v1", patch: { title: "T", body: "Uus" } });
+    s.calls[1].answer(ok("v2"));
+    await tick(DEBOUNCE_MS * 2);
+    expect(e.snapshot().fields).toEqual({ title: "T", body: "Uus" });
+    expect(e.confirmedValue("title")).toBe("T");
+    expect(s.calls).toHaveLength(2);
+  });
+
   // piece 4b, Task 2 re-review N-2: a post's address that follows its title, whose engine missed the read that brought the server's new address (the
   // read is skipped once a save has landed since it), still holds the old one; the visit leaves with typed text unsent, so the copy holds that old
   // address too. Resumed as typed, it would be sent and the address would stop following. The copy keeps the confirmed text it was typed over (`base`):
@@ -552,6 +573,62 @@ describe("the browser's copy", () => {
     s.calls[1].answer(ok("v4"));
     await tick();
     expect(e.snapshot()).toMatchObject({ status: { kind: "saved" }, fields: { slug: "kevad", body: "Tekst ja veel ja veel" } });
+  });
+
+  // Task 5 review I-1: a field typed back to its confirmed text while a save of another value had no answer is not untouched — the server may hold
+  // that save. The copy's text comes back and is saved over it; the copy is never dropped as if nothing were hers.
+  test("typed X, its answer lost (but X stored), typed back to the confirmed text, left: the next visit reads X, and the copy's text is saved over it", async () => {
+    const first = server();
+    const before = make(first.send);
+    before.setField("body", "X");
+    await tick(DEBOUNCE_MS);
+    expect(first.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { body: "X" } }]);
+    first.calls[0].answer(null); // no answer: the server stored X all the same
+    await tick();
+    before.setField("body", "Tekst"); // typed back, and the page left before it goes
+    before.stop();
+    expect(stored()).toMatchObject({ version: "v1", fields: { body: "Tekst" }, base: { body: "Tekst" }, sent: [{ body: "X" }] });
+    engine = null;
+    const s = server();
+    const e = new AutosaveEngine({ owner: "course", key: "12", version: "v2", fields: { title: "Pealkiri", body: "X" }, send: s.send, tab: "t2" });
+    engine = e;
+    e.start(localStorage);
+    expect(e.snapshot().fields).toEqual({ title: "Pealkiri", body: "Tekst" });
+    await tick();
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { body: "Tekst" } }]);
+    // the server holds that lost save: ours, confirmed at its version, and her text goes on from there
+    s.calls[0].answer(stale("v2", { title: "Pealkiri", body: "X" }));
+    await tick();
+    expect(e.snapshot().conflict).toBeNull();
+    expect(s.calls[1].body).toEqual({ version: "v2", patch: { body: "Tekst" } });
+    s.calls[1].answer(ok("v3"));
+    await tick();
+    expect(e.snapshot()).toMatchObject({ status: { kind: "saved" }, fields: { title: "Pealkiri", body: "Tekst" } });
+    expect(e.unconfirmed()).toBeNull();
+  });
+
+  // Task 5 review m3: a copy kept by the older build has no `base`: every field it holds comes back, an untyped one that differs from the read too.
+  test("a copy without `base` (the older build's) is resumed field for field; the same copy with its base brings back only the typed field", async () => {
+    const copy = { version: "v1", fields: { title: "Vana pealkiri", body: "Minu tekst" }, sent: [], at: 1 };
+    const read = { title: "Serveri pealkiri", body: "Tekst" };
+    localStorage.setItem("mslab-draft:course:12:old", JSON.stringify(copy));
+    let s = server();
+    let e = new AutosaveEngine({ owner: "course", key: "12", version: "v2", fields: { ...read }, send: s.send, tab: "t2" });
+    engine = e;
+    e.start(localStorage);
+    expect(e.snapshot().fields).toEqual({ title: "Vana pealkiri", body: "Minu tekst" });
+    await tick();
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { title: "Vana pealkiri", body: "Minu tekst" } }]);
+    e.stop();
+    localStorage.clear();
+    localStorage.setItem("mslab-draft:course:12:old", JSON.stringify({ ...copy, base: { title: "Vana pealkiri", body: "Tekst" } }));
+    s = server();
+    e = new AutosaveEngine({ owner: "course", key: "12", version: "v2", fields: { ...read }, send: s.send, tab: "t3" });
+    engine = e;
+    e.start(localStorage);
+    expect(e.snapshot().fields).toEqual({ title: "Serveri pealkiri", body: "Minu tekst" });
+    await tick();
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { body: "Minu tekst" } }]);
   });
 
   test("discardCopy() while a save is on its way: its answer leaves no copy behind", async () => {

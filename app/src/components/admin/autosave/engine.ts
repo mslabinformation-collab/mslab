@@ -247,10 +247,15 @@ export class AutosaveEngine {
     this.clearRetry();
   }
 
-  /** A field typed in: kept in this browser at once, saved 1.5 s after the last change. While in conflict or gone it is kept, not sent. */
+  /**
+   * A field typed in: kept in this browser at once, saved 1.5 s after the last change. While in conflict or gone it is kept, not sent. A read of the
+   * field that waits to be adopted is given up: her text is what goes now (Task 5 review m1: after an answer that confirmed nothing, the waiting
+   * value would otherwise be taken over hers once her own save is confirmed).
+   */
   setField(name: string, value: unknown): void {
     if (name in this.fields && same(this.fields[name], value)) return;
     this.fields = { ...this.fields, [name]: value };
+    this.dropWaitingAdopt(name);
     this.serverInvalid.delete(name);
     if (this.uncertain()) this.keep();
     else this.dropCopy();
@@ -649,9 +654,13 @@ export class AutosaveEngine {
    * the server decides. 200: saved. 409 with one of those texts (that visit's lost answer): saved on top. 409 with another device's text:
    * `conflict`, the copy's text kept. A copy the server holds already is dropped. The copies read go once this form's text is confirmed, each
    * only if nobody wrote it since (an open tab typing into its own keeps it). A simplified protocol-autosave.ts resume: an older copy's words
-   * give way to the newest's, with no notice of them. Only what was typed comes back: a field the copy holds as its confirmed text (`base`) was never
-   * typed in that visit, so the page's read stands there — in the form and in the texts sent without an answer — and it is never sent as typed (piece
-   * 4b review N-2: a post's address that follows its title, whose engine missed a read, would otherwise come back as hers and stop following).
+   * give way to the newest's, with no notice of them. Only what was typed comes back: a field that holds the copy's confirmed text (`base`) in the
+   * copy's text and in every text it sent without an answer was never typed in that visit, so the page's read stands there — in the form and in the
+   * texts sent without an answer — and it is never sent as typed (piece 4b review N-2: a post's address that follows its title, whose engine missed a
+   * read, would otherwise come back as hers and stop following). A field typed and then typed back while a save of it had no answer is not untouched:
+   * the server may hold that save, so the copy's text comes back and is saved over it (Task 5 review I-1). This trusts the page's read over the copy's
+   * confirmed text, which is right when the read is newer (a skipped read) but not when it is older than `base` (a page reused on Back / Forward while
+   * a copy is held): a field saved in that visit then shows its older text, taken as confirmed, until the next read brings the stored one (review m2).
    */
   private resume(): void {
     const storage = this.storage;
@@ -666,17 +675,20 @@ export class AutosaveEngine {
       if (!newest || copy.at >= newest.at) newest = copy;
     }
     if (!newest) return;
-    const base = newest.base;
-    /** Does `text` hold the copy's confirmed text in field `n` (typed nothing there)? Never, in a copy that has no `base`. */
-    const untouched = (text: Fields, n: string): boolean => base !== null && n in base && same(text[n], base[n]);
+    const copy = newest;
+    const base = copy.base;
+    /** Does `text` hold the copy's confirmed text in field `n`? Never, in a copy that has no `base`. */
+    const holdsBase = (text: Fields, n: string): boolean => base !== null && n in base && same(text[n], base[n]);
+    /** Was field `n` never typed in that visit: the copy's text and every text it sent without an answer hold the confirmed one there? */
+    const untouched = (n: string): boolean => holdsBase(copy.fields, n) && copy.sent.every((s) => !(n in s) || holdsBase(s, n));
     const fields: Fields = { ...this.fields };
-    for (const n of Object.keys(fields)) if (n in newest.fields && !untouched(newest.fields, n)) fields[n] = newest.fields[n];
+    for (const n of Object.keys(fields)) if (n in copy.fields && !untouched(n)) fields[n] = copy.fields[n];
     if (same(fields, this.fields)) return this.dropCopy();
     this.fields = fields;
-    this.version = newest.version;
-    this.unanswered = newest.sent.map((s) => {
+    this.version = copy.version;
+    this.unanswered = copy.sent.map((s) => {
       const u = this.over(s);
-      for (const n of Object.keys(u)) if (untouched(s, n)) u[n] = this.confirmed[n];
+      for (const n of Object.keys(u)) if (holdsBase(s, n)) u[n] = this.confirmed[n];
       return u;
     });
     this.keep();
