@@ -430,7 +430,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "avalik-jalus",
@@ -479,7 +479,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "avalik-uudiskiri-resend",
@@ -1608,7 +1608,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-uudised-mustand-eelvaade",
@@ -1638,7 +1638,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-praktika",
@@ -1763,7 +1763,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -1815,7 +1815,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-seaded-ettemaks",
@@ -2322,7 +2322,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -5962,7 +5962,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "kirjad-parool",
