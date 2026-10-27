@@ -377,36 +377,45 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
   });
 
   it("errors keyed by row: a refused link on slide 2 stays on that slide when the rows move while its save is on its way", async () => {
-    // the first save (slide 2's link) is answered only when the test says so; it is refused; the list sent after the move waits for good
+    // the first save (slide 2's link) is answered only when the test says so; it is refused; the list sent after the move waits until the test ends
     let release!: () => void;
     const first = new Promise<void>((r) => (release = r));
+    // (the list sent after the move is answered only when the test ends, refused again: released in `finally`, so no save of this test is still on its
+    // way when the next one starts — a send queued behind it would go out at the engine's bound, into that test)
+    let end!: () => void;
+    const last = new Promise<void>((r) => (end = r));
     remote.hold = (part, patch) => {
       if (part !== "slides") return null;
       const sent = patch.slides as SlideDraft[];
-      return sent[0]?.uid === "s1" ? first : new Promise<void>(() => {});
+      return sent[0]?.uid === "s1" ? first : last;
     };
     remote.refuse = (part, patch) => ((patch.slides as SlideDraft[] | undefined)?.some((s) => s.ctaHref.startsWith("javascript:")) ? { slides: "href" } : null);
-    await show();
-    await click(opener("s2"));
-    await type(field("slides.1.ctaHref"), "javascript:alert(1)");
-    await leave(field("slides.1.ctaHref"));
-    expect(remote.log).toHaveLength(1);
-    // slide 1 moves down while that save is on its way: slide 2 is first now
-    await click(button("Liiguta slaid 1 tahapoole", slideRow("s1")));
-    expect(slideOrder()).toEqual(["s2", "s1", "s3"]);
-    await act(async () => release());
-    await settle();
-    // the refusal of the list as it was sent lands on slide 2, wherever it is now: its link, in its box
-    const link = slideRow("s2")!.querySelector<HTMLInputElement>('[data-field="slides.0.ctaHref"]')!;
-    expect(link.getAttribute("aria-invalid")).toBe("true");
-    const words = container.querySelector(`#${CSS.escape(link.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
-    expect(text(words)).not.toBe("");
-    expect(words!.closest("[data-slide]")!.getAttribute("data-slide")).toBe("s2");
-    // slide 1 has no error: opened, its link is quiet
-    await click(opener("s1"));
-    expect(slideRow("s1")!.querySelector('[data-field="slides.1.ctaHref"]')!.getAttribute("aria-invalid")).toBeNull();
-    // the map says the slides need a look
-    expect(text($$("nav[aria-label='Jaotised'] a")[0].querySelector("[data-section-status]"))).toBe("3 · Kontrolli");
+    try {
+      await show();
+      await click(opener("s2"));
+      await type(field("slides.1.ctaHref"), "javascript:alert(1)");
+      await leave(field("slides.1.ctaHref"));
+      expect(remote.log).toHaveLength(1);
+      // slide 1 moves down while that save is on its way: slide 2 is first now
+      await click(button("Liiguta slaid 1 tahapoole", slideRow("s1")));
+      expect(slideOrder()).toEqual(["s2", "s1", "s3"]);
+      await act(async () => release());
+      await settle();
+      // the refusal of the list as it was sent lands on slide 2, wherever it is now: its link, in its box
+      const link = slideRow("s2")!.querySelector<HTMLInputElement>('[data-field="slides.0.ctaHref"]')!;
+      expect(link.getAttribute("aria-invalid")).toBe("true");
+      const words = container.querySelector(`#${CSS.escape(link.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
+      expect(text(words)).not.toBe("");
+      expect(words!.closest("[data-slide]")!.getAttribute("data-slide")).toBe("s2");
+      // slide 1 has no error: opened, its link is quiet
+      await click(opener("s1"));
+      expect(slideRow("s1")!.querySelector('[data-field="slides.1.ctaHref"]')!.getAttribute("aria-invalid")).toBeNull();
+      // the map says the slides need a look
+      expect(text($$("nav[aria-label='Jaotised'] a")[0].querySelector("[data-section-status]"))).toBe("3 · Kontrolli");
+    } finally {
+      await act(async () => end());
+      await settle();
+    }
   });
 
   it("a refusal never opens a slide for her (review I-1): the slide she types in stays open with the cursor in it; the closed refused slide says so on its row", async () => {
@@ -563,34 +572,43 @@ describe("„KKK“: the question shows, the answer is folded (P4 note, S4-11), 
   });
 
   it("errors keyed by row: a refused question 2 stays on that question when the rows move while its save is on its way", async () => {
-    // the first save (question 2 over its limit) is answered only when the test says so; it is refused; the list sent after the move waits for good
+    // the first save (question 2 over its limit) is answered only when the test says so; it is refused; the list sent after the move waits until the test ends
     let release!: () => void;
     const first = new Promise<void>((r) => (release = r));
+    // (the list sent after the move is answered only when the test ends, refused again: released in `finally`, so no save of this test is still on its
+    // way when the next one starts — a send queued behind it would go out at the engine's bound, into that test)
+    let end!: () => void;
+    const last = new Promise<void>((r) => (end = r));
     remote.hold = (part, patch) => {
       if (part !== "faq") return null;
       const sent = patch.faq as FaqDraft[];
-      return sent[0]?.uid === "f1" ? first : new Promise<void>(() => {});
+      return sent[0]?.uid === "f1" ? first : last;
     };
     remote.refuse = (part, patch) => ((patch.faq as FaqDraft[] | undefined)?.some((x) => x.q.et.length > 200) ? { faq: "tooLong" } : null);
-    await show();
-    await type(field("faq.1.q"), "K".repeat(201));
-    await leave(field("faq.1.q"));
-    expect(remote.log).toHaveLength(1);
-    // question 2 moves up while that save is on its way: it is first now
-    await click(button("Liiguta küsimus 2 üles"));
-    expect($$("[data-faq-row]").map((el) => el.getAttribute("data-faq-row"))).toEqual(["f2", "f1"]);
-    await act(async () => release());
-    await settle();
-    // the refusal of the list as it was sent lands on question 2, wherever it is now: its field, with the words
-    const refused = field("faq.0.q")!;
-    expect(refused.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
-    expect(refused.getAttribute("aria-invalid")).toBe("true");
-    const words = container.querySelector(`#${CSS.escape(refused.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
-    expect(text(words)).not.toBe("");
-    expect(words!.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
-    // question 1, now second, is quiet
-    expect(field("faq.1.q")!.getAttribute("aria-invalid")).toBeNull();
-    expect(text($$("nav[aria-label='Jaotised'] a")[3].querySelector("[data-section-status]"))).toContain("Kontrolli");
+    try {
+      await show();
+      await type(field("faq.1.q"), "K".repeat(201));
+      await leave(field("faq.1.q"));
+      expect(remote.log).toHaveLength(1);
+      // question 2 moves up while that save is on its way: it is first now
+      await click(button("Liiguta küsimus 2 üles"));
+      expect($$("[data-faq-row]").map((el) => el.getAttribute("data-faq-row"))).toEqual(["f2", "f1"]);
+      await act(async () => release());
+      await settle();
+      // the refusal of the list as it was sent lands on question 2, wherever it is now: its field, with the words
+      const refused = field("faq.0.q")!;
+      expect(refused.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
+      expect(refused.getAttribute("aria-invalid")).toBe("true");
+      const words = container.querySelector(`#${CSS.escape(refused.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
+      expect(text(words)).not.toBe("");
+      expect(words!.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
+      // question 1, now second, is quiet
+      expect(field("faq.1.q")!.getAttribute("aria-invalid")).toBeNull();
+      expect(text($$("nav[aria-label='Jaotised'] a")[3].querySelector("[data-section-status]"))).toContain("Kontrolli");
+    } finally {
+      await act(async () => end());
+      await settle();
+    }
   });
 
   it("× takes the question out at once with „Küsimus eemaldatud.“; „Võta tagasi“ puts it back at its place and saves", async () => {

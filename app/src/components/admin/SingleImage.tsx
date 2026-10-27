@@ -23,6 +23,7 @@ export function SingleImage({
   preview = true,
   labelHidden,
   name,
+  field,
   children,
 }: {
   label: string;
@@ -40,6 +41,11 @@ export function SingleImage({
   labelHidden?: boolean;
   /** data-single-image attribute (tests). */
   name: string;
+  /**
+   * The name of the field the picture is (a site part's, `trainer.portraitKey`): the group carries it as `data-field` and takes the focus, so the
+   * leave guard's „Jää siia“ and the chip's „Näita“ reach it (site/useSitePart.ts focusSiteField; piece 4a final review M-5).
+   */
+  field?: string;
   children?: ReactNode;
 }) {
   const t = adminEt.editor.image;
@@ -51,8 +57,9 @@ export function SingleImage({
       aria-labelledby={`${id}-label`}
       aria-describedby={error ? `${id}-error` : undefined}
       data-single-image={name}
+      data-field={field}
       data-invalid={error ? "" : undefined}
-      tabIndex={error ? -1 : undefined}
+      tabIndex={error || field ? -1 : undefined}
     >
       <p id={`${id}-label`} className={labelHidden ? ui.sr : styles.label}>
         {label}

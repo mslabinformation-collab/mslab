@@ -29,6 +29,8 @@ export type FocalTarget = {
  *
  * `hint` replaces the words under the title (Avaleht's open slide: „Puuduta pilti, et valida fookus · Vaheta pilt“, piece4-texts S4-10, with the
  * slide's upload in it); `titleHidden` keeps „Fookuspunkt“ for a screen reader only (the group's name), where the picture's column draws no title.
+ * `field`: the name of the field the point is (a site part's, `trainer.portraitPos`): the group carries it as `data-field` and takes the focus, so
+ * the leave guard's „Jää siia“ and the chip's „Näita“ reach it (site/useSitePart.ts focusSiteField; piece 4a final review M-5).
  */
 export function FocalPoint({
   src,
@@ -37,6 +39,7 @@ export function FocalPoint({
   error,
   hint,
   titleHidden = false,
+  field,
 }: {
   src: string;
   targets: FocalTarget[];
@@ -44,6 +47,7 @@ export function FocalPoint({
   error?: string;
   hint?: ReactNode;
   titleHidden?: boolean;
+  field?: string;
 }) {
   const t = adminEt.editor.focal;
   const id = useId();
@@ -65,7 +69,15 @@ export function FocalPoint({
   };
 
   return (
-    <div className={styles.focal} role="group" aria-labelledby={`${id}-title`} data-focal-point="" data-invalid={error ? "" : undefined} tabIndex={error ? -1 : undefined}>
+    <div
+      className={styles.focal}
+      role="group"
+      aria-labelledby={`${id}-title`}
+      data-focal-point=""
+      data-field={field}
+      data-invalid={error ? "" : undefined}
+      tabIndex={error || field ? -1 : undefined}
+    >
       <p id={`${id}-title`} className={titleHidden ? ui.sr : styles.label}>
         {t.title}
       </p>

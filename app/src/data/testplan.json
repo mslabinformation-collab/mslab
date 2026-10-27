@@ -1665,6 +1665,33 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-koolitaja-galerii-tais",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Koolitaja galerii: 24 pilti",
+      "href": "/admin/koolitaja",
+      "steps": [
+        "Ava „Koolitaja“ ja vaata kaardi „Galerii“ loendurit.",
+        "Vajuta plaadil „+ Lisa“ ja vali korraga nii mitu pilti, et loendur jõuaks 24-ni.",
+        "Vajuta uuesti plaadil „+ Lisa“.",
+        "Eemalda üks pilt ✕ nupuga ja vajuta plaadil „+ Lisa“; sulge failivalik ilma pildita.",
+        "Vajuta ribal „Loobu muudatustest“ ja kinnita."
+      ],
+      "expect": [
+        "Loenduril on piltide arv, näiteks „Lohista järjekorra muutmiseks · 7 / 24“.",
+        "Pildid tulevad galerii lõppu ja loendur on „Lohista järjekorra muutmiseks · 24 / 24“.",
+        "Täis galeriis on „+ Lisa“ plaat tuhmim ja failivalik ei avane.",
+        "Pärast eemaldamist on loendur „… · 23 / 24“ ja „+ Lisa“ avab jälle failivaliku.",
+        "Pärast loobumist on galerii nagu enne ja riba on kadunud."
+      ],
+      "why": "Galeriis on kuni 24 pilti; rohkem ei saa lisada.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-hupikaken",
       "area": "haldus",
       "who": "maria",
@@ -2192,12 +2219,14 @@
       "area": "haldus",
       "who": "dim",
       "device": "arvuti",
-      "title": "Lahkumine Praktikast, Koolitajalt ja Avalehelt salvestamata tekstiga",
+      "title": "Salvestamata tekst Praktikas, Koolitajal ja Avalehel: lahkumine ja avaldamine",
       "href": "/admin/praktika",
       "steps": [
         "Ava „Praktika“, vali arendaja tööriistades (F12) Network all „Offline“ ja kirjuta paketi MINI „Lühitekst“ lõppu Proov.",
         "Vajuta menüüs „Koolitaja“, siis brauseri nuppu Tagasi; iga küsimuse järel vajuta „Jää siia“.",
+        "Vajuta ühenduseta ribal „Avalda muudatused“.",
         "Vali Network all „No throttling“ ja oota, kuni päises on „Mustand salvestatud“.",
+        "Kirjuta MAXI „Hind (€)“ asemele abc, vajuta ribal „Avalda muudatused“, siis klaviatuuril Enter ja kirjuta hind tagasi.",
         "Vajuta menüüs „Koolitaja“.",
         "Tee sama lehtedel „Koolitaja“ (väli „Nimi“) ja „Avaleht“ (avatud slaidi „Pealkiri“).",
         "Vajuta igal lehel ribal „Loobu muudatustest“ ja kinnita."
@@ -2205,7 +2234,10 @@
       "expect": [
         "Ühenduseta küsivad menüü ja Tagasi ülaosas: „Muudatust „MINI lühitekst“ ei saanud veel salvestada.“.",
         "„Jää siia“ jätab lehe lahti, kirjutatud tekst on alles ja kursor on väljal „Lühitekst“.",
-        "Ühendusega on päises „Mustand salvestatud“ ja menüü viib järgmisele lehele ilma küsimuseta.",
+        "Ühenduseta „Avalda muudatused“ ei avalda midagi ja päises on näha „Salvestamata — proovin uuesti“.",
+        "Hinnaga abc ei avaldata midagi ja päises on „Salvestamata — kontrolli märgitud välja“ koos nupuga „Näita“.",
+        "Enter vajutab „Näita“: kursor on hinnaväljal; hinna tagasi kirjutamisel on päises jälle „Mustand salvestatud“.",
+        "Ühendusega viib menüü järgmisele lehele ilma küsimuseta.",
         "Koolitajal ja Avalehel küsib leht samamoodi ja „Jää siia“ viib kursori väljale, mida küsimus nimetab.",
         "Pärast loobumist on väljad endised ja riba on kadunud."
       ],

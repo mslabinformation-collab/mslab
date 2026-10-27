@@ -79,6 +79,9 @@ afterEach(() => {
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 /** A part's value as its editor holds it now (the draft over live). */
 const valueOf = async <V>(entity: SiteEntity, part: string) => clone((await readSiteEditor(db, entity)).parts[part].value) as V;
+/** „Avalda muudatused“ from a screen that has just read the entity: every part's version as that read gives it (the route's `{ versions }`). */
+const publishNow = async (entity: SiteEntity) =>
+  publishSite(db, entity, Object.fromEntries(Object.entries((await readSiteEditor(db, entity)).parts).map(([part, s]) => [part, s.version])));
 /** A save of `patch` from the version the editor holds now: it goes to the part's draft (the loose check), live is left alone. */
 async function save(entity: SiteEntity, part: string, patch: Record<string, unknown>) {
   const answer = await writeSitePart(db, entity, part, patch, (await readSiteEditor(db, entity)).parts[part].version, ME, NOW);
@@ -248,7 +251,7 @@ describe("what the preview shows is what „Avalda muudatused“ stores (one def
     const home = await getHomeData(db, { drafts: true });
     const trainer = await getTrainerPage(db, { drafts: true });
     const practice = await getPracticePackages(db, { drafts: true });
-    for (const entity of ["home", "trainer", "practice"] as const) expect((await publishSite(db, entity)).blocked).toEqual([]);
+    for (const entity of ["home", "trainer", "practice"] as const) expect((await publishNow(entity)).blocked).toEqual([]);
     const after = { home: await getHomeData(db), trainer: await getTrainerPage(db), practice: await getPracticePackages(db) };
 
     // (a new row's id is the database's after the publish; the preview gives it a placeholder: rows compared without their ids, kept ids compared)

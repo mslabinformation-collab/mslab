@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { TrainerEditor } from "@/components/admin/TrainerEditor";
 import { UndoProvider } from "@/components/admin/UndoBar";
 import type { PageDraft, TrainerDraft, WorkDraft } from "@/domain/site-editor";
@@ -331,6 +332,38 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     expect(Array.from(card("galerii")!.querySelectorAll("p")).filter((p) => text(p) === text(words))).toHaveLength(1);
   });
 
+  it("„Galerii“ at 24 pictures (the cap): „+ Lisa“ is aria-disabled, described by the counter, and opens no file dialog; one picture fewer, it adds again (final review M-3)", async () => {
+    const many = (n: number) => ({ works: Array.from({ length: n }, (_, i) => ({ key: `/seed/w${i}.jpg`, alt: { et: `Pilt ${i + 1}`, ru: `Фото ${i + 1}` } })) });
+    await show(partsOf({ works: many(24) }));
+    const c = card("galerii")!;
+    const count = c.querySelector("[data-gallery-count]")!;
+    expect(text(count)).toBe("Lohista järjekorra muutmiseks · 24 / 24");
+    const add = c.querySelector<HTMLInputElement>('[data-gallery-add] input[type="file"]')!;
+    expect(add.getAttribute("aria-disabled")).toBe("true");
+    expect(add.getAttribute("aria-describedby")!.split(" ")[0]).toBe(count.id);
+    expect(c.querySelector("[data-gallery-add]")!.hasAttribute("data-full")).toBe(true);
+    // the tile's press (the label's click comes to the field) opens no file dialog
+    const press = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => void add.dispatchEvent(press));
+    expect(press.defaultPrevented).toBe(true);
+    // and a pick that gets through all the same adds nothing
+    Object.defineProperty(add, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
+    await act(async () => void add.dispatchEvent(new Event("change", { bubbles: true })));
+    await settle();
+    expect(fetched.calls.filter((call) => call.url === "/api/admin/upload")).toHaveLength(0);
+    expect(tiles()).toHaveLength(24);
+
+    // a picture taken out: the tile adds again
+    await click(button("Eemalda pilt 24", c));
+    expect(text(count)).toBe("Lohista järjekorra muutmiseks · 23 / 24");
+    expect(add.getAttribute("aria-disabled")).toBeNull();
+    expect(add.getAttribute("aria-describedby")!.split(" ")).not.toContain(count.id);
+    expect(c.querySelector("[data-gallery-add]")!.hasAttribute("data-full")).toBe(false);
+    const again = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => void add.dispatchEvent(again));
+    expect(again.defaultPrevented).toBe(false);
+  });
+
   it("„Galerii“: a tile moved with its arrow is saved at once, „Galerii“ on the bar", async () => {
     await show();
     await click(card("galerii")!.querySelector('[data-gallery-item="/seed/c.jpg"] [data-drag-tool="up"]'));
@@ -369,5 +402,87 @@ describe("the stories fold while empty (S4-16)", () => {
     expect(card("teekond")!.querySelector("input, textarea")).toBeNull();
     const status = $$("nav[aria-label='Jaotised'] a").map((a) => text(a.querySelector("[data-section-status]")));
     expect(status.slice(3)).toEqual(["tühi", "tühi"]);
+  });
+
+  it("a story empty on the page, with this browser's copy of unsaved text: the copy comes back after the read and the card opens on it, the focus left alone (final review M-4)", async () => {
+    // (an earlier visit typed into the empty story and closed the tab before its save was answered)
+    localStorage.setItem(
+      "mslab-draft:site:trainer:trainer_journey:closed",
+      JSON.stringify({ version: "l:trainer_journey", fields: { title: { et: "Minu teekond" }, body: { et: "Esimene lõik." } }, sent: [], at: 1 }),
+    );
+    await show();
+    const journey = card("teekond")!;
+    expect(journey.querySelector("[data-story-fold]")).toBeNull();
+    expect(field("trainer_journey.title")!.value).toBe("Minu teekond");
+    expect(field("trainer_journey.body")!.value).toBe("Esimene lõik.");
+    expect(document.activeElement === document.body || document.activeElement === null).toBe(true);
+    // the map no longer says „tühi“ (the Estonian text has no Russian yet), and the copy is saved into the story's draft
+    expect(text($$("nav[aria-label='Jaotised'] a")[4].querySelector("[data-section-status]"))).toBe("RU puudub");
+    expect(remote.log.at(-1)).toMatchObject({ part: "trainer_journey", version: "l:trainer_journey", patch: { title: { et: "Minu teekond" }, body: { et: "Esimene lõik." } } });
+    expect(barWords()).toBe(draft("Koolitaja teekond"));
+  });
+});
+
+describe("„Jää siia“ and „Näita“ reach the portrait and its focal point (final review M-5)", () => {
+  const menuLink = () => createElement("a", { href: "/admin/kalender", "data-menu": "" }, "Kalender");
+  const showGuarded = async () => {
+    await act(async () =>
+      root.render(
+        createElement(
+          LeaveGuardProvider,
+          null,
+          menuLink(),
+          createElement(UndoProvider, null, createElement(TrainerEditor, { parts: partsOf(), stamp: 1, storyTitles: { center_story: "Koolituskeskuse lugu", trainer_journey: "Koolitaja teekond" } })),
+        ),
+      ),
+    );
+    await settle();
+  };
+  /** The menu link pressed (Next's Link stands in: reached only when the guard lets the click through), then the notice's „Jää siia“. */
+  const stayHere = async () => {
+    const followed = vi.fn((e: MouseEvent) => e.preventDefault());
+    document.addEventListener("click", followed);
+    try {
+      (document.activeElement as HTMLElement | null)?.blur();
+      await click($("[data-menu]"));
+      expect(router.push).not.toHaveBeenCalled();
+      expect(text($("[data-leave-title]"))).toBe("Muudatust „Portree“ ei saanud veel salvestada.");
+      await click($$<HTMLButtonElement>("[data-leave-notice] button").find((b) => text(b) === "Jää siia") ?? null);
+    } finally {
+      document.removeEventListener("click", followed);
+    }
+  };
+  const showLink = () => $("[data-save-status] button");
+
+  it("the focal point refused: „Näita“ and „Jää siia“ put the focus on the focal point's group", async () => {
+    remote.refuse = (part, patch) => (part === "trainer" && "portraitPos" in patch ? { portraitPos: "focal" } : null);
+    await showGuarded();
+    const x = $<HTMLInputElement>('[data-focal-axis="portrait-x"]');
+    await type(x, "30");
+    await leave(x);
+    expect($("[data-save-status]")!.getAttribute("data-save-kind")).toBe("invalid");
+    const focal = card("portree")!.querySelector<HTMLElement>("[data-focal-point]")!;
+    expect(focal.getAttribute("data-field")).toBe("trainer.portraitPos");
+    await click(showLink());
+    expect(document.activeElement).toBe(focal);
+    await stayHere();
+    expect(document.activeElement).toBe(focal);
+  });
+
+  it("a new portrait refused: „Näita“ and „Jää siia“ put the focus on the portrait's group", async () => {
+    remote.refuse = (part, patch) => (part === "trainer" && "portraitKey" in patch ? { portraitKey: "image" } : null);
+    await showGuarded();
+    const picture = card("portree")!.querySelector<HTMLElement>('[data-single-image="portrait"]')!;
+    expect(picture.getAttribute("data-field")).toBe("trainer.portraitKey");
+    const input = picture.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
+    await act(async () => void input.dispatchEvent(new Event("change", { bubbles: true })));
+    await settle();
+    expect(remote.log.at(-1)).toMatchObject({ part: "trainer", patch: { portraitKey: "img/uus.jpg" } });
+    expect($("[data-save-status]")!.getAttribute("data-save-kind")).toBe("invalid");
+    await click(showLink());
+    expect(document.activeElement).toBe(card("portree")!.querySelector('[data-single-image="portrait"]'));
+    await stayHere();
+    expect(document.activeElement).toBe(card("portree")!.querySelector('[data-single-image="portrait"]'));
   });
 });

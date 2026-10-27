@@ -59,6 +59,8 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 const read = (entity: SiteEntity) => readSiteEditor(db, entity);
 const liveOf = async <V>(entity: SiteEntity, part: string) => clone((await read(entity)).parts[part].live) as V;
+/** „Avalda muudatused“ from a screen that has just read the entity: every part's version as that read gives it (the route's `{ versions }`). */
+const publishNow = async (entity: SiteEntity) => publishSite(db, entity, Object.fromEntries(Object.entries((await read(entity)).parts).map(([part, s]) => [part, s.version])));
 
 /** A card's save, as the screen sends it: `patch` over the part's value from the version the screen holds now (the loose check lets it through). */
 async function draft(entity: SiteEntity, part: string, patch: Record<string, unknown>): Promise<void> {
@@ -97,7 +99,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     expect((home.parts.statement.value as { body: { et: string } }).body.et).toMatch(/^Õpetame/);
     expect((home.parts.faq.value as { faq: FaqDraft[] }).faq).toHaveLength(6);
     for (const p of Object.values(home.parts)) expect(p.version).toMatch(/^l:[0-9a-f]{32}$/);
-    expect(await publishSite(db, "home")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
+    expect(await publishNow("home")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
     expect(Object.values((await read("home")).parts).map((p) => p.version)).toEqual(Object.values(home.parts).map((p) => p.version));
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
@@ -108,7 +110,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     slides[0] = { ...slides[0], tone: "dark", imagePos: "30% 60%", imagePosMobile: "80% 40%", title: { et: "  Uus\nslaid  ", ru: " " } };
     await draft("home", "slides", { slides });
     expect((await getHomeData(db)).slides[0].tone).toBe("light"); // a draft is not live
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["slides"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["slides"], blocked: [] });
     const data = await getHomeData(db);
     expect(data.slides[0]).toMatchObject({ tone: "dark", imagePos: "30% 60%", imagePosMobile: "80% 40%", sort: 1 });
     expect(data.slides[0].title).toEqual({ et: "Uus\nslaid" }); // trimmed; a blank Russian side is no text
@@ -130,7 +132,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     slides[4] = { ...slides[4], ctaHref: "data:text/html,<b>x</b>", imagePosMobile: "50%" };
     await forge("home", "slides", { slides });
     // (what is missing first, then the other refusals, each field once, a focal point being its slide's picture)
-    expect((await publishSite(db, "home")).blocked).toEqual([
+    expect((await publishNow("home")).blocked).toEqual([
       {
         part: "slides",
         reason: "missing",
@@ -141,7 +143,7 @@ describe("home page: hero slides, statement, FAQ", () => {
 
     const nine = Array.from({ length: 9 }, (_, i) => ({ ...slides[0], uid: `n${i}`, id: null, imageKey: UPLOAD, imagePos: "50% 50%", imagePosMobile: "50% 50%", title: { et: "Üheksa" }, ctaHref: "/koolitused" }));
     await forge("home", "slides", { slides: nine });
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaidid"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaidid"] }]);
     expect(await db.select().from(heroSlides)).toEqual(before);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
@@ -151,7 +153,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     slides[0].ctaHref = "/ru/praktika";
     slides[1].ctaHref = "/et/koolitused";
     await forge("home", "slides", { slides });
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 1 nupp viib", "slaid 2 nupp viib"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 1 nupp viib", "slaid 2 nupp viib"] }]);
     expect((await readSlides(db)).map((s) => s.ctaHref)).not.toContain("/ru/praktika");
     // (the screen's own save refuses it at the field, before it can wait for the publish)
     expect(await writeSitePart(db, "home", "slides", { slides }, (await read("home")).parts.slides.version, ADMIN, NOW)).toMatchObject({
@@ -170,7 +172,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     slides[1].ctaHref = "https://www.instagram.com/mslab";
     slides.splice(1, 0, { ...slides[2], uid: "new-1", id: null, imageKey: UPLOAD, title: { et: "Uus" }, active: false });
     await draft("home", "slides", { slides });
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["slides"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["slides"], blocked: [] });
     const stored = await db.select().from(heroSlides).orderBy(heroSlides.sort);
     expect(stored.map((s) => s.ctaHref).slice(0, 3)).toEqual(["/praktika?pakett=MINI#taotlus", slides[1].ctaHref, "https://www.instagram.com/mslab"]);
     expect(stored[1]).toMatchObject({ imageKey: UPLOAD, active: false, sort: 2 });
@@ -184,7 +186,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     const [first] = slides.splice(0, 1); // the first one goes …
     slides.push({ ...first, uid: "copy", title: { et: "Kordus" } }, { ...first, uid: "copy2", title: { et: "Kordus 2" } }); // … and comes back twice
     await draft("home", "slides", { slides: slides.slice(1) });
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["slides"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["slides"], blocked: [] });
     const stored = await db.select().from(heroSlides).orderBy(heroSlides.sort);
     expect(stored.map((s) => s.title.et)).toEqual([...live.slice(2).map((s) => s.title.et), "Kordus", "Kordus 2"]);
     expect(stored.slice(0, 3).map((s) => s.id)).toEqual(ids.slice(2, 5)); // kept their ids
@@ -202,7 +204,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     // another way of saving changes slide 1 live after the drafts began
     const rows = await readSlides(db);
     await db.transaction((tx) => saveSlides(tx, rows.map((r, i) => (i === 0 ? { ...r, tone: "dark" as const } : r))));
-    const result = await publishSite(db, "home");
+    const result = await publishNow("home");
     expect(publishedParts(result)).toEqual({ published: ["statement"], blocked: ["slides"] });
     expect(result.blocked[0].reason).toBe("changed");
     expect((await getHomeData(db)).slides[0].tone).toBe("dark"); // their change is kept
@@ -222,16 +224,16 @@ describe("home page: hero slides, statement, FAQ", () => {
     });
     const value = { body: { et: "Uus tekst.", ru: "Новый текст." } };
     await draft("home", "teaser", value);
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["teaser"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["teaser"], blocked: [] });
     expect(await getPage(db, "trainer_teaser")).toMatchObject({ title: { et: "Sinu koolitaja" }, body: value.body });
     // over 300 characters: refused at the field, and held back at the publish when a draft holds it anyway
     const long = { body: { et: "x".repeat(301) } };
     expect(await writeSitePart(db, "home", "teaser", long, (await read("home")).parts.teaser.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { body: "tooLong" } });
     await forge("home", "teaser", long);
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "teaser", reason: "missing", fields: ["koolitaja kaart"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "teaser", reason: "missing", fields: ["koolitaja kaart"] }]);
     expect(await getPage(db, "trainer_teaser")).toMatchObject({ body: value.body });
     await draft("home", "teaser", { body: { et: "" } });
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["teaser"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["teaser"], blocked: [] });
     expect(await getPage(db, "trainer_teaser")).toMatchObject({ body: { et: "" } });
   });
 
@@ -239,7 +241,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     const items = (await liveOf<{ faq: FaqDraft[] }>("home", "faq")).faq;
     const moved = [items[1], items[0], { uid: "x", id: null, q: { et: " " }, a: { et: "" } }, { uid: "y", id: null, q: { et: "Uus küsimus?", ru: "Новый вопрос?" }, a: { et: "Jah." } }, ...items.slice(2)];
     await draft("home", "faq", { faq: moved });
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["faq"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["faq"], blocked: [] });
     const stored = await db.select().from(faq).orderBy(faq.sort);
     expect(stored).toHaveLength(7);
     expect(stored.map((f) => f.q.et).slice(0, 3)).toEqual([items[1].q.et, items[0].q.et, "Uus küsimus?"]);
@@ -248,11 +250,11 @@ describe("home page: hero slides, statement, FAQ", () => {
 
     const bad = [{ uid: "a", id: null, q: { et: "Küsimus ilma vastuseta?" }, a: { et: "" } }, { uid: "b", id: null, q: { et: "", ru: "Только русский?" }, a: { et: "Vastus" } }];
     await draft("home", "faq", { faq: bad }); // (a row still being written is kept in the draft)
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "faq", reason: "missing", fields: ["KKK vastus 1", "KKK küsimus 2"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "faq", reason: "missing", fields: ["KKK vastus 1", "KKK küsimus 2"] }]);
     const many = Array.from({ length: 31 }, (_, i) => ({ uid: `m${i}`, id: null, q: { et: `K${i}?` }, a: { et: "V" } }));
     expect(await writeSitePart(db, "home", "faq", { faq: many }, (await read("home")).parts.faq.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { faq: "tooMany" } });
     await forge("home", "faq", { faq: many });
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "faq", reason: "missing", fields: ["KKK"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "faq", reason: "missing", fields: ["KKK"] }]);
     expect(await db.select().from(faq)).toHaveLength(7);
   });
 
@@ -263,7 +265,7 @@ describe("home page: hero slides, statement, FAQ", () => {
     items[0].q = { et: "Muudetud küsimus?" };
     const moved = [items[2], items[0], ...items.slice(3), { uid: "n", id: null, q: { et: "Uus?" }, a: { et: "Jah." } }]; // item 2 (index 1) removed
     await draft("home", "faq", { faq: moved });
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["faq"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["faq"], blocked: [] });
     const stored = await db.select().from(faq).orderBy(faq.sort);
     expect(stored.map((f) => f.id).slice(0, 5)).toEqual([ids[2], ids[0], ids[3], ids[4], ids[5]]);
     expect(stored[1].q).toEqual({ et: "Muudetud küsimus?" });
@@ -281,7 +283,7 @@ describe("practice packages", () => {
     const maxi = { ...clone(p.parts.MAXI.value as PackageDraft), durationLabel: { et: "9 ak", ru: "9 ак" }, price: "155,50", items: [{ et: "Töö neljal modellil" }, { et: " " }, { et: "Uus punkt", ru: "Новый пункт" }] };
     await draft("practice", "MAXI", maxi);
     expect((await getPracticePackages(db))[1]).toMatchObject({ code: "MAXI", price: 15000 }); // a draft is not live
-    expect(await publishSite(db, "practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
+    expect(await publishNow("practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
     const [mini, stored] = await getPracticePackages(db);
     expect(stored).toMatchObject({ code: "MAXI", durationLabel: { et: "9 ak", ru: "9 ак" }, price: 15550, models: 4, items: [{ et: "Töö neljal modellil" }, { et: "Uus punkt", ru: "Новый пункт" }], sort: 2 });
     expect(mini.durationLabel).toEqual({ et: "4 ak", ru: "4 ак. ч." });
@@ -296,13 +298,13 @@ describe("practice packages", () => {
     expect(await writeSitePart(db, "practice", "MINI", bad, (await read("practice")).parts.MINI.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { models: "whole", price: "amount" } });
     await forge("practice", "MINI", bad);
     // (what is missing first: the name, the duration and the point without its Estonian text, then the models and the price)
-    expect((await publishSite(db, "practice")).blocked).toEqual([
+    expect((await publishNow("practice")).blocked).toEqual([
       { part: "MINI", reason: "missing", fields: ["MINI nimi", "MINI kestus", "MINI punkt 1", "MINI modelle", "MINI hind"] },
     ]);
     // empty is no wrong form: it waits in the draft, and the publish says what is missing
     await discardSite(db, "practice");
     await draft("practice", "MINI", { models: "", price: "" });
-    expect((await publishSite(db, "practice")).blocked).toEqual([{ part: "MINI", reason: "missing", fields: ["MINI modelle", "MINI hind"] }]);
+    expect((await publishNow("practice")).blocked).toEqual([{ part: "MINI", reason: "missing", fields: ["MINI modelle", "MINI hind"] }]);
     expect((await getPracticePackages(db))[0].price).toBe(10000);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
     // a package code that is none has no part
@@ -316,9 +318,9 @@ describe("practice packages", () => {
     const mini = a.parts.MINI.value as PackageDraft;
     const maxi = b.parts.MAXI.value as PackageDraft;
     expect(await writeSitePart(db, "practice", "MINI", { models: "3" }, a.parts.MINI.version, ADMIN, NOW)).toMatchObject({ ok: true });
-    expect(await publishSite(db, "practice")).toMatchObject({ published: ["MINI"], blocked: [] });
+    expect(await publishNow("practice")).toMatchObject({ published: ["MINI"], blocked: [] });
     expect(await writeSitePart(db, "practice", "MAXI", { models: "5" }, b.parts.MAXI.version, ADMIN, NOW)).toMatchObject({ ok: true }); // (MAXI was not touched meanwhile)
-    expect(await publishSite(db, "practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
+    expect(await publishNow("practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
     // the old page's MINI is not MINI any more
     expect(await writeSitePart(db, "practice", "MINI", { models: "1" }, b.parts.MINI.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "conflict" });
     expect((await db.select().from(practicePackages).orderBy(practicePackages.sort)).map((x) => x.models)).toEqual([3, 5]);
@@ -334,7 +336,7 @@ describe("trainer page", () => {
     expect(card.stats).toHaveLength(3);
     const trainer = { ...clone(card), portraitKey: UPLOAD, portraitPos: "40% 30%", name: { et: " Maria S. ", ru: "Мария С." }, role: { et: "Koolitaja", ru: "Тренер" }, stats: [{ uid: "a", value: "10+", label: { et: "aastat", ru: "лет" } }, { uid: "b", value: " ", label: { et: "" } }] };
     await draft("trainer", "trainer", trainer);
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
     const s = (await getSettings(db)).trainer;
     expect(s).toEqual({ portraitKey: UPLOAD, portraitPos: "40% 30%", contactPhotoKey: "/seed/maria-seated.jpg", name: { et: "Maria S.", ru: "Мария С." }, role: { et: "Koolitaja", ru: "Тренер" }, stats: [{ value: "10+", label: { et: "aastat", ru: "лет" } }] });
     expect(((await read("trainer")).parts.trainer.value as TrainerDraft).portraitPos).toBe("40% 30%");
@@ -347,17 +349,17 @@ describe("trainer page", () => {
     const bad = { ...card, name: { et: "", ru: "Мария" }, portraitKey: "https://evil.example/p.jpg", stats: [{ uid: "a", value: "8+", label: { et: "" } }, ...four] };
     expect(await writeSitePart(db, "trainer", "trainer", bad, (await read("trainer")).parts.trainer.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { portraitKey: "image", stats: "tooMany" } });
     await forge("trainer", "trainer", bad);
-    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi", "numbrid", "portree"] }]);
+    expect((await publishNow("trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi", "numbrid", "portree"] }]);
     // four whole pairs are one too many and nothing else
     await discardSite(db, "trainer");
     await forge("trainer", "trainer", { stats: four });
-    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["numbrid"] }]);
+    expect((await publishNow("trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["numbrid"] }]);
     // a half stat alone (a number and no label; name and portrait fine, one pair, so no cap is in play) is the half-stat rule on its own
     await discardSite(db, "trainer");
     await forge("trainer", "trainer", { stats: [{ uid: "a", value: "8+", label: { et: "" } }] });
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
+    expect(await publishNow("trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
     await forge("trainer", "trainer", { stats: [{ uid: "a", value: "", label: { et: "aastat", ru: "лет" } }] }); // … and the other half: a label and no number
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
+    expect(await publishNow("trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
     expect(((await getSettings(db)).trainer as { stats: unknown[] }).stats).toHaveLength(3);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
@@ -381,7 +383,7 @@ describe("trainer page", () => {
     await draft("trainer", "works", { works });
     await draft("trainer", "center_story", { title: { et: "" }, body: { et: "Lugu.", ru: "История." } });
     await draft("trainer", "trainer_journey", { title: { et: "Minu tee" }, body: { et: "" } });
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["bio", "works", "center_story", "trainer_journey"], blocked: [] });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["bio", "works", "center_story", "trainer_journey"], blocked: [] });
     expect(await getPage(db, "trainer_bio")).toMatchObject({ title: { et: "Maria Sosnina" }, body: { et: "Esimene lõik.\n\nTeine lõik." } });
     const gallery = await db.select().from(galleryItems).where(eq(galleryItems.group, "trainer_works")).orderBy(galleryItems.sort);
     expect(gallery.map((g) => [g.key, g.sort])).toEqual([[UPLOAD2, 0], [live[0].key, 1], [live[1].key, 2]]);
@@ -396,9 +398,9 @@ describe("trainer page", () => {
     expect(await writeSitePart(db, "trainer", "works", { works: tooMany }, (await read("trainer")).parts.works.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { works: "tooMany" } });
     expect(await writeSitePart(db, "trainer", "works", { works: wrong }, (await read("trainer")).parts.works.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { "works.0.alt": "tooLong", "works.1.key": "image" } });
     await forge("trainer", "works", { works: tooMany });
-    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "works", reason: "missing", fields: ["galerii"] }]);
+    expect((await publishNow("trainer")).blocked).toEqual([{ part: "works", reason: "missing", fields: ["galerii"] }]);
     await forge("trainer", "works", { works: wrong });
-    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "works", reason: "missing", fields: ["galerii"] }]);
+    expect((await publishNow("trainer")).blocked).toEqual([{ part: "works", reason: "missing", fields: ["galerii"] }]);
     expect(await db.select().from(galleryItems).where(eq(galleryItems.group, "trainer_works"))).toHaveLength(3);
   });
 });

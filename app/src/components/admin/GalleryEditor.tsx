@@ -41,6 +41,9 @@ type GalleryProps = {
   addLabel?: string;
   /** The grid's description fields' names: `<name>.<i>.alt` (a site part's convention, `works.2.alt`); without it `image-<i>`, as the list's rows. */
   name?: string;
+  /** The grid's cap (Koolitaja's 24): at it „+ Lisa“ is aria-disabled and opens no file dialog, described by `maxNote` (the id of the counter). */
+  max?: number;
+  maxNote?: string;
 };
 
 /**
@@ -151,12 +154,14 @@ function GalleryList({ images, onChange, error, hint, showMain = true, errorOf }
  * radius, its handle, a 32 px round ✕ at the corner and ↑ / ↓ (the gallery's own names, S4-15 note), and under it the picture's description (the
  * list's field and words, „Pildi kirjeldus“, as its name and placeholder: builder notes §5, the fields the mocks leave out stay) with its own refusal
  * — then the tile „+ Lisa“ (its field named „Lisa pilte“), the upload's notes under the grid. A tile is dragged both ways (DragList layout="grid").
+ * At `max` pictures the tile adds none (final review M-3: a picture past the cap would hold back every later change of the gallery).
  */
-function GalleryGrid({ images, onChange, error, hint, errorOf, addLabel = adminEt.upload.choose, name }: GalleryProps) {
+function GalleryGrid({ images, onChange, error, hint, errorOf, addLabel = adminEt.upload.choose, name, max, maxNote }: GalleryProps) {
   const t = adminEt.courseEditor.fields;
   const { root, drag, remove, describe, added } = useGalleryRows(images, onChange);
   // the upload's parts placed by the grid: its field in the „+ Lisa“ tile, its notes under the grid
   const upload = useImageUpload(added);
+  const full = max !== undefined && images.length >= max;
   return (
     <div ref={root} className={styles.list} data-gallery-editor="" data-gallery-layout="grid" data-invalid={error ? "" : undefined} tabIndex={error ? -1 : undefined}>
       {hint && <p className={ui.hint}>{hint}</p>}
@@ -189,8 +194,8 @@ function GalleryGrid({ images, onChange, error, hint, errorOf, addLabel = adminE
           </div>
         )}
         after={
-          <span className={tiles.add} data-gallery-add="" aria-busy={upload.busy || undefined}>
-            <UploadPicker upload={upload} multiple name={adminEt.upload.choose}>
+          <span className={tiles.add} data-gallery-add="" data-full={full ? "" : undefined} aria-busy={upload.busy || undefined}>
+            <UploadPicker upload={upload} multiple name={adminEt.upload.choose} full={full} fullNote={maxNote}>
               + {addLabel}
             </UploadPicker>
           </span>

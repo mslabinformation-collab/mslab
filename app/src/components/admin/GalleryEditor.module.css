@@ -132,6 +132,16 @@
   outline-offset: 2px;
 }
 
+/* at the cap (24): the tile adds nothing (its field aria-disabled, no file dialog), drawn as the bar's disabled buttons are */
+.add[data-full] label {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.add[data-full] label:hover {
+  background: transparent;
+}
+
 /* the upload's notes under the grid: what it takes, how it went */
 .notes {
   display: grid;

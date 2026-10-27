@@ -18,10 +18,12 @@ import { readStamp, stampOrNull } from "./read-stamp";
 // editors save one part at a time (POST /api/admin/sisu/<entity>/0/osa/<part>, server/autosave-route.ts' contract):
 // - A save goes to the part's draft; live is left alone. It passes the part's schema (the types) and its LOOSE check (R-d, domain/site-checks.ts:
 //   lengths, list caps, forms; nothing is required), so a new slide without its picture waits in the draft. Typed back to live, the draft goes.
-// - „Avalda muudatused“ (publishSite) writes every part whose live value is still the one its draft began from, through the part's STRICT check
-//   (Part.check, the old „Salvesta“'s) and the Write it answers, all in one transaction. A part that fails the check is held back with its missing
-//   fields' labels (`Puudub: slaid 3 pilt`, S4-2), one changed live meanwhile is held back as changed; both keep their drafts, the others publish.
-//   The public pages are revalidated once, after the commit.
+// - „Avalda muudatused“ (publishSite) carries the screen's versions, every part's as the screen holds it after its flush (piece 4a final review I-1):
+//   it writes every part whose draft is the one the screen sent and whose live value is still the one its draft began from, through the part's
+//   STRICT check (Part.check, the old „Salvesta“'s) and the Write it answers, all in one transaction. A part that fails the check is held back with
+//   its missing fields' labels (`Puudub: slaid 3 pilt`, S4-2); one whose draft another window saved after the screen read it (or one with a draft
+//   the screen did not send), or whose live value changed meanwhile, is held back as changed; all keep their drafts, the others publish. The
+//   public pages are revalidated once, after the commit.
 // - „Loobu muudatustest“ (discardSite) deletes every draft of the entity (R-e); live stays as it is.
 // - Versions (R-b), as server/course-parts.ts': "l:<hash>" while a part has no draft, the hash being lib/version.ts contentVersion of the part's
 //   DRAFT-SHAPED live value (its editor value, never the stored row: a column outside the part, like the trainer setting's contactPhotoKey, never
@@ -183,8 +185,9 @@ export async function writeSitePart(db: Db, entity: SiteEntity, part: string, pa
 // ---------- „Avalda muudatused“ ----------
 
 /**
- * A part „Avalda muudatused“ left in its draft (S3-P3-b): "changed", its live value changed after the draft began, `fields` the labels of the
- * draft's changes; "missing", its strict check refused it, `fields` the refused fields' labels as „Puudub: …“ writes them (S4-2: `slaid 3 pilt`).
+ * A part „Avalda muudatused“ left in its draft (S3-P3-b): "changed", its draft is not the one the screen sent (another window saved it after the
+ * screen's read) or its live value changed after the draft began, `fields` the labels of the draft's changes; "missing", its strict check refused
+ * it, `fields` the refused fields' labels as „Puudub: …“ writes them (S4-2: `slaid 3 pilt`).
  */
 export type SiteBlockedPart = { part: string; reason: "changed" | "missing"; fields: string[] };
 
@@ -226,15 +229,19 @@ function revalidateEntity(entity: SiteEntity, written: string[]): void {
  * The entity's Publisher (server/drafts.ts) with what it decided:
  * - lock (R-c): the entity's advisory lock, then every table of its parts at once (lockTables, alphabetical), before any draft is read;
  * - liveVersion: the hash of the part's draft-shaped live value (R-b), read under that lock (and kept for its write);
- * - hold: each part's strict check (Part.check) on its draft's value; a part it refuses is held as "missing" with its fields' labels (R-d, R-i);
+ * - hold: first, each part's draft against `versions`, the screen's (review I-1): a draft at another version than the one the screen sent, or one
+ *   the screen sent none for, is newer than what the screen showed — held, and named as changed (blockedOf); then each other part's strict check
+ *   (Part.check) on its draft's value; a part it refuses is held as "missing" with its fields' labels (R-d, R-i);
  * - write: the Write the check answered, with the stored value read under the lock;
  * - revalidate: once, after the commit, the entity's pages (Koolitaja's by the parts written).
  */
-function makeSitePublisher(entity: SiteEntity) {
+function makeSitePublisher(entity: SiteEntity, versions: Readonly<Record<string, string>>) {
   let parts: Parts | null = null;
   const stored = new Map<string, unknown>();
   const writes = new Map<string, Write>();
   const held = new Map<string, Omit<SiteBlockedPart, "part">>();
+  /** The parts whose draft is not the one the screen sent: changed (their labels are worked out after the commit, as a live change's). */
+  const newer = new Set<string>();
   const written: string[] = [];
   const defOf = (part: string): Part<unknown> | undefined => (parts && Object.hasOwn(parts, part) ? parts[part] : undefined);
   const publisher: Publisher = {
@@ -253,14 +260,19 @@ function makeSitePublisher(entity: SiteEntity) {
       return (await liveOf(entity, part, def, value)).hash;
     },
     async hold(_tx, candidates) {
-      for (const { part, value: raw } of candidates) {
+      for (const { part, value: raw, id, version } of candidates) {
         const def = defOf(part);
         if (!def) continue;
+        // (another window saved this draft after the screen read it, or the screen did not know of it: never published from a bar that did not show it)
+        if (!Object.hasOwn(versions, part) || versions[part] !== draftVersion(id, version)) {
+          newer.add(part);
+          continue;
+        }
         const { value: shown, check: c, write } = strictDraft(entity, part, def, stored.get(part), raw);
         if (c.ok && write) writes.set(part, write);
         else held.set(part, { reason: "missing", fields: missingOf(entity, part, c.errors, shown) });
       }
-      return [...held.keys()];
+      return [...held.keys(), ...newer];
     },
     async write(tx, part) {
       const write = writes.get(part);
@@ -274,8 +286,9 @@ function makeSitePublisher(entity: SiteEntity) {
 }
 
 /**
- * The blocked parts with their reasons: the held ones as decided, the others changed meanwhile, with their drafts' changes' labels row by row, as the
- * PublishBar names them (domain/site-changes.ts siteChangeLabels: `Slaid 2 pealkiri`; read after the publish).
+ * The blocked parts with their reasons: the held ones as decided, the others changed meanwhile (live, or their draft by another window), with their
+ * drafts' changes' labels row by row, as the PublishBar names them (domain/site-changes.ts siteChangeLabels: `Slaid 2 pealkiri`; read after the
+ * publish).
  */
 async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<string, Omit<SiteBlockedPart, "part">>): Promise<SiteBlockedPart[]> {
   if (names.length === 0) return [];
@@ -297,13 +310,20 @@ async function blockedOf(db: Q, entity: SiteEntity, names: string[], held: Map<s
 
 /**
  * „Avalda muudatused“ of an entity (R-c, R-d): its drafts with its Publisher, in ONE transaction (server/drafts.ts publishDrafts: the locks, every
- * part's live version against its draft's base, the strict checks, the writes); the pages revalidated once after the commit when anything was
- * published (a failure there is logged: the publish stands). The answer: the parts written, those left in their drafts with why, in the order
- * their drafts were first saved, and the database's clock after the commit (`stamp`, server/read-stamp.ts, as the course's publish answers it: null
- * when it cannot be read, the editor then takes the next read). The site's writers store no time, so it takes none.
+ * part's live version against its draft's base, the drafts against `versions`, the strict checks, the writes); the pages revalidated once after the
+ * commit when anything was published (a failure there is logged: the publish stands). `versions`: every part's version as the screen holds it after
+ * its flush (its engine's confirmed version: "d:<id>.<n>", or "l:<hash>" for a part with no draft on the screen) — a part whose draft is another
+ * is held back as changed (review I-1: the bar publishes what it showed, never a newer text another window saved). The answer: the parts written,
+ * those left in their drafts with why, in the order their drafts were first saved, and the database's clock after the commit (`stamp`,
+ * server/read-stamp.ts, as the course's publish answers it: null when it cannot be read, the editor then takes the next read). The site's writers
+ * store no time, so it takes none.
  */
-export async function publishSite(db: Db, entity: SiteEntity): Promise<{ stamp: number | null; published: string[]; blocked: SiteBlockedPart[] }> {
-  const { publisher, held } = makeSitePublisher(entity);
+export async function publishSite(
+  db: Db,
+  entity: SiteEntity,
+  versions: Readonly<Record<string, string>>,
+): Promise<{ stamp: number | null; published: string[]; blocked: SiteBlockedPart[] }> {
+  const { publisher, held } = makeSitePublisher(entity, versions);
   const result = await publishDrafts(db, entity, SITE_ENTITY_ID, publisher);
   const blocked = await blockedOf(db, entity, result.blocked, held);
   return { stamp: await stampOrNull(db), published: result.published, blocked };

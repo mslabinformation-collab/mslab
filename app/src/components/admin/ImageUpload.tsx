@@ -101,9 +101,27 @@ export function useImageUpload(onUploaded: (keys: string[]) => void): ImageUploa
 
 /**
  * The upload's file field (hidden: its label is what is seen and pressed) and the label, with `children` as the label's words. `name`: the field's
- * own name for a screen reader, where the words seen are shorter („+ Lisa“, named „Lisa pilte“).
+ * own name for a screen reader, where the words seen are shorter („+ Lisa“, named „Lisa pilte“). `full`: the list it adds to is at its cap
+ * (Koolitaja's 24 pictures, piece 4a final review M-3): the field is aria-disabled and opens no file dialog, described first by `fullNote` (the id
+ * of the words that say the cap: the gallery's counter „… · 24 / 24“); it stays in the tab order, as the slides' „+ Lisa slaid“ does at 8.
  */
-export function UploadPicker({ upload, multiple, className, name, children }: { upload: ImageUploadState; multiple?: boolean; className?: string; name?: string; children: ReactNode }) {
+export function UploadPicker({
+  upload,
+  multiple,
+  className,
+  name,
+  full = false,
+  fullNote,
+  children,
+}: {
+  upload: ImageUploadState;
+  multiple?: boolean;
+  className?: string;
+  name?: string;
+  full?: boolean;
+  fullNote?: string;
+  children: ReactNode;
+}) {
   return (
     <>
       <input
@@ -112,12 +130,17 @@ export function UploadPicker({ upload, multiple, className, name, children }: { 
         accept={ACCEPT.join(",")}
         multiple={multiple}
         aria-label={name}
-        aria-describedby={`${upload.id}-hint ${upload.id}-status`}
+        aria-disabled={full || undefined}
+        aria-describedby={`${full && fullNote ? `${fullNote} ` : ""}${upload.id}-hint ${upload.id}-status`}
+        onClick={(e) => {
+          // (at the cap: no file dialog; the label's press comes here too)
+          if (full) e.preventDefault();
+        }}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           // reset at once, so the same file can be picked again (and a pick during an upload is not lost)
           e.target.value = "";
-          upload.pick(files);
+          if (!full) upload.pick(files);
         }}
       />
       <label htmlFor={`${upload.id}-file`} className={className}>

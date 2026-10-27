@@ -61,6 +61,10 @@ const read = (entity: SiteEntity) => readSiteEditor(db, entity);
 /** A save of `patch` from the version the screen holds now. */
 const save = async (entity: SiteEntity, part: string, patch: Record<string, unknown>) => writeSitePart(db, entity, part, patch, (await read(entity)).parts[part].version, ADMIN, NOW);
 const versionOf = (a: unknown) => (a as { version: string }).version;
+/** Every part's version as a read gives it: what a screen that read the entity then sends with „Avalda muudatused“ (the route's `{ versions }`). */
+const versionsOf = (r: Awaited<ReturnType<typeof read>>) => Object.fromEntries(Object.entries(r.parts).map(([part, s]) => [part, s.version]));
+/** „Avalda muudatused“ from a screen that has just read the entity. */
+const publishNow = async (entity: SiteEntity) => publishSite(db, entity, versionsOf(await read(entity)));
 const liveSlides = async () => (clone((await read("home")).parts.slides.live) as { slides: SlideDraft[] }).slides;
 const liveFaq = async () => (clone((await read("home")).parts.faq.live) as { faq: FaqDraft[] }).faq;
 
@@ -199,7 +203,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     const kept = items.slice(0, 5);
     expect((await save("home", "faq", { faq: kept })).ok).toBe(true);
 
-    const result = await publishSite(db, "home");
+    const result = await publishNow("home");
     expect(result).toEqual({ stamp: expect.any(Number), published: ["slides", "faq"], blocked: [] });
     const after = await read("home");
     expect(after.parts.slides).toEqual({ version: expect.stringMatching(/^l:/), value: { slides }, live: { slides } });
@@ -220,7 +224,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     items[3].a = { et: "Uus vastus.", ru: "Новый ответ." };
     expect((await save("home", "faq", { faq: items })).ok).toBe(true);
 
-    const result = await publishSite(db, "home");
+    const result = await publishNow("home");
     expect(result.published).toEqual(["faq"]);
     expect(result.blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 3 pilt"] }]);
     expect((await drafts()).map((d) => d.part)).toEqual(["slides"]);
@@ -232,7 +236,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     // the picture added: the slides publish too, the new slide gets its row
     slides[2] = { ...slides[2], imageKey: UPLOAD };
     expect((await save("home", "slides", { slides })).ok).toBe(true);
-    expect(await publishSite(db, "home")).toMatchObject({ published: ["slides"], blocked: [] });
+    expect(await publishNow("home")).toMatchObject({ published: ["slides"], blocked: [] });
     expect((await readSlides(db)).map((s) => s.title.et)[2]).toBe("Uus slaid");
   });
 
@@ -243,15 +247,15 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     const items = await liveFaq();
     items.push({ uid: "new-2", id: null, q: { et: "Kas?" }, a: { et: "" } });
     expect((await save("home", "faq", { faq: items })).ok).toBe(true);
-    expect((await publishSite(db, "home")).blocked).toEqual([
+    expect((await publishNow("home")).blocked).toEqual([
       { part: "slides", reason: "missing", fields: ["slaid 3 pilt", "slaid 3 pealkiri"] },
       { part: "faq", reason: "missing", fields: ["KKK vastus 7"] },
     ]);
 
     expect((await save("practice", "MAXI", { price: "", items: [{ et: "Töö neljal modellil" }, { et: "", ru: "Только по-русски" }] })).ok).toBe(true);
     expect((await save("trainer", "trainer", { name: { et: "" } })).ok).toBe(true);
-    expect((await publishSite(db, "practice")).blocked).toEqual([{ part: "MAXI", reason: "missing", fields: ["MAXI hind", "MAXI punkt 2"] }]);
-    expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi"] }]);
+    expect((await publishNow("practice")).blocked).toEqual([{ part: "MAXI", reason: "missing", fields: ["MAXI hind", "MAXI punkt 2"] }]);
+    expect((await publishNow("trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["nimi"] }]);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
     expect(await drafts()).toHaveLength(4);
   });
@@ -262,7 +266,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     live[1] = { ...live[1], title: { et: "" } };
     const base = (await read("home")).parts.slides.version.slice(2);
     expect(await saveDraftPart(db, { entity: "home", entityId: 0, part: "slides", value: { slides: live }, baseVersion: base, version: null, by: ADMIN })).toMatchObject({ ok: true });
-    expect((await publishSite(db, "home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 2 pealkiri", "slaid 1 nupp viib"] }]);
+    expect((await publishNow("home")).blocked).toEqual([{ part: "slides", reason: "missing", fields: ["slaid 2 pealkiri", "slaid 1 nupp viib"] }]);
     expect(await readSlides(db)).toHaveLength(5);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
@@ -274,7 +278,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     // another way of saving changes live after the draft began
     const rows = await readSlides(db);
     await db.transaction((tx) => saveSlides(tx, rows.map((r, i) => (i === 1 ? { ...r, kicker: { et: "Otse muudetud" } } : r))));
-    const result = await publishSite(db, "home");
+    const result = await publishNow("home");
     expect(result.published).toEqual([]);
     expect(result.blocked).toEqual([{ part: "slides", reason: "changed", fields: expect.any(Array) }]);
     expect(result.blocked[0].fields.length).toBeGreaterThan(0);
@@ -295,7 +299,7 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     await db.transaction((tx) => saveSlides(tx, rows.map((r, i) => (i === 1 ? { ...r, title: { ...r.title, et: "Otse muudetud" } } : r))));
     const stored = await db.select().from(faq).orderBy(asc(faq.sort), asc(faq.id));
     await db.update(faq).set({ q: { ...stored[2].q, et: "Otse muudetud küsimus" } }).where(eq(faq.id, stored[2].id));
-    const result = await publishSite(db, "home");
+    const result = await publishNow("home");
     expect(result.published).toEqual([]);
     // (the draft's rows against live as it is now: row 1's answer differs only in Russian, row 3's question in Estonian)
     expect(result.blocked).toEqual([
@@ -305,8 +309,42 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     expect((await drafts()).map((d) => d.part)).toEqual(["slides", "faq"]);
   });
 
+  test("the publish carries the screen's versions (final review I-1): a draft another window saved after the screen's read is held as changed, the others publish", async () => {
+    // the screen: two cards typed and saved, then its read (what its bar shows)
+    expect((await save("home", "statement", { body: { et: "Ekraani lause." } })).ok).toBe(true);
+    const faqRows = await liveFaq();
+    faqRows[0].q = { ...faqRows[0].q, et: "Ekraani küsimus?" };
+    expect((await save("home", "faq", { faq: faqRows })).ok).toBe(true);
+    const screen = await read("home");
+    const liveStatement = clone(screen.parts.statement.live);
+    // another window, after that read: the same statement saved over (its draft moves on), and a teaser draft the screen has never seen
+    const other = await save("home", "statement", { body: { et: "Teise akna lause." } });
+    expect(versionOf(other)).not.toBe(screen.parts.statement.version);
+    expect((await save("home", "teaser", { body: { et: "Teise akna kaart." } })).ok).toBe(true);
+
+    const result = await publishSite(db, "home", versionsOf(screen));
+    expect(result.published).toEqual(["faq"]);
+    expect(result.blocked).toEqual([
+      { part: "statement", reason: "changed", fields: ["MS LABi lause"] },
+      { part: "teaser", reason: "changed", fields: ["Koolitaja kaart"] },
+    ]);
+    // the newer texts wait in their drafts, live has the screen's FAQ and the old statement; revalidated once
+    expect((await drafts()).map((d) => d.part)).toEqual(["statement", "teaser"]);
+    const after = await read("home");
+    expect(after.parts.statement).toMatchObject({ value: { body: { et: "Teise akna lause." } }, live: liveStatement });
+    expect(after.parts.faq.live).toEqual({ faq: faqRows });
+    expect(pub.revalidatePublic).toHaveBeenCalledTimes(1);
+
+    // a part with a draft that the screen sent no version for is held the same way
+    expect(await publishSite(db, "home", { statement: after.parts.statement.version })).toMatchObject({ published: ["statement"], blocked: [{ part: "teaser", reason: "changed" }] });
+    // the screen read again (its bar shows the newer texts): they publish
+    expect(await publishNow("home")).toMatchObject({ published: ["teaser"], blocked: [] });
+    expect((await read("home")).parts.statement.live).toEqual({ body: { et: "Teise akna lause." } });
+    expect(await drafts()).toHaveLength(0);
+  });
+
   test("nothing to publish: an answer with nothing published and nothing blocked, nothing revalidated", async () => {
-    expect(await publishSite(db, "trainer")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
+    expect(await publishNow("trainer")).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
@@ -315,14 +353,14 @@ describe("„Avalda muudatused“ (publishSite)", () => {
     expect((await save("trainer", "trainer", { role: { et: "Koolitaja", ru: "Тренер" } })).ok).toBe(true);
     const works = (clone((await read("trainer")).parts.works.live) as { works: WorkDraft[] }).works.slice(0, 2);
     expect((await save("trainer", "works", { works })).ok).toBe(true);
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["trainer", "works"], blocked: [] });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer", "works"], blocked: [] });
     expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: before.contactPhotoKey, role: { et: "Koolitaja", ru: "Тренер" } });
     expect(await db.select().from(galleryItems).where(eq(galleryItems.group, "trainer_works"))).toHaveLength(2);
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "trainer", parts: ["trainer", "works"] });
 
     pub.revalidatePublic.mockReset();
     expect((await save("practice", "MAXI", { price: "155,50" })).ok).toBe(true);
-    expect(await publishSite(db, "practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
+    expect(await publishNow("practice")).toMatchObject({ published: ["MAXI"], blocked: [] });
     expect((await getPracticePackages(db))[1]).toMatchObject({ code: "MAXI", price: 15550 });
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "practice" });
   });
@@ -355,7 +393,7 @@ describe("versions (R-b): the hash of the part's draft-shaped live value", () =>
     // a draft made before such a change still publishes: its base is still live's
     expect((await save("trainer", "trainer", { role: { et: "Koolitaja" } })).ok).toBe(true);
     await setSetting(db, "trainer", { ...stored, contactPhotoKey: "/seed/maria-standing.jpg" });
-    expect(await publishSite(db, "trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
     expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: "/seed/maria-standing.jpg", role: { et: "Koolitaja" } });
   });
 
@@ -389,7 +427,7 @@ describe("the routes", () => {
     return { status: res.status, cache: res.headers.get("cache-control"), body: (await res.json()) as Record<string, unknown> };
   };
   const saveCall = (entity: string, id: string, part: string, body: unknown, headers?: Record<string, string>) => call(saveRoute, { entity, id, part }, body, headers);
-  const publishCall = (entity: string, id: string) => call(publishRoute, { entity, id }, {});
+  const publishCall = (entity: string, id: string, body: unknown = { versions: {} }) => call(publishRoute, { entity, id }, body);
   const discardCall = (entity: string, id: string) => call(discardRoute, { entity, id }, {});
 
   test("without an admin's session 401, from another site 403; an unknown entity, id or part 404; nothing stored", async () => {
@@ -420,16 +458,38 @@ describe("the routes", () => {
     expect((await drafts())[0]).toMatchObject({ entity: "practice", part: "MAXI", updatedBy: ADMIN });
   });
 
-  test("POST …/avalda: 200 { stamp, published, blocked }; POST …/loobu: 200 { stamp }", async () => {
+  test("POST …/avalda: { versions } → 200 { stamp, published, blocked }; POST …/loobu: 200 { stamp }", async () => {
     await signIn();
     const live = (await read("home")).parts.statement.version;
-    expect((await saveCall("home", "0", "statement", { version: live, patch: { body: { et: "Uus lause." } } })).status).toBe(200);
-    expect(await publishCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number), published: ["statement"], blocked: [] } });
+    const saved = await saveCall("home", "0", "statement", { version: live, patch: { body: { et: "Uus lause." } } });
+    expect(saved.status).toBe(200);
+    expect(await publishCall("home", "0", { versions: versionsOf(await read("home")) })).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number), published: ["statement"], blocked: [] } });
     const next = (await read("home")).parts.statement.version;
     expect((await saveCall("home", "0", "statement", { version: next, patch: { body: { et: "Veel üks." } } })).status).toBe(200);
     expect(await discardCall("home", "0")).toEqual({ status: 200, cache: "no-store", body: { stamp: expect.any(Number) } });
     expect(await drafts()).toHaveLength(0);
     expect((await read("home")).parts.statement.live).toMatchObject({ body: { et: "Uus lause." } });
+  });
+
+  test("POST …/avalda: the body's versions decide (a draft at another version is held as changed); a body with no versions is a 400 and publishes nothing", async () => {
+    await signIn();
+    const shown = (await read("home")).parts.statement.version;
+    const first = await saveCall("home", "0", "statement", { version: shown, patch: { body: { et: "Ekraani lause." } } });
+    const screen = versionsOf(await read("home"));
+    expect(screen.statement).toBe(first.body.version);
+    // another window saves the statement again after the screen's read
+    expect((await saveCall("home", "0", "statement", { version: first.body.version, patch: { body: { et: "Teise akna lause." } } })).status).toBe(200);
+    for (const body of [{}, { versions: "x" }, { versions: { statement: 1 } }, null, { versions: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`p${i}`, "l:x"])) }]) {
+      expect(await publishCall("home", "0", body), JSON.stringify(body)).toEqual({ status: 400, cache: "no-store", body: { ok: false, error: "body" } });
+    }
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(await publishCall("home", "0", { versions: screen })).toEqual({
+      status: 200,
+      cache: "no-store",
+      body: { stamp: expect.any(Number), published: [], blocked: [{ part: "statement", reason: "changed", fields: ["MS LABi lause"] }] },
+    });
+    expect((await drafts()).map((d) => d.part)).toEqual(["statement"]);
+    expect((await read("home")).parts.statement.live).not.toMatchObject({ body: { et: "Teise akna lause." } });
   });
 });
 
@@ -459,10 +519,10 @@ describe("the rollback check of deploy.md §25 item 2: the site drafts that are 
     // (a course's draft is the course editor's own: section 23, item 2)
     expect(await saveDraftPart(db, { entity: "course", entityId: 1, part: "basics", value: {}, baseVersion: "x", version: null, by: ADMIN })).toMatchObject({ ok: true });
     expect(await left()).toEqual({ home: 2, trainer: 1, practice: 1 });
-    await publishSite(db, "home");
+    await publishNow("home");
     await discardSite(db, "trainer");
     expect(await left()).toEqual({ practice: 1 });
-    await publishSite(db, "practice");
+    await publishNow("practice");
     expect(await left()).toEqual({});
     expect(await drafts()).toHaveLength(1); // the course's, untouched
   });

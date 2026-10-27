@@ -66,6 +66,8 @@ export type SitePartApi<V extends Record<string, unknown> = Record<string, unkno
   savedNow(): number;
   /** Null when the server holds the part's text; else the first field concerned and why (SaveStatus's „Näita“). */
   unconfirmed(): Unconfirmed | null;
+  /** The part's version as the server last confirmed it (engine.ts confirmedVersion): after a flush, that of the text on the screen — the publish sends it. */
+  versionNow(): string;
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -223,7 +225,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     latest.move(fields);
   });
 
-  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed } = auto;
+  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow } = auto;
   // a field typed in (its refusal's words go, the engine has it); a change worked out from the field as it lands (../useFieldRefusals.ts)
   const { take, update } = useFieldEdits({ latest, setField, flush, clear });
   return useMemo<SitePartApi<V>>(() => {
@@ -248,6 +250,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
       saves,
       savedNow,
       unconfirmed,
+      versionNow,
     };
-  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, codes, live, saves, savedNow]);
+  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, codes, live, saves, savedNow]);
 }

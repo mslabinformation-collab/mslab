@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { looseTrainer, looseWorks } from "@/domain/site-checks";
 import { isBlankStat, portraitFraming, SITE_LIMITS, type PageDraft, type StatDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { SitePartState, TrainerPartValues } from "@/domain/site-entities";
@@ -136,11 +136,13 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
       className={`${styles.card} ${styles.portraitCard}`}
       titleClassName={styles.title}
     >
+      {/* (the picture and its focal point carry their fields' names, so „Jää siia“ and „Näita“ reach them: final review M-5) */}
       <div className={styles.picture} data-portrait-column="">
         {v.portraitKey && (
           <FocalPoint
             src={mediaUrl(v.portraitKey)}
             zoom={framing.zoom}
+            field="trainer.portraitPos"
             error={trainer.error("portraitPos")}
             targets={[
               {
@@ -167,6 +169,7 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
           ratio="4 / 5"
           preview={false}
           name="portrait"
+          field="trainer.portraitKey"
         />
       </div>
       <div className={styles.text} data-portrait-text="">
@@ -256,6 +259,7 @@ function StatsCard({ trainer }: { trainer: SitePartApi<TrainerDraft> }) {
  */
 function WorksCard({ works }: { works: SitePartApi<{ works: WorkDraft[] }> }) {
   const t = adminEt.trainer;
+  const countId = useId();
   const images = works.fields.works;
   const placed = rowRefusals<WorkDraft>(works.refusedValue("works"), looseWorks, (w) => w.key, (j) => `works.${j}`);
   const errorOf = (i: number) => {
@@ -265,9 +269,10 @@ function WorksCard({ works }: { works: SitePartApi<{ works: WorkDraft[] }> }) {
   };
   return (
     <SiteCard id={CARD.works} title={t.works} parts={[works]} unpublished={works.unpublished("works")} className={`${styles.card} ${styles.worksCard}`} titleClassName={styles.title}>
-      <p className={styles.count} data-gallery-count="">
+      <p id={countId} className={styles.count} data-gallery-count="">
         {fill(t.worksHint, { n: images.length })}
       </p>
+      {/* (at 24 pictures „+ Lisa“ adds none, the counter its description: final review M-3) */}
       <GalleryEditor
         layout="grid"
         images={images}
@@ -276,16 +281,23 @@ function WorksCard({ works }: { works: SitePartApi<{ works: WorkDraft[] }> }) {
         errorOf={errorOf}
         addLabel={t.addWork}
         name="works"
+        max={SITE_LIMITS.works}
+        maxNote={countId}
       />
     </SiteCard>
   );
 }
 
-/** A story's card: its title and text; empty when the page opened, one folded row whose „Lisa tekst“ opens it with the cursor in the title. */
+/**
+ * A story's card: its title and text; empty when the page opened, one folded row whose „Lisa tekst“ opens it with the cursor in the title. A folded
+ * story whose fields stop being empty (this browser's copy of unsaved text, resumed after the page's read: final review M-4) opens by itself, the
+ * focus left where it is; a story emptied while open stays open (the next read folds it).
+ */
 function StoryCard({ part, api, title, fallback }: { part: StoryPart; api: SitePartApi<PageDraft>; title: string; fallback: string }) {
   const t = adminEt.trainer;
   const v = api.fields;
   const [open, setOpen] = useState(() => !blankPage(v));
+  if (!open && !blankPage(v)) setOpen(true);
   const fields = useRef<HTMLDivElement>(null);
   /** „Lisa tekst“ was pressed: the cursor goes into the title once the fields are there. */
   const opened = useRef(false);

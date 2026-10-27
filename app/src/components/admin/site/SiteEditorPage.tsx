@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { siteChangeLabels } from "@/domain/site-changes";
 import { SITE_ENTITY_ID, type SiteEntity, type SitePartState } from "@/domain/site-entities";
@@ -25,9 +25,12 @@ import { focusSiteField, useSitePart, type SitePartApi, type SitePartOptions } f
 // - The PublishBar names the drafts' changes row by row (domain/site-changes.ts siteChangeLabels, S4-1: „Avaldamata muudatused: 2 · MAXI hind,
 //   MAXI punkt 4“); „Eelvaade ↗“ is the public page in draft mode; under it, after a publish, what it could not publish („Puudub: slaid 3 pilt“).
 // - „Avalda muudatused“: every part's waiting save is sent and waited for, within one bound (SAVE_TIMEOUT_MS from the press); a save that did not go
-//   through (no connection, a server error, a field held back, another tab's text) publishes nothing — the chip says why. Then POST …/avalda, and
-//   the page is read again: the parts start over from a read at or past the answer's stamp (the published ones leave the bar, a held one stays on
-//   it with its „Puudub: …“ until its next save). Nothing published and something held: the cards take typing again, nothing is read.
+//   through (no connection, a server error, a field held back, another tab's text) publishes nothing — the chip says why, and the page brings it
+//   into view with the focus on its „Näita“ when it has one (piece 4a final review M-1: on a phone she presses at the foot of the screen). Then POST
+//   …/avalda with every part's version as the screen holds it (`{ versions }`, review I-1: a draft another window saved after this screen's read is
+//   held back as changed, never published from a bar that did not show it), and the page is read again: the parts start over from a read at or past
+//   the answer's stamp (the published ones leave the bar, a held one stays on it with its „Puudub: …“ until its next save). Nothing published and
+//   something held as missing: the cards take typing again, nothing is read.
 // - „Loobu muudatustest“ (behind the bar's question): the waiting saves first, then POST …/loobu (R-e: every draft of the entity), every part's copy
 //   in this browser goes, and the parts start over from the read (at the bound: from the live values the discard left).
 // - The cards wait (inert, aria-busy, nothing typed taken) from the press until then; a picture whose upload ends meanwhile goes in afterwards. The
@@ -113,8 +116,19 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
 
   /** Every part's waiting save, sent now and waited for: a publish and a discard work on what is saved. True for each part the server holds. */
   const flushAll = () => Promise.all(names.map((part) => apis[part].flush()));
+  // a press that a save stopped: once the chip shows why, it is brought into view and the focus goes to its „Näita“ (the invalid state's link; the
+  // other states have none, and the focus stays on her press) — after the render, so the chip has its state
+  const chipSlot = useRef<HTMLSpanElement>(null);
+  const [pointed, setPointed] = useState(0);
+  useEffect(() => {
+    if (pointed === 0) return;
+    const chip = chipSlot.current?.querySelector<HTMLElement>("[data-save-status]");
+    chip?.scrollIntoView?.({ block: "center" });
+    chip?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  }, [pointed]);
   // „Avalda muudatused“ and „Loobu muudatustest“ (../useEditorRestarts.ts usePublishPresses, shared with the course editor): a save that did not go
-  // through publishes nothing (`requireSaved`); `held`, the parts the publish held, until each one's next save
+  // through publishes nothing (`requireSaved`); the publish carries every part's version as the screen holds it after the flush (`versions`);
+  // `held`, the parts the publish held, until each one's next save
   const { held, publish, discard } = usePublishPresses({
     said,
     setSaid,
@@ -124,6 +138,8 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
     flushAll,
     urls: { publish: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/avalda`, discard: `/api/admin/sisu/${entity}/${SITE_ENTITY_ID}/loobu` },
     requireSaved: true,
+    onUnsaved: () => setPointed((n) => n + 1),
+    versions: () => Object.fromEntries(names.map((part) => [part, apis[part].versionNow()])),
     // what was thrown away must not come back: every part's copy in this browser, and every other copy of the entity (a part the screen no longer
     // has), by the rule the public preview bar's „Loobu muudatustest“ drops them by (lib/site-copies.ts), as the course editor does
     dropCopies: () => {
@@ -181,7 +197,7 @@ function SiteForm({ entity, eyebrow, title, lead, viewHref, previewPath, section
         </div>
         <div className={ui.headAside}>
           <LangSwitch />
-          <span className={styles.statusSlot}>
+          <span ref={chipSlot} className={styles.statusSlot}>
             <SaveStatus status={status} draft={changed.length > 0} compact={phone} onShowInvalid={showInvalid} />
           </span>
           <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={viewHref} target="_blank" rel="noopener" data-site-view="">

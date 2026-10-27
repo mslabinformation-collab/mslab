@@ -45,15 +45,16 @@ export type DraftSaveResult = { ok: true; version: number } | { ok: false; error
  * - `lock` (optional): takes the entity row's lock, first thing in the transaction, before the drafts are read (the lock order above). The live
  *   versions read after it cannot change before the writes: the entity's other writers take the same lock;
  * - `hold` (optional): the entity's own rules at publish, which a part's check at its save cannot make (a published course needs a price, and a
- *   price may wait in a draft). Asked once, after every live version and before any write, with the parts whose base still matches and their
- *   drafts' values; the parts it names are not written and keep their drafts (blocked, like a part changed meanwhile).
+ *   price may wait in a draft). Asked once, after every live version and before any write, with the parts whose base still matches, their drafts'
+ *   values and their drafts' rows (`id`, `version`: the draft as the editor names it, draftVersion below; the site screens' publish compares it with
+ *   the version the screen sent); the parts it names are not written and keep their drafts (blocked, like a part changed meanwhile).
  */
 export type Publisher = {
   liveVersion(tx: Tx, part: string): Promise<string>;
   write(tx: Tx, part: string, value: unknown): Promise<void>;
   revalidate(): void;
   lock?(tx: Tx): Promise<void>;
-  hold?(tx: Tx, parts: { part: string; value: unknown }[]): Promise<string[]>;
+  hold?(tx: Tx, parts: { part: string; value: unknown; id: number; version: number }[]): Promise<string[]>;
 };
 
 /** The cast of db/queries/payments.ts releaseHold: on the Db union (and an open transaction of it), returning(fields) has no common overload. */
@@ -188,7 +189,7 @@ export async function discardDrafts(db: Q, entity: string, entityId: number): Pr
 export async function publishDraftsIn(tx: Tx, entity: string, entityId: number, p: Publisher): Promise<{ published: string[]; blocked: string[] }> {
   if (p.lock) await p.lock(tx);
   const drafts = await tx
-    .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion })
+    .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion, version: contentDrafts.version })
     .from(contentDrafts)
     .where(ofRow(entity, entityId))
     .orderBy(asc(contentDrafts.id))
@@ -196,7 +197,7 @@ export async function publishDraftsIn(tx: Tx, entity: string, entityId: number, 
   const current: boolean[] = [];
   for (const d of drafts) current.push((await p.liveVersion(tx, d.part)) === d.baseVersion);
   const candidates = drafts.filter((_, i) => current[i]);
-  const held = new Set(p.hold && candidates.length > 0 ? await p.hold(tx, candidates.map((d) => ({ part: d.part, value: d.value }))) : []);
+  const held = new Set(p.hold && candidates.length > 0 ? await p.hold(tx, candidates.map((d) => ({ part: d.part, value: d.value, id: d.id, version: d.version }))) : []);
   const published: string[] = [];
   const blocked: string[] = [];
   for (const [i, d] of drafts.entries()) {

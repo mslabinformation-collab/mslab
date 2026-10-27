@@ -327,6 +327,43 @@ describe("the PublishBar", () => {
     expect(text($("[data-publish-blocked]"))).toBe("Puudub: MAXI hind");
   });
 
+  it("the publish carries every part's version as the screen holds it after its flush, `{ versions }` (final review I-1)", async () => {
+    await show();
+    await type(field("MINI.price"), "110");
+    await leave(field("MINI.price"));
+    expect(remote.parts.MINI.version).toBe("d:1.1");
+    // MAXI still being typed: the press's own flush saves it first, and its version after that save is the one sent
+    await type(field("MAXI.price"), "155");
+    await click($("[data-publish-go]"));
+    expect(posts()).toEqual(["osa/MINI", "osa/MAXI", "avalda"]);
+    const press = fetched.calls.find((c) => c.url.endsWith("/avalda"))!;
+    expect(press.body).toEqual({ versions: { MINI: "d:1.1", MAXI: "d:2.2" } });
+    expect(press.headers.get("content-type")).toBe("application/json");
+  });
+
+  it("a part held as changed (another window saved its draft after this screen's read): the page is read again, and the bar lists it until its next save", async () => {
+    remote.avalda = () => Response.json({ stamp: 5, published: [], blocked: [{ part: "MAXI", reason: "changed", fields: ["MAXI hind"] }] });
+    await show();
+    await type(field("MAXI.price"), "155");
+    await leave(field("MAXI.price"));
+    await click($("[data-publish-go]"));
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the read: the other window's newer draft is on the screen, under the bar's words for a change made meanwhile
+    const newer = { ...MAXI, price: "170" };
+    remote.parts.MAXI = { version: "d:2.9", value: newer };
+    await show({ parts: partsOf({ MAXI: { version: "d:2.9", value: newer } }), stamp: 5 });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(field("MAXI.price")!.value).toBe("170");
+    expect(text($("[data-blocked-changed]"))).toBe("Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.");
+    expect(text($("[data-publish-blocked] li"))).toBe("MAXI hind");
+    // her next save of the part takes the line away (from the version the read gave)
+    await type(field("MAXI.price"), "175");
+    await leave(field("MAXI.price"));
+    expect(remote.log.at(-1)).toEqual({ part: "MAXI", version: "d:2.9", patch: { price: "175" } });
+    expect($("[data-publish-blocked]")).toBeNull();
+  });
+
   it("a publish that fails says so on the bar and keeps the cards as they are", async () => {
     remote.avalda = () => Response.json({ ok: false, error: "server" }, { status: 500 });
     await show();
@@ -417,6 +454,67 @@ describe("the PublishBar", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the site screens' stricter publish (requireSaved; final review I-2, M-1): a save that did not go through publishes nothing", () => {
+  const cases = [
+    {
+      name: "refused by the server's check (400)",
+      kind: "invalid",
+      arrange: () => void (remote.refuse = { part: "MAXI", fields: { price: "amount" } }),
+    },
+    { name: "failing (500)", kind: "retry", arrange: () => void (remote.fail = "MAXI") },
+    {
+      name: "in conflict with another window's text (409)",
+      kind: "conflict",
+      arrange: () => void (remote.parts.MAXI = { version: "d:2.9", value: { ...MAXI, price: "170" } }),
+    },
+  ] as const;
+
+  for (const c of cases) {
+    it(`a save ${c.name}, then „Avalda muudatused“: no publish POST, the cards take typing again, the chip says why and is brought into view`, async () => {
+      c.arrange();
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      await show();
+      await type(field("MAXI.price"), "abc");
+      await leave(field("MAXI.price"));
+      expect(chip()!.getAttribute("data-save-kind")).toBe(c.kind);
+      scrolled.mockClear();
+      const go = $<HTMLButtonElement>("[data-publish-go]")!;
+      go.focus();
+      await click(go);
+      expect(posts()).not.toContain("avalda");
+      expect($("[data-cards-waiting]")).toBeNull();
+      expect(router.refresh).not.toHaveBeenCalled();
+      expect($("[data-publish-error]")).toBeNull();
+      expect(chip()!.getAttribute("data-save-kind")).toBe(c.kind);
+      // she pressed at the bar: the page brings the chip into view (no new words), and the focus goes to its „Näita“ when it has one
+      expect(scrolled.mock.contexts).toContain(chip());
+      const showLink = chip()!.querySelector("button");
+      if (c.kind === "invalid") {
+        expect(text(showLink)).toBe("Näita");
+        expect(document.activeElement).toBe(showLink);
+      } else {
+        expect(showLink).toBeNull();
+        expect(document.activeElement).toBe(go);
+      }
+      // the text is still there to correct, and the cards take typing
+      expect(field("MAXI.price")!.value).toBe("abc");
+      await type(field("MAXI.price"), "abcd");
+      expect(field("MAXI.price")!.value).toBe("abcd");
+    });
+  }
+
+  it("the chip's „Näita“ then puts the cursor in the field held back", async () => {
+    remote.refuse = { part: "MAXI", fields: { price: "amount" } };
+    await show();
+    await type(field("MAXI.price"), "abc");
+    await leave(field("MAXI.price"));
+    await click($("[data-publish-go]"));
+    expect(document.activeElement).toBe(chip()!.querySelector("button"));
+    await click(chip()!.querySelector("button"));
+    expect(document.activeElement).toBe(field("MAXI.price"));
   });
 });
 

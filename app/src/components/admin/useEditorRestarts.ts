@@ -43,11 +43,15 @@ export function orLate<T>(p: Promise<T>, signal: AbortSignal): Promise<T | typeo
 
 export type Posted = { ok: true; body: unknown } | { ok: false; signedOut: boolean } | { late: true };
 
-/** POST to one of the editor's routes, given up when `signal` is (the wait's bound): `late`. `signedOut` for withAdmin's 401; not ok for any other refusal or no answer. */
-export async function post(url: string, signal: AbortSignal): Promise<Posted> {
+/**
+ * POST to one of the editor's routes, given up when `signal` is (the wait's bound): `late`. `signedOut` for withAdmin's 401; not ok for any other
+ * refusal or no answer. `body`: sent as JSON (the site screens' publish, its versions); none, a bodiless POST (the course's presses, as before).
+ */
+export async function post(url: string, signal: AbortSignal, body?: unknown): Promise<Posted> {
+  const json = body === undefined ? {} : { body: JSON.stringify(body), headers: { accept: "application/json", "content-type": "application/json" } };
   const request = (async (): Promise<Posted> => {
     try {
-      const res = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" }, signal });
+      const res = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" }, signal, ...json });
       if (!res.ok) return { ok: false, signedOut: res.status === 401 };
       return { ok: true, body: await res.json().catch(() => null) };
     } catch {
@@ -300,9 +304,11 @@ export type PressPart = { saves: number; savedNow: () => number };
  * - `held`: the parts the last publish could not publish, until each one's next save (the counts recorded at the answer are this moment's, so a press
  *   whose own flush saved the part keeps it listed: piece 4a Task 2 review I-1); `savesNow()`, those counts for an answer of the screen's own.
  * - `publish`: every part's waiting save, sent and waited for (`flushAll`) within the press's one bound; with `requireSaved` (the site editors) a
- *   save that did not go through publishes nothing — the chip says why. Then POST `urls.publish`: something published, or nothing there to publish
- *   (or an answer that cannot be read), the page is read again from the answer's stamp; only held, the cards take typing again; refused, the bar's
- *   line.
+ *   save that did not go through publishes nothing — the chip says why, and `onUnsaved` points her at it (piece 4a final review M-1). Then POST
+ *   `urls.publish`, with `versions()` (the site editors: every part's version as the screen holds it after the flush, `{ versions }`; review I-1):
+ *   something published, or nothing there to publish (or an answer that cannot be read), the page is read again from the answer's stamp; only held,
+ *   the cards take typing again — unless a part was held as changed while `versions` were sent (another window saved its draft after this
+ *   screen's read): then the page is read again too, so the screen shows the newer text the bar lists; refused, the bar's line.
  * - `discard`: the waiting saves first, then POST `urls.discard`; done, every copy in this browser goes (`dropCopies`) and the parts start over from
  *   the read, at the bound from `seeds`' live values. A discard whose request passes the bound may have gone through: the copies go then too, so the
  *   next read's parts do not bring the thrown-away text back (review M-4; every part was saved first). Refused, the line, and the question stays open.
@@ -318,6 +324,10 @@ export function usePublishPresses<S extends Pressed<H>, H extends HeldPart, Seed
   flushAll: () => Promise<boolean[]>;
   urls: { publish: string; discard: string };
   requireSaved?: boolean;
+  /** A press that `requireSaved` stopped: where she is pointed at why (the site editors: the chip and its „Näita“). */
+  onUnsaved?: () => void;
+  /** Every part's version as the screen holds it now, sent with the publish (the site editors); none: a bodiless POST (the course's). */
+  versions?: () => Record<string, string>;
   dropCopies: () => void;
   seeds: Seeds;
 }): { held: H[]; savesNow: () => Partial<Record<string, number>>; publish: () => Promise<void>; discard: () => Promise<void> } {
@@ -337,8 +347,12 @@ export function usePublishPresses<S extends Pressed<H>, H extends HeldPart, Seed
     const saved = await orLate(o.flushAll(), signal);
     if (saved === LATE) return; // (the bound: the cards take typing, the page is read)
     // a save that did not go through: nothing is published, the chip says why (and the text stays, in this browser too)
-    if (o.requireSaved && saved.some((ok) => !ok)) return release();
-    const answer = await post(o.urls.publish, signal);
+    if (o.requireSaved && saved.some((ok) => !ok)) {
+      release();
+      return o.onUnsaved?.();
+    }
+    // (the versions read after the flush: those of the very text on the screen)
+    const answer = await post(o.urls.publish, signal, o.versions ? { versions: o.versions() } : undefined);
     if ("late" in answer) return;
     if (!answer.ok) {
       release();
@@ -350,8 +364,10 @@ export function usePublishPresses<S extends Pressed<H>, H extends HeldPart, Seed
     const saves = savesNow();
     setSaid((s) => ({ ...s, blocked: blocked ? { parts: blocked, generation, saves } : null, publishedAt: done ? new Date() : s.publishedAt }));
     // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
-    // page is read again (piece 3a review M-2), and the parts start over from a read at or past the answer's stamp
-    if (done || !blocked) reload(undefined, stampOf(answer.body));
+    // page is read again (piece 3a review M-2), and the parts start over from a read at or past the answer's stamp; so too when a part the screen
+    // sent its version for was held as changed: another window's newer draft, which the screen shows only after a read (review I-1)
+    const newer = o.versions !== undefined && (blocked ?? []).some((b) => b.reason === "changed");
+    if (done || !blocked || newer) reload(undefined, stampOf(answer.body));
     else release();
   };
 
