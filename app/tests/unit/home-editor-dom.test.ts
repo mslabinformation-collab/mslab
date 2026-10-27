@@ -562,6 +562,37 @@ describe("„KKK“: the question shows, the answer is folded (P4 note, S4-11), 
     expect(field("faq.1.a")).toBeNull();
   });
 
+  it("errors keyed by row: a refused question 2 stays on that question when the rows move while its save is on its way", async () => {
+    // the first save (question 2 over its limit) is answered only when the test says so; it is refused; the list sent after the move waits for good
+    let release!: () => void;
+    const first = new Promise<void>((r) => (release = r));
+    remote.hold = (part, patch) => {
+      if (part !== "faq") return null;
+      const sent = patch.faq as FaqDraft[];
+      return sent[0]?.uid === "f1" ? first : new Promise<void>(() => {});
+    };
+    remote.refuse = (part, patch) => ((patch.faq as FaqDraft[] | undefined)?.some((x) => x.q.et.length > 200) ? { faq: "tooLong" } : null);
+    await show();
+    await type(field("faq.1.q"), "K".repeat(201));
+    await leave(field("faq.1.q"));
+    expect(remote.log).toHaveLength(1);
+    // question 2 moves up while that save is on its way: it is first now
+    await click(button("Liiguta küsimus 2 üles"));
+    expect($$("[data-faq-row]").map((el) => el.getAttribute("data-faq-row"))).toEqual(["f2", "f1"]);
+    await act(async () => release());
+    await settle();
+    // the refusal of the list as it was sent lands on question 2, wherever it is now: its field, with the words
+    const refused = field("faq.0.q")!;
+    expect(refused.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
+    expect(refused.getAttribute("aria-invalid")).toBe("true");
+    const words = container.querySelector(`#${CSS.escape(refused.getAttribute("aria-describedby")!.split(" ").at(-1)!)}`);
+    expect(text(words)).not.toBe("");
+    expect(words!.closest("[data-faq-row]")!.getAttribute("data-faq-row")).toBe("f2");
+    // question 1, now second, is quiet
+    expect(field("faq.1.q")!.getAttribute("aria-invalid")).toBeNull();
+    expect(text($$("nav[aria-label='Jaotised'] a")[3].querySelector("[data-section-status]"))).toContain("Kontrolli");
+  });
+
   it("× takes the question out at once with „Küsimus eemaldatud.“; „Võta tagasi“ puts it back at its place and saves", async () => {
     await show();
     await click(button("Eemalda küsimus 1"));

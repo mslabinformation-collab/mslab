@@ -42,11 +42,13 @@ const PAGES = [
   "/koolitused/kulmumeistri-baaskoolitus",
   "/koolituskalender",
   "/praktika",
+  "/koolitaja",
   "/uudised",
   // Russian
   "/ru",
   "/ru/koolitused/lash-lift-botox",
   "/ru/praktika",
+  "/ru/koolitaja",
   "/ru/uudised",
   // the design hub and a prototype (static files of public/)
   "/guide/",

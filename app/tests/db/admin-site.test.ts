@@ -352,6 +352,12 @@ describe("trainer page", () => {
     await discardSite(db, "trainer");
     await forge("trainer", "trainer", { stats: four });
     expect((await publishSite(db, "trainer")).blocked).toEqual([{ part: "trainer", reason: "missing", fields: ["numbrid"] }]);
+    // a half stat alone (a number and no label; name and portrait fine, one pair, so no cap is in play) is the half-stat rule on its own
+    await discardSite(db, "trainer");
+    await forge("trainer", "trainer", { stats: [{ uid: "a", value: "8+", label: { et: "" } }] });
+    expect(await publishSite(db, "trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
+    await forge("trainer", "trainer", { stats: [{ uid: "a", value: "", label: { et: "aastat", ru: "лет" } }] }); // … and the other half: a label and no number
+    expect(await publishSite(db, "trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["numbrid"] }] });
     expect(((await getSettings(db)).trainer as { stats: unknown[] }).stats).toHaveLength(3);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
