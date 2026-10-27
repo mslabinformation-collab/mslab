@@ -6,10 +6,13 @@ Every decision not attributed to Dim is my call and says so.
 
 ## 1. What stays from the 18.10 design
 
-- D4: Maria writes a campaign in „Uudiskiri → Kampaaniad" (since 26.10, the admin UX pass piece 3b, the tab and the letters are „Kirjad" and „kiri"; „kampaania" stays only for the popup): subject, preview line, picture, paragraphs, code and button, in ET and RU. The live preview shows both languages.
+- D4: Maria writes a campaign in „Uudiskiri → Kampaaniad" (since 26.10, the admin UX pass piece 3b, the tab and the letters are „Kirjad" and „kiri"; „kampaania" stayed only for the popup, and since piece 4b (27.10) it is on no admin screen: only the popup's address `/admin/kampaania` keeps it): subject, preview line, picture, paragraphs, code and button, in ET and RU. The live preview shows both languages.
 - D5: the mail's look and footer.
 - D7: who receives it. Only confirmed `subscribers` rows get it; nobody else.
-- D9: the welcome mail.
+- D9: the welcome mail. **Amended (4b, 27.10)** by the admin UX pass piece 4b (`docs/superpowers/plans/2026-10-26-admin-ux-news-popup.md`, ruling R-c; Dim 26.10: piece4-texts S4-Q2 A and S4-Q3 A):
+  - **The welcome discount moved to Hüpikaken.** It was Seaded → „Uudiskiri“ → „Tervitussoodustus“, a text stored as `settings.newsletter.discountLabel` („10%“). It is now Hüpikaken → „Pakkumine“ → „Soodustus (%)“, a whole number from 1 to 99 stored as `settings.newsletter.discountPercent`, and it waits for „Avalda muudatused“ like the rest of the popup's offer. The footer's sign-up block shows it as `{discountPercent}%`. Until the first publish writes the number, the old label is read for it (its first whole number when that is 1–99, else 10); the label stays in the row, unread. Seaded's „Uudiskiri“ keeps „Tervituskood“ only, and a save there never touches the two numbers.
+  - **`codeDays` is new**, in the same setting: Hüpikaken → „Kood kehtib (päeva)“, a whole number from 1 to 365, or `null` when the field is empty. It is published with the offer.
+  - **The welcome mail has one more line**, after the code's lines, when a welcome code is set **and** `codeDays` is: „Kood kehtib {n} päeva.“ (for 1: „Kood kehtib 1 päev.“); in Russian „Код действует {n} дней.“, with „день“ for 1, 21, 31 … and „дня“ for 2–4, 22–24 … (not 12–14). The mail reads the published value only: a number waiting in Hüpikaken's draft is not mailed. Without a code or without the days, the mail is as before.
 - „Kopeeri", and a sent campaign is read-only.
 - The editor, the preview route, `campaign-mail.ts` and the rules in `domain/newsletter-campaign.ts`.
 

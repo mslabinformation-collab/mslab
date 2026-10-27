@@ -6,7 +6,7 @@ import type { LegalKey, LegalState } from "@/domain/legal-text";
 import { SITE_LIMITS, type ContactDraft, type NewsletterDraft } from "@/domain/site-editor";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
-import type { SettingsValues } from "@/server/admin-site";
+import type { SettingsRead } from "@/server/admin-site";
 import { CertificateSettings, type CertificateSettingsInitial } from "./CertificateSettings";
 import { LegalTexts } from "./ContractTexts";
 import { combineStatus } from "./course/course-view";
@@ -18,7 +18,6 @@ import { SaveStatus } from "./SaveStatus";
 import { SectionMap, sectionCard, type SectionEntry } from "./SectionMap";
 import { TextField } from "./TextField";
 import { useSeadedPart, type StatusReport } from "./useSeadedPart";
-import type { Loaded } from "./useSiteDraft";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
@@ -150,7 +149,7 @@ function Restore({ conflict, onRestore }: { conflict: boolean; onRestore: () => 
  * (none is drawn).
  */
 export function SettingsEditor(p: {
-  initial: Loaded<SettingsValues>;
+  initial: SettingsRead;
   admins: string[];
   invoice: InvoiceSettingsInitial;
   certificate: CertificateSettingsInitial;

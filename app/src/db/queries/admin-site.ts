@@ -48,13 +48,7 @@ export const readPackages = (q: Q): Promise<PracticePackage[]> => q.select().fro
 export const readGallery = (q: Q, group: string): Promise<GalleryItem[]> =>
   q.select().from(galleryItems).where(eq(galleryItems.group, group)).orderBy(asc(galleryItems.sort), asc(galleryItems.id));
 
-/** The campaign popup's row (kind "campaign"). */
-export async function readCampaign(q: Q): Promise<Campaign | null> {
-  const [row] = await q.select().from(campaign).where(eq(campaign.kind, "campaign")).limit(1);
-  return row ?? null;
-}
-
-/** The newsletter popup's row (kind "newsletter", phase 2c). */
+/** The newsletter popup's row (kind "newsletter", phase 2c): Hüpikaken's one popup since admin UX pass piece 4b (R-d: the old campaign offer's row 1 is shown and edited nowhere). */
 export async function readNewsletterPopup(q: Q): Promise<Campaign | null> {
   const [row] = await q.select().from(campaign).where(eq(campaign.kind, "newsletter")).limit(1);
   return row ?? null;

@@ -227,6 +227,14 @@ describe("the page (S4-5, S4-6) and its cards in the public page's order (the P4
     expect(field("teaser.body")!.closest("[data-i18n-box]")!.hasAttribute("data-unpublished")).toBe(true);
     expect(field("statement.body")!.closest("[data-i18n-box]")!.hasAttribute("data-unpublished")).toBe(false);
   });
+
+  // piece 4b, Task 4 (ruling c1): Hüpikaken's „Eelvaade ↗“ opens the home page under the popup's own bar (?riba=hupikaken); Avaleht's stays its own
+  it("„Eelvaade ↗“ opens the home page in draft mode under Avaleht's own bar (`/`, never Hüpikaken's ?riba=hupikaken)", async () => {
+    await show();
+    await type(field("teaser.body"), "Uus kaardi tekst.");
+    await leave(field("teaser.body"));
+    expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe("/api/admin/eelvaade?tee=%2F");
+  });
 });
 
 describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P3 / P4 frames, S4-9, S4-10)", () => {

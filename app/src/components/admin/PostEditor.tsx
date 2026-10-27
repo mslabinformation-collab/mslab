@@ -35,7 +35,9 @@ import styles from "./PostEditor.module.css";
 //     makes until the page's read after the save brings the stored one (numbered when taken: `kevad-2`), taken as saved (adopt, nothing sent) — only
 //     a NEW read, and only when no save has landed since it was read (its version is the part's own): an older read's address may be an older title's
 //     (review I-1; the engine itself waits for a save on its way before it takes one);
-//   - an address she typed, or a copy of one restored and not yet saved, or one saved as hers, is hers: it never follows and no read moves it;
+//   - an address she typed, or a copy of one restored and not yet saved, or one saved as hers, is hers: it never follows and no read moves it (a
+//     restored copy brings back only what was typed: an address the engine held from before a skipped read is the page's read again and goes on
+//     following, Task 2 re-review N-2, engine.ts resume);
 //   - an emptied address is the title's again (the server makes it from the title): the field, its hint and the footer say the title's (review m6).
 //   An address another post has is refused with ADM:2281 at the field, at a save and at the publish or the switch (the bar's "invalid" hold).
 // - What a row of the list shows (the title, the cover, the day; a published post's „Avaldamata muudatused“) is read again after a save that changes it.

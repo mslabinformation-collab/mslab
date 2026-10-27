@@ -82,9 +82,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/upload/route.ts",
         "app/api/admin/lesson-file/route.ts",
         "server/actions/admin-content.ts",
-        // Task 13B: the post editor and the site content editors' actions
+        // Task 13B: the post editor (the site content editors' actions file went in piece 4b, Task 5: below)
         "app/admin/(panel)/uudised/[id]/page.tsx",
-        "server/actions/admin-site.ts",
         // phase 2a Task 9: Õpilased, the read-only "view as client", and their actions
         "app/admin/(panel)/opilased/page.tsx",
         "app/admin/(panel)/opilased/[id]/vaade/page.tsx",
@@ -172,14 +171,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     // piece 3b, Task 3: the old whole-form „Salvesta toimumine“ (saveSession) is gone with the old drawer
     expect(contentExports).toEqual(["createCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "createSessionAction", "setSessionStatusAction", "deleteSession"]);
     expect(violations(content.path, content.source)).toEqual([]);
-    const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
-    const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    // admin UX pass piece 3b, Task 5: Seaded's legal texts' „Salvesta“ (saveSettings) is gone: they type into drafts (api/admin/oigustekst/<key>);
-    // piece 4a, Task 4: Praktika's „Salvesta“ (savePractice) is gone: its packages type into drafts (api/admin/sisu/practice/0/osa/<code>)
-    // piece 4a, Task 5: Koolitaja's „Salvesta“ (saveTrainer) is gone: its parts type into drafts (api/admin/sisu/trainer/0/osa/<part>)
-    // piece 4a, Task 6: Avaleht's „Salvesta“ (saveHome) is gone: its parts type into drafts (api/admin/sisu/home/0/osa/<part>)
-    expect(siteExports).toEqual(["saveCampaign", "savePost", "deletePost"]);
-    expect(violations(site.path, site.source)).toEqual([]);
+    // the site content editors' actions file (server/actions/admin-site.ts) is gone, each action with its „Salvesta“: Seaded's legal texts' (saveSettings,
+    // piece 3b Task 5: api/admin/oigustekst/<key>); Praktika's, Koolitaja's and Avaleht's (savePractice, saveTrainer, saveHome, piece 4a:
+    // api/admin/sisu/<entity>/0/…); Hüpikaken's and the posts' (saveCampaign, savePost, deletePost, piece 4b Task 5: api/admin/sisu/<popup|post>/…,
+    // api/admin/hupikaken/naita, api/admin/uudised/…)
+    expect(files().some((f) => f.path === "server/actions/admin-site.ts")).toBe(false);
     // the contracts' actions: the contact text's „Salvesta lepingud“ (saveContractTextsAction) is gone with it (its draft is published on its route)
     const contractActions = files().find((f) => f.path === "server/actions/admin-contracts.ts")!;
     const contractExports = [...strip(contractActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);

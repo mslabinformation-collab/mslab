@@ -8,7 +8,8 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - a field saves 1.5 s after the last change (setField), and at once on flush() (blur, an instant field, leaving); one save at a time, the next
 //   one waits for the one on its way; a save sends only the fields changed since the last confirmed one (the patch), with that version;
 // - until the server confirms it, this browser keeps the form's text (localStorage `mslab-draft:{owner}:{key}:{tab}`, each tab its own key), with
-//   the texts it sent without an answer; the next visit resumes it (resume, below);
+//   the texts it sent without an answer and the confirmed text it was typed over; the next visit resumes what was typed (resume, below: a field
+//   never typed takes that visit's read, piece 4b);
 // - a field its check (`validate`, or the server's 400) refuses is held back: the others still save, and the status is `invalid`;
 // - a save that fails (no answer, 10 s without one, a server error) is tried again after 2, 5, 10, 20, then every 30 s, and at once when the
 //   browser is back online, the tab is shown again or focused; signed out (401, 403) is tried the same way: she may sign in in another tab;
@@ -24,7 +25,8 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
 //   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
 // - adopt(name, value): the page read again holds another value for a field nobody typed in (a server rule moved it, piece 3b): it becomes the
-//   field's confirmed text, nothing is sent — while a save is on its way or unanswered, once a save's answer confirms the form's text (piece 4b);
+//   field's confirmed text, nothing is sent — while a save is on its way or unanswered, once a save's answer confirms the form's text, and a newer
+//   adopt of the field replaces one that waits (piece 4b);
 // - confirmedVersion(): the server's version as the form last heard it, which a publish of the part goes from (piece 3b, the legal texts);
 // - stop() (the screen goes): a save on its way may finish, nothing more is sent — a save queued behind it stays in the copy for the next visit
 //   (piece 4b R-i).
@@ -110,14 +112,18 @@ function copyKeys(storage: Storage, prefix: string): string[] {
   return out;
 }
 
-type LocalCopy = { version: string; fields: Fields; sent: Fields[]; at: number };
+/**
+ * A copy in this browser: the form's text at `version`, the texts sent without an answer, and `base` — the confirmed text the form's text was typed
+ * over (piece 4b review N-2; null in a copy kept before it: every field of such a copy is taken as typed, as before).
+ */
+type LocalCopy = { version: string; fields: Fields; base: Fields | null; sent: Fields[]; at: number };
 
 function parseCopy(raw: string | null): LocalCopy | null {
   try {
     const c: unknown = JSON.parse(raw ?? "null");
     if (!isRecord(c) || typeof c.version !== "string" || !isRecord(c.fields)) return null;
     const sent = Array.isArray(c.sent) ? c.sent.filter(isRecord) : [];
-    return { version: c.version, fields: c.fields, sent, at: typeof c.at === "number" ? c.at : 0 };
+    return { version: c.version, fields: c.fields, base: isRecord(c.base) ? c.base : null, sent, at: typeof c.at === "number" ? c.at : 0 };
   } catch {
     return null;
   }
@@ -297,12 +303,15 @@ export class AutosaveEngine {
    * form holds the confirmed one there: nothing typed in it, none of its saves on the way or unanswered, no conflict. Anything else of the form is
    * left as it is. While a save of other fields is on its way, or one is unanswered, it is taken only once a save's answer confirms the form's text
    * (and only if the field is still untouched then): that answer confirms the text the save sent — this field's old one with it — and taken before
-   * it, the field would then differ from its confirmed text and go out as if typed (piece 4b review I-1). True when taken, now or then.
+   * it, the field would then differ from its confirmed text and go out as if typed (piece 4b review I-1). A newer adopt of the field replaces one that
+   * waits, whether it is taken at once or waits in turn: the page's latest read is the server's word (review N-1: after a 401/403 or a refusal the older
+   * value would otherwise wait on and be taken over the newer one at the next confirm). True when taken, now or then.
    */
   adopt(name: string, value: unknown): boolean {
     if (this.blocked() || !(name in this.fields) || !same(this.fields[name], this.confirmed[name])) return false;
     if (this.flying !== null && name in this.flying && !same(this.flying[name], this.confirmed[name])) return false;
     if (this.unanswered.some((u) => name in u && !same(u[name], this.confirmed[name]))) return false;
+    this.dropWaitingAdopt(name);
     if (same(this.fields[name], value)) return true;
     if (this.flying !== null || this.unanswered.length > 0) {
       this.adoptLater = { ...this.adoptLater, [name]: value };
@@ -325,6 +334,14 @@ export class AutosaveEngine {
     const later = this.adoptLater;
     this.adoptLater = {};
     for (const [name, value] of Object.entries(later)) this.adopt(name, value);
+  }
+
+  /** The field's adopt that waits, if any, given up (a newer one of the same field replaces it). */
+  private dropWaitingAdopt(name: string): void {
+    if (!Object.hasOwn(this.adoptLater, name)) return;
+    const rest = { ...this.adoptLater };
+    delete rest[name];
+    this.adoptLater = rest;
   }
 
   /**
@@ -632,7 +649,9 @@ export class AutosaveEngine {
    * the server decides. 200: saved. 409 with one of those texts (that visit's lost answer): saved on top. 409 with another device's text:
    * `conflict`, the copy's text kept. A copy the server holds already is dropped. The copies read go once this form's text is confirmed, each
    * only if nobody wrote it since (an open tab typing into its own keeps it). A simplified protocol-autosave.ts resume: an older copy's words
-   * give way to the newest's, with no notice of them.
+   * give way to the newest's, with no notice of them. Only what was typed comes back: a field the copy holds as its confirmed text (`base`) was never
+   * typed in that visit, so the page's read stands there — in the form and in the texts sent without an answer — and it is never sent as typed (piece
+   * 4b review N-2: a post's address that follows its title, whose engine missed a read, would otherwise come back as hers and stop following).
    */
   private resume(): void {
     const storage = this.storage;
@@ -647,12 +666,19 @@ export class AutosaveEngine {
       if (!newest || copy.at >= newest.at) newest = copy;
     }
     if (!newest) return;
+    const base = newest.base;
+    /** Does `text` hold the copy's confirmed text in field `n` (typed nothing there)? Never, in a copy that has no `base`. */
+    const untouched = (text: Fields, n: string): boolean => base !== null && n in base && same(text[n], base[n]);
     const fields: Fields = { ...this.fields };
-    for (const n of Object.keys(fields)) if (n in newest.fields) fields[n] = newest.fields[n];
+    for (const n of Object.keys(fields)) if (n in newest.fields && !untouched(newest.fields, n)) fields[n] = newest.fields[n];
     if (same(fields, this.fields)) return this.dropCopy();
     this.fields = fields;
     this.version = newest.version;
-    this.unanswered = newest.sent.map((s) => this.over(s));
+    this.unanswered = newest.sent.map((s) => {
+      const u = this.over(s);
+      for (const n of Object.keys(u)) if (untouched(s, n)) u[n] = this.confirmed[n];
+      return u;
+    });
     this.keep();
     this.schedule(0);
   }
@@ -669,8 +695,9 @@ export class AutosaveEngine {
   }
 
   /**
-   * Keeps the form's text under this tab's key, with the texts sent without an answer. After stop only while that key still exists: a screen
-   * opened again resumes the copy and releases it, and writing it back would bring back a copy nobody holds.
+   * Keeps the form's text under this tab's key, with the texts sent without an answer and the confirmed text it was typed over (`base`: what a
+   * resume takes as untyped). After stop only while that key still exists: a screen opened again resumes the copy and releases it, and writing it
+   * back would bring back a copy nobody holds.
    */
   private keep(): void {
     const storage = this.storage;
@@ -678,7 +705,7 @@ export class AutosaveEngine {
     const key = this.copyKey();
     if (!this.running && getRaw(storage, key) === null) return;
     const sent = this.flying ? remember(this.unanswered, this.flying) : this.unanswered;
-    writeKey(storage, key, { version: this.version, fields: this.fields, sent, at: Date.now() });
+    writeKey(storage, key, { version: this.version, fields: this.fields, base: this.confirmed, sent, at: Date.now() });
   }
 
   /** The server holds the form's text: this tab's copy goes, and so do the copies it resumed. */

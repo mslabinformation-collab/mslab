@@ -70,7 +70,7 @@ function shortWordsOf(status: AutosaveStatus, draft: boolean, thing: string | un
 }
 
 /**
- * The one status chip of a screen (admin UX pass, README §1.4): what the autosave is doing, in words and in colour. It replaces SaveBar and every
+ * The one status chip of a screen (admin UX pass, README §1.4): what the autosave is doing, in words and in colour. It replaced the editors' save bars and every
  * status line. Placement is the screen's: the right end of the page's H1 row, the drawer's header left of ✕, under the H1 on a phone.
  *
  * - `draft`: the saved state of an unpublished change: „Mustand salvestatud {HH:MM}“.

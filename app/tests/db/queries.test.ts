@@ -27,6 +27,7 @@ import {
   replaceGallery,
   setRegistrationStatus,
   setSetting,
+  campaignInput,
   upsertCampaign,
   upsertCourse,
   upsertFaq,
@@ -315,6 +316,10 @@ describe("admin queries", () => {
     // the newsletter row switched on switches the campaign off first (at most one active), in its own fixed row
     const nl = await upsertCampaign(db, { ...input, title: { et: "Uudiskiri" } }, "newsletter");
     expect([nl.id, nl.kind, nl.active]).toEqual([2, "newsletter", true]);
+    // a stored row written back through campaignInput (Hüpikaken's publish and switch, piece 4b): its columns but the id and kind, so it is the same row
+    expect(campaignInput(nl)).not.toHaveProperty("id");
+    expect(campaignInput(nl)).not.toHaveProperty("kind");
+    expect(await upsertCampaign(db, campaignInput(nl), "newsletter")).toEqual(nl);
     expect((await db.select().from(campaign).where(eq(campaign.id, 1)))[0].active).toBe(false);
 
     await db.insert(subscribers).values([

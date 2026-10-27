@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { CampaignEditor } from "@/components/admin/CampaignEditor";
 import { EditLangProvider } from "@/components/admin/EditLang";
 import { UndoProvider } from "@/components/admin/UndoBar";
@@ -293,10 +294,19 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
     expect(toggle()?.checked).toBe(true);
   });
 
-  it("„Võta tagasi“ pressed while the cards still wait for the hide's read: it waits for that read, then switches on (never „Salvestamine ei õnnestunud“)", async () => {
+  it("„Võta tagasi“ pressed while the cards still wait for the hide's read: it waits for that read, then switches on (never „Salvestamine ei õnnestunud“); the wait's bound timer goes with it", async () => {
     await show();
     await click(toggle());
     expect($("[data-cards-waiting]")).not.toBeNull();
+    // the wait's own bound (SAVE_TIMEOUT_MS + 1 s, for an editor that has gone): its timer is cleared once the read frees the cards (T4 re-review m3)
+    const bounds: unknown[] = [];
+    const setTimer = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+      const id = setTimer(fn, ms);
+      if (ms === SAVE_TIMEOUT_MS + 1000) bounds.push(id);
+      return id;
+    }) as unknown as typeof setTimeout);
+    const cleared = vi.spyOn(globalThis, "clearTimeout");
     await click(undoButton());
     await act(async () => void (await new Promise((r) => setTimeout(r, 250))));
     expect(posts().map((c) => c.url)).toEqual([SWITCH]); // (not yet: the cards wait)
@@ -306,6 +316,8 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
     await settle();
     expect(posts().at(-1)).toMatchObject({ url: SWITCH, body: { on: true, version: "v1+" } });
     expect(text(undoBar())).toBe("");
+    expect(bounds).toHaveLength(1);
+    expect(cleared.mock.calls.map((c) => c[0])).toContain(bounds[0]);
   });
 
   it("on: no bar; a hide's bar still up goes", async () => {
@@ -400,6 +412,11 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
     await click(toggle());
     expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
     expect(text(undoBar())).toContain("Hüpikaken peidetud.");
+    expect(field("offer.discountPercent")!.value).toBe("150");
+    // the page's read after the switch starts the cards again from it: the field still holds her 150 (this browser's copy), never the stored 10
+    await show({ parts: partsOf(), stamp: 5, shown: { on: false, version: "v1+" } });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(field("offer.discountPercent")!.value).toBe("150");
   });
 
   it("a press that fails says the save line under the switch, which shows what it was", async () => {

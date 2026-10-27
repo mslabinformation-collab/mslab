@@ -504,7 +504,7 @@ describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R
     expect(popupOf(await homeTree())).toBeNull();
   });
 
-  test("„Eelvaade ↗“ from Hüpikaken (?riba=hupikaken, ruling c1): the popup's bar — its count, its „Loobu muudatustest“, which leaves Avaleht's drafts alone; without it, Avaleht's bar; a visitor: no bar, the query unread", async () => {
+  test("„Eelvaade ↗“ from Hüpikaken (?riba=hupikaken, ruling c1): the popup's bar — its count, its „Loobu muudatustest“, which leaves Avaleht's drafts alone; without it, Avaleht's bar; a visitor with it: no bar, and no session looked for", async () => {
     await show(true);
     await save("home", "statement", { body: { et: "Uus lause avalehel." } });
     await save("popup", "offer", { title: { et: "Uus pakkumine" }, discountPercent: "15" });

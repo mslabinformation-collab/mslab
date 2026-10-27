@@ -5,7 +5,7 @@ import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { EditLangProvider, LangSwitch } from "@/components/admin/EditLang";
 import { FaqEditor } from "@/components/admin/FaqEditor";
-import { I18nInput, PreviewLangSwitch } from "@/components/admin/I18nInput";
+import { I18nInput } from "@/components/admin/I18nInput";
 import { ListEditor } from "@/components/admin/ListEditor";
 import { SlidesEditor } from "@/components/admin/SlidesEditor";
 import { newSlideDraft, type FaqDraft, type SlideDraft } from "@/domain/site-editor";
@@ -445,21 +445,5 @@ describe("a collapsed slide", () => {
     expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
     await click(seg("et"));
     expect(missingLine()).toBeNull();
-  });
-});
-
-describe("the previews keep their own switch", () => {
-  test("PreviewLangSwitch is the old two-pill control for a preview, labelled for it, and does not touch the page's language", async () => {
-    function Preview() {
-      const [lang, setLang] = useState<"et" | "ru">("et");
-      return createElement(PreviewLangSwitch, { lang, onChange: setLang, label: "Eelvaade", missingRu: false });
-    }
-    await show(createElement("div", null, createElement(Preview), createElement(Form)));
-    const group = $("[data-lang-switch]")!;
-    expect(group.getAttribute("aria-label")).toBe("Keel: Eelvaade");
-    await click(group.querySelector('[data-lang="ru"]'));
-    expect(group.querySelector('[data-lang="ru"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect(field("title").getAttribute("data-lang-field")).toBe("et");
-    expect(seg("et")!.getAttribute("aria-pressed")).toBe("true");
   });
 });

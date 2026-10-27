@@ -1,37 +1,26 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { campaign, contentDrafts, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "@/db/schema";
+import { faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { readSlides, saveSlides } from "@/db/queries/admin-site";
 import { getHomeData, getPage, getPracticePackages, getSettings, listPosts } from "@/db/queries/public";
 import { shellSettings, trainerSettings } from "@/components/site/settings";
-import {
-  deletePostForm,
-  loadCampaign,
-  loadPost,
-  loadSettings,
-  saveCampaignForm,
-  savePostForm,
-  loadLegalParts,
-  saveLegalParts,
-  writeSettingsPart,
-  type SettingsPart,
-} from "@/server/admin-site";
+import { loadLegalParts, loadSettings, saveLegalParts, writeSettingsPart, type SettingsPart } from "@/server/admin-site";
 import { saveDraftPart } from "@/server/drafts";
 import { discardSite, hasSitePart, publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
 import type { SaveAnswer } from "@/domain/autosave";
 import type { EditResult } from "@/server/edit-check";
 import type { PostPartValue, SiteEntity, SiteTarget } from "@/domain/site-entities";
-import { newPostDraft, type FaqDraft, type PackageDraft, type PostDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
+import type { FaqDraft, PackageDraft, SlideDraft, TrainerDraft, WorkDraft } from "@/domain/site-editor";
 import { parsePrepayment } from "@/domain/account-cards";
 
 // Task 13B: the site content editors' rules on a real (PGlite) database with the prototype seed. Avaleht, Praktika and Koolitaja (admin UX pass piece 4a)
 // are pinned on the path they have now: a card's draft, then „Avalda muudatused“ (publishSite), which runs each part's strict check and writes it. The
-// loose check of a draft save, the drafts' versions and the routes are tests/db/site-drafts.test.ts'. Hüpikaken and Seaded still have the form path
-// (saveParts) and are pinned through it below; the posts have both until piece 4b's Task 5 (the old editor's form, and the draft layer: its rules are
-// tests/db/post-drafts.test.ts', and the strict check's own below).
+// loose check of a draft save, the drafts' versions and the routes are tests/db/site-drafts.test.ts'. Seaded's parts autosave field by field
+// (writeSettingsPart) and its legal texts publish through saveLegalParts. The posts and Hüpikaken are on the draft layer since piece 4b: their rules are
+// tests/db/post-drafts.test.ts' and tests/db/popup-drafts.test.ts' (a post's strict check is pinned below too); the old forms went in its Task 5.
 
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
@@ -48,11 +37,6 @@ beforeEach(async () => {
   pub.revalidatePublic.mockReset();
 });
 
-const form = (parts: Record<string, { version: string; value: unknown }>) => {
-  const fd = new FormData();
-  fd.set("data", JSON.stringify({ parts }));
-  return fd;
-};
 const fieldsOf = (r: EditResult) => (r.ok ? {} : (r.fields ?? {}));
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -162,9 +146,6 @@ describe("home page: hero slides, statement, FAQ", () => {
       error: "invalid",
       fields: { "slides.0.ctaHref": "localeHref", "slides.1.ctaHref": "localeHref" },
     });
-    // the popup's campaign has the same rule on its own path
-    const c = await loadCampaign(db);
-    expect(fieldsOf(await saveCampaignForm(db, form({ campaign: { version: c.versions.campaign, value: { ...c.values.campaign, ctaHref: "/ru/koolitused" } } })))).toEqual({ "campaign.ctaHref": "localeHref" });
   });
 
   test("site paths (with a query or a hash) and https addresses are accepted links; a new slide goes where it is put", async () => {
@@ -406,151 +387,6 @@ describe("trainer page", () => {
   });
 });
 
-describe("campaign (D adminCamp + image upload, M3–M5)", () => {
-  // the old form path (saveCampaignForm), whose screen piece 4b Task 4 replaced and Task 5 removes: from the state it was built for, the old campaign
-  // offer shown (the seed has it off since Task 4, R-d)
-  beforeEach(async () => {
-    await db.update(campaign).set({ active: true }).where(eq(campaign.id, 1));
-  });
-
-  test("the uploaded image, code and texts are stored; an empty button text becomes 'Leia enda koolitus'", async () => {
-    const c = await loadCampaign(db);
-    expect(c.values.campaign).toMatchObject({ active: true, code: "TALV15", ctaLabel: { et: "Leia enda koolitus" }, imageKey: "/seed/lash-editorial.jpg" });
-    const value = { ...clone(c.values.campaign), imageKey: UPLOAD, code: " kevad-20 ", ctaLabel: { et: " " }, title: { et: "−20% kevadel", ru: "−20% весной" } };
-    expect(await saveCampaignForm(db, form({ campaign: { version: c.versions.campaign, value } }))).toMatchObject({ ok: true });
-    const [row] = await db.select().from(campaign).where(eq(campaign.id, 1));
-    expect(row).toMatchObject({ imageKey: UPLOAD, code: "KEVAD-20", ctaLabel: { et: "Leia enda koolitus" }, title: { et: "−20% kevadel", ru: "−20% весной" }, active: true });
-  });
-
-  test("an active campaign needs its title and image; a switched-off one may stay unfinished; links and codes are checked", async () => {
-    const c = await loadCampaign(db);
-    const base = clone(c.values.campaign);
-    expect(fieldsOf(await saveCampaignForm(db, form({ campaign: { version: c.versions.campaign, value: { ...base, imageKey: "", title: { et: "" }, ctaHref: "javascript:alert(1)", code: "TALV 15" } } })))).toEqual({
-      "campaign.imageKey": "imageRequired",
-      "campaign.title": "required",
-      "campaign.ctaHref": "href",
-      "campaign.code": "codeFormat",
-    });
-    expect(await saveCampaignForm(db, form({ campaign: { version: c.versions.campaign, value: { ...base, active: false, imageKey: "", title: { et: "" } } } }))).toMatchObject({ ok: true });
-    expect((await getHomeData(db)).popup).toBeNull();
-  });
-
-  test("Hüpikaken: both parts load; choosing Uudiskiri switches the campaign off and the newsletter on in one save; Väljas both off", async () => {
-    const p = await loadCampaign(db);
-    expect(p.values.newsletter).toMatchObject({ active: false, kicker: { et: "MS LABi kirjad", ru: "Письма MS LAB" }, imageKey: "/seed/gift-bag-serum.jpg" });
-    const flags = async () => (await db.select({ id: campaign.id, active: campaign.active }).from(campaign).orderBy(asc(campaign.id))).map((r) => r.active);
-    expect(await flags()).toEqual([true, false]);
-    const both = (c: boolean, n: boolean) =>
-      form({
-        campaign: { version: p.versions.campaign, value: { ...clone(p.values.campaign), active: c } },
-        newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: n } },
-      });
-    expect(await saveCampaignForm(db, both(false, true))).toMatchObject({ ok: true });
-    expect(await flags()).toEqual([false, true]);
-    expect((await getHomeData(db)).popup).toMatchObject({ kind: "newsletter" });
-    const q = await loadCampaign(db);
-    expect(await saveCampaignForm(db, form({ newsletter: { version: q.versions.newsletter, value: { ...clone(q.values.newsletter), active: false } } }))).toMatchObject({ ok: true });
-    expect(await flags()).toEqual([false, false]);
-    expect((await getHomeData(db)).popup).toBeNull();
-  });
-
-  test("a save with no parts changes nothing; an unknown part, a malformed draft or no JSON is refused (the form path's own rules, saveParts)", async () => {
-    const p = await loadCampaign(db);
-    expect(await saveCampaignForm(db, form({}))).toMatchObject({ ok: true });
-    expect((await loadCampaign(db)).versions).toEqual(p.versions);
-    expect(await saveCampaignForm(db, form({ slides: { version: p.versions.campaign, value: [] } }))).toEqual({ ok: false, error: "invalid" });
-    expect(await saveCampaignForm(db, form({ campaign: { version: p.versions.campaign, value: { active: "yes" } } }))).toEqual({ ok: false, error: "invalid" });
-    const fd = new FormData();
-    fd.set("data", "{not json");
-    expect(await saveCampaignForm(db, fd)).toEqual({ ok: false, error: "invalid" });
-    expect(await saveCampaignForm(db, new FormData())).toEqual({ ok: false, error: "invalid" });
-  });
-
-  test("a shown newsletter popup needs its title and picture; a switched-off one may stay unfinished", async () => {
-    const p = await loadCampaign(db);
-    const nl = (value: object) => form({ newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), ...value } } });
-    expect(fieldsOf(await saveCampaignForm(db, nl({ active: true, title: { et: "" }, imageKey: "" })))).toEqual({ "newsletter.title": "required", "newsletter.imageKey": "imageRequired" });
-    expect(await saveCampaignForm(db, nl({ active: false, title: { et: "" }, imageKey: "" }))).toMatchObject({ ok: true });
-  });
-
-  // The first test above sends the campaign part first, so the campaign is already off (in the same transaction) when the newsletter
-  // popup is switched on: it passes even without upsertCampaign's "switch the other popup off first". These do not: the popup
-  // switched on is written while the other one is still on, and campaign_one_active refuses a second active row.
-  describe("at most one popup shown, whichever part is saved or written first", () => {
-    const flags = async () => (await db.select({ id: campaign.id, active: campaign.active }).from(campaign).orderBy(asc(campaign.id))).map((r) => r.active);
-
-    test("only the newsletter part, switched on, while the campaign is still on: the campaign goes off in the same save", async () => {
-      const p = await loadCampaign(db);
-      expect(await flags()).toEqual([true, false]);
-      const r = await saveCampaignForm(db, form({ newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true } } }));
-      expect(r).toMatchObject({ ok: true });
-      expect(await flags()).toEqual([false, true]);
-    });
-
-    test("only the campaign part, switched on, while the newsletter popup is on: the newsletter popup goes off", async () => {
-      const p = await loadCampaign(db);
-      await saveCampaignForm(db, form({ newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true } } }));
-      const q = await loadCampaign(db);
-      expect(await flags()).toEqual([false, true]);
-      expect(await saveCampaignForm(db, form({ campaign: { version: q.versions.campaign, value: { ...clone(q.values.campaign), active: true } } }))).toMatchObject({ ok: true });
-      expect(await flags()).toEqual([true, false]);
-    });
-
-    test("both parts in the other order (the newsletter popup first): the same result", async () => {
-      const p = await loadCampaign(db);
-      const r = await saveCampaignForm(
-        db,
-        form({
-          newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true } },
-          campaign: { version: p.versions.campaign, value: { ...clone(p.values.campaign), active: false } },
-        }),
-      );
-      expect(r).toMatchObject({ ok: true });
-      expect(await flags()).toEqual([false, true]);
-    });
-
-    test("a forged draft with both on is not a database error: the part written last wins, one popup is shown", async () => {
-      const p = await loadCampaign(db);
-      const r = await saveCampaignForm(
-        db,
-        form({
-          campaign: { version: p.versions.campaign, value: { ...clone(p.values.campaign), active: true } },
-          newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true } },
-        }),
-      );
-      expect(r).toMatchObject({ ok: true });
-      expect((await flags()).filter(Boolean)).toHaveLength(1);
-    });
-
-    test("one stale part, nothing written: another save changed the newsletter popup, so the campaign's switch-off in the same save is not stored either", async () => {
-      const p = await loadCampaign(db);
-      await db.update(campaign).set({ title: { et: "Kellegi teine salvestus" } }).where(eq(campaign.id, 2));
-      const r = await saveCampaignForm(
-        db,
-        form({
-          campaign: { version: p.versions.campaign, value: { ...clone(p.values.campaign), active: false } },
-          newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true } },
-        }),
-      );
-      expect(r).toEqual({ ok: false, error: "stale" });
-      expect(await flags()).toEqual([true, false]);
-    });
-
-    test("one refused part, nothing written: the campaign stays on (its own switch-off is not saved) when the newsletter popup is switched on without its picture", async () => {
-      const p = await loadCampaign(db);
-      const r = await saveCampaignForm(
-        db,
-        form({
-          campaign: { version: p.versions.campaign, value: { ...clone(p.values.campaign), active: false } },
-          newsletter: { version: p.versions.newsletter, value: { ...clone(p.values.newsletter), active: true, imageKey: "" } },
-        }),
-      );
-      expect(fieldsOf(r)).toEqual({ "newsletter.imageKey": "imageRequired" });
-      expect(await flags()).toEqual([true, false]);
-    });
-  });
-});
-
 describe("settings", () => {
   /** An autosaved part's save (writeSettingsPart, the route's write: admin UX pass piece 3b, Task 4) from the version the page reads now. */
   const savePart = async (part: SettingsPart, patch: unknown) => writeSettingsPart(db, part, patch, (await loadSettings(db)).versions[part], new Date());
@@ -571,6 +407,20 @@ describe("settings", () => {
     expect(await writeSettingsPart(db, "contact", { phone: "" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict", value: { phone: "+372 5555 0101" } });
     // the legal texts' writer (their publish, admin UX pass piece 3b, Task 5) takes only theirs
     expect(await saveLegalParts(db, { contact: { version: (await loadSettings(db)).versions.contact, value: good } } as never)).toEqual({ ok: false, error: "invalid" });
+  });
+
+  // piece 4b, Task 3 (ruling c2): a card's version is the hash of its own fields, not of the whole row — the newsletter row's is pinned in
+  // tests/db/seaded-route.test.ts; this is the contact card's
+  test("contact: a key the card does not show (`extra`) leaves the card's version as it was, so a save from the version read before it is no conflict", async () => {
+    const s = await loadSettings(db);
+    await db.update(settings).set({ value: { ...s.values.contact, extra: "first" } }).where(eq(settings.key, "contact"));
+    expect((await loadSettings(db)).versions.contact).toBe(s.versions.contact);
+    await db.update(settings).set({ value: { ...s.values.contact, extra: "changed" } }).where(eq(settings.key, "contact"));
+    expect((await loadSettings(db)).versions.contact).toBe(s.versions.contact);
+    expect(await writeSettingsPart(db, "contact", { phone: "+372 5555 0101" }, s.versions.contact, new Date())).toMatchObject({ ok: true, changed: true });
+    expect((await getSettings(db)).contact).toMatchObject({ phone: "+372 5555 0101", extra: "changed" });
+    // a card field changed meanwhile still moves it: the version read before is a conflict
+    expect(await writeSettingsPart(db, "contact", { address: "Tartu" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict" });
   });
 
   test("„Uudiskiri“ is the welcome code alone: the discount moved to Hüpikaken (piece 4b S4-Q2 A); the legal pages have their own writer", async () => {
@@ -758,79 +608,7 @@ describe("settings", () => {
   });
 });
 
-describe("posts", () => {
-  const draft = (over: Partial<PostDraft> = {}): PostDraft => ({ ...newPostDraft("2026-10-02"), title: { et: "Sügisene uudis" }, category: { et: "Uudis" }, ...over });
-  const savePost = (d: PostDraft, version = "") => savePostForm(db, form({ post: { version, value: d } }));
-
-  test("a new post gets a slug from its title, 09:00 Estonian time on its date, and is hidden until published", async () => {
-    const r = await savePost(draft({ excerpt: { et: "Lühidalt." }, body: { et: "Üks.\n\nKaks." } }));
-    expect(r).toMatchObject({ ok: true, created: true });
-    const id = (r as { id: number }).id;
-    const [row] = await db.select().from(posts).where(eq(posts.id, id));
-    expect(row).toMatchObject({ slug: "sugisene-uudis", published: false, coverKey: "", category: { et: "Uudis" } });
-    expect(row.publishedAt.toISOString()).toBe("2026-10-02T06:00:00.000Z");
-    expect((await listPosts(db)).map((p) => p.id)).not.toContain(id);
-
-    // publishing needs the cover
-    const loaded = (await loadPost(db, id))!;
-    expect(loaded.values.post).toMatchObject({ id, slug: "sugisene-uudis", publishedAt: "2026-10-02" });
-    expect(fieldsOf(await savePost({ ...loaded.values.post, published: true }, loaded.versions.post))).toEqual({ "post.coverKey": "imageRequired" });
-    expect(await savePost({ ...loaded.values.post, published: true, coverKey: UPLOAD, publishedAt: "2026-12-24" }, loaded.versions.post)).toMatchObject({ ok: true, created: false });
-    const [first] = await listPosts(db);
-    expect(first).toMatchObject({ id, coverKey: UPLOAD });
-    expect(first.publishedAt.toISOString()).toBe("2026-12-24T07:00:00.000Z"); // winter: UTC+2
-  });
-
-  test("an edit on the same day keeps the stored time (the order of that day's posts); a new day starts at 09:00", async () => {
-    const [seed] = await listPosts(db);
-    const at = new Date("2026-09-22T11:37:00Z"); // 14:37 in Tallinn
-    await db.update(posts).set({ publishedAt: at }).where(eq(posts.id, seed.id));
-    const a = (await loadPost(db, seed.id))!;
-    expect(a.values.post.publishedAt).toBe("2026-09-22");
-    const same = await savePost({ ...a.values.post, title: { et: "Sama päev" } }, a.versions.post);
-    expect(same).toMatchObject({ ok: true });
-    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0].publishedAt.toISOString()).toBe(at.toISOString());
-    // the saved draft and version are the ones a fresh load gives (read back inside the save's transaction)
-    expect((same as unknown as { saved: unknown }).saved).toEqual(await loadPost(db, seed.id));
-    const b = (await loadPost(db, seed.id))!;
-    expect(await savePost({ ...b.values.post, publishedAt: "2026-09-23" }, b.versions.post)).toMatchObject({ ok: true });
-    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0].publishedAt.toISOString()).toBe("2026-09-23T06:00:00.000Z");
-  });
-
-  test("refuses a missing title or category, a bad date, a taken or malformed slug", async () => {
-    expect(fieldsOf(await savePost(draft({ title: { et: "" }, category: { et: "" }, publishedAt: "2026-02-30" })))).toEqual({
-      "post.title": "required",
-      "post.slug": "required",
-      "post.category": "required",
-      "post.publishedAt": "date",
-    });
-    expect(fieldsOf(await savePost(draft({ slug: "Mitte Nii!" })))).toEqual({ "post.slug": "slugFormat" });
-    expect(fieldsOf(await savePost(draft({ title: { et: "Uus koolitus: Lash Lift BOTOX" } })))).toEqual({ "post.slug": "slugTaken" }); // a seed post
-    expect(fieldsOf(await savePost(draft({ publishedAt: "" })))).toEqual({ "post.publishedAt": "required" });
-    expect(await db.select().from(posts)).toHaveLength(6);
-  });
-
-  test("an edit is stale after a save elsewhere and notFound for a missing post; delete removes it", async () => {
-    const [seed] = await listPosts(db);
-    const a = (await loadPost(db, seed.id))!;
-    const b = (await loadPost(db, seed.id))!;
-    expect(await savePost({ ...a.values.post, title: { et: "Muudetud" } }, a.versions.post)).toMatchObject({ ok: true });
-    expect(await savePost({ ...b.values.post, title: { et: "Minu oma" } }, b.versions.post)).toEqual({ ok: false, error: "stale" });
-    expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0].title).toEqual({ et: "Muudetud" });
-    expect(await savePost({ ...a.values.post, id: 99999 }, a.versions.post)).toEqual({ ok: false, error: "notFound" });
-
-    const del = new FormData();
-    del.set("id", String(seed.id));
-    expect(await deletePostForm(db, del)).toMatchObject({ ok: true, deleted: true });
-    expect(await deletePostForm(db, del)).toEqual({ ok: false, error: "notFound" });
-    const bad = new FormData();
-    bad.set("id", "x");
-    expect(await deletePostForm(db, bad)).toEqual({ ok: false, error: "invalid" });
-    expect(await db.select().from(posts)).toHaveLength(5);
-  });
-});
-
-describe("posts on the draft layer (admin UX pass piece 4b, Task 1): the strict check at „Avalda muudatused“ (S4-Q1 A, R-g) and the delete (R-h)", () => {
+describe("posts on the draft layer (admin UX pass piece 4b, Task 1): the strict check at „Avalda muudatused“ (S4-Q1 A, R-g)", () => {
   const post = (id: number): SiteTarget => ({ entity: "post", id });
   const readPost = (id: number) => readSiteEditor(db, post(id));
   /** A draft put straight into the store (one the loose check would refuse): what the publish meets is the strict check alone. */
@@ -863,16 +641,6 @@ describe("posts on the draft layer (admin UX pass piece 4b, Task 1): the strict 
     await draftPost(seed.id, { publishedAt: "2026-09-23" });
     expect(await publishPost(seed.id)).toMatchObject({ published: ["post"], blocked: [] });
     expect((await db.select().from(posts).where(eq(posts.id, seed.id)))[0].publishedAt.toISOString()).toBe("2026-09-23T06:00:00.000Z");
-  });
-
-  test("the old editor's „Kustuta postitus“ (deletePostForm) takes the post's drafts with it, another post's stay", async () => {
-    const [a, b] = await listPosts(db);
-    await draftPost(a.id, { excerpt: { et: "Uus." } });
-    await draftPost(b.id, { excerpt: { et: "Teine." } });
-    const del = new FormData();
-    del.set("id", String(a.id));
-    expect(await deletePostForm(db, del)).toMatchObject({ ok: true, deleted: true });
-    expect((await db.select().from(contentDrafts)).map((d) => [d.entity, d.entityId])).toEqual([["post", b.id]]);
   });
 });
 

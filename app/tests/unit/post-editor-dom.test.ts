@@ -417,6 +417,37 @@ describe("the address follows the title until the post is first published (R-g; 
     expect(field("post.slug")!.value).toBe("minu-aadress");
   });
 
+  // Task 2 re-review N-2: the read after a title save is skipped when another save landed before it (review I-1), so the engine still holds the old
+  // address; she then types and leaves before it is sent, and the copy holds that old address too. The next visit must not take it as hers: it is
+  // the field's confirmed text in the copy, so the read's address stands, nothing is sent for it, and it goes on following the title.
+  it("a restored copy keeps following: an address she never typed (the engine's, from before a skipped read) is not sent as typed", async () => {
+    resetRemote(false, NEW);
+    await show({ published: false, parts: partsOf(NEW) });
+    await type(field("post.title"), "Kevad");
+    await leave(field("post.title"));
+    const afterTitle = remote.version;
+    remote.value = { ...remote.value, slug: "kevad" }; // (the server made it from the title, R-g)
+    await type(field("post.body"), "Tekst.");
+    await leave(field("post.body"));
+    // the read asked for after the title lands now: a save has landed since, so its address is not taken (the engine keeps the old one)
+    const read = { ...NEW, title: { et: "Kevad" }, slug: "kevad" };
+    await show({ published: false, parts: { post: { version: afterTitle, value: read, live: read } } });
+    expect(field("post.slug")!.value).toBe("kevad");
+    // she types on and leaves the post before it is sent: the copy keeps the text
+    await type(field("post.body"), "Tekst. Veel.");
+    await act(async () => root.render(createElement("div")));
+    await settle();
+    expect(remote.log.map((b) => b.patch)).toEqual([{ title: { et: "Kevad" } }, { body: { et: "Tekst." } }]);
+    // the next visit: the page's read, then the copy resumed — only the typed text goes, the address is the server's and still follows
+    const stored = remote.value as PostPartValue;
+    await show({ published: false, parts: { post: { version: remote.version, value: stored, live: stored } } });
+    expect(remote.log.at(-1)?.patch).toEqual({ body: { et: "Tekst. Veel." } });
+    expect(field("post.slug")!.value).toBe("kevad");
+    await type(field("post.title"), "Kevadine");
+    expect(field("post.slug")!.value).toBe("kevadine");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/kevadine");
+  });
+
   it("an emptied address is the title's again: the field, its hint and the footer say the title's address, never an empty one (review m6)", async () => {
     resetRemote(false, NEW);
     await show({ published: false, parts: partsOf(NEW) });

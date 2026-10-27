@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { trainerSettings, shellSettings } from "@/components/site/settings";
 import {
-  campaignDraft,
   contactDraft,
   DARK_MOBILE_FOCAL,
   DEFAULT_FOCAL,
@@ -12,7 +11,6 @@ import {
   isHttpsUrl,
   isSiteHref,
   linkFor,
-  newPostDraft,
   newSlideDraft,
   packageDraft,
   pageDraft,
@@ -143,7 +141,7 @@ describe("shell settings keep only https social links", () => {
 });
 
 describe("drafts from stored values", () => {
-  test("slides, packages, pages, the trainer, contact and the campaign", () => {
+  test("slides, packages, pages, the trainer and contact", () => {
     const slide = slideDraft({
       id: 7,
       imageKey: "/seed/x.jpg",
@@ -181,10 +179,6 @@ describe("drafts from stored values", () => {
       ],
     });
     expect(contactDraft({ email: "a@example.ee", phone: 5 })).toEqual({ email: "a@example.ee", phone: "", address: "", instagram: "", facebook: "" });
-    expect(campaignDraft(null)).toMatchObject({ active: false, ctaLabel: { et: "Leia enda koolitus" }, ctaHref: "/koolitused" });
-    const stored = { active: true, kicker: { et: "" }, title: { et: "T" }, text: { et: "" }, code: "X", ctaLabel: { et: "", ru: "Найти" }, ctaHref: "/a", imageKey: "" };
-    expect(campaignDraft(stored).ctaLabel).toEqual({ et: "Leia enda koolitus", ru: "Найти" });
-    expect(newPostDraft("2026-10-02")).toMatchObject({ id: null, slug: "", publishedAt: "2026-10-02", published: false });
   });
 });
 

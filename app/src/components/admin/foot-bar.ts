@@ -3,8 +3,8 @@
 import { useCallback } from "react";
 
 // A bar at the foot of the screen and the UndoBar (admin UX pass piece 3a, Task 8 review M-2): the UndoBar stands bottom left, the whole width on
-// a phone (README §1.7), and the phone's PublishBar (README §1.8, Part 4) and a site editor's sticky SaveBar stand at the bottom too — the
-// UndoBar must never cover their „Avalda“ or „Salvesta“ for its 8 s. While such a bar stands at the foot (fixed or sticky to the bottom: its
+// a phone (README §1.7), and the phone's PublishBar (README §1.8, Part 4) and a letter's send buttons (piece 3b) stand at the bottom too — the
+// UndoBar must never cover their buttons for its 8 s. While such a bar stands at the foot (fixed or sticky to the bottom: its
 // stylesheet decides that per width), it sets the page's --admin-foot to its height (the tallest, when there are two), and the UndoBar's region
 // stands 16 px above it (UndoBar.module.css). A variable, not :has(): iOS 15.0–15.3 has none. ResizeObserver is iOS 13.4+.
 

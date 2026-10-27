@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref } from "react";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
-import { fill } from "@/i18n/format";
 import { useEditLang, type Lang } from "./EditLang";
 import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
@@ -15,24 +14,6 @@ export type { Lang };
 export const hasRu = (v: I18n) => Boolean(v.ru && v.ru.trim());
 /** An Estonian text without its Russian translation (an empty field is not "missing" anything yet). */
 export const lacksRu = (v: I18n) => Boolean(v.et.trim()) && !hasRu(v);
-
-/**
- * ET / RU switch of a preview (the popup's and the newsletter's): two pills, which show the preview in one language or the other. The page's
- * own switch, which sets the language of the fields, is `LangSwitch` in EditLang.tsx.
- */
-export function PreviewLangSwitch({ lang, onChange, label, missingRu }: { lang: Lang; onChange: (l: Lang) => void; label: string; missingRu: boolean }) {
-  const t = adminEt.i18n;
-  return (
-    <span className={styles.langs} role="group" aria-label={fill(t.switch, { label })} data-lang-switch="">
-      {(["et", "ru"] as const).map((l) => (
-        <button key={l} type="button" className={styles.lang} aria-pressed={lang === l} onClick={() => onChange(l)} data-lang={l}>
-          {t.lang[l]}
-          {l === "ru" && missingRu && <span className={styles.missing}>{t.missing}</span>}
-        </button>
-      ))}
-    </span>
-  );
-}
 
 /** What a field's `ref` can do (piece 3b, Task 5: the legal texts' placeholder chips). */
 export type I18nInputHandle = {

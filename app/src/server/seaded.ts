@@ -13,14 +13,15 @@ import { revalidatePublic } from "./public-cache";
 
 // Seaded's autosave (admin UX pass piece 3b, Task 4; README B4, B21; ruling R-f): every card of the page saves on POST /api/admin/seaded/<part>
 // (server/autosave-route.ts' contract) under the page's one SaveStatus. The parts:
-// - contact, newsletter, prepayment — the settings parts of server/admin-site.ts (writeSettingsPart), the version the stored setting's hash;
+// - contact, newsletter, prepayment — the settings parts of server/admin-site.ts (writeSettingsPart), the version the hash of the card's own fields
+//   as stored (settingsVersion, piece 4b: a key the card does not show, such as Hüpikaken's discount and code days in `newsletter`, moves nothing);
 // - invoice — the invoice settings of the „Maksmine“ card (server/invoices.ts saveInvoiceSettings), certificate — „Tunnistus“
 //   (server/certificates.ts saveCertificateSettings): each under its number series' lock, the version two hashes of the stored JSON (its texts, its
 //   counter), so an issue meanwhile is no conflict of a text, and a number already issued is `taken`;
 // - financing — „Järelmaks (Inbank)“'s switch, instant: `{ enabled }` and nothing else (domain/financing.ts, off unless exactly true).
-// A write that changed something revalidates the public pages that show the part (server/cache-targets.ts "settings": the footer's contact and
-// newsletter, the course pages' and the carts' financing; the others have no public page). The legal texts are not parts here: they keep their own
-// save until their drafts (Task 5).
+// A write that changed something revalidates the public pages that show the part (server/cache-targets.ts "settings": the footer's contact, the
+// home popup's button for the welcome code (S4-Q4), the course pages' and the carts' financing; the others have no public page). The legal texts
+// are not parts here: they type into drafts of their own (server/legal-drafts.ts, piece 3b Task 5).
 
 export const SEADED_PARTS = [...SETTINGS_PARTS, "invoice", "certificate", "financing"] as const;
 export type SeadedPart = (typeof SEADED_PARTS)[number];

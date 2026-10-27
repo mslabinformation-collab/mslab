@@ -462,6 +462,98 @@ describe("the browser's copy", () => {
     expect(e.snapshot().fields.title).toBe("Pealkiri");
   });
 
+  // piece 4b, Task 2 re-review N-1: an adopt that waits is replaced by a newer adopt of the same field. The save it waited for is answered 401 (signed
+  // out: nothing confirmed, nothing unanswered), so the page's next read is taken at once — and the next confirmed save must not put the older one back.
+  test("adopt() that waits, then signed out (401), then a newer adopt taken at once: the next confirmed save never brings the older value back", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    expect(e.adopt("title", "Vana lugemine")).toBe(true); // waits for the save on its way
+    s.calls[0].answer({ status: 401, body: { ok: false } });
+    await tick();
+    expect(e.snapshot().status.kind).toBe("signedOut");
+    expect(e.snapshot().fields.title).toBe("Pealkiri"); // (nothing was confirmed: not taken)
+    // the page's next read, with nothing on its way: taken at once
+    expect(e.adopt("title", "Uus lugemine")).toBe(true);
+    expect(e.snapshot().fields.title).toBe("Uus lugemine");
+    // signed in again (the tab focused): the body goes again and is confirmed; the title stays the newer read's, and is never sent
+    window.dispatchEvent(new Event("focus"));
+    await tick();
+    expect(s.calls[1].body).toEqual({ version: "v1", patch: { body: "Uus" } });
+    s.calls[1].answer(ok("v2"));
+    await tick(DEBOUNCE_MS * 2);
+    expect(e.snapshot().fields).toEqual({ title: "Uus lugemine", body: "Uus" });
+    expect(e.confirmedValue("title")).toBe("Uus lugemine");
+    expect(s.calls).toHaveLength(2);
+  });
+
+  test("two adopts of the same field while a save is on its way: the newer one is taken after the answer", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Esimene");
+    e.adopt("title", "Teine");
+    s.calls[0].answer(ok("v2"));
+    await tick();
+    expect(e.snapshot().fields.title).toBe("Teine");
+    // and one back to the field's own text drops the one that waited: nothing is taken
+    e.setField("body", "Veel");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Kolmas");
+    e.adopt("title", "Teine");
+    s.calls[1].answer(ok("v3"));
+    await tick();
+    expect(e.snapshot().fields.title).toBe("Teine");
+    expect(s.calls).toHaveLength(2);
+  });
+
+  // piece 4b, Task 2 re-review N-2: a post's address that follows its title, whose engine missed the read that brought the server's new address (the
+  // read is skipped once a save has landed since it), still holds the old one; the visit leaves with typed text unsent, so the copy holds that old
+  // address too. Resumed as typed, it would be sent and the address would stop following. The copy keeps the confirmed text it was typed over (`base`):
+  // a field that holds it was never typed, and the next visit's read stands there.
+  test("a copy's field that was never typed takes the next visit's read on resume and is never sent; only the typed field goes", async () => {
+    const s = server();
+    const before = new AutosaveEngine({ owner: "site", key: "post", version: "v2", fields: { slug: "uus-postitus", body: "Tekst" }, send: s.send, tab: "old" });
+    before.start(localStorage);
+    before.setField("body", "Tekst ja veel");
+    before.stop();
+    expect(JSON.parse(localStorage.getItem("mslab-draft:site:post:old")!)).toMatchObject({ version: "v2", fields: { slug: "uus-postitus", body: "Tekst ja veel" }, base: { slug: "uus-postitus", body: "Tekst" } });
+    const e = new AutosaveEngine({ owner: "site", key: "post", version: "v2", fields: { slug: "kevad", body: "Tekst" }, send: s.send, tab: "new" });
+    engine = e;
+    e.start(localStorage);
+    expect(e.snapshot().fields).toEqual({ slug: "kevad", body: "Tekst ja veel" });
+    await tick();
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v2", patch: { body: "Tekst ja veel" } }]);
+    s.calls[0].answer(ok("v3"));
+    await tick();
+    expect(e.snapshot().fields).toEqual({ slug: "kevad", body: "Tekst ja veel" });
+    expect(e.unconfirmed()).toBeNull();
+    expect(localStorage.length).toBe(0);
+  });
+
+  test("the same in a text sent without an answer: its untyped field is the read's there too, so the retry sends only what was typed and the lost answer is still ours", async () => {
+    localStorage.setItem(
+      "mslab-draft:site:post:old",
+      JSON.stringify({ version: "v2", fields: { slug: "uus-postitus", body: "Tekst ja veel ja veel" }, base: { slug: "uus-postitus", body: "Tekst" }, sent: [{ slug: "uus-postitus", body: "Tekst ja veel" }], at: 1 }),
+    );
+    const s = server();
+    const e = new AutosaveEngine({ owner: "site", key: "post", version: "v3", fields: { slug: "kevad", body: "Tekst ja veel" }, send: s.send, tab: "new" });
+    engine = e;
+    e.start(localStorage);
+    await tick();
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v2", patch: { body: "Tekst ja veel ja veel" } }]);
+    // the server holds that visit's save whose answer was lost: ours, confirmed at its version, and the rest goes on from there
+    s.calls[0].answer(stale("v3", { slug: "kevad", body: "Tekst ja veel" }));
+    await tick();
+    expect(e.snapshot().conflict).toBeNull();
+    expect(s.calls[1].body).toEqual({ version: "v3", patch: { body: "Tekst ja veel ja veel" } });
+    s.calls[1].answer(ok("v4"));
+    await tick();
+    expect(e.snapshot()).toMatchObject({ status: { kind: "saved" }, fields: { slug: "kevad", body: "Tekst ja veel ja veel" } });
+  });
+
   test("discardCopy() while a save is on its way: its answer leaves no copy behind", async () => {
     const s = server();
     const e = make(s.send);

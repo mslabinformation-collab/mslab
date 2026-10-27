@@ -83,7 +83,9 @@ describe("plan and apply on a database seeded before round 2", () => {
 
   test("a dry run counts rows per table and writes nothing; apply fills them once; a second plan finds nothing", async () => {
     const plan = await planRuFill(db);
-    expect(plan.counts).toMatchObject({ courses: 6, faq: 6, posts: 6, campaign: 1, settings: 1, practice_packages: 2 });
+    expect(plan.counts).toMatchObject({ courses: 6, faq: 6, posts: 6, settings: 1, practice_packages: 2 });
+    // the old campaign offer's row 1 (Estonian-only above) is left alone: it is shown and edited nowhere since admin UX pass piece 4b (R-d)
+    expect(plan.counts.campaign).toBeUndefined();
     expect(plan.counts.pages).toBe(4); // statement, trainer_bio and trainer_journey (one row each), and the new trainer card row
     expect(plan.counts.course_images).toBeGreaterThan(0);
     expect(plan.counts.course_modules).toBeGreaterThan(0);

@@ -1510,11 +1510,10 @@ export const adminEt = {
 
   // Content fields in two languages (I18nInput, ListEditor). RU may stay empty: the public site then shows the ET text,
   // and only the admin sees "tõlge tulekul". One page-level switch („Sisu keel“, EditLang.tsx LangSwitch) sets the language of every field
-  // (README §1.9); `switch` is the name of a preview's own switch (PreviewLangSwitch).
+  // (README §1.9); the previews follow it (piece 4b: the last preview's own switch went with the old Hüpikaken).
   i18n: {
     lang: { et: "ET", ru: "RU" },
     langName: { et: "eesti keeles", ru: "vene keeles" },
-    switch: "Keel: {label}",
     contentLang: "Sisu keel",
     // beside the switch in RU mode, while fields have Estonian text and no Russian: „RU puudub 3 väljal“ and the jump to the next of them
     ruMissing: "RU puudub {n} väljal",
@@ -2168,16 +2167,10 @@ export const adminEt = {
   },
   // ---------- Task 13B: the site content editors ----------
 
-  // The save bar and the shared pieces of the site editors (home page, practice, trainer, news, campaign, settings).
+  // The shared pieces of the site editors (home page, practice, trainer, news, the popup, settings). The save bar's words went with it (piece4-texts
+  // §4, piece 4b): `invalid` stays, other screens say it for a refused field.
   editor: {
-    save: "Salvesta",
-    saving: "Salvestan…",
-    saved: "Salvestatud.",
-    dirty: "Salvestamata muudatused",
-    clean: "Muudatusi pole.",
     invalid: "Kontrolli märgitud välju.",
-    stale: "Seda osa salvestati vahepeal mujal (nt teises aknas). Laadi leht uuesti, et näha kehtivat seisu; sinu siinsed muudatused jäävad siis salvestamata.",
-    reload: "Laadi uuesti",
     viewSite: "Vaata lehel",
     newWindow: "avaneb uues aknas",
     open: "Muuda",

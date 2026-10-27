@@ -1,13 +1,11 @@
 import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
-import { replaceGallery, setSetting, upsertCampaign, upsertPage } from "@/db/queries/admin";
+import { campaignInput, replaceGallery, setSetting, upsertCampaign, upsertPage } from "@/db/queries/admin";
 import { POPUP_ID, type Campaign, type FaqItem, type GalleryItem, type HeroSlide, type Page, type Post, type PracticePackage } from "@/db/schema";
 import {
   freePostSlug,
-  insertPost,
   isPostSlugTaken,
   lockTables,
-  readCampaign,
   readFaq,
   readGallery,
   readNewsletterPopup,
@@ -30,32 +28,25 @@ import { PREPAYMENT_KEY } from "@/domain/account-cards";
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { nextTermsVersion, TERMS_PAGE_KEY, TERMS_PAGE_TITLE, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import {
-  CAMPAIGN_CTA,
-  campaignDraft,
   contactDraft,
   copyI18n,
   faqDraft,
   newsletterDraft,
-  newsletterPopupDraft,
   normalizeIban,
   isBlankStat,
   isIban,
   packageDraft,
   prepaymentDraft,
   pageDraft,
-  postDraft,
   SITE_LIMITS as L,
   slideDraft,
   trainerDraft,
-  type CampaignDraft,
   type ContactDraft,
   type FaqDraft,
   type NewsletterDraft,
-  type NewsletterPopupDraft,
   type PackageDraft,
   type PrepaymentDraft,
   type PageDraft,
-  type PostDraft,
   type SlideDraft,
   type TrainerDraft,
   type WorkDraft,
@@ -64,26 +55,24 @@ import { isPostDay, looseBody, looseFaq, looseOffer, loosePackage, loosePage, lo
 import { POPUP_PART, POST_PART, type PopupOfferValue, type PostPartValue } from "@/domain/site-entities";
 import { CODE_DAYS_MAX, CODE_DAYS_MIN, codeDaysOf, DISCOUNT_MAX, DISCOUNT_MIN, discountPercentOf, isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
-import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
+import { isSlug } from "@/lib/slug";
 import type { SaveAnswer } from "@/domain/autosave";
 import { contentVersion } from "@/lib/version";
 import { fieldCodes } from "./autosave-route";
-import { Check, field, invalid, type EditResult, type FieldError, type SavedParts } from "./edit-check";
+import { Check, invalid, type EditResult, type FieldError, type SavedParts } from "./edit-check";
 
-// The site content editors' parts and form handling (Task 13B; admin UX pass piece 4a). Avaleht, Koolitaja and Praktika are made of PARTS (the hero
-// slides, the statement, the FAQ; MINI and MAXI; …) which their editors save into drafts (server/site-drafts.ts: a loose check at a draft save,
-// the part's strict `check` and the Write it answers at „Avalda muudatused“): the Write is the one place that says what a part stores; so do the
-// posts (piece 4b, Task 1) and Hüpikaken's offer (piece 4b, Task 3: popupParts). The form path below (`saveParts`, one `data` field of parts with
-// the versions they were loaded at) is still the old Hüpikaken editor's (`saveCampaignForm`, until its screen is rebuilt) and the legal texts'
-// publish (`saveLegalParts`), and the old post editor has its own. Callers have already checked the admin session (server/actions/admin-site.ts
-// wraps each in adminAction); these take a Db and run without Next.js (tests/db/admin-site.test.ts).
+// The site content editors' parts (Task 13B; admin UX pass pieces 4a and 4b). Avaleht, Koolitaja and Praktika (piece 4a), the posts (piece 4b, Task 1)
+// and Hüpikaken's offer (piece 4b, Task 3: popupParts) are made of PARTS (the hero slides, the statement, the FAQ; MINI and MAXI; a post; the offer; …)
+// which their editors save into drafts (server/site-drafts.ts: a loose check at a draft save, the part's strict `check` and the Write it answers at
+// „Avalda muudatused“): the Write is the one place that says what a part stores. Seaded's settings parts autosave field by field (writeSettingsPart).
+// The one path that still takes whole parts with the versions they were made from is the legal texts' publish (saveLegalParts, server/legal-drafts.ts;
+// piece 4b, Task 5 removed the old Hüpikaken and post forms with their „Salvesta“). Callers have already checked the admin session (the routes'
+// withAdmin); these take a Db and run without Next.js (tests/db/admin-site.test.ts).
 //
-// A form load gives every part with its version (a hash of the stored value, lib/version.ts); a save sends back only the parts the admin changed,
-// each with the version it loaded. It checks every sent part, then in one transaction locks the tables, compares each part's stored version with
-// the one sent (refused as `stale`, nothing written, when another save came first) and writes them all. So two admins can save different parts of
-// the same page, but never overwrite a change unseen.
+// saveLegalParts checks every sent part, then in one transaction locks the tables, compares each part's stored version (a hash of the stored value,
+// lib/version.ts) with the one sent (refused as `stale`, nothing written, when another save came first) and writes them all. So two admins can save
+// different parts of the same page, but never overwrite a change unseen.
 
-const DRAFT_MAX = 600_000;
 const ID_MAX = 2_147_483_647;
 
 const i18n = z.object({ et: z.string().max(40_000), ru: z.string().max(40_000).optional() });
@@ -164,32 +153,15 @@ export async function loadParts(q: Q, parts: Record<string, Pick<Part<unknown>, 
   };
 }
 
-const payloadSchema = z.object({ parts: z.record(z.string().max(40), z.object({ version: z.string().max(64), value: z.unknown() })) });
-
-/** The form's `data` field: { parts: { <name>: { version, value } } }, or null when it is not that. */
-function payload(formData: FormData): z.infer<typeof payloadSchema> | null {
-  const raw = field(formData, "data");
-  if (!raw || raw.length > DRAFT_MAX) return null;
-  try {
-    const parsed = payloadSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Saves the sent parts of a page (see the top of this file). The result carries the saved parts as now stored. */
-export async function saveParts(db: Db, parts: Parts, formData: FormData): Promise<EditResult> {
-  const sent = payload(formData);
-  if (!sent) return { ok: false, error: "invalid" };
-  return saveSent(db, parts, sent);
-}
+/** Parts as a writer sends them: each part's value with the version it was made from. */
+type SentParts = { parts: Record<string, { version: string; value: unknown }> };
 
 /**
- * saveParts' work on the parts as sent: every part checked, then one transaction — the tables locked, each stored version compared, the writes. `db`
- * may be a caller's open transaction: the save is then a savepoint of it (the legal texts' publish, server/legal-drafts.ts).
+ * Saves the sent parts of a page (see the top of this file): every part checked, then one transaction — the tables locked, each stored version
+ * compared, the writes. The result carries the saved parts as now stored. `db` may be a caller's open transaction: the save is then a savepoint of it
+ * (the legal texts' publish, server/legal-drafts.ts).
  */
-async function saveSent(db: Q, parts: Parts, sent: z.infer<typeof payloadSchema>): Promise<EditResult> {
+async function saveSent(db: Q, parts: Parts, sent: SentParts): Promise<EditResult> {
   const c = new Check();
   const writes: { name: string; def: Part<unknown>; version: string; write: Write }[] = [];
   for (const [name, p] of Object.entries(sent.parts)) {
@@ -421,59 +393,11 @@ export const trainerParts: Parts = {
   trainer_journey: pagePart("trainer_journey", { titleMax: L.storyTitle, bodyMax: L.story }),
 };
 
-// ---------- Hüpikaken (prototype D adminCamp + image upload; phase 2c: the newsletter popup, one shown at a time) ----------
-
-const CODE = /^[A-Z0-9-]*$/;
-
-const campaignParts: Parts = {
-  campaign: part<CampaignDraft>({
-    tables: ["campaign"],
-    schema: z.object({ active: z.boolean(), kicker: i18n, title: i18n, text: i18n, code: text(100), ctaLabel: i18n, ctaHref: text(400), imageKey: text(400) }),
-    read: readCampaign,
-    draft: (stored) => campaignDraft(stored as Campaign | null),
-    check: (c, v, name) => {
-      const p = `${name}.`;
-      // an active campaign is shown: it needs its title and its picture; a switched-off one may stay unfinished
-      const title = c.text(`${p}title`, v.title, L.campaignTitle, { required: v.active });
-      const kicker = c.text(`${p}kicker`, v.kicker, L.campaignKicker);
-      const body = c.text(`${p}text`, v.text, L.campaignText);
-      const code = v.code.trim().toUpperCase();
-      if (code.length > L.code) c.fail(`${p}code`, "tooLong");
-      else if (!CODE.test(code)) c.fail(`${p}code`, "codeFormat");
-      const ctaLabel = c.text(`${p}ctaLabel`, v.ctaLabel, L.ctaLabel) ?? { et: CAMPAIGN_CTA }; // M4
-      const ctaHref = c.href(`${p}ctaHref`, v.ctaHref, { required: true });
-      const imageKey = c.image(`${p}imageKey`, v.imageKey, { required: v.active });
-      return async (tx) => void (await upsertCampaign(tx, { active: v.active, kicker: orEmpty(kicker), title: orEmpty(title), text: orEmpty(body), code, ctaLabel, ctaHref, imageKey }, "campaign"));
-    },
-  }),
-  // Hüpikaken's newsletter popup (phase 2c): a shown one needs its title and its picture; its code, button text and link stay empty.
-  // Both parts lock `campaign` and run in the save's one transaction; each write switches the other popup off before it switches its
-  // own on (upsertCampaign), so saving both parts, in either order, or one alone, leaves at most one row active (campaign_one_active).
-  newsletter: part<NewsletterPopupDraft>({
-    tables: ["campaign"],
-    schema: z.object({ active: z.boolean(), kicker: i18n, title: i18n, text: i18n, imageKey: text(400) }),
-    read: readNewsletterPopup,
-    draft: (stored) => newsletterPopupDraft(stored as Campaign | null),
-    check: (c, v, name) => {
-      const p = `${name}.`;
-      const title = c.text(`${p}title`, v.title, L.campaignTitle, { required: v.active });
-      const kicker = c.text(`${p}kicker`, v.kicker, L.campaignKicker);
-      const body = c.text(`${p}text`, v.text, L.campaignText);
-      const imageKey = c.image(`${p}imageKey`, v.imageKey, { required: v.active });
-      return async (tx) =>
-        void (await upsertCampaign(tx, { active: v.active, kicker: orEmpty(kicker), title: orEmpty(title), text: orEmpty(body), code: "", ctaLabel: { et: "" }, ctaHref: "", imageKey }, "newsletter"));
-    },
-  }),
-};
-
-export const loadCampaign = async (q: Q) => (await loadParts(q, campaignParts)) as SavedParts & { values: { campaign: CampaignDraft; newsletter: NewsletterPopupDraft } };
-export const saveCampaignForm = (db: Db, formData: FormData) => saveParts(db, campaignParts, formData);
-
 // ---------- Hüpikaken on the draft layer (admin UX pass piece 4b, Task 3; rulings R-c, R-d; S4-Q2 A, S4-Q3 A) ----------
 
 // The popup is the entity "popup" (entity_id 0) with the one part `offer` (PopupOfferValue): the newsletter popup's row (R-d: the old campaign offer's
-// row 1 is no part of it, and the form path above goes with its editor) and Hüpikaken's two numbers in `settings.newsletter` — the discount the footer
-// shows and the days the welcome mail says the code is valid (R-c). A save goes to the draft; „Avalda muudatused“ writes both rows in one
+// row 1 is no part of it, and nothing edits row 1 since the old form went in Task 5) and Hüpikaken's two numbers in `settings.newsletter` — the
+// discount the footer shows and the days the welcome mail says the code is valid (R-c). A save goes to the draft; „Avalda muudatused“ writes both rows in one
 // transaction. Its version is the hash of the part's own fields (server/site-drafts.ts), so Seaded's „Tervituskood“ in the same settings row never
 // blocks it. „Lehel näidatakse“ is no part: the instant switch acts on the live row (server/site-drafts.ts switchPopup), which the write leaves as it is.
 
@@ -530,10 +454,7 @@ function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
       };
       return writing(async (tx, stored) => {
         const { popup, newsletter } = after(stored);
-        const { id: _id, kind: _kind, ...row } = popup as Campaign;
-        void _id;
-        void _kind;
-        await upsertCampaign(tx, row, "newsletter");
+        await upsertCampaign(tx, campaignInput(popup as Campaign), "newsletter");
         await setSetting(tx, "newsletter", newsletter);
       }, after);
     },
@@ -542,7 +463,10 @@ function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
 
 /**
  * Hüpikaken's parts (the draft layer's entity "popup", server/site-drafts.ts): its one part `offer`, checked as the popup is shown now — or, with
- * `shown` true, as a shown popup's (switchPopup on: the live row must have what a shown popup needs).
+ * `shown` true, as a shown popup's (switchPopup on: the live row must have what a shown popup needs). The publish reads "shown now" after the popup's
+ * advisory lock and before its table lock (server/site-drafts.ts makeSitePublisher): that is the locked state, because the one writer of the row's
+ * `active` is the switch, which takes the same advisory lock first (piece 4b, Task 5: the old Hüpikaken form, which wrote it under the table lock
+ * only, is gone; the publish's own write keeps `active` as it is).
  */
 export async function popupParts(q: Q, shown?: true): Promise<Parts> {
   return { [POPUP_PART]: popupOfferPart(shown ?? (await readNewsletterPopup(q))?.active ?? false) };
@@ -555,6 +479,9 @@ export type SettingsValues = {
   newsletter: NewsletterDraft;
   prepayment: PrepaymentDraft;
 };
+
+/** Seaded's autosaved parts as the page reads them (loadSettings): each card's fields and the version its autosave goes from. */
+export type SettingsRead = SavedParts & { values: SettingsValues };
 
 /**
  * Seaded's autosaved settings parts (admin UX pass piece 3b, Task 4; README B4): the contact details, „Uudiskiri“ and the prepayment instructions
@@ -692,7 +619,7 @@ const legalParts: Parts = {
  * The page's read: Seaded's autosaved parts with their versions (their routes' versions: settingsVersion). The legal texts are read with their drafts
  * (legal-drafts.ts).
  */
-export async function loadSettings(q: Q): Promise<SavedParts & { values: SettingsValues }> {
+export async function loadSettings(q: Q): Promise<SettingsRead> {
   const stored = await Promise.all(SETTINGS_PARTS.map((part) => readSetting(q, SETTING_KEYS[part])));
   const versions = await Promise.all(SETTINGS_PARTS.map((part, i) => settingsVersion(part, stored[i])));
   return {
@@ -720,7 +647,7 @@ export const saveLegalParts = (q: Q, sent: Partial<Record<LegalPart, { version: 
 
 // A post on the draft layer (admin UX pass piece 4b, Task 1; rulings R-a, R-b, R-g; S4-Q1 A): the entity "post", entity_id the post's id, with the one
 // part `post` (PostPartValue: no `published`, no id). A post that is not published saves straight to its row (`live`); a published one into its
-// draft, which „Avalda muudatused“ writes through the strict check. The old editor's form path (savePostForm, deletePostForm, below) stays until Task 5.
+// draft, which „Avalda muudatused“ writes through the strict check. (The old editor's form path, savePostForm and deletePostForm, went in Task 5.)
 
 const postPartSchema = z.object({ title: i18n, slug: text(200), category: i18n, excerpt: i18n, body: i18n, coverKey: text(400), publishedAt: text(20) });
 
@@ -815,87 +742,4 @@ function postPart(id: number): Part<PostPartValue> {
 /** A post's parts (the draft layer's entity "post", server/site-drafts.ts): its one part `post`, or none when there is no such post. */
 export async function postParts(q: Q, id: number): Promise<Parts> {
   return (await readPost(q, id)) ? { [POST_PART]: postPart(id) } : {};
-}
-
-const postSchema = z.object({
-  id: z.number().int().positive().max(ID_MAX).nullable(),
-  title: i18n,
-  slug: text(200),
-  excerpt: i18n,
-  body: i18n,
-  category: i18n,
-  coverKey: text(400),
-  publishedAt: text(20),
-  published: z.boolean(),
-});
-
-/** A post's draft and version as the old editor's form loads it (its date in Estonian time; until piece 4b's Task 5). */
-async function postFormParts(post: Post): Promise<SavedParts & { values: { post: PostDraft } }> {
-  return { values: { post: postDraft(post, tallinnFormParts(post.publishedAt).date) }, versions: { post: await contentVersion(post) } };
-}
-
-export async function loadPost(q: Q, id: number): Promise<(SavedParts & { values: { post: PostDraft } }) | null> {
-  const post = await readPost(q, id);
-  return post ? postFormParts(post) : null;
-}
-
-/**
- * The post editor's save: part `post` (PostDraft; id null = a new post). The slug is typed or made from the Estonian
- * title, unique among the posts. The date is the Estonian calendar day: a new day is stored at 09:00 Estonian time, an
- * unchanged day keeps the stored time. A published post needs its cover. An existing post is refused as `stale` when it
- * was saved elsewhere since its version.
- */
-export async function savePostForm(db: Db, formData: FormData): Promise<EditResult> {
-  const sent = payload(formData)?.parts.post;
-  if (!sent) return { ok: false, error: "invalid" };
-  const parsed = postSchema.safeParse(sent.value);
-  if (!parsed.success) return { ok: false, error: "invalid" };
-  const d = parsed.data;
-  const c = new Check();
-  const title = c.text("post.title", d.title, L.postTitle, { required: true });
-  const typed = d.slug.trim().toLowerCase();
-  const slug = typed || slugify(d.title.et.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
-  if (!isSlug(slug)) c.fail("post.slug", typed || d.title.et.trim() ? "slugFormat" : "required");
-  const excerpt = c.text("post.excerpt", d.excerpt, L.excerpt);
-  const body = c.text("post.body", d.body, L.postBody);
-  const category = c.text("post.category", d.category, L.category, { required: true });
-  const coverKey = c.image("post.coverKey", d.coverKey, { required: d.published });
-  const date = d.publishedAt.trim();
-  const newDay = date ? tallinnInstant(date, "09:00") : null;
-  if (!newDay) c.fail("post.publishedAt", date ? "date" : "required");
-  if (!c.ok || !title || !category || !newDay) return invalid(c.errors);
-
-  const fields = { slug, title, excerpt: orEmpty(excerpt), body: orEmpty(body), category, coverKey, published: d.published };
-  const outcome = await db.transaction(async (tx) => {
-    await lockTables(tx, ["posts"]);
-    const stored = d.id != null ? await readPost(tx, d.id) : null;
-    if (d.id != null) {
-      if (!stored) return "notFound" as const;
-      if ((await contentVersion(stored)) !== sent.version) return "stale" as const;
-    }
-    if (await isPostSlugTaken(tx, slug, d.id)) return "slugTaken" as const;
-    // the same day keeps the stored time (the order of posts on one day stays); a new day starts at 09:00
-    const publishedAt = stored && tallinnFormParts(stored.publishedAt).date === date ? stored.publishedAt : newDay;
-    let id: number;
-    if (stored) {
-      await updatePost(tx, stored.id, { ...fields, publishedAt });
-      id = stored.id;
-    } else id = (await insertPost(tx, { ...fields, publishedAt })).id;
-    const saved = await loadPost(tx, id); // read back inside the transaction: what this save stored
-    return { id, saved: saved! };
-  });
-  if (outcome === "slugTaken") return invalid({ "post.slug": "slugTaken" });
-  if (outcome === "notFound" || outcome === "stale") return { ok: false, error: outcome };
-  return { ok: true, id: outcome.id, created: d.id == null, saved: outcome.saved };
-}
-
-/**
- * "Kustuta postitus" of the old editor's form: field id. The post goes with its drafts (piece 4b R-h: server/site-drafts.ts deletePost, read when it
- * is called, as site-drafts.ts reads this module's parts).
- */
-export async function deletePostForm(db: Db, formData: FormData): Promise<EditResult> {
-  const id = z.coerce.number().int().positive().max(ID_MAX).safeParse(field(formData, "id"));
-  if (!id.success) return { ok: false, error: "invalid" };
-  const { deletePost } = await import("./site-drafts");
-  return (await deletePost(db, id.data)) ? { ok: true, id: id.data, deleted: true } : { ok: false, error: "notFound" };
 }

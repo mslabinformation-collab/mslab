@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
-import { getSettings, readSetting } from "@/db/queries/public";
-import { campaign, contentDrafts, settings } from "@/db/schema";
+import { getHomeData, getSettings, readSetting } from "@/db/queries/public";
+import { campaign, contentDrafts, posts, settings } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { shellSettings } from "@/components/site/settings";
 import type { PopupOfferValue } from "@/domain/site-entities";
@@ -33,7 +35,7 @@ import { POST as publishRoute } from "@/app/api/admin/sisu/[entity]/[id]/avalda/
 import { POST as discardRoute } from "@/app/api/admin/sisu/[entity]/[id]/loobu/route";
 import { POST as switchRoute } from "@/app/api/admin/hupikaken/naita/route";
 import { loadSettings, writeSettingsPart } from "@/server/admin-site";
-import { publishSite, readPopupSwitch, readSiteEditor, switchPopup, writeSitePart } from "@/server/site-drafts";
+import { discardSite, publishSite, readPopupSwitch, readSiteEditor, switchPopup, writeSitePart } from "@/server/site-drafts";
 import { withSiteDrafts } from "@/server/site-preview";
 
 const ORIGIN = "https://mslab.example";
@@ -322,5 +324,73 @@ describe("the routes", () => {
     expect((await call(saveRoute, "/api/admin/sisu/popup/0/osa/campaign", { entity: "popup", id: "0", part: "campaign" }, { version: "x", patch: {} })).status).toBe(404);
     expect((await call(publishRoute, "/api/admin/sisu/popup/1/avalda", { entity: "popup", id: "1" }, { versions: {} })).status).toBe(404);
     expect(await db.select().from(contentDrafts).where(and(eq(contentDrafts.entity, "popup"), eq(contentDrafts.entityId, 1)))).toHaveLength(0);
+  });
+});
+
+// docs/deploy.md section 26 (piece 4b, Task 5): its read-only checks of Railway (item 5) and its rollback query (item 2) are run here as the doc prints
+// them, so a query that would not run, or would not say what the doc says it does, fails here first. Nothing is ever run against Railway from a test.
+describe("the queries of deploy.md §26, as printed there", () => {
+  const section = (): string => {
+    const doc = readFileSync(join(process.cwd(), "..", "docs", "deploy.md"), "utf8").replace(/\r\n/g, "\n");
+    const at = doc.indexOf("\n## 26. ");
+    if (at < 0) throw new Error("docs/deploy.md has no section 26");
+    const end = doc.indexOf("\n## ", at + 1);
+    return doc.slice(at, end < 0 ? undefined : end);
+  };
+  const query = (pattern: RegExp): string => {
+    const found = pattern.exec(section());
+    if (!found) throw new Error(`not in docs/deploy.md section 26: ${pattern}`);
+    return found[1];
+  };
+  const rows = async (q: string): Promise<Record<string, unknown>[]> => {
+    const res = (await db.execute(sql.raw(q))) as unknown as { rows?: Record<string, unknown>[] } & Record<string, unknown>[];
+    return (res.rows ?? res) as Record<string, unknown>[];
+  };
+
+  test("item 2, the rollback: no row while nothing waits; a row for the posts' drafts and one for the popup's; none again once they are published or discarded", async () => {
+    const q = query(/`(select entity, count\(\*\) from content_drafts where entity in \('post','popup'\) group by 1)`/);
+    const left = async () => Object.fromEntries((await rows(q)).map((r) => [r.entity, Number(r.count)]));
+    expect(await left()).toEqual({});
+    const [post] = await db.select().from(posts).where(eq(posts.published, true)).limit(1);
+    const target = { entity: "post" as const, id: post.id };
+    expect(await writeSitePart(db, target, "post", { excerpt: { et: "Proov." } }, (await readSiteEditor(db, target)).parts.post.version, ADMIN, NOW)).toMatchObject({ ok: true });
+    expect(await save({ discountPercent: "15" })).toMatchObject({ ok: true });
+    expect(await left()).toEqual({ post: 1, popup: 1 });
+    await publishNow();
+    expect(await left()).toEqual({ post: 1 });
+    await discardSite(db, target);
+    expect(await left()).toEqual({});
+  });
+
+  test("item 5 (a), the old campaign offer's row: row 1 `campaign` and row 2 `newsletter`; with row 1 on, the home page has no popup until „Lehel näidatakse“ is switched on, which switches row 1 off", async () => {
+    const q = query(/`(select id, kind, active from campaign)`/);
+    expect(q).toBe("select id, kind, active from campaign");
+    const campaignRows = async () => (await rows(q)).map((r) => ({ id: Number(r.id), kind: r.kind, active: r.active })).sort((a, b) => a.id - b.id);
+    // (this file's database is one from before piece 4b: the old campaign offer shown)
+    expect(await campaignRows()).toEqual([
+      { id: 1, kind: "campaign", active: true },
+      { id: 2, kind: "newsletter", active: false },
+    ]);
+    expect((await getHomeData(db)).popup).toBeNull();
+    expect(await switchNow(true)).toMatchObject({ ok: true });
+    expect(await campaignRows()).toEqual([
+      { id: 1, kind: "campaign", active: false },
+      { id: 2, kind: "newsletter", active: true },
+    ]);
+    expect((await getHomeData(db)).popup).toMatchObject({ id: 2, kind: "newsletter" });
+  });
+
+  test("item 5 (b), the discount's old label: the label as stored and no numbers before a publish; after it the numbers, the label kept as it was", async () => {
+    const q = query(/`(select value->>'discountLabel' as label, value->'discountPercent' as percent, value->'codeDays' as days from settings where key = 'newsletter')`/);
+    const [before] = await rows(q);
+    expect({ label: before.label, percent: before.percent ?? null, days: before.days ?? null }).toEqual({ label: "10%", percent: null, days: null });
+    expect(await save({ discountPercent: "15", codeDays: "30" })).toMatchObject({ ok: true });
+    expect((await publishNow()).published).toEqual(["offer"]);
+    const [after] = await rows(q);
+    expect({ label: after.label, percent: Number(after.percent), days: Number(after.days) }).toEqual({ label: "10%", percent: 15, days: 30 });
+    // no row at all (a database that never saved the setting): no row, and the footer says 10% (item 4)
+    await db.delete(settings).where(eq(settings.key, "newsletter"));
+    expect(await rows(q)).toEqual([]);
+    expect(await footerDiscount()).toBe(10);
   });
 });

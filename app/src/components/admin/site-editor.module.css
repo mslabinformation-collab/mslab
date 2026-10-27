@@ -1,6 +1,7 @@
-/* The site content editors (Task 13B): settings, posts (Praktika: PracticeEditor.module.css; Koolitaja: TrainerEditor.module.css; Avaleht's
-   slides and FAQ: HomeEditor.module.css, piece 4a; Hüpikaken: CampaignEditor.module.css, piece 4b). Prototype B's admin cards and fields
-   (ui.module.css, editor.module.css) plus what these editors add: a single picture with its focal point and crop previews. Palette tokens only. */
+/* The site content editors' shared sheet (Task 13B): Seaded's cards, and the single picture with its focal point and crop previews that every site
+   editor uses (SingleImage, FocalPoint). Each screen has its own sheet besides (Praktika: PracticeEditor.module.css; Koolitaja: TrainerEditor.module.css;
+   Avaleht's slides and FAQ: HomeEditor.module.css, piece 4a; Uudised: PostEditor.module.css and news/; Hüpikaken: CampaignEditor.module.css, piece 4b).
+   Prototype B's admin cards and fields (ui.module.css, editor.module.css) plus what these editors add. Palette tokens only. */
 
 .cardTitle {
   margin-bottom: 10px;
@@ -10,14 +11,6 @@
   max-width: 720px;
   margin-bottom: 22px;
   font-size: 14px;
-}
-
-.cardHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px 16px;
 }
 
 .fields {
@@ -33,29 +26,6 @@
 
 .start {
   justify-self: start;
-}
-
-/* the save bar, as the course editor's: always within reach at the bottom of the screen */
-.saveBar {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px 18px;
-  margin-top: 25px;
-  padding: 14px 20px;
-  border: 1px solid var(--line);
-  border-radius: 18px 18px 0 0;
-  background: var(--paper);
-  box-shadow: 0 -10px 30px rgba(34, 34, 34, 0.06);
-}
-
-.saveBar p {
-  flex: 1 1 260px;
-  margin: 0;
 }
 
 /* ---------- one picture (SingleImage) ---------- */
@@ -221,28 +191,7 @@
   overflow-wrap: anywhere;
 }
 
-/* ---------- post delete ---------- */
-
-.danger {
-  display: grid;
-  gap: 12px;
-}
-
-.dangerTools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 @media (max-width: 640px) {
-  .saveBar {
-    padding: 12px 14px;
-  }
-
-  .saveBar button {
-    flex: 1 1 100%;
-  }
-
   .frameBox {
     height: 120px;
   }

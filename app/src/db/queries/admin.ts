@@ -898,6 +898,14 @@ export async function upsertCampaign(db: Q, input: CampaignInput, kind: PopupKin
   return row;
 }
 
+/** A stored popup row as upsertCampaign's input (Hüpikaken's publish and its switch write a row they read): its columns but the id and the kind, which its kind gives. */
+export function campaignInput(row: Campaign): CampaignInput {
+  const { id: _id, kind: _kind, ...input } = row;
+  void _id;
+  void _kind;
+  return input;
+}
+
 export async function setSetting(db: Q, key: string, value: unknown): Promise<void> {
   await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
 }

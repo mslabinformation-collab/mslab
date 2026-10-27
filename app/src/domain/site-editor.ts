@@ -1,9 +1,8 @@
-// The site content editors' model (Task 13B: home page, practice, trainer, news, campaign, settings), shared by the
+// The site content editors' model (Task 13B: home page, practice, trainer, news, the popup, settings), shared by the
 // browser (components/admin/*Editor.tsx) and the server (server/admin-site.ts): the drafts the editors hold and send,
 // the stored-value → draft conversions, the limits, and the checks for links and focal points. Pure: no database, no
 // React.
 
-import type { Campaign } from "@/db/schema";
 import type { I18n } from "@/i18n/field";
 import { compactIban } from "./account-cards";
 import { centsToInput } from "./money";
@@ -43,7 +42,6 @@ export const SITE_LIMITS = {
   campaignKicker: 60,
   campaignTitle: 120,
   campaignText: 300,
-  code: 24,
   email: 120,
   phone: 40,
   address: 200,
@@ -62,7 +60,7 @@ export const SITE_LIMITS = {
 const UNSAFE_CHARS = /[\s\\<>"'`\u0000-\u001f\u007f]/;
 
 /**
- * A link an admin may store for a button (hero CTA, campaign CTA): a path on this site ("/koolitused",
+ * A link an admin may store for a button (a hero slide's CTA): a path on this site ("/koolitused",
  * "/praktika#taotlus"; not "//host", which a browser reads as another site) or an https:// address. Anything else
  * (javascript:, data:, http:, mailto:, relative text) is refused.
  */
@@ -269,42 +267,6 @@ export function trainerDraft(value: unknown): TrainerDraft {
 
 export type WorkDraft = { key: string; alt: I18n };
 
-export type CampaignDraft = {
-  active: boolean;
-  kicker: I18n;
-  title: I18n;
-  text: I18n;
-  code: string;
-  ctaLabel: I18n;
-  ctaHref: string;
-  imageKey: string;
-};
-
-/** M4: the campaign button says "Leia enda koolitus" unless Maria writes something else. */
-export const CAMPAIGN_CTA = "Leia enda koolitus";
-
-export function campaignDraft(c: CampaignDraft | null): CampaignDraft {
-  if (!c) return { active: false, kicker: empty(), title: empty(), text: empty(), code: "", ctaLabel: { et: CAMPAIGN_CTA }, ctaHref: "/koolitused", imageKey: "" };
-  return {
-    active: c.active,
-    kicker: copyI18n(c.kicker),
-    title: copyI18n(c.title),
-    text: copyI18n(c.text),
-    code: c.code,
-    ctaLabel: c.ctaLabel?.et?.trim() ? copyI18n(c.ctaLabel) : { ...copyI18n(c.ctaLabel), et: CAMPAIGN_CTA },
-    ctaHref: c.ctaHref,
-    imageKey: c.imageKey,
-  };
-}
-
-/** Hüpikaken's newsletter popup (phase 2c): shown or not, and its kicker, title, text and picture (no code and no button: it has the form). */
-export type NewsletterPopupDraft = { active: boolean; kicker: I18n; title: I18n; text: I18n; imageKey: string };
-
-export function newsletterPopupDraft(c: Campaign | null): NewsletterPopupDraft {
-  if (!c) return { active: false, kicker: empty(), title: empty(), text: empty(), imageKey: "" };
-  return { active: c.active, kicker: copyI18n(c.kicker), title: copyI18n(c.title), text: copyI18n(c.text), imageKey: c.imageKey };
-}
-
 export type ContactDraft = { email: string; phone: string; address: string; instagram: string; facebook: string };
 export function contactDraft(value: unknown): ContactDraft {
   const c = obj(value);
@@ -330,34 +292,3 @@ export const normalizeIban = (typed: string): string => compactIban(typed);
 
 /** The shape of a stored IBAN: country letters, two check digits, 10–30 letters and digits (no checksum test: a typo shows on the bank's side). */
 export const isIban = (iban: string): boolean => /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban);
-
-export type PostDraft = {
-  id: number | null;
-  title: I18n;
-  slug: string;
-  excerpt: I18n;
-  body: I18n;
-  category: I18n;
-  coverKey: string;
-  /** Estonian calendar date, YYYY-MM-DD. */
-  publishedAt: string;
-  published: boolean;
-};
-
-export function postDraft(p: { id: number; title: I18n; slug: string; excerpt: I18n; body: I18n; category: I18n; coverKey: string; published: boolean }, date: string): PostDraft {
-  return {
-    id: p.id,
-    title: copyI18n(p.title),
-    slug: p.slug,
-    excerpt: copyI18n(p.excerpt),
-    body: copyI18n(p.body),
-    category: copyI18n(p.category),
-    coverKey: p.coverKey,
-    publishedAt: date,
-    published: p.published,
-  };
-}
-
-export function newPostDraft(today: string): PostDraft {
-  return { id: null, title: empty(), slug: "", excerpt: empty(), body: empty(), category: empty(), coverKey: "", publishedAt: today, published: false };
-}

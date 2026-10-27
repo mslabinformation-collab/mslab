@@ -6,14 +6,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlaceholderChips } from "@/components/admin/ContractTexts";
 import { PublishBar } from "@/components/admin/PublishBar";
-import { SaveBar } from "@/components/admin/SaveBar";
 import { UndoProvider, useUndo } from "@/components/admin/UndoBar";
 
 // The comment bubble (public/feedback.js, Dim 22.10: on every signed-in admin page while the review tools are on) lifts itself above whatever is
 // marked data-fab-avoid in its corner. The admin's bars that stand at the bottom of the screen are marked, so the bubble never covers a button of
-// theirs: the UndoBar, the PublishBar (the phone's bar) and the save bars of the editors. (The phone's top bar is not: it is at the top, where the
-// bubble never is.) The e2e spec checks the lift itself in a real browser (e2e/feedback.spec.ts); this holds the marks, and finds a new bottom bar
-// that nobody marked.
+// theirs: the UndoBar, the PublishBar (the phone's bar) and the screens' own bottom bars (the site editors' sticky save bar went with its last
+// screens in piece 4b). The phone's top bar is not: it is at the top, where the bubble never is. The e2e spec checks the lift itself in a real
+// browser (e2e/feedback.spec.ts); this holds the marks, and finds a new bottom bar that nobody marked.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -55,11 +54,6 @@ describe("the admin's bars are marked data-fab-avoid", () => {
       root.render(createElement(PublishBar, { changed: ["Hind"], previewHref: "/api/admin/eelvaade?tee=%2Fkoolitused", onDiscard: async () => {}, onPublish: async () => {} })),
     );
     expect($("[data-publish-bar]")!.hasAttribute("data-fab-avoid")).toBe(true);
-  });
-
-  it("the save bar of the site editors (SaveBar: „Salvesta“ on the right, sticky at the bottom)", async () => {
-    await act(async () => root.render(createElement(SaveBar, { status: { text: "", tone: "hint", stale: false }, pending: false, reloadHref: "/admin" })));
-    expect($("[data-save-bar]")!.hasAttribute("data-fab-avoid")).toBe(true);
   });
 
   it("the course editor has no save bar of its own any more (piece 3a, Task 7: every card autosaves; the PublishBar is the bottom bar there)", () => {
@@ -128,14 +122,13 @@ describe("a bar fixed or sticky at the bottom of the screen is known", () => {
     expect(names.some((n) => n.startsWith("app/admin/") && n.endsWith(".css"))).toBe(true);
   });
 
-  it("is the UndoBar's region, the PublishBar's phone bar, the site editors' save bar, the practical work's send bar, the legal texts' chips in the phone's drawer and a letter's send buttons: each marked above; a new one is to be marked too", () => {
+  it("is the UndoBar's region, the PublishBar's phone bar, the practical work's send bar, the legal texts' chips in the phone's drawer and a letter's send buttons: each marked above; a new one is to be marked too", () => {
     expect(bottomBars()).toEqual([
       "components/admin/Assessment.module.css .dock",
       "components/admin/CampaignsPanel.module.css .sendButtons",
       "components/admin/ContractTexts.module.css .stickyChips",
       "components/admin/PublishBar.module.css .bar",
       "components/admin/UndoBar.module.css .region",
-      "components/admin/site-editor.module.css .saveBar",
     ]);
   });
 });

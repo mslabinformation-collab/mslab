@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
-import { upsertCampaign } from "@/db/queries/admin";
+import { campaignInput, upsertCampaign } from "@/db/queries/admin";
 import { deletePostRow, insertPost, lockTables, readNewsletterPopup, readPost, updatePost, type SiteTable } from "@/db/queries/admin-site";
 import type { Campaign } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
@@ -577,7 +577,7 @@ export async function switchPostPublished(db: Db, id: number, on: boolean, now: 
 }
 
 /**
- * „Kustuta postitus“ (R-h; the new editor's route and the old editor's form alike): the post and its drafts deleted in one transaction, under the
+ * „Kustuta postitus“ (R-h; the editor's route, api/admin/uudised/<id>/kustuta): the post and its drafts deleted in one transaction, under the
  * post's advisory lock and then the posts table (the lock order of its saves, publish and switch: no save writes a draft of a post that is going);
  * the post pages revalidated when it was published. False when there was no such post.
  */
@@ -645,10 +645,7 @@ export async function switchPopup(db: Db, on: boolean, version: string, now: Dat
     }
     // (a row that is not there cannot be switched on: its title and picture are missing; off, it has nothing to hide)
     if (!row) return { version, wrote: false };
-    const { id: _id, kind: _kind, ...fields } = row;
-    void _id;
-    void _kind;
-    await upsertCampaign(tx, { ...fields, active: on }, "newsletter");
+    await upsertCampaign(tx, { ...campaignInput(row), active: on }, "newsletter");
     return { version: await popupSwitchVersion(await readNewsletterPopup(tx)), wrote: true };
   });
   if (done === "changed") return { ok: false, error: "changed", stamp: await stampOrNull(db) };

@@ -1,8 +1,8 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { Badge, StoredBadge } from "./schema";
-import { campaign, courseImages, courseModules, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "./schema";
+import { courseImages, courseModules, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "./schema";
 import type { Db } from "./client";
-import { campaignSeed, courseSeeds, faqSeeds, heroSeeds, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
+import { courseSeeds, faqSeeds, heroSeeds, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
 import type { I18n } from "@/i18n/field";
 
 // Round 2 item 1b (and 5): brings the Russian sample texts of the seed (seed-data.ts) to a database seeded before they
@@ -182,9 +182,7 @@ export async function planRuFill(db: Db): Promise<RuFillPlan> {
     if (alt) add("gallery_items", (tx) => tx.update(galleryItems).set({ alt }).where(and(eq(galleryItems.id, row.id), eq(galleryItems.group, "trainer_works"))));
   }
 
-  const [camp] = await db.select().from(campaign).where(eq(campaign.id, 1)).limit(1);
-  const campSet = camp && fillFields(camp as Row, campaignSeed as unknown as Row, ["kicker", "title", "text", "ctaLabel"]);
-  if (camp && campSet) add("campaign", (tx) => tx.update(campaign).set(campSet).where(eq(campaign.id, 1)));
+  // (the old campaign offer's row 1 is not filled: it is shown and edited nowhere since admin UX pass piece 4b, R-d)
 
   const [trainer] = await db.select().from(settings).where(eq(settings.key, "trainer")).limit(1);
   const trainerValue = trainer && fillTrainer(trainer.value);

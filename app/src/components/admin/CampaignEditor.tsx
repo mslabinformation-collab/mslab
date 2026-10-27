@@ -104,9 +104,17 @@ async function pressSwitch(page: SitePage, on: boolean, version: string): Promis
 
 const missingLine = (fields: string[]) => fill(adminEt.publish.missing, { fields: fields.join(", ") });
 
-/** True once the cards take typing again (SitePage.whenFree), false when they still wait after the wait's own bound (the editor has gone meanwhile). */
-const free = (page: SitePage): Promise<boolean> =>
-  Promise.race([page.whenFree().then(() => true), new Promise<boolean>((later) => setTimeout(() => later(!page.waitingNow()), SAVE_TIMEOUT_MS + 1000))]);
+/**
+ * True once the cards take typing again (SitePage.whenFree), false when they still wait after the wait's own bound (the editor has gone meanwhile).
+ * The bound's timer is cleared once either answers, so none outlives the wait.
+ */
+function free(page: SitePage): Promise<boolean> {
+  let bound: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((later) => {
+    bound = setTimeout(() => later(!page.waitingNow()), SAVE_TIMEOUT_MS + 1000);
+  });
+  return Promise.race([page.whenFree().then(() => true), late]).finally(() => clearTimeout(bound));
+}
 
 /** The editor of the home page's popup, from the page's read (readSiteEditor's `parts` and `stamp`, as they came), the switch's and Seaded's code. */
 export function CampaignEditor({ parts, stamp, shown, code }: { parts: Record<string, SitePartState>; stamp: number; shown: PopupSwitchState; code: boolean }) {

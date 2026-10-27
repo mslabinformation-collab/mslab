@@ -68,40 +68,6 @@
   cursor: pointer;
 }
 
-/* a preview's ET / RU switch: two 44px pills */
-.langs {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.lang {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 6px 12px;
-  border: 1px solid var(--heather);
-  border-radius: 99px;
-  background: var(--paper);
-  color: var(--ink);
-  font: 600 12px/1 var(--font-body);
-  cursor: pointer;
-}
-
-.lang:hover {
-  border-color: var(--ink);
-}
-
-.lang[aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-}
-
 /* "tõlge tulekul" next to the field's label while the translation is missing (admin only): 20px tall, 10px 600 */
 .missing {
   display: inline-flex;
@@ -113,11 +79,6 @@
   color: var(--warn);
   font: 600 10px/1.2 var(--font-body);
   white-space: nowrap;
-}
-
-.lang[aria-pressed="true"] .missing {
-  background: var(--warn);
-  color: var(--paper);
 }
 
 /* a warning about what will be printed, saved all the same (the certificate's lines: an outcome too long for it, final review M-4) */

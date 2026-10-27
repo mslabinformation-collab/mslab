@@ -121,17 +121,6 @@ export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
   await expect(segment).toHaveAttribute("aria-pressed", "true");
 }
 
-/**
- * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is (the
- * editors that piece 4b still has to move: Uudised and Hüpikaken). Seaded has none since admin UX pass piece 3b: its cards autosave
- * (seadedAutosave) and its legal texts type into drafts (legalDraftSave) published by „Avalda uus leping“ / „Avalda uus tekst“. Avaleht, Praktika and
- * Koolitaja have none since piece 4a: their cards save into drafts that „Avalda muudatused“ publishes (the PublishBar, `data-publish-bar`).
- */
-export const saveBarButton = (page: Page): Locator => page.locator("[data-save-bar]").getByRole("button", { name: "Salvesta", exact: true });
-
-/** The save bar's status line (SaveBar.tsx): on a page that also has a SaveStatus chip (Seaded), the bar's own, not the chip. */
-export const saveBarStatus = (page: Page): Locator => page.locator("[data-save-bar] [data-save-status]");
-
 /** Seaded's one SaveStatus (the header's chip, piece 3b Task 4): `data-save-kind` says its state (saved, dirty, saving, invalid, …). */
 export const seadedStatus = (page: Page): Locator => page.locator("[data-seaded-head] [data-save-status]");
 
