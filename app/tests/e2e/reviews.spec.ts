@@ -3,6 +3,7 @@ import { clientEmail, insertEcourseAccess } from "./account";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import { test } from "./edit-lock";
 import { holdLocalLock, HOME_REVIEWS_LOCK, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, REVIEW_FIXTURE_NOTE } from "./fixtures";
+import { noOverflow } from "./invoices";
 import { insertSentProtocol, runName, storedFeedback, studentContext, studentPage } from "./protocols";
 import { expect as plainExpect, submitsForms } from "./test";
 
@@ -10,14 +11,18 @@ import { expect as plainExpect, submitsForms } from "./test";
 // student's tick to its withdrawal, as the people in it meet it —
 //   1. a signed-in graduate of a contact course answers the feedback form: the tick is off until the recommend answer has words, ticked it asks for the
 //      name to show (prefilled „Kati K.“, required), and the answer is stored with a pending review of it, a copy of her words and her name;
-//   2. Maria's „Arvustused“ lists it pending („Ootab kinnitust“) with its proof (the registration's status and the protocol sent), the words are not
-//      hers to edit, and „Avalda“ publishes it: the course page shows it, shown as written, with the name and the notice;
-//   3. „Avalehel“ puts it on the home page, with its course as a link;
+//   2. Maria's „Arvustused“ lists it pending („Ootab kinnitust“) on a card with the stars of her score and its proof (the registration's status and
+//      the protocol sent), the words are not hers to edit, and „Avalda“ publishes it at once (admin UX pass piece 4c: the UndoBar „Arvustus
+//      avaldatud.“, whose „Võta tagasi“ puts it back to waiting; pressed again, it stays): the course page shows it, as written, with the name and the notice;
+//   3. „Avalehel“ (a switch, no bar) puts it on the home page, with its course as a link;
 //   4. the student's course card says „Lubasid oma soovitust avaldada“; „Võta luba tagasi“ deletes the review at once: the course page and the home page no
 //      longer show it, and her answers stay with Maria;
 //   5. Maria, whose page still shows the review, presses „Peida“ on it: „Seda arvustust enam pole — õpilane võttis loa tagasi.“, and its row goes;
 //   6. an e-course graduate answers the same form without the tick: her answer is stored, no review is made, Maria reads the answer, „Lõpetatud {date}“;
-//   7. Maria adds a review she received elsewhere („Lisa arvustus“, with its source note): it is published at once and the course page shows it.
+//   7. Maria adds a review she received elsewhere („Lisa arvustus +“, a drawer, with its source note): it is published at once and the course page shows
+//      it; „Peida“ hides it at once („Arvustus peidetud.“); „Muuda“ is an autosave drawer whose chip says „Salvestatud …“; „Kustuta“ asks nothing
+//      („Arvustus kustutatud.“) and „Võta tagasi“ brings it back;
+//   8. at 375 px the view and its two drawers do not scroll sideways.
 // Nothing is mailed (sample addresses, no Resend). The contact student's registration is on a seed course, in a session of its own that began five days
 // ago (the form is open by the course day; no public page lists a session that has begun, and it is deleted by its id); the e-course graduate's course is
 // the test's own and unpublished.
@@ -88,6 +93,10 @@ async function registeredStudent(slug: string, email: string, name: string): Pro
 }
 
 type StoredReview = { id: number; kind: string; status: string; featured: boolean; name: string; text: string; locale: string; decided: boolean; courseId: number };
+
+/** A review as stored, by its id (the manual one's text, status and mark of „Kustuta“). */
+const storedReview = (id: number) =>
+  localDb(async (sql) => (await sql<{ status: string; text: string; removed: boolean }[]>`select status, text, removed_at is not null as removed from reviews where id = ${id}`)[0] ?? null);
 
 /** The reviews of one feedback answer as stored (a student's has at most one). */
 const reviewsOfFeedback = (feedbackId: number) =>
@@ -166,19 +175,33 @@ test("a review from the student's tick to her withdrawal: answered with her perm
   await page.goto("/admin/tagasiside?vaade=arvustused");
   await adminReady(page);
   const row = page.locator(`[data-review="${reviewId}"]`);
-  await test.step("2. „Arvustused“ lists it pending with its proof; „Avalda“ puts it on the course page", async () => {
-    await expect(page.locator("[data-pending-reviews]")).toContainText(/Arvustusi ootab kinnitust: \d+/);
+  const bar = page.locator("[data-undo-bar]");
+  await test.step("2. „Arvustused“ lists it pending on a card with its stars and proof; „Avalda“ at once, „Võta tagasi“, „Avalda“ again: on the course page", async () => {
+    await expect(page.locator('nav[aria-label="Olek"] a').first()).toContainText(/^Ootab kinnitust\s*\d+$/); // (the pills with their counts)
+    await expect(row).toHaveAttribute("id", `arvustus-${reviewId}`);
     await expect(row).toHaveAttribute("data-review-status", "pending");
     await expect(row).toHaveAttribute("data-review-kind", "student");
     await expect(row.locator("[data-review-tag]")).toHaveText("Ootab kinnitust");
-    await expect(row.locator("[data-review-name]")).toHaveText(SHOWN);
+    await expect(row.locator("[data-review-stars]")).toHaveText("★★★★★"); // her „Hinne“ 9
+    await expect(row.locator("[data-review-who]")).toContainText(SHOWN);
     await expect(row.locator("[data-review-text]")).toHaveText(WORDS);
     await expect(row.locator("[data-review-proof]")).toHaveText("Registreering: Kinnitatud · Protokoll saadetud"); // what she judges the writer by
     await expect(row.locator("[data-review-edit], [data-review-delete]")).toHaveCount(0); // a student's words are not hers to change
+    const stored = async () => (await reviewsOfFeedback((await storedFeedback(kati.registrationId))!.id))[0];
+    await row.locator("[data-review-publish]").click();
+    await expect(row).toHaveAttribute("data-review-status", "published");
+    await expect(bar).toContainText("Arvustus avaldatud.");
+    await expect(row).toBeFocused(); // D5: the focus stays on the card
+    // „Võta tagasi“: waiting again, as before the press
+    await bar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(row).toHaveAttribute("data-review-status", "pending");
+    await expect(bar).toHaveCount(0);
+    expect(await stored()).toMatchObject({ status: "pending", decided: false });
+    // and published for good
     await row.locator("[data-review-publish]").click();
     await expect(row).toHaveAttribute("data-review-status", "published");
     await expect(row.locator("[data-review-tag]")).toHaveText("Avaldatud");
-    expect((await reviewsOfFeedback((await storedFeedback(kati.registrationId))!.id))[0]).toMatchObject({ status: "published", featured: false, name: SHOWN, text: WORDS, decided: true });
+    expect(await stored()).toMatchObject({ status: "published", featured: false, name: SHOWN, text: WORDS, decided: true });
 
     await visitor.goto(COURSE_PAGE);
     const block = visitor.locator('[data-reviews="course"]');
@@ -196,12 +219,13 @@ test("a review from the student's tick to her withdrawal: answered with her perm
   info.setTimeout(info.timeout + LOCK_WAIT_MS);
   const giveBackHome = await holdLocalLock(HOME_REVIEWS_LOCK, LOCK_WAIT_MS);
   try {
-    await test.step("3. „Avalehel“ puts it on the home page, with its course as a link", async () => {
+    await test.step("3. „Avalehel“ (a switch, no bar) puts it on the home page, with its course as a link", async () => {
       const featured = row.locator("[data-review-featured-toggle]");
-      await expect(featured).toHaveAttribute("aria-pressed", "false");
+      await expect(featured).toHaveAttribute("role", "switch");
+      await expect(featured).not.toBeChecked();
       await featured.click();
-      await expect(featured).toHaveAttribute("aria-pressed", "true");
       await expect(row).toHaveAttribute("data-review-featured", "true");
+      await expect(featured).toBeChecked();
       await visitor.goto("/");
       const section = visitor.locator('[data-reviews="home"]');
       await expect(section.getByRole("heading", { level: 2, name: "Õpilaste kogemused" })).toBeVisible();
@@ -301,25 +325,36 @@ test("a review from the student's tick to her withdrawal: answered with her perm
   });
 
   // ---------- 7. Maria adds a review she received elsewhere ----------
-  await test.step("7. „Lisa arvustus“ with its source note: published at once, and the course page shows it", async () => {
-    await page.locator("[data-review-add]").click();
-    const form = page.locator('[data-review-form="new"]');
+  const EDITED_WORDS = "E2E Paberil vormil: väga hea koolitus, soovitan kõigile!";
+  let manualId = 0;
+  await test.step("7. „Lisa arvustus +“ opens the drawer; „Lisa arvustus“ with its source note: published at once, and the course page shows it", async () => {
+    const add = page.locator("[data-review-add]");
+    await expect(add).toHaveText("Lisa arvustus +");
+    await add.click();
+    const form = page.locator('dialog[data-drawer] [data-review-form="new"]');
+    await expect(form.locator("h2")).toHaveText("Uus arvustus");
     await expect(form).toContainText("Lisa ainult päris õpilase sõnad tema loal.");
+    await expect(form.locator("[data-new-review-line]")).toHaveText("Täida kohustuslikud väljad");
     await form.locator('[data-review-field="courseId"]').selectOption({ value: String(kati.courseId) });
     await form.locator('[data-review-field="name"]').fill(MANUAL_NAME);
     await form.locator('[data-review-field="text"]').fill(MANUAL_WORDS);
     await expect(form.getByLabel("Kust see pärit on?")).toBeVisible();
     await form.locator('[data-review-field="note"]').fill(REVIEW_FIXTURE_NOTE);
-    await form.locator("[data-review-save]").click();
-    await expect(form).toHaveCount(0);
+    await expect(form.locator("[data-new-review-line]")).toHaveText("Vajuta „Lisa arvustus“.");
+    await form.locator("[data-review-create]").click();
+    // R-c: the drawer closes with no result line, the focus back on „Lisa arvustus +“
+    await expect(page.locator("dialog[data-drawer]")).toHaveCount(0);
+    await expect(add).toBeFocused();
     // by its name (the new row's id is learned from the database, and noted for the clean-up)
     const [manual] = await localDb((sql) => sql<{ id: number; kind: string; status: string; featured: boolean }[]>`select id, kind, status, featured from reviews where name = ${MANUAL_NAME} and note = ${REVIEW_FIXTURE_NOTE}`);
     expect(manual).toMatchObject({ kind: "manual", status: "published", featured: false });
     mine.reviews.push(manual.id);
+    manualId = manual.id;
     const added = page.locator(`[data-review="${manual.id}"]`);
     await expect(added).toHaveAttribute("data-review-status", "published");
     await expect(added.locator("[data-review-manual]")).toHaveText("Lisatud käsitsi");
     await expect(added.locator("[data-review-note]")).toHaveText(`Allikas: ${REVIEW_FIXTURE_NOTE}`);
+    await expect(added.locator("[data-review-stars]")).toHaveCount(0); // (no score)
     await visitor.goto(COURSE_PAGE);
     const block = visitor.locator('[data-reviews="course"]');
     await expect(block.locator("[data-review]")).toHaveCount(1);
@@ -327,5 +362,60 @@ test("a review from the student's tick to her withdrawal: answered with her perm
     await expect(block.locator("figcaption")).toContainText(MANUAL_NAME);
     await expect(block).not.toContainText(REVIEW_FIXTURE_NOTE); // the note is Maria's only
   });
+
+  await test.step("7b. „Peida“ hides it at once („Arvustus peidetud.“) and the course page no longer shows it; „Avalda“ shows it again", async () => {
+    const added = page.locator(`[data-review="${manualId}"]`);
+    await added.locator("[data-review-hide]").click();
+    await expect(added).toHaveAttribute("data-review-status", "hidden");
+    await expect(bar).toContainText("Arvustus peidetud.");
+    expect(await storedReview(manualId)).toMatchObject({ status: "hidden" });
+    expect(await shows(visitor, COURSE_PAGE, MANUAL_WORDS)).toBe(false);
+    await added.locator("[data-review-publish]").click();
+    await expect(added).toHaveAttribute("data-review-status", "published");
+    await expect(bar).toContainText("Arvustus avaldatud.");
+  });
+
+  await test.step("7c. „Muuda“ is an autosave drawer: the text typed is saved, its chip says „Salvestatud …“, and the card shows it", async () => {
+    const added = page.locator(`[data-review="${manualId}"]`);
+    await added.locator("[data-review-edit]").click();
+    const form = page.locator(`dialog[data-drawer] [data-review-form="${manualId}"]`);
+    await expect(form.locator("h2")).toHaveText("Muuda arvustust");
+    const text = form.locator('[data-review-field="text"]');
+    await expect(text).toHaveValue(MANUAL_WORDS);
+    await text.fill(EDITED_WORDS);
+    await expect(form.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+    expect(await storedReview(manualId)).toMatchObject({ text: EDITED_WORDS, status: "published" });
+    await page.locator("dialog[data-drawer]").getByRole("button", { name: "Sulge" }).click();
+    await expect(page.locator("dialog[data-drawer]")).toHaveCount(0);
+    await expect(added.locator("[data-review-text]")).toHaveText(EDITED_WORDS);
+    await expect(added.locator("[data-review-edit]")).toBeFocused();
+  });
+
+  await test.step("7d. „Kustuta“ asks nothing: the card goes („Arvustus kustutatud.“), and „Võta tagasi“ brings it back", async () => {
+    const added = page.locator(`[data-review="${manualId}"]`);
+    await added.locator("[data-review-delete]").click();
+    await expect(added).toHaveCount(0);
+    await expect(bar).toContainText("Arvustus kustutatud.");
+    expect(await storedReview(manualId)).toMatchObject({ removed: true });
+    expect(await shows(visitor, COURSE_PAGE, EDITED_WORDS)).toBe(false);
+    await bar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(added).toHaveAttribute("data-review-status", "published");
+    expect(await storedReview(manualId)).toMatchObject({ removed: false, status: "published", text: EDITED_WORDS });
+    expect(await shows(visitor, COURSE_PAGE, EDITED_WORDS)).toBe(true);
+  });
   await visitor.context().close();
+
+  await test.step("8. at 375 px the view and its drawers do not scroll sideways", async () => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/admin/tagasiside?vaade=arvustused");
+    await adminReady(page);
+    await expect(page.locator(`[data-review="${manualId}"]`)).toBeVisible();
+    expect(await noOverflow(page), "the cards").toBe(true);
+    await page.goto(`/admin/tagasiside?vaade=arvustused&id=${manualId}`);
+    await expect(page.locator(`dialog[data-drawer] [data-review-form="${manualId}"]`)).toBeVisible();
+    expect(await noOverflow(page), "„Muuda“").toBe(true);
+    await page.goto("/admin/tagasiside?vaade=arvustused&id=uus");
+    await expect(page.locator('dialog[data-drawer] [data-review-form="new"]')).toBeVisible();
+    expect(await noOverflow(page), "„Lisa arvustus +“").toBe(true);
+  });
 });

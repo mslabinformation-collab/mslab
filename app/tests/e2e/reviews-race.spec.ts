@@ -218,7 +218,12 @@ for (const c of [
     const [withdrawn, published] = (c.order === "withdraw-first" ? [first, second] : [second, first]) as [Awaited<ReturnType<typeof withdraw>>, Awaited<ReturnType<typeof publish>>];
     // never a 500: the withdrawal deletes the review whatever Maria did, and her press finds either the published row or no row
     expect(withdrawn).toEqual({ status: 200, body: { ok: true } });
-    expect(published).toEqual(c.order === "withdraw-first" ? { ok: false, error: "gone" } : { ok: true, courseSlug: s.course.slug });
+    // (published first: with what its „Võta tagasi“ would send back, admin UX pass piece 4c, R-a — the review as the press left it, and what it replaced)
+    expect(published).toEqual(
+      c.order === "withdraw-first"
+        ? { ok: false, error: "gone" }
+        : { ok: true, courseSlug: s.course.slug, expected: { status: "published", updatedAt: expect.any(String), previous: { status: "pending", decidedAt: null } } },
+    );
     // no review is left, whichever came first; her answers stay with Maria
     const rows = await stored(s);
     expect(rows.reviews, "no review left").toEqual([]);

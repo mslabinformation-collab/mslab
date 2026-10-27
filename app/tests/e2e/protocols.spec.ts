@@ -363,12 +363,16 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
       }
       const where = `${v.url}${v.open ? " (asking)" : ""} at ${width} px`;
       expect(await noOverflow(v.page), where).toBe(true);
-      expect(await smallTargets(scope), where).toEqual([]);
+      // (a switch's target is its row of 44 px, not its 48×28 checkbox: the reviews' „Avalehel“, admin UX pass piece 4c)
+      expect((await smallTargets(scope)).filter((html) => !SWITCH.test(html)), where).toEqual([]);
     }
   }
   await student.close();
 });
 
+
+/** A switch's checkbox (components/admin/Switch.tsx): its touch target is the row of 44 px round it. */
+const SWITCH = /^<input[^>]*\srole="switch"/;
 
 /** The menu's „Protokollid“ row: the sidebar's on a wide screen, the menu panel's (opened here) on a phone. */
 async function protocolsRow(page: Page, isMobile: boolean) {

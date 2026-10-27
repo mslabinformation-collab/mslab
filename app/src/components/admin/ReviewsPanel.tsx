@@ -1,45 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
-import { tallinnFormParts } from "@/domain/calendar";
-import { HOME_REVIEWS_MAX, type ReviewStatus } from "@/domain/review";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { HOME_REVIEWS_MAX, starsOf, type ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
-import { decideReviewAction, deleteManualReviewAction, setFeaturedAction } from "@/server/actions/admin-reviews";
-import { emptyReview, ManualReviewForm, type ManualReviewValues } from "./ManualReviewForm";
-import { courseLabel, type ReviewCourseOption, type ReviewRowView } from "./review-view";
+import { decideReviewAction, removeReviewAction, setFeaturedAction, undoDecisionAction, undoRemoveReviewAction } from "@/server/actions/admin-reviews";
+import { focusFell } from "./focus-fell";
+import { ListEmpty } from "./ListStates";
+import { courseLabel, REVIEWS_HREF, reviewCardId, type ReviewRowView } from "./review-view";
+import { Switch } from "./Switch";
+import { useUndo } from "./UndoBar";
 import ui from "./ui.module.css";
 import styles from "./ReviewsPanel.module.css";
 
-// „Arvustused“ (student reviews, Task 4; spec D2, D4, §4, §5): the reviews of Tagasiside's second view, a pending one first. Each row shows the words and
-// the name they will appear under, the course, the day and the language, the status, and what Maria judges a student by (the registration's status
-// and whether a protocol was sent, or the day an e-course was completed) or, for a review she added, „Lisatud käsitsi“ and her note. The buttons follow
-// the status: pending „Avalda“ and „Peida“, published „Peida“ and the „Avalehel“ toggle, hidden „Avalda“; a review she added also has „Muuda“ and
-// „Kustuta“ (one confirming step). A student's words have no edit control at all. „Lisa arvustus“ opens the form (ManualReviewForm). The page is
-// refreshed by the actions, so the rows then show the new state; a review that is not there any more (the student took her permission back) is answered
-// in words and its row goes. After „Avalda“ or „Peida“ the focus stays on the row, or, when the refresh takes it out of a status-filtered list, goes to the
-// next row (else the one before, else the status line). A review of a draft course says „(mustand)“ after the course; a quiet hint says that the home page
-// shows the newest six, and a hidden review whose „Avalehel“ is still set carries an „Avalehel“ tag („Avalda“ puts it back). This file runs on old iPads:
+// „Arvustused“ (student reviews, Task 4; spec D2, D4, §4, §5; admin UX pass piece 4c, Task 2: README C6, the Part 4 frame „C6 Tagasiside“, S4-36 …
+// S4-38, rulings R-a, R-b, R-d): the reviews of Tagasiside's second view as cards in a 2-column grid (one on a phone), a waiting one first and with an
+// ink border. A card: the stars of the student's „Hinne“ (domain/review.ts starsOf; none on a review Maria added), the status pill (and „Lisatud
+// käsitsi“, and „Avalehel“ on a hidden review that keeps it), the words in quotes, „{nimi} · {koolitus} · {dd.mm.yyyy}“, the language and what Maria
+// judges a student by (the registration's status and whether a protocol was sent, or the day an e-course was completed) or her note; then the
+// buttons by status — waiting „Avalda“ (ink) and „Peida“, published „Peida“ with the „Avalehel“ switch, hidden „Avalda“ — and on a review she added
+// „Muuda“ (its autosave drawer, ?id=<id>) and „Kustuta“. A student's words have no edit or delete control at all.
+// - „Avalda“ and „Peida“ act at once, and the UndoBar says „Arvustus avaldatud.“ / „Arvustus peidetud.“ with „Võta tagasi“, which sends back what
+//   the decision answered (undoDecisionAction, R-a): refused because the review moved meanwhile, the bar says so in its words. „Avalehel“ shows no bar.
+// - „Kustuta“ asks nothing: the card goes at once (the review is only marked, R-b) and the bar says „Arvustus kustutatud.“; „Võta tagasi“ brings it back.
+// - The page is refreshed by the actions, so the cards show the new state; a review that is not there any more is answered in words (the status
+//   line) and its card goes.
+// - The focus (D5) stays on the card acted on (`id="arvustus-<id>"`, the address's anchor too, R-d), or, when the refresh takes it out of a
+//   status-filtered list or „Kustuta“ took it, goes to the next card (else the one before, else the status line). After „Võta tagasi“ it goes back to
+//   the card when it fell with the bar, never from where she has moved it since.
+// A review of a draft course says „(mustand)“ after the course; a quiet hint says that the home page shows the newest six. This file runs on old iPads:
 // no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
-type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
+type Line = { tone: "idle" | "busy" | "error"; text: string };
 const IDLE: Line = { tone: "idle", text: "" };
-const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
 const STATUS_TONE: Record<ReviewStatus, string> = { pending: ui.warn, published: ui.ok, hidden: ui.bad };
 
 type Outcome = { ok: true } | { ok: false; error: string; text: string };
 
-/** How long after a decision a refresh of the rows may still take the focus (ms): a refresh long after is some other change of the page. */
+/** How long after an action a refresh of the cards may still take the focus (ms): a refresh long after is some other change of the page. */
 const FOCUS_WAIT_MS = 5000;
 
-/** The fields of the form for a review that is edited (the day in Estonian time, as the form's date field holds it). */
-const valuesOf = (r: ReviewRowView): ManualReviewValues => ({
-  courseId: String(r.course.id),
-  name: r.name,
-  text: r.text,
-  writtenAt: tallinnFormParts(new Date(r.writtenAt)).date,
-  locale: r.locale,
-  note: r.note ?? "",
+/**
+ * Where the focus goes once the cards show an action's result: the card `id`, or when it is gone, the `neighbours` (the next ones first, then the ones
+ * before) and else the status line. `ifFell` (an undo pressed in the bar): it waits for the card, which the refresh brings back, and takes the focus
+ * only when it has nowhere to be — never from where she has moved it since.
+ */
+type FocusWant = { id: number; neighbours: number[]; until: number; ifFell: boolean };
+const focusWant = (id: number, o: { neighbours?: number[]; ifFell?: boolean } = {}): FocusWant => ({
+  id,
+  neighbours: o.neighbours ?? [],
+  until: Date.now() + FOCUS_WAIT_MS,
+  ifFell: o.ifFell ?? false,
 });
 
 /** The proof of a student's review, in words: the registration's status and the protocol line, or the day the e-course was completed. */
@@ -52,60 +64,67 @@ function proofText(proof: NonNullable<ReviewRowView["proof"]>): string {
 
 export function ReviewsPanel({
   rows,
-  courses,
-  today,
   filtered,
+  listHref,
 }: {
   rows: ReviewRowView[];
-  /** The courses „Lisa arvustus“ can name, in the public order. */
-  courses: ReviewCourseOption[];
-  /** Today, "YYYY-MM-DD" (Estonian time): the day a new review starts with. */
-  today: string;
-  /** The list is narrowed by a status: an empty list then says so in its own words. */
+  /** The list is narrowed by a status: an empty list then says so in the list frame's words, with the way back to every review. */
   filtered: boolean;
+  /** The view's own address (its status filter kept): „Muuda“ opens its drawer on it (`&id=<id>`). */
+  listHref: string;
 }) {
   const t = adminEt.reviews;
-  const uid = useId();
+  const undo = useUndo();
   const [line, setLine] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
-  /** The forms that are open: "new" for „Lisa arvustus“, a review's id for its „Muuda“. Several may be open at once, so that nothing typed is lost. */
-  const [editing, setEditing] = useState<ReadonlySet<number | "new">>(() => new Set());
-  const [confirming, setConfirming] = useState<number | null>(null);
+  /** The cards taken away before the page's refresh: a review „Kustuta“ removed, or one that is not there any more. */
   const [gone, setGone] = useState<ReadonlySet<number>>(() => new Set());
-  const panel = useRef<HTMLElement>(null);
+  /** „Avalehel“ pressed, shown as asked until the refreshed cards come (`over`: the cards it was pressed on). */
+  const [featuring, setFeaturing] = useState<{ id: number; on: boolean; over: ReviewRowView[] } | null>(null);
   const statusLine = useRef<HTMLParagraphElement>(null);
-  /** The row a decision was made on and the rows around it (the next ones first, then the ones before): where its focus goes if the refresh takes the row away. */
-  const focusAfter = useRef<{ id: number; neighbours: number[]; until: number } | null>(null);
+  const focusAfter = useRef<FocusWant | null>(null);
 
-  // an answer in words (a refusal, or a deletion) takes the focus: the row it was about may be gone
+  // a refusal in words takes the focus: the card it was about may be gone
   useEffect(() => {
-    if (line.tone === "error" || line.tone === "done") statusLine.current?.focus();
+    if (line.tone === "error") statusLine.current?.focus();
   }, [line]);
 
   const visible = rows.filter((r) => !gone.has(r.id));
 
   /**
-   * Puts the focus where a decision left it: on its row, or when the refresh has taken the row out of a status-filtered list, on the next row (else the one
-   * before), else on the status line. `refreshed`: the rows have just been replaced, so the decision is settled; else it is settled only if the row is gone.
+   * Puts the focus where an action left it (FocusWant). `refreshed`: the cards have just been replaced (or taken away), so a decision is settled; else it
+   * is settled only if its card is gone. An undo's want waits for its card (it comes back with the refresh) until its time is up.
    */
-  const placeFocus = useCallback(
-    (refreshed: boolean) => {
-      const want = focusAfter.current;
-      if (!want) return;
-      if (Date.now() > want.until) {
-        focusAfter.current = null;
-        return;
-      }
-      const rowEl = (id: number) => document.getElementById(`${uid}-review-${id}`);
-      const own = rowEl(want.id);
-      if (refreshed || !own) focusAfter.current = null;
-      (own ?? want.neighbours.map(rowEl).find((el) => el !== null) ?? statusLine.current)?.focus();
-    },
-    [uid],
-  );
-  useEffect(() => placeFocus(true), [rows, placeFocus]);
+  const placeFocus = useCallback((refreshed: boolean) => {
+    const want = focusAfter.current;
+    if (!want) return;
+    if (Date.now() > want.until) {
+      focusAfter.current = null;
+      return;
+    }
+    const card = (id: number) => document.getElementById(reviewCardId(id));
+    const own = card(want.id);
+    if (want.ifFell) {
+      if (!own) return;
+      focusAfter.current = null;
+      if (focusFell()) own.focus();
+      return;
+    }
+    if (refreshed || !own) focusAfter.current = null;
+    (own ?? want.neighbours.map(card).find((el) => el !== null) ?? statusLine.current)?.focus();
+  }, []);
+  useEffect(() => placeFocus(true), [rows, gone, placeFocus]);
 
-  const run = (id: number, work: () => Promise<Outcome>, after?: () => void) => {
+  /** The cards around `id` on the screen: the next ones first, then the ones before (where the focus goes if the card goes). */
+  const neighboursOf = (id: number) => {
+    const at = visible.findIndex((r) => r.id === id);
+    return [...visible.slice(at + 1), ...visible.slice(0, Math.max(at, 0)).reverse()].map((r) => r.id);
+  };
+  const wantFocus = (id: number, o: { neighbours?: number[]; ifFell?: boolean } = {}) => {
+    focusAfter.current = focusWant(id, o);
+  };
+
+  const run = <R extends Outcome>(id: number, work: () => Promise<R>, after: (r: Extract<R, { ok: true }>) => void) => {
     if (pending) return;
     setLine({ tone: "busy", text: t.working });
     start(async () => {
@@ -113,189 +132,183 @@ export function ReviewsPanel({
       const r = await work().catch((): Outcome => ({ ok: false, error: "server", text: t.errors.server }));
       if (r.ok) {
         setLine(IDLE);
-        after?.();
+        after(r as Extract<R, { ok: true }>);
         return;
       }
-      setConfirming(null);
+      setFeaturing(null);
       setLine({ tone: "error", text: r.text });
       if (r.error === "gone" || r.error === "manualGone") setGone((g) => new Set(g).add(id));
     });
   };
+
+  /** „Võta tagasi“'s answer as the bar takes it: done, or the refusal's own words; done, the card takes the focus back if it fell with the bar. */
+  const undone = (id: number, answer: Outcome): true | string => {
+    if (!answer.ok) return answer.text;
+    wantFocus(id, { ifFell: true });
+    placeFocus(false);
+    return true;
+  };
+
   const decide = (id: number, decision: "publish" | "hide") => {
-    const at = visible.findIndex((r) => r.id === id);
-    const neighbours = [...visible.slice(at + 1), ...visible.slice(0, Math.max(at, 0)).reverse()].map((r) => r.id);
+    const neighbours = neighboursOf(id);
     run(
       id,
       () => decideReviewAction({ id, decision }),
-      () => {
-        focusAfter.current = { id, neighbours, until: Date.now() + FOCUS_WAIT_MS };
+      (r) => {
+        wantFocus(id, { neighbours });
         placeFocus(false);
+        undo.show({
+          text: decision === "publish" ? t.bar.published : t.bar.hidden,
+          undo: async () => undone(id, await undoDecisionAction({ id, expected: r.expected })),
+        });
       },
     );
   };
-  const feature = (r: ReviewRowView) => run(r.id, () => setFeaturedAction({ id: r.id, featured: !r.featured }));
-  const remove = (id: number) =>
+  const feature = (r: ReviewRowView, on: boolean) => {
+    if (pending) return;
+    setFeaturing({ id: r.id, on, over: rows });
+    run(r.id, () => setFeaturedAction({ id: r.id, featured: on }), () => {});
+  };
+  const remove = (id: number) => {
+    const neighbours = neighboursOf(id);
     run(
       id,
-      () => deleteManualReviewAction({ id }),
+      () => removeReviewAction({ id }),
       () => {
-        setConfirming(null);
+        wantFocus(id, { neighbours });
         setGone((g) => new Set(g).add(id));
-        setLine({ tone: "done", text: t.deleted });
+        undo.show({
+          text: t.bar.removed,
+          undo: async () => {
+            const answer = await undoRemoveReviewAction({ id });
+            // back: the card is the refreshed page's again
+            if (answer.ok) setGone((g) => new Set([...g].filter((x) => x !== id)));
+            return undone(id, answer);
+          },
+        });
       },
     );
-
-  const open = (which: number | "new") => setEditing((set) => new Set(set).add(which));
-  /** A form closes (saved, or „Tühista“): the focus goes back to the button that opened it, which is a new element once the form has gone. */
-  const close = (which: number | "new") => {
-    setEditing((set) => new Set([...set].filter((x) => x !== which)));
-    const opener = which === "new" ? "[data-review-add]" : `[data-review="${which}"] [data-review-edit]`;
-    setTimeout(() => panel.current?.querySelector<HTMLElement>(opener)?.focus(), 0);
   };
 
-  // the hint belongs near the „Avalehel“ toggles: while a published review has one, or a hidden one still carries the setting
+  // the hint belongs near the „Avalehel“ switches: while a published review has one, or a hidden one still carries the setting
   const homeHint = visible.some((r) => r.status === "published" || (r.status === "hidden" && r.featured));
+  const featuredOf = (r: ReviewRowView) => (featuring && featuring.id === r.id && featuring.over === rows ? featuring.on : r.featured);
 
   return (
-    <section ref={panel} className={styles.panel} aria-labelledby={`${uid}-title`} data-reviews-panel="">
-      <div className={styles.toolbar}>
-        <h2 id={`${uid}-title`} className={ui.h2}>
-          {t.title}
-        </h2>
-        {!editing.has("new") && (
-          <button type="button" className={`${ui.btn} ${ui.smallBtn}`} onClick={() => open("new")} data-review-add="">
-            {t.form.add}
-          </button>
-        )}
-      </div>
-
-      {editing.has("new") && (
-        <div className={`${ui.card} ${styles.addCard}`}>
-          <ManualReviewForm courses={courses} initial={emptyReview(today)} id={null} onDone={() => close("new")} onCancel={() => close("new")} />
-        </div>
-      )}
-
-      <p ref={statusLine} tabIndex={-1} role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-reviews-status="">
+    <section className={styles.panel} aria-label={t.title} data-reviews-panel="">
+      <p ref={statusLine} tabIndex={-1} role="status" className={`${styles.status} ${line.tone === "error" ? ui.error : ui.hint}`} data-reviews-status="">
         {line.text}
       </p>
 
       {homeHint && (
-        <p id={`${uid}-home-hint`} className={ui.hint} data-review-home-hint="">
+        <p id="reviews-home-hint" className={ui.hint} data-review-home-hint="">
           {fill(t.homeHint, { n: HOME_REVIEWS_MAX })}
         </p>
       )}
 
       {visible.length === 0 ? (
-        <p className={ui.empty} data-reviews-empty="">
-          {filtered ? t.emptyFiltered : t.empty}
-        </p>
+        filtered ? (
+          <div data-reviews-empty="">
+            <ListEmpty things={t.things} filtered clearHref={REVIEWS_HREF} />
+          </div>
+        ) : (
+          <p className={ui.empty} data-reviews-empty="">
+            {t.empty}
+          </p>
+        )
       ) : (
-        <ul className={styles.list} data-review-list="">
+        <ul className={styles.grid} data-review-list="">
           {visible.map((r) => {
             const label = (action: string) => fill(t.label, { action, name: r.name });
             const manual = r.kind === "manual";
+            const stars = starsOf(r.score);
+            const cardId = reviewCardId(r.id);
             return (
               <li
                 key={r.id}
-                id={`${uid}-review-${r.id}`}
+                id={cardId}
                 tabIndex={-1}
-                className={styles.row}
+                className={styles.card}
                 data-review={r.id}
                 data-review-kind={r.kind}
                 data-review-status={r.status}
                 data-review-featured={r.featured || undefined}
               >
-                {editing.has(r.id) ? (
-                  <ManualReviewForm courses={courses} initial={valuesOf(r)} id={r.id} onDone={() => close(r.id)} onCancel={() => close(r.id)} />
-                ) : (
-                  <>
-                    <div className={styles.head}>
-                      <strong className={styles.name} data-review-name="">
-                        {r.name}
-                      </strong>
-                      <span className={`${ui.tag} ${STATUS_TONE[r.status]}`} data-review-tag="">
-                        {t.status[r.status]}
+                <div className={styles.top}>
+                  {stars > 0 && (
+                    <span className={styles.stars} aria-hidden="true" data-review-stars={stars}>
+                      {"★".repeat(stars)}
+                    </span>
+                  )}
+                  <span className={styles.tags}>
+                    <span className={`${ui.tag} ${styles.state} ${STATUS_TONE[r.status]}`} data-review-tag="">
+                      {t.status[r.status]}
+                    </span>
+                    {manual && (
+                      <span className={`${ui.tag} ${styles.state}`} data-review-manual="">
+                        {t.manual}
                       </span>
-                      {manual && (
-                        <span className={ui.tag} data-review-manual="">
-                          {t.manual}
-                        </span>
-                      )}
-                      {r.status === "hidden" && r.featured && (
-                        <span className={ui.tag} title={t.featuredKept} data-review-featured-tag="">
-                          {t.featured}
-                        </span>
-                      )}
+                    )}
+                    {r.status === "hidden" && r.featured && (
+                      <span className={`${ui.tag} ${styles.state}`} title={t.featuredKept} data-review-featured-tag="">
+                        {t.featured}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <p className={styles.quote} data-review-text="">
+                  {r.text}
+                </p>
+                <p id={`${cardId}-who`} className={styles.who} data-review-who="">
+                  {[r.name, courseLabel(r.course.title, r.course.published), formatDate(new Date(r.writtenAt), "et")].join(" · ")}
+                </p>
+                <p className={styles.meta} data-review-facts="">
+                  <span>{fill(t.language, { locale: adminEt.common.locale[r.locale] })}</span>
+                  {r.proof && <span data-review-proof="">{proofText(r.proof)}</span>}
+                  {manual && r.note && <span data-review-note="">{fill(t.source, { note: r.note })}</span>}
+                </p>
+                <div className={styles.foot}>
+                  <div className={styles.buttons}>
+                    {r.status !== "published" && (
+                      <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-label={label(t.publish)} aria-disabled={pending || undefined} onClick={() => decide(r.id, "publish")} data-review-publish="">
+                        {t.publish}
+                      </button>
+                    )}
+                    {r.status !== "hidden" && (
+                      <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-label={label(t.hide)} aria-disabled={pending || undefined} onClick={() => decide(r.id, "hide")} data-review-hide="">
+                        {t.hide}
+                      </button>
+                    )}
+                    {manual && (
+                      <Link
+                        id={`${cardId}-muuda`}
+                        className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
+                        href={`${listHref}&id=${r.id}`}
+                        scroll={false}
+                        aria-label={label(t.edit)}
+                        data-review-edit=""
+                      >
+                        {t.edit}
+                      </Link>
+                    )}
+                    {manual && (
+                      <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-label={label(t.delete)} aria-disabled={pending || undefined} onClick={() => remove(r.id)} data-review-delete="">
+                        {t.delete}
+                      </button>
+                    )}
+                  </div>
+                  {r.status === "published" && (
+                    <div className={styles.featured}>
+                      <Switch
+                        label={t.featured}
+                        checked={featuredOf(r)}
+                        onChange={(on) => feature(r, on)}
+                        describedBy={`${cardId}-who${homeHint ? " reviews-home-hint" : ""}`}
+                        data-review-featured-toggle=""
+                      />
                     </div>
-                    <p className={styles.text} data-review-text="">
-                      {r.text}
-                    </p>
-                    <p className={styles.meta} data-review-facts="">
-                      <span>{courseLabel(r.course.title, r.course.published)}</span>
-                      <span>{formatDate(new Date(r.writtenAt), "et")}</span>
-                      <span>{fill(t.language, { locale: adminEt.common.locale[r.locale] })}</span>
-                    </p>
-                    {r.proof && (
-                      <p className={styles.meta} data-review-proof="">
-                        {proofText(r.proof)}
-                      </p>
-                    )}
-                    {manual && r.note && (
-                      <p className={styles.meta} data-review-note="">
-                        {fill(t.source, { note: r.note })}
-                      </p>
-                    )}
-                    <div className={styles.actions}>
-                      {r.status !== "published" && (
-                        <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-label={label(t.publish)} aria-disabled={pending || undefined} onClick={() => decide(r.id, "publish")} data-review-publish="">
-                          {t.publish}
-                        </button>
-                      )}
-                      {r.status !== "hidden" && (
-                        <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-label={label(t.hide)} aria-disabled={pending || undefined} onClick={() => decide(r.id, "hide")} data-review-hide="">
-                          {t.hide}
-                        </button>
-                      )}
-                      {r.status === "published" && (
-                        <button
-                          type="button"
-                          className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.toggle}`}
-                          aria-label={label(t.featured)}
-                          aria-pressed={r.featured}
-                          aria-describedby={`${uid}-home-hint`}
-                          aria-disabled={pending || undefined}
-                          onClick={() => feature(r)}
-                          data-review-featured-toggle=""
-                        >
-                          {t.featured}
-                        </button>
-                      )}
-                      {manual && (
-                        <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-label={label(t.edit)} aria-disabled={pending || undefined} onClick={() => open(r.id)} data-review-edit="">
-                          {t.edit}
-                        </button>
-                      )}
-                      {manual && confirming !== r.id && (
-                        <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-label={label(t.delete)} aria-disabled={pending || undefined} onClick={() => setConfirming(r.id)} data-review-delete="">
-                          {t.delete}
-                        </button>
-                      )}
-                    </div>
-                    {manual && confirming === r.id && (
-                      <div className={styles.confirm} role="group" aria-label={label(t.delete)} data-review-confirm="">
-                        <p>{t.deleteConfirm}</p>
-                        <div className={styles.actions}>
-                          <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={() => remove(r.id)} data-review-delete-yes="">
-                            {t.deleteYes}
-                          </button>
-                          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => !pending && setConfirming(null)} data-review-delete-no="">
-                            {t.deleteNo}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                  )}
+                </div>
               </li>
             );
           })}

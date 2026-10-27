@@ -1,9 +1,15 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
 import { courseAccess, courseFeedback, courses, protocols, registrations, reviews } from "@/db/schema";
-import { tallinnInstant } from "@/domain/calendar";
-import { checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, REVIEW_STATUSES, type DecisionExpected, type ReviewKind, type ReviewStatus } from "@/domain/review";
+import type { SaveAnswer } from "@/domain/autosave";
+import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
+import {
+  checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, REVIEW_STATUSES, type DecisionExpected, type ManualReviewFields, type ReviewKind, type ReviewStatus,
+} from "@/domain/review";
 import type { I18n } from "@/i18n/field";
+import { contentVersion } from "@/lib/version";
+import { fieldCodes } from "./autosave-route";
 
 // The student reviews (spec §2, §4, §5), without Next.js: the student's withdrawal, Maria's decisions and her own reviews, the admin's list, and the
 // two public reads. A student's review is made by the feedback's submit (server/course-feedback.ts), as a copy of her answer and the name she
@@ -12,7 +18,8 @@ import type { I18n } from "@/i18n/field";
 // (cache-targets.ts, { kind: "reviews" }). Logs carry the review's id only: no names, no texts.
 // Admin UX pass piece 4c: Maria's „Kustuta“ only marks a review she added (`removed_at`, R-b), so that „Võta tagasi“ can bring it back until
 // server/review-purge.ts deletes it; every read here leaves a marked review out (NOT_REMOVED), and to every change a marked review is not there.
-// A decision can be undone while the review is still as the press left it (restoreReviewDecision, R-a).
+// A decision can be undone while the review is still as the press left it (restoreReviewDecision, R-a). „Muuda“ on a review Maria added autosaves
+// (readManualReview, writeManualReview: POST /api/admin/arvustus/<id>, R-c).
 
 const log = (id: number, what: string): void => console.info(`[reviews] review ${id}: ${what}`);
 
@@ -87,7 +94,18 @@ export async function reviewCourseSlugs(q: Q, owners: { registrationIds: number[
 async function lockReview(tx: Tx, id: number) {
   const [row] = await tx
     .select({
-      id: reviews.id, kind: reviews.kind, status: reviews.status, decidedAt: reviews.decidedAt, updatedAt: reviews.updatedAt, courseId: reviews.courseId, slug: courses.slug,
+      id: reviews.id,
+      kind: reviews.kind,
+      status: reviews.status,
+      decidedAt: reviews.decidedAt,
+      updatedAt: reviews.updatedAt,
+      courseId: reviews.courseId,
+      name: reviews.name,
+      text: reviews.text,
+      writtenAt: reviews.writtenAt,
+      locale: reviews.locale,
+      note: reviews.note,
+      slug: courses.slug,
     })
     .from(reviews)
     .innerJoin(courses, eq(reviews.courseId, courses.id))
@@ -96,29 +114,42 @@ async function lockReview(tx: Tx, id: number) {
   return row ?? null;
 }
 
+/**
+ * Why lockReview found nothing (a light read, no lock): `removed`, a review Maria added and removed and not purged yet (piece 4c, review M-1: the
+ * actions answer in her words, not the student's); `gone`, there is no such review (the student took her permission back, or it was purged).
+ */
+async function missingAs(tx: Tx, id: number): Promise<"removed" | "gone"> {
+  const [removed] = await tx
+    .select({ id: reviews.id })
+    .from(reviews)
+    .where(and(eq(reviews.id, id), eq(reviews.kind, "manual"), isNotNull(reviews.removedAt)));
+  return removed ? "removed" : "gone";
+}
+
 export type ReviewDecision = "publish" | "hide";
 
 /**
  * „Avalda“ or „Peida“: the review becomes published or hidden, whatever it was (pending, or the other of the two: a hidden one is published
  * again, and the same press twice is harmless), and `decided_at` is now. Hiding keeps `featured` (spec §5). `gone`: the row does not exist (any
- * more). A review of an unpublished course can be decided too: it is shown when the course is. `expected` is what the press's „Võta tagasi“ sends
- * back (piece 4c, R-a; restoreReviewDecision): the row as this press left it, and the status and `decided_at` it replaced.
+ * more); `removed`: it is a review Maria added and removed (piece 4c: in another tab), not purged yet. A review of an unpublished course can be
+ * decided too: it is shown when the course is. `expected` is what the press's „Võta tagasi“ sends back (piece 4c, R-a; restoreReviewDecision): the
+ * row as this press left it, and the status and `decided_at` it replaced.
  */
 export async function decideReview(
   db: Db,
   id: number,
   decision: ReviewDecision,
   now: Date,
-): Promise<{ ok: true; courseSlug: string; expected: DecisionExpected } | { ok: false; error: "gone" }> {
+): Promise<{ ok: true; courseSlug: string; expected: DecisionExpected } | { ok: false; error: "gone" | "removed" }> {
   const status: ReviewStatus = decision === "publish" ? "published" : "hidden";
   const done = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
-    if (!row) return null;
+    if (!row) return missingAs(tx, id);
     await tx.update(reviews).set({ status, decidedAt: now, updatedAt: now }).where(eq(reviews.id, id));
     const expected: DecisionExpected = { status, updatedAt: now.toISOString(), previous: { status: row.status, decidedAt: row.decidedAt?.toISOString() ?? null } };
     return { slug: row.slug, expected };
   });
-  if (done === null) return { ok: false, error: "gone" };
+  if (done === "gone" || done === "removed") return { ok: false, error: done };
   log(id, status);
   return { ok: true, courseSlug: done.slug, expected: done.expected };
 }
@@ -155,14 +186,7 @@ export async function restoreReviewDecision(
   const { previous } = expected;
   const result = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
-    if (!row) {
-      // (a light read: is it one of Maria's, removed and not purged yet?)
-      const [removed] = await tx
-        .select({ id: reviews.id })
-        .from(reviews)
-        .where(and(eq(reviews.id, id), eq(reviews.kind, "manual"), isNotNull(reviews.removedAt)));
-      return removed ? ("removed" as const) : ("gone" as const);
-    }
+    if (!row) return missingAs(tx, id);
     if (row.status !== expected.status || row.updatedAt.getTime() !== Date.parse(expected.updatedAt)) return "changed" as const;
     if (!possibleBefore(row.kind, expected)) return "changed" as const;
     await tx
@@ -242,17 +266,118 @@ export async function saveManualReview(
   return { ok: true, id: saved.id, courseSlug: saved.courseSlug, ...(saved.previousCourseSlug ? { previousCourseSlug: saved.previousCourseSlug } : {}) };
 }
 
-/** Deletes a review Maria added. `{ ok: false }`: it does not exist (or is removed), or it is a student's (not hers to delete: the student can take her permission back). */
-export async function deleteManualReview(db: Db, id: number): Promise<{ ok: true; courseSlug: string } | { ok: false }> {
-  const slug = await db.transaction(async (tx) => {
+// ---------- „Muuda“: a review Maria added, autosaved (piece 4c, R-c) ----------
+
+/**
+ * The patch of „Muuda“'s autosave (POST /api/admin/arvustus/<id>, the route's schema): some of ManualReviewFields as typed, no other key. These are the
+ * outer limits only, each refusal its field's code: the real rules are checkManualReview's (required, tooLong, invalid), on the review as it would be.
+ */
+export const MANUAL_REVIEW_PATCH = z
+  .strictObject(
+    {
+      courseId: z.string({ error: "invalid" }).max(20, "invalid"),
+      name: z.string({ error: "invalid" }).max(1_000, "tooLong"),
+      text: z.string({ error: "invalid" }).max(20_000, "tooLong"),
+      writtenAt: z.string({ error: "invalid" }).max(40, "invalid"),
+      locale: z.string({ error: "invalid" }).max(10, "invalid"),
+      note: z.string({ error: "invalid" }).max(5_000, "tooLong"),
+    },
+    { error: "invalid" },
+  )
+  .partial();
+
+type EditableRow = { courseId: number; name: string; text: string; writtenAt: Date; locale: "et" | "ru"; note: string | null };
+
+/** A stored review as „Muuda“'s fields hold it: the course's id as text, the day written in Estonian time, no note as "". */
+const fieldsOfReview = (row: EditableRow): ManualReviewFields => ({
+  courseId: String(row.courseId),
+  name: row.name,
+  text: row.text,
+  writtenAt: tallinnFormParts(row.writtenAt).date,
+  locale: row.locale,
+  note: row.note ?? "",
+});
+
+/** R-c: "r:" and the hash of the stored {courseId, name, text, writtenAt, locale, note} (never the status or „Avalehel“: a decision changes no field). */
+const editVersionOf = async (row: EditableRow): Promise<string> =>
+  `r:${await contentVersion({ courseId: row.courseId, name: row.name, text: row.text, writtenAt: row.writtenAt, locale: row.locale, note: row.note })}`;
+
+/**
+ * „Muuda“'s drawer (the autosave route's `read`): the version (R-c) and the fields of a review Maria added. Null when there is none to edit: no such
+ * review, one she removed, or a student's — a student's words are never edited (builder notes §5 C6).
+ */
+export async function readManualReview(q: Q, id: number): Promise<{ version: string; value: ManualReviewFields } | null> {
+  const [row] = await q
+    .select({ courseId: reviews.courseId, name: reviews.name, text: reviews.text, writtenAt: reviews.writtenAt, locale: reviews.locale, note: reviews.note })
+    .from(reviews)
+    .where(and(eq(reviews.id, id), eq(reviews.kind, "manual"), NOT_REMOVED))
+    .limit(1);
+  return row ? { version: await editVersionOf(row), value: fieldsOfReview(row) } : null;
+}
+
+/**
+ * The fields a refusal names (the rule of server/session-edit.ts refusedFields): when none of the refused fields was sent (a stored field the rules no
+ * longer take), every field sent is named with it, so that the drawer does not send them again unchanged.
+ */
+function refusedOf(fields: Record<string, string>, sent: string[]): Record<string, string> {
+  if (Object.keys(fields).some((n) => sent.includes(n))) return fields;
+  const code = Object.values(fields)[0] ?? "invalid";
+  return { ...fields, ...Object.fromEntries(sent.map((n) => [n, code])) };
+}
+
+/**
+ * „Muuda“'s autosave (the route's `write`; server/autosave-route.ts' contract): `patch` (some of the fields) over the review at `version`, under the
+ * review's lock. The answers:
+ * - ok with the version after it; a patch that changes nothing answers the version it came from and writes nothing (so a decision's „Võta tagasi“
+ *   is not made `changed` by a save of nothing);
+ * - a conflict with the stored version and fields when `version` is not the review's (another tab saved first); one not there any more (removed,
+ *   or purged), or a student's: version "", value null;
+ * - invalid with the fields' codes (checkManualReview on the review as it would be; a course that does not exist is `courseId: "invalid"`).
+ * A write keeps the status, `featured` and `decided_at`, and sets `updated_at`. `courseSlugs`: the course pages to revalidate after the commit — the
+ * review's course, and the one it left when the course changed; none when nothing was written. No Next.js here: the route revalidates.
+ */
+export async function writeManualReview(
+  db: Db,
+  id: number,
+  patch: Record<string, unknown>,
+  version: string,
+  now: Date,
+): Promise<{ answer: SaveAnswer; courseSlugs: string[] }> {
+  const parsed = MANUAL_REVIEW_PATCH.safeParse(patch);
+  if (!parsed.success) return { answer: { ok: false, error: "invalid", fields: fieldCodes(parsed.error.issues) ?? Object.fromEntries(Object.keys(patch).map((k) => [k, "invalid"])) }, courseSlugs: [] };
+  const sent = Object.keys(parsed.data);
+  const done = await db.transaction(async (tx): Promise<{ answer: SaveAnswer; courseSlugs: string[] }> => {
     const row = await lockReview(tx, id);
-    if (!row || row.kind !== "manual") return null;
-    await tx.delete(reviews).where(eq(reviews.id, id));
-    return row.slug;
+    if (!row || row.kind !== "manual") return { answer: { ok: false, error: "conflict", version: "", value: null }, courseSlugs: [] };
+    const current = await editVersionOf(row);
+    if (version !== current) return { answer: { ok: false, error: "conflict", version: current, value: fieldsOfReview(row) }, courseSlugs: [] };
+    const checked = checkManualReview({ ...fieldsOfReview(row), ...parsed.data });
+    if (!checked.ok) return { answer: { ok: false, error: "invalid", fields: refusedOf(checked.fields, sent) }, courseSlugs: [] };
+    // a field sent is stored as checked (trimmed; the day its Estonian midnight), one not sent stays as it is (a day keeps its time of day)
+    const form = checked.value;
+    const day = fieldsOfReview(row).writtenAt;
+    const next: EditableRow & { note: string } = {
+      courseId: sent.includes("courseId") ? form.courseId : row.courseId,
+      name: sent.includes("name") ? form.name : row.name,
+      text: sent.includes("text") ? form.text : row.text,
+      locale: sent.includes("locale") ? form.locale : row.locale,
+      note: sent.includes("note") ? form.note : (row.note ?? ""),
+      writtenAt: sent.includes("writtenAt") && form.writtenAt !== day ? tallinnInstant(form.writtenAt, "00:00")! : row.writtenAt, // (checkManualReview has seen a real day)
+    };
+    const same = next.courseId === row.courseId && next.name === row.name && next.text === row.text && next.locale === row.locale && next.note === (row.note ?? "") && next.writtenAt === row.writtenAt;
+    if (same) return { answer: { ok: true, version: current, savedAt: now.toISOString() }, courseSlugs: [] };
+    let slug = row.slug;
+    if (next.courseId !== row.courseId) {
+      // the course it moves to must be there (FOR KEY SHARE: a deletion of it waits, or is waited for and leaves nothing here)
+      const [course] = await tx.select({ slug: courses.slug }).from(courses).where(eq(courses.id, next.courseId)).for("key share");
+      if (!course) return { answer: { ok: false, error: "invalid", fields: { courseId: "invalid" } }, courseSlugs: [] };
+      slug = course.slug;
+    }
+    await tx.update(reviews).set({ ...next, updatedAt: now }).where(eq(reviews.id, id));
+    return { answer: { ok: true, version: await editVersionOf(next), savedAt: now.toISOString() }, courseSlugs: slug === row.slug ? [slug] : [slug, row.slug] };
   });
-  if (slug === null) return { ok: false };
-  log(id, "deleted");
-  return { ok: true, courseSlug: slug };
+  if (done.courseSlugs.length > 0) log(id, "edited");
+  return done;
 }
 
 /**

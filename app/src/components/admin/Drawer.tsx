@@ -1,10 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { AdminIcon } from "./AdminIcon";
 import { GuardScope, LeaveNotice, useLeaveGuard } from "./LeaveGuard";
 import styles from "./Drawer.module.css";
+
+/** The open drawer's close (✕'s: after the leave guard); null outside a drawer. */
+const CloseContext = createContext<(() => void) | null>(null);
+
+/** The close of the drawer round this component (✕'s, after the leave guard), or null when it is not in one. */
+export function useDrawerClose(): (() => void) | null {
+  return useContext(CloseContext);
+}
 
 /**
  * Detail panel on the right (full width on a phone), opened by a link with `?id=` so every detail has its own address.
@@ -19,6 +27,8 @@ import styles from "./Drawer.module.css";
  * autosave).
  * `fallbackFocus`: when the drawer goes away by a navigation (its item deleted) and `returnFocus` is gone with it, the focus goes to this
  * element instead of <body>.
+ * A button inside the drawer that closes it („Katkesta“ of a form that creates, piece 4c) takes the drawer's own close with useDrawerClose(): the same
+ * way as ✕, after the leave guard, to `closeHref` and `returnFocus`.
  */
 export function Drawer({
   label,
@@ -109,7 +119,9 @@ export function Drawer({
           <AdminIcon name="close" size={20} />
         </button>
         <LeaveNotice where="drawer" />
-        <GuardScope>{children}</GuardScope>
+        <CloseContext.Provider value={requestClose}>
+          <GuardScope>{children}</GuardScope>
+        </CloseContext.Provider>
       </div>
     </dialog>
   );

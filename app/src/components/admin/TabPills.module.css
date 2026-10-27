@@ -7,3 +7,18 @@
   gap: 8px;
   margin: 0 0 18px;
 }
+
+/* a tab's phone label (TabPill.short): the other one is not drawn */
+.short {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .wide {
+    display: none;
+  }
+
+  .short {
+    display: inline;
+  }
+}

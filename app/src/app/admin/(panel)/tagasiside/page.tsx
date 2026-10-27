@@ -3,25 +3,29 @@ import Link from "next/link";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import { ListRows } from "@/components/admin/ListRows";
+import { ListToolbar } from "@/components/admin/ListToolbar";
 import listTable from "@/components/admin/list-table.module.css";
+import { EditReviewForm, NewReviewForm } from "@/components/admin/ManualReviewForm";
 import { Pager } from "@/components/admin/Pager";
-import { courseLabel, reviewRowView } from "@/components/admin/review-view";
+import {
+  courseLabel, REVIEW_STATUS_WORD, REVIEW_STATUS_WORDS, reviewCardId, reviewPills, reviewRowView, REVIEWS_HREF, reviewsHref, type ReviewStatusWord,
+} from "@/components/admin/review-view";
 import { ReviewsPanel } from "@/components/admin/ReviewsPanel";
 import { adminTitle } from "@/components/admin/sections";
+import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { feedbackById, feedbackStats, pageFeedback, type CourseFeedbackStats, type FeedbackRow } from "@/db/queries/protocols";
 import { tallinnToday } from "@/domain/client-access";
 import { parsePage } from "@/domain/paging";
 import { FEEDBACK_CHOICES, feedbackQuestions, type ChoiceKey } from "@/domain/protocols";
-import type { ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { pick } from "@/i18n/field";
 import { fill, formatDate } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
-import { adminReviews, pendingReviewCount, reviewCourses } from "@/server/reviews";
+import { adminReviews, pendingReviewCount, readManualReview, reviewCounts, reviewCourses } from "@/server/reviews";
 import styles from "./feedback.module.css";
 
 export const dynamic = "force-dynamic";
@@ -32,31 +36,28 @@ type Props = { searchParams: Promise<Search> };
 
 // Addresses: ?koolitus=<course id> (the filter), ?leht=<n> (50 a page), ?id=<answer> (the drawer). A new filter starts at page 1; the drawer
 // keeps the page it was opened from. ?vaade=arvustused is the page's second view, the student reviews (student reviews, Task 4; a view of its own
-// because the answers' list, its numbers and its drawer already fill the page), with ?olek=ootel|avaldatud|peidetud narrowing it to one status.
+// because the answers' list, its numbers and its drawer already fill the page), with ?olek=ootel|avaldatud|peidetud narrowing it to one status
+// (components/admin/review-view.ts reviewsHref) and ?id= its drawers (admin UX pass piece 4c): `uus` „Lisa arvustus +“, a review's id its „Muuda“.
 // ?vaade=vastused (or none) is the answers' view; its own filters and pager keep no ?vaade.
 type View = { koolitus: number | null; leht: number };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
-/** The reviews' status filter: the address's word and the status it stands for. */
-const STATUS_WORD = { ootel: "pending", avaldatud: "published", peidetud: "hidden" } as const satisfies Record<string, ReviewStatus>;
-type StatusWord = keyof typeof STATUS_WORD;
-const STATUS_WORDS = Object.keys(STATUS_WORD) as StatusWord[];
-
-type Parsed = View & { id: number | null; reviews: boolean; olek: StatusWord | null };
+type Parsed = View & { id: number | null; adding: boolean; reviews: boolean; olek: ReviewStatusWord | null };
 
 function parse(sp: Search): Parsed {
   return {
     koolitus: parseRowId(one(sp.koolitus)),
     leht: parsePage(sp.leht),
     id: parseRowId(one(sp.id)),
+    adding: sp.id === "uus",
     reviews: sp.vaade === "arvustused",
-    olek: STATUS_WORDS.find((word) => word === sp.olek) ?? null,
+    olek: REVIEW_STATUS_WORDS.find((word) => word === sp.olek) ?? null,
   };
 }
 
-const REVIEWS_HREF = "/admin/tagasiside?vaade=arvustused";
-const reviewsHref = (olek: StatusWord | null) => (olek === null ? REVIEWS_HREF : `${REVIEWS_HREF}&olek=${olek}`);
+/** The element id of „Lisa arvustus +“: its drawer gives the focus back to it. */
+const ADD_ID = "review-add";
 
 function href(view: View, id?: number): string {
   const q = new URLSearchParams();
@@ -77,17 +78,22 @@ const CHOICE_KEYS = Object.keys(FEEDBACK_CHOICES) as ChoiceKey[];
  * score and every option of the seven choice questions with its count. A row's name opens its answers (the drawer, ?id=). Read-only. An e-course's
  * answer has no course day: "Lõpetatud {date}", the day her access was completed, stands in its place.
  *
- * The second view, "Arvustused" (?vaade=arvustused): the student reviews and "Lisa arvustus" (components/admin/ReviewsPanel.tsx). The heading counts the
- * reviews waiting for Maria on both views, and the count opens the ones waiting.
+ * The second view, "Arvustused" (?vaade=arvustused; admin UX pass piece 4c, README C6, the Part 4 frame „C6 Tagasiside“): the header's ink „Lisa arvustus +“,
+ * the status pills with their counts and the review cards (components/admin/ReviewsPanel.tsx), and the two drawers (components/admin/ManualReviewForm.tsx).
+ * On a phone the reviews' tab says how many wait for Maria (S4-35): the pills with counts replaced the heading's count.
  */
 export default async function FeedbackPage({ searchParams }: Props) {
   await requireAdmin();
   const view = parse(await searchParams);
-  return view.reviews ? reviewsPage(view.olek) : answersPage(view);
+  return view.reviews ? reviewsPage(view) : answersPage(view);
 }
 
-/** The page's heading, the count of the reviews waiting for Maria (nothing when none wait) and the two views. */
-function Top({ pending, active }: { pending: number; active: "answers" | "reviews" }) {
+/**
+ * The page's heading — the eyebrow „Õpilased“, the H1 „Tagasiside“ and the lead of the view, with the reviews' „Lisa arvustus +“ (`addHref`, the view's
+ * create drawer) at its right — and the two views as tabs (TabPills); `waiting`: the reviews waiting for Maria, which the phone's reviews tab counts
+ * („Arvustused · Ootab {n}“; at 0 „Arvustused“).
+ */
+function Top({ active, waiting, addHref }: { active: "answers" | "reviews"; waiting: number; addHref?: string }) {
   const t = adminEt.feedback;
   return (
     <>
@@ -97,55 +103,68 @@ function Top({ pending, active }: { pending: number; active: "answers" | "review
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{active === "reviews" ? adminEt.reviews.lead : t.lead}</p>
         </div>
-        {pending > 0 && (
-          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={reviewsHref("ootel")} data-pending-reviews={pending}>
-            {fill(t.pendingReviews, { n: pending })}
+        {addHref && (
+          <Link id={ADD_ID} className={ui.btn} href={addHref} scroll={false} data-review-add="">
+            {adminEt.reviews.add}
           </Link>
         )}
       </div>
-      <nav className={ui.filters} aria-label={t.viewsLabel} data-feedback-views="">
-        <Link className={ui.pill} href="/admin/tagasiside?vaade=vastused" aria-current={active === "answers" ? "page" : undefined} data-view="answers">
-          {t.views.answers}
-        </Link>
-        <Link className={ui.pill} href={REVIEWS_HREF} aria-current={active === "reviews" ? "page" : undefined} data-view="reviews">
-          {t.views.reviews}
-        </Link>
-      </nav>
+      <TabPills
+        label={t.viewsLabel}
+        tabs={[
+          { href: "/admin/tagasiside?vaade=vastused", label: t.views.answers, current: active === "answers" },
+          { href: REVIEWS_HREF, label: t.views.reviews, short: waiting > 0 ? fill(t.views.reviewsWaiting, { n: waiting }) : undefined, current: active === "reviews" },
+        ]}
+      />
     </>
   );
 }
 
-/** "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status filter, and "Lisa arvustus". (A function of the page, not a component: it reads.) */
-async function reviewsPage(olek: StatusWord | null) {
+/**
+ * "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status pill
+ * pressed (R-e: no „Kõik“, a pressed pill toggles off; the menu badge lands on ?olek=ootel), and the drawers: ?id=uus „Lisa arvustus +“ (an explicit
+ * create), ?id=<id> „Muuda“ on a review Maria added (autosaved, R-c). (A function of the page, not a component: it reads.)
+ */
+async function reviewsPage(view: Parsed) {
   const db = getDb();
   const t = adminEt.reviews;
-  const [rows, courses, pending] = await Promise.all([adminReviews(db, olek === null ? {} : { status: STATUS_WORD[olek] }), reviewCourses(db), pendingReviewCount(db)]);
-  const filters: { key: StatusWord | null; label: string }[] = [{ key: null, label: t.all }, ...STATUS_WORDS.map((word) => ({ key: word, label: t.status[STATUS_WORD[word]] }))];
+  const { olek } = view;
+  const editing = view.adding ? null : view.id;
+  const [rows, counts, courses, edited] = await Promise.all([
+    adminReviews(db, olek === null ? {} : { status: REVIEW_STATUS_WORD[olek] }),
+    reviewCounts(db),
+    view.adding || editing !== null ? reviewCourses(db) : [],
+    editing !== null ? readManualReview(db, editing) : null,
+  ]);
+  const listHref = reviewsHref(olek);
+  const options = courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }));
 
   return (
-    <div className={ui.page}>
-      <Top pending={pending} active="reviews" />
-      <nav className={ui.filters} aria-label={t.filterLabel} data-review-filter="">
-        {filters.map((f) => (
-          <Link key={f.key ?? "all"} className={ui.pill} href={reviewsHref(f.key)} aria-current={olek === f.key ? "true" : undefined} data-review-filter-status={f.key ?? "all"}>
-            {f.label}
-          </Link>
-        ))}
-      </nav>
-      <ReviewsPanel
-        rows={rows.map(reviewRowView)}
-        courses={courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }))}
-        today={tallinnToday(new Date())}
-        filtered={olek !== null}
-      />
-    </div>
+    <>
+      <div className={ui.page}>
+        <Top active="reviews" waiting={counts.pending} addHref={`${listHref}&id=uus`} />
+        <ListToolbar pillRows={[{ label: t.filterLabel, pills: reviewPills(olek, counts) }]} />
+        <ReviewsPanel rows={rows.map(reviewRowView)} filtered={olek !== null} listHref={listHref} />
+      </div>
+
+      {view.adding && (
+        <Drawer label={t.form.newTitle} closeHref={listHref} closeLabel={adminEt.common.close} returnFocus={ADD_ID}>
+          <NewReviewForm courses={options} today={tallinnToday(new Date())} />
+        </Drawer>
+      )}
+      {editing !== null && (
+        <Drawer label={edited ? t.form.editTitle : t.errors.manualGone} closeHref={listHref} closeLabel={adminEt.common.close} returnFocus={`${reviewCardId(editing)}-muuda`}>
+          {edited ? <EditReviewForm key={editing} id={editing} version={edited.version} fields={edited.value} courses={options} /> : <p className={ui.empty}>{t.errors.manualGone}</p>}
+        </Drawer>
+      )}
+    </>
   );
 }
 
 /** "Vastused": the answers (see FeedbackPage). */
 async function answersPage(view: Parsed) {
   const db = getDb();
-  const [list, stats, open, pending] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db)]);
+  const [list, stats, open, waiting] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db)]);
   const t = adminEt.feedback;
   const chosen = view.koolitus === null ? null : (stats.find((s) => s.course.id === view.koolitus) ?? null);
   const filters: { key: number | null; label: string }[] = [{ key: null, label: t.all }, ...stats.map((s) => ({ key: s.course.id, label: pick(s.course.title, "et") }))];
@@ -153,7 +172,7 @@ async function answersPage(view: Parsed) {
   return (
     <>
       <div className={ui.page}>
-        <Top pending={pending} active="answers" />
+        <Top active="answers" waiting={waiting} />
 
         {stats.length > 0 && (
           <nav className={ui.filters} aria-label={t.filterLabel} data-feedback-filter="">

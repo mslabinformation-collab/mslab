@@ -22,7 +22,7 @@ vi.mock("next/navigation", async (original) => ({
 }));
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
-  return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children) };
+  return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useDrawerClose: () => null };
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
@@ -30,7 +30,7 @@ vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.f
 vi.mock("@/server/actions/admin-certificates", () => ({ reissueCertificateAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(), updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
-vi.mock("@/server/actions/admin-reviews", () => ({ decideReviewAction: vi.fn(), setFeaturedAction: vi.fn(), saveManualReviewAction: vi.fn(), deleteManualReviewAction: vi.fn() }));
+vi.mock("@/server/actions/admin-reviews", () => ({ decideReviewAction: vi.fn(), undoDecisionAction: vi.fn(), setFeaturedAction: vi.fn(), saveManualReviewAction: vi.fn(), removeReviewAction: vi.fn(), undoRemoveReviewAction: vi.fn() }));
 
 import RegistrationsPage from "@/app/admin/(panel)/registreerimised/page";
 import FeedbackPage from "@/app/admin/(panel)/tagasiside/page";

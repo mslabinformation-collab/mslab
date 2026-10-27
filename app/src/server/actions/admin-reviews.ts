@@ -11,7 +11,7 @@ import { adminAction } from "../auth";
 import { logFailure } from "../log";
 import { revalidatePublic } from "../public-cache";
 import { purgeRemovedReviews } from "../review-purge";
-import { decideReview, deleteManualReview, removeManualReview, restoreManualReview, restoreReviewDecision, saveManualReview, setFeatured } from "../reviews";
+import { decideReview, removeManualReview, restoreManualReview, restoreReviewDecision, saveManualReview, setFeatured } from "../reviews";
 
 // Maria's review actions (student reviews, Task 4, spec D2, D4, §5): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in ../reviews.ts
@@ -50,7 +50,8 @@ function changed(courseSlug: string): void {
 /**
  * „Avalda“ / „Peida“: `{ id, decision }`. The review becomes published or hidden, whatever it was (a hidden one is published again; the same press
  * twice is harmless). Done: `{ ok: true, expected }`, where `expected` is what its „Võta tagasi“ sends back to undoDecisionAction (piece 4c, R-a).
- * `gone`: no such review any more (the student took her permission back), in words, with the page refreshed.
+ * `gone`: no such review any more (the student took her permission back); `manualGone`: a review Maria added and removed (in another tab), in her
+ * words, as the undo answers it (review M-1). Each in words, with the page refreshed.
  */
 export const decideReviewAction = adminAction(async (_admin, input: { id: number; decision: "publish" | "hide" }) => {
   const parsed = decisionInput.safeParse(input);
@@ -65,7 +66,7 @@ export const decideReviewAction = adminAction(async (_admin, input: { id: number
   }
   if (!result.ok) {
     refresh();
-    return fail(result.error);
+    return fail(result.error === "removed" ? "manualGone" : result.error);
   }
   changed(result.courseSlug);
   return { ok: true as const, expected: result.expected };
@@ -147,26 +148,6 @@ export const saveManualReviewAction = adminAction(async (_admin, input: { id: nu
   if (result.previousCourseSlug) revalidatePublic({ kind: "reviews", course: result.previousCourseSlug });
   changed(result.courseSlug);
   return { ok: true as const, id: result.id };
-});
-
-/** „Kustuta“: `{ id }`. A review Maria added is deleted. A student's review is not hers to delete, and one that is gone is gone: `manualGone`, page refreshed. */
-export const deleteManualReviewAction = adminAction(async (_admin, input: { id: number }) => {
-  const parsed = idOnly.safeParse(input);
-  if (!parsed.success) return fail("manualGone");
-  const { id } = parsed.data;
-  let result: Awaited<ReturnType<typeof deleteManualReview>>;
-  try {
-    result = await deleteManualReview(getDb(), id);
-  } catch (e) {
-    logFailure(`[reviews] review ${id}: the deletion failed`, e);
-    return fail("server");
-  }
-  if (!result.ok) {
-    refresh();
-    return fail("manualGone");
-  }
-  changed(result.courseSlug);
-  return { ok: true as const };
 });
 
 /**

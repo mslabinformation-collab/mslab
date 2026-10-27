@@ -1150,11 +1150,10 @@ export const adminEt = {
     toRegistration: "Registreeringu juurde",
     // an e-course's answer has no course day: the day her access was completed stands in its place (student reviews, Task 4; the spec's words)
     completed: "Lõpetatud {date}",
-    // the page's two views (Draft): the answers, and the reviews (below, `reviews`); ?vaade=arvustused
+    // the page's two views (Draft): the answers, and the reviews (below, `reviews`); ?vaade=arvustused. The phone's reviews tab carries the count of
+    // the reviews waiting for Maria (admin UX pass piece 4c, S4-35; at 0 it is `reviews`): the pills with counts replaced the heading's count
     viewsLabel: "Vaade",
-    views: { answers: "Vastused", reviews: "Arvustused" },
-    // the heading's count of the reviews waiting for Maria (Draft); it opens the reviews waiting
-    pendingReviews: "Arvustusi ootab kinnitust: {n}",
+    views: { answers: "Vastused", reviews: "Arvustused", reviewsWaiting: "Arvustused · Ootab {n}" },
     // the Õpilased and Registreerimised drawers
     section: "Tagasiside",
     none: "Tagasisidet pole antud.",
@@ -1168,14 +1167,19 @@ export const adminEt = {
   // „Avaldatud“, „Peidetud“), „Avalda“, „Peida“, „Avalehel“, „Lisa arvustus“, „Kust see pärit on?“, „Lisa ainult päris õpilase sõnad tema loal.“,
   // „Nimi, mida näidatakse“ and the `gone` answer. Every other text here is a Draft for Dim's wording sheet.
   // {n} a count, {max} a limit, {date} a day, {name} a name, {status} a status, {protocol} a protocol line, {note} her note.
+  // Admin UX pass piece 4c (C6; piece4-texts S4-35 … S4-39): review cards, the pills with counts and no „Kõik“, the instant „Avalda“ / „Peida“ and the
+  // soft „Kustuta“ with their UndoBars (no confirming step), „Lisa arvustus +“ in the page header opening a drawer, „Muuda“ an autosave drawer.
   reviews: {
     title: "Arvustused",
     lead: "Õpilaste sõnad, mida nad lubasid avaldada, ja arvustused, mille oled ise lisanud. Õpilase teksti ei saa muuta: saad selle avaldada või peita.",
+    // the page header's ink button (S4-35); the drawer's create button is `form.create`, without the „+“ (P3T P-6)
+    add: "Lisa arvustus +",
+    // the status pills' row (S4-36: each status with its count, no „Kõik“)
     filterLabel: "Olek",
-    all: "Kõik",
     status: { pending: "Ootab kinnitust", published: "Avaldatud", hidden: "Peidetud" },
     empty: "Arvustusi pole veel.",
-    emptyFiltered: "Selles vaates arvustusi pole.",
+    // the list frame's word (lists.emptyFiltered: S4-36 „Selle valikuga arvustusi pole.“ + „Tühjenda otsing ja filtrid“)
+    things: "arvustusi",
     language: "Keel: {locale}",
     // the proof of a student's review (D2): what Maria judges by whether the writer took part
     proof: { registration: "Registreering: {status} · {protocol}", protocolSent: "Protokoll saadetud", protocolNotSent: "Protokolli pole saadetud" },
@@ -1191,16 +1195,19 @@ export const adminEt = {
     delete: "Kustuta",
     // the buttons' names for a screen reader: the button's own words first, then whose review it is
     label: "{action}: {name}",
-    deleteConfirm: "Kas kustutan selle arvustuse? Seda ei saa tagasi võtta.",
-    deleteYes: "Jah, kustuta",
-    deleteNo: "Ei",
     working: "Salvestan…",
-    deleted: "Arvustus on kustutatud.",
+    // the UndoBars (S4-38); „Avalehel“ has none. A refused „Võta tagasi“ says `errors.changed`
+    bar: { published: "Arvustus avaldatud.", hidden: "Arvustus peidetud.", removed: "Arvustus kustutatud." },
     // the drawer of a student (Õpilased): whether she allowed publishing and what became of it
     drawer: { allowed: "Lubab avaldada: {status}", allowedFeatured: "Lubab avaldada: {status}, avalehel", notAllowed: "Avaldamise luba pole antud.", open: "Ava arvustused" },
+    // the „Lisa arvustus +“ drawer (S4-39: its header is courseEditor.newRequired / newReady, the cancel common.cancel „Katkesta“, the leave guard's reason
+    // „{newThing} pole veel lisatud.“) and the „Muuda“ drawer (ADM:1138 `editTitle`; its SaveStatus' gone word, S4-4, says `thing`)
     form: {
-      add: "Lisa arvustus",
+      newTitle: "Uus arvustus",
+      create: "Lisa arvustus",
+      newThing: "Arvustust",
       editTitle: "Muuda arvustust",
+      thing: "arvustust",
       warning: "Lisa ainult päris õpilase sõnad tema loal.",
       course: "Koolitus",
       chooseCourse: "Vali koolitus",
@@ -1212,8 +1219,6 @@ export const adminEt = {
       note: "Kust see pärit on?",
       noteHint: "Ainult sinule: avalikul lehel seda ei näidata.",
       count: "{n} / {max}",
-      save: "Salvesta",
-      cancel: "Tühista",
       errors: { required: "Täida see väli.", tooLong: "Tekst on liiga pikk.", invalid: "Kontrolli seda välja." },
     },
     // what an action answers when it did not go through

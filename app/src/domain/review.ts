@@ -73,6 +73,15 @@ export function checkConsent(recommend: string | undefined, name: unknown): Cons
 /** What Maria's „Lisa arvustus“ form holds (D4), as checkManualReview returns it: `writtenAt` is the day, "YYYY-MM-DD" (Estonian time). */
 export type ManualReviewInput = { courseId: number; name: string; text: string; writtenAt: string; locale: "et" | "ru"; note: string };
 
+/**
+ * The fields of a review Maria added as her forms hold them (admin UX pass piece 4c: the „Lisa arvustus“ drawer and the „Muuda“ drawer, whose autosave
+ * sends them as they are typed): the course's id as the select's text ("" for none chosen), the day "YYYY-MM-DD", the note "" for none. checkManualReview
+ * reads them.
+ */
+export type ManualReviewFields = { courseId: string; name: string; text: string; writtenAt: string; locale: "et" | "ru"; note: string };
+/** The fields of ManualReviewFields in the forms' order. */
+export const MANUAL_REVIEW_FIELDS = ["courseId", "name", "text", "writtenAt", "locale", "note"] as const satisfies readonly (keyof ManualReviewFields)[];
+
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const missing = (v: unknown): boolean => v === undefined || v === null || v === "";
 

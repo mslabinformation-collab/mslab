@@ -2,9 +2,11 @@ import type { ReviewKind, ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import type { AdminReviewRow } from "@/server/reviews";
+import type { ListPill } from "./ListToolbar";
 
 // A review as Maria's „Arvustused“ gets it (student reviews, Task 4): the admin's row without a Date (a client component's props are JSON), with the
 // course named in Estonian. The page builds it (tagasiside/page.tsx); ReviewsPanel and ManualReviewForm read it. Types only from the server file.
+// Admin UX pass piece 4c: the view's addresses (?olek=, the drawers' ?id=), its status pills and the cards' anchors, shared by the page and the panel.
 
 /** What Maria judges a student's review by (D2): the registration's status and whether a protocol was sent, or the day the e-course was completed. */
 export type ReviewProofView = { kind: "registration"; status: string; protocolSent: boolean } | { kind: "completed"; completedAt: string };
@@ -55,3 +57,27 @@ export function reviewRowView(row: AdminReviewRow): ReviewRowView {
     score: row.score,
   };
 }
+
+/** The reviews' status filter (?olek=): the address's word and the status it stands for. */
+export const REVIEW_STATUS_WORD = { ootel: "pending", avaldatud: "published", peidetud: "hidden" } as const satisfies Record<string, ReviewStatus>;
+export type ReviewStatusWord = keyof typeof REVIEW_STATUS_WORD;
+export const REVIEW_STATUS_WORDS = Object.keys(REVIEW_STATUS_WORD) as ReviewStatusWord[];
+
+/** „Arvustused“, Tagasiside's second view, of every status. */
+export const REVIEWS_HREF = "/admin/tagasiside?vaade=arvustused";
+/** The view narrowed to one status (the menu badge's `ootel`), or of every status. A drawer goes on top of it with `&id=uus` or `&id=<review>`. */
+export const reviewsHref = (olek: ReviewStatusWord | null): string => (olek === null ? REVIEWS_HREF : `${REVIEWS_HREF}&olek=${olek}`);
+
+/**
+ * The status pills (piece 4c, R-e; S4-36 „Ootab kinnitust {n}“ · „Avaldatud {n}“ · „Peidetud {n}“): each status with its count (server/reviews.ts
+ * reviewCounts), no „Kõik“ — every review is listed until a pill is pressed, and the pressed pill goes back to that list (it toggles off).
+ */
+export function reviewPills(olek: ReviewStatusWord | null, counts: Record<ReviewStatus, number>): ListPill[] {
+  return REVIEW_STATUS_WORDS.map((word) => {
+    const status = REVIEW_STATUS_WORD[word];
+    return { href: reviewsHref(olek === word ? null : word), label: adminEt.reviews.status[status], count: counts[status], current: olek === word };
+  });
+}
+
+/** A review card's element id (piece 4c, R-d): the anchor of `/admin/tagasiside?vaade=arvustused#arvustus-<id>`, and the card the focus stays on (D5). */
+export const reviewCardId = (id: number): string => `arvustus-${id}`;

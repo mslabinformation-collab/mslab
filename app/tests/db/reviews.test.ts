@@ -6,7 +6,7 @@ import { COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, REVIEW_NAME_MAX } from "@/domain/
 import { submitFeedback } from "@/server/course-feedback";
 import { deleteDueReviews, purgeRemovedReviews } from "@/server/review-purge";
 import {
-  adminReviews, courseReviews, decideReview, deleteManualReview, homeReviews, pendingReviewCount, removeManualReview, restoreManualReview, restoreReviewDecision,
+  adminReviews, courseReviews, decideReview, homeReviews, pendingReviewCount, removeManualReview, restoreManualReview, restoreReviewDecision,
   reviewCounts, reviewCourseSlugs, reviewsOfClient, reviewsOfFeedback, saveManualReview, setFeatured, withdrawReview,
 } from "@/server/reviews";
 import { makeTestDb } from "./helpers";
@@ -350,10 +350,9 @@ describe("Maria's own reviews („Lisa arvustus“)", () => {
     expect(await courseReviews(db, course.id)).toEqual([]);
   });
 
-  test("a student's review is not hers to edit or delete: 'notManual', nothing changes; an unknown id is 'gone'", async () => {
+  test("a student's review is not hers to edit: 'notManual', nothing changes; an unknown id is 'gone'", async () => {
     const { course, review } = await pendingOf();
     expect(await saveManualReview(db, review.id, form(course.id), LATER)).toEqual({ ok: false, fields: { form: "notManual" } });
-    expect(await deleteManualReview(db, review.id)).toEqual({ ok: false });
     expect(await all()).toEqual([review]);
     expect(await saveManualReview(db, 99999, form(course.id), LATER)).toEqual({ ok: false, fields: { form: "gone" } });
   });
@@ -364,15 +363,6 @@ describe("Maria's own reviews („Lisa arvustus“)", () => {
     expect(await all()).toEqual([review]);
   });
 
-  test("deleting: the review is gone, the course's slug returned; a second delete is ok false", async () => {
-    const { course } = await protocolCourse(db);
-    const saved = await saveManualReview(db, null, form(course.id), LATER);
-    if (!saved.ok) throw new Error("not saved");
-    expect(await deleteManualReview(db, saved.id)).toEqual({ ok: true, courseSlug: course.slug });
-    expect(await all()).toEqual([]);
-    expect(await deleteManualReview(db, saved.id)).toEqual({ ok: false });
-    expect(logged()).toContain(`[reviews] review ${saved.id}: deleted`);
-  });
 });
 
 describe("adminReviews and pendingReviewCount", () => {
@@ -559,16 +549,19 @@ describe("piece 4c, R-b: „Kustuta“ on a review Maria added is a soft delete,
     expect(logged()).toContain(`[reviews] review ${review.id}: removed`);
   });
 
-  test("a removed review reads as gone to every other change: a second „Kustuta“, a decision, „Avalehel“, an edit, the old delete", async () => {
+  test("a removed review reads as gone to every other change: a second „Kustuta“, a decision (in Maria's words: `removed`), „Avalehel“, an edit", async () => {
     const { course } = await protocolCourse(db);
     const review = await addReview(course.id);
     await removeManualReview(db, review.id, LATER);
     expect(await removeManualReview(db, review.id, at(1000))).toEqual({ ok: false, error: "gone" });
-    expect(await decideReview(db, review.id, "hide", at(1000))).toEqual({ ok: false, error: "gone" });
+    // (Task 2's carry: the decision tells a removed review of Maria's from one that is not there, as the decision's undo does)
+    expect(await decideReview(db, review.id, "hide", at(1000))).toEqual({ ok: false, error: "removed" });
     expect(await setFeatured(db, review.id, true, at(1000))).toEqual({ ok: false, error: "gone" });
     expect(await saveManualReview(db, review.id, { courseId: course.id, name: "Anu A.", text: "Uus.", writtenAt: "2026-09-15", locale: "et", note: "kiri" }, at(1000))).toEqual({ ok: false, fields: { form: "gone" } });
-    expect(await deleteManualReview(db, review.id)).toEqual({ ok: false });
     expect(await reviewOf(review.id)).toEqual({ ...review, removedAt: LATER, updatedAt: LATER }); // (nothing written)
+    // purged, it is plain `gone`
+    await db.delete(reviews).where(eq(reviews.id, review.id));
+    expect(await decideReview(db, review.id, "hide", at(2000))).toEqual({ ok: false, error: "gone" });
     expect(await removeManualReview(db, 99_999, LATER)).toEqual({ ok: false, error: "gone" });
   });
 

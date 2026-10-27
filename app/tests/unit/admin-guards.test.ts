@@ -151,6 +151,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/uudised/uus/route.ts", "app/api/admin/uudised/[id]/avaldatud/route.ts", "app/api/admin/uudised/[id]/kustuta/route.ts",
         // piece 4b, Task 3: Hüpikaken's instant „Lehel näidatakse“ (the live row, from the version the screen read)
         "app/api/admin/hupikaken/naita/route.ts",
+        // piece 4c, Task 2: „Muuda“ on a review Maria added, autosaved (R-c)
+        "app/api/admin/arvustus/[id]/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
@@ -212,10 +214,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(certificateActions.path, certificateActions.source)).toEqual([]);
     expect([...strip(certificateActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(certificateExports);
     // student reviews, Task 4: Maria's „Avalda“ / „Peida“, „Avalehel“, „Lisa arvustus“ / „Muuda“ and „Kustuta“; admin UX pass piece 4c, Task 1: the
-    // „Võta tagasi“ of a decision (R-a), and „Kustuta“ as a soft delete with its „Võta tagasi“ (R-b)
+    // „Võta tagasi“ of a decision (R-a), and „Kustuta“ as a soft delete with its „Võta tagasi“ (R-b); Task 2: the old hard delete
+    // (deleteManualReviewAction) is gone with its confirming step, and „Muuda“ autosaves on api/admin/arvustus/<id>
     const reviewActions = files().find((f) => f.path === "server/actions/admin-reviews.ts")!;
     const reviewExports = [...strip(reviewActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(reviewExports).toEqual(["decideReviewAction", "undoDecisionAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction", "removeReviewAction", "undoRemoveReviewAction"]);
+    expect(reviewExports).toEqual(["decideReviewAction", "undoDecisionAction", "setFeaturedAction", "saveManualReviewAction", "removeReviewAction", "undoRemoveReviewAction"]);
     expect(violations(reviewActions.path, reviewActions.source)).toEqual([]);
     expect([...strip(reviewActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(reviewExports);
     // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle had an action; since piece 3b, Task 4 it autosaves on api/admin/seaded/financing

@@ -10,7 +10,7 @@ import { protocolCourse } from "./protocols-fixtures";
 import { contactStudent, RECOMMEND, submit } from "./reviews-fixtures";
 
 // Maria's review actions on a real (PGlite) database (student reviews, Task 4; spec D2, D4, §5; Review Focus 5): „Avalda“ and „Peida“, the „Avalehel“
-// toggle, „Lisa arvustus“ (new and edited) and „Kustuta“, each through adminAction (a stand-in here: the guard is tests/unit/admin-guards.test.ts's).
+// toggle and „Lisa arvustus“ (new and edited), each through adminAction (a stand-in here: the guard is tests/unit/admin-guards.test.ts's).
 // What each answers, what it stores, that a success revalidates the pages of the review's course (both of them when an edit moves it) and then
 // refreshes the open page, that a refusal revalidates nothing, and that a review the student has just withdrawn is answered in words, with the page
 // refreshed so the row is gone: no 500 and no stale row. Piece 4c (admin UX pass, Task 1): a decision answers what its „Võta tagasi“ needs and the
@@ -117,6 +117,24 @@ describe("decideReviewAction: „Avalda“ and „Peida“", () => {
     expect(await actions.setFeaturedAction({ id: review.id, featured: false })).toMatchObject({ ok: false, error: "gone", text: E.gone });
     // her answers stay with Maria: only the permission went
     expect(await db.select().from(courseFeedback)).toHaveLength(1);
+  });
+
+  test("a review Maria added and removed in another tab is `manualGone` in her words, not the student's (Task 2's carry, as the undo answers it); the page refreshed, nothing written", async () => {
+    const { course } = await protocolCourse(db);
+    const added = await actions.saveManualReviewAction(form(course.id));
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    await actions.removeReviewAction({ id: added.id }); // (the other tab)
+    const before = await reviewOf(added.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    for (const decision of ["publish", "hide"] as const) {
+      expect(await actions.decideReviewAction({ id: added.id, decision })).toEqual({ ok: false, error: "manualGone", text: "Seda arvustust enam pole." });
+    }
+    expect(await reviewOf(added.id)).toEqual(before);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(2);
+    // an id that is none at all is still the student's words (nothing tells a purged review of Maria's from a withdrawn one)
+    expect(await actions.decideReviewAction({ id: 4242, decision: "hide" })).toMatchObject({ ok: false, error: "gone", text: E.gone });
   });
 
   test("an id or a decision the page never sends is `gone` without touching anything; the page is not refreshed", async () => {
@@ -285,35 +303,6 @@ describe("saveManualReviewAction: „Lisa arvustus“ and „Muuda“", () => {
   });
 });
 
-describe("deleteManualReviewAction: „Kustuta“", () => {
-  test("a manual review is deleted; its course's pages are revalidated, then the page refreshes", async () => {
-    const { course } = await protocolCourse(db);
-    const added = await actions.saveManualReviewAction(form(course.id));
-    pub.revalidatePublic.mockClear();
-    cache.refresh.mockClear();
-    expect(await actions.deleteManualReviewAction({ id: (added as { id: number }).id })).toEqual({ ok: true });
-    expect(await all()).toEqual([]);
-    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("a student's review is not Maria's to delete (the student takes her permission back): refused in words, the review stays", async () => {
-    const { review } = await pendingOf();
-    expect(await actions.deleteManualReviewAction({ id: review.id })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
-    expect(await all()).toHaveLength(1);
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-  });
-
-  test("one that is already gone (deleted in another tab) says so and refreshes the page; an id the page never sends is the same, without a refresh", async () => {
-    expect(await actions.deleteManualReviewAction({ id: 4242 })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-    cache.refresh.mockClear();
-    for (const bad of [{ id: 0 }, { id: "5" }, {}, null]) expect(await actions.deleteManualReviewAction(bad as never), JSON.stringify(bad)).toMatchObject({ ok: false, error: "manualGone" });
-    expect(cache.refresh).not.toHaveBeenCalled();
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-  });
-});
-
 describe("piece 4c, R-a: undoDecisionAction, „Võta tagasi“ of „Avalda“ / „Peida“", () => {
   /** A decision through its action, and the `expected` its answer carries. */
   async function decided(id: number, decision: "publish" | "hide") {
@@ -339,6 +328,25 @@ describe("piece 4c, R-a: undoDecisionAction, „Võta tagasi“ of „Avalda“ 
     const expected = await decided(review.id, "publish");
     expect(await actions.undoDecisionAction({ id: review.id, expected })).toEqual({ ok: true });
     expect(await reviewOf(review.id)).toMatchObject({ status: "hidden", decidedAt: hiddenAt });
+  });
+
+  test("Task 2's carry: „Peida“ on a review Maria added (published, with its decided_at) and its „Võta tagasi“: published again with the decided_at it had", async () => {
+    const { course } = await protocolCourse(db);
+    const added = await actions.saveManualReviewAction(form(course.id));
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    const before = await reviewOf(added.id);
+    expect(before).toMatchObject({ kind: "manual", status: "published" });
+    expect(before.decidedAt).toBeInstanceOf(Date);
+    const expected = await decided(added.id, "hide");
+    expect(expected.previous).toEqual({ status: "published", decidedAt: before.decidedAt!.toISOString() });
+    expect(await reviewOf(added.id)).toMatchObject({ status: "hidden" });
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    expect(await actions.undoDecisionAction({ id: added.id, expected })).toEqual({ ok: true });
+    const after = await reviewOf(added.id);
+    expect(after).toMatchObject({ status: "published", decidedAt: before.decidedAt, featured: false, text: before.text, name: before.name });
+    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
   });
 
   test("Review Focus 1: hidden in one tab, published again in another; the first tab's „Võta tagasi“ is S4-38's `changed` in words, nothing is overwritten, the page refreshes", async () => {
