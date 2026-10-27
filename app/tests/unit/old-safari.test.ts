@@ -142,6 +142,8 @@ const BROWSER_FILES = [
   "src/domain/site-changes.ts",
   // Task 1 review M1: the content editors' Check, moved from server/edit-check.ts (which re-exports it) so the loose checks are made of its rules
   "src/domain/field-check.ts",
+  // piece 4b, Task 2 review m4: Uudised' list address with its search and a post's day as the row and the footer write it (pure; the admin dict)
+  "src/components/admin/news/news-view.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

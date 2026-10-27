@@ -74,9 +74,12 @@ export type SitePartApi<V extends Record<string, unknown> = Record<string, unkno
   versionNow(): string;
   /**
    * The page read again holds `value` for the field `name`, which a rule of the server set (piece 4b R-g: a post's address that follows its title, made
-   * from the new title, numbered when taken): taken as the field's saved text, nothing sent, only while nothing typed in it waits (engine.ts adopt).
+   * from the new title, numbered when taken): taken as the field's saved text, nothing sent, only while nothing typed in it waits — and while a save is
+   * on its way, once its answer is in (engine.ts adopt).
    */
   adopt(name: string, value: unknown): void;
+  /** A field's text as the server last confirmed it: a field that differs from it is typed in, or a copy restored and not saved yet (engine.ts confirmedValue). */
+  stored(name: string): unknown;
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -248,7 +251,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
     latest.move(fields);
   });
 
-  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt } = auto;
+  const { setField, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt, confirmedValue } = auto;
   const words = o.errorText ?? refusalText;
   // a field typed in (its refusal's words go, the engine has it); a change worked out from the field as it lands (../useFieldRefusals.ts)
   const { take, update } = useFieldEdits({ latest, setField, flush, clear });
@@ -276,6 +279,7 @@ export function useSitePart<V extends Record<string, unknown> = Record<string, u
       unconfirmed,
       versionNow,
       adopt: (name, value) => void adopt(name, value),
+      stored: confirmedValue,
     };
-  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt, codes, words, live, saves, savedNow]);
+  }, [fields, take, update, flush, restore, conflict, status, discardCopy, unconfirmed, versionNow, adopt, confirmedValue, codes, words, live, saves, savedNow]);
 }

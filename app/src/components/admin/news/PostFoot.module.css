@@ -1,0 +1,43 @@
+/* The post card's footer (PostFoot.tsx; the Part 4 C3 frame): where the post is (13 px #716a6d) over a 1 px #e6e1e3 rule, with „Kustuta postitus“
+   (600 12 px #8a3b3b) at the right; the ConfirmPanel under them when asked. Colours from tokens.css. */
+
+.foot {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.where {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.remove {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bad);
+  font: 600 12px/1.3 var(--font-body);
+  cursor: pointer;
+}
+
+.remove:hover {
+  text-decoration: underline;
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}

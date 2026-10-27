@@ -13,7 +13,9 @@ import { useLeaveGuard } from "../LeaveGuard";
 import { listHref } from "../list-params";
 import { ListEmpty } from "../ListStates";
 import { ListToolbar } from "../ListToolbar";
+import { postTo, pressFailedLine } from "../useEditorRestarts";
 import ui from "../ui.module.css";
+import { dayMonth, newsHref } from "./news-view";
 import styles from "./NewsList.module.css";
 
 // C3 Uudised, the list (admin UX pass piece 4b, Task 2; README §4 C3 "list with ListToolbar search, whole-row link and the status incl. „Avaldamata
@@ -35,15 +37,6 @@ export type NewsStatus = "published" | "draft" | "changes";
 export type NewsRow = { id: number; title: string; coverKey: string; status: NewsStatus; day: string };
 
 const STATUS: Record<NewsStatus, string> = { published: adminEt.news.published, draft: adminEt.news.draft, changes: adminEt.news.changes };
-
-/** A day "YYYY-MM-DD" as the row says it, "dd.mm"; anything else „—“ (S4-18). */
-export function dayMonth(day: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  return m ? `${m[3]}.${m[2]}` : adminEt.news.noDate;
-}
-
-/** The address of a list view with `q` searched: the list itself, or a post's editor beside it. */
-const withSearch = (path: string, q: string) => (q ? `${path}?${new URLSearchParams({ otsi: q })}` : path);
 
 /** The Uudised screen of the layout (R-f): the list, and the open post's editor (the layout's children) beside it from 1180 px. */
 export function NewsScreen({ rows, children }: { rows: NewsRow[]; children: ReactNode }) {
@@ -97,7 +90,7 @@ export function NewsList({ rows, open }: { rows: NewsRow[]; open: string | null 
         <ul className={styles.rows}>
           {shown.map((r) => (
             <li key={r.id}>
-              <Link className={styles.row} href={withSearch(`/admin/uudised/${r.id}`, q)} aria-current={String(r.id) === open ? "page" : undefined} data-post-row={r.id}>
+              <Link className={styles.row} href={newsHref(`/admin/uudised/${r.id}`, q)} aria-current={String(r.id) === open ? "page" : undefined} data-post-row={r.id}>
                 {r.coverKey ? <Image className={styles.thumb} src={mediaUrl(r.coverKey)} alt="" width={64} height={52} unoptimized /> : <span className={styles.thumb} aria-hidden="true" />}
                 <span className={styles.text}>
                   <span className={styles.name}>{r.title}</span>{" "}
@@ -137,21 +130,16 @@ function AddPost() {
     going.current = false;
   }, [pathname]);
   const create = async () => {
-    try {
-      const res = await fetch("/api/admin/uudised/uus", { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" } });
-      const body: unknown = await res.json().catch(() => null);
-      const id = typeof body === "object" && body !== null && "id" in body ? (body as { id: unknown }).id : null;
-      if (res.ok && typeof id === "number") {
-        startTransition(() => {
-          router.push(`/admin/uudised/${id}?loodud=1`);
-          router.refresh();
-        });
-        return;
-      }
-      setFailed(res.status === 401 ? adminEt.leave.reasons.signedOut : adminEt.common.saveError);
-    } catch {
-      setFailed(adminEt.common.saveError);
+    const answer = await postTo("/api/admin/uudised/uus");
+    const id = answer.ok && typeof answer.body === "object" && answer.body !== null && "id" in answer.body ? (answer.body as { id: unknown }).id : null;
+    if (typeof id === "number") {
+      startTransition(() => {
+        router.push(`/admin/uudised/${id}?loodud=1`);
+        router.refresh();
+      });
+      return;
     }
+    setFailed(pressFailedLine(!answer.ok && answer.signedOut));
     going.current = false;
     setBusy(false);
   };

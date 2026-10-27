@@ -88,6 +88,8 @@ export function useAutosave(o: {
       discardCopy: () => engine.discardCopy(),
       /** The page read again holds `value` for an untouched field: taken as confirmed, nothing sent (engine.ts adopt). */
       adopt: (name: string, value: unknown) => engine.adopt(name, value),
+      /** A field's text as the server last confirmed it (engine.ts confirmedValue). */
+      confirmedValue: (name: string) => engine.confirmedValue(name),
       /** The conflict as it is now (`conflict` is the one of the last render): for an async handler that has awaited a flush, which may have met one. */
       conflictNow: () => engine.snapshot().conflict,
       /** The server's version as the form last heard it (engine.ts confirmedVersion): what a publish of the part goes from, after a flush. */

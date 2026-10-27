@@ -24,7 +24,7 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
 //   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
 // - adopt(name, value): the page read again holds another value for a field nobody typed in (a server rule moved it, piece 3b): it becomes the
-//   field's confirmed text, nothing is sent;
+//   field's confirmed text, nothing is sent — while a save is on its way or unanswered, once a save's answer confirms the form's text (piece 4b);
 // - confirmedVersion(): the server's version as the form last heard it, which a publish of the part goes from (piece 3b, the legal texts);
 // - stop() (the screen goes): a save on its way may finish, nothing more is sent — a save queued behind it stays in the copy for the next visit
 //   (piece 4b R-i).
@@ -175,6 +175,8 @@ export class AutosaveEngine {
   private unanswered: Fields[] = [];
   /** The same of the save on its way. */
   private flying: Fields | null = null;
+  /** adopt()s asked for while a save was on its way or unanswered: taken once a save's answer confirms the form's text (adoptWaiting). */
+  private adoptLater: Fields = {};
   /** The fields the server's check refused (400): held back until they are typed in again. */
   private readonly serverInvalid = new Set<string>();
   private debounce: Timer | null = null;
@@ -280,6 +282,7 @@ export class AutosaveEngine {
    */
   discardCopy(): void {
     this.discarded = true;
+    this.adoptLater = {};
     this.clearDebounce();
     this.clearRetry();
     const storage = this.storage;
@@ -290,19 +293,38 @@ export class AutosaveEngine {
 
   /**
    * The page read again says the server holds `value` for the field `name` (a rule of the server moved it: piece 3b, Seaded's invoice number after
-   * a new prefix, R3). Taken as the confirmed text of that field, without a save, only while the form holds the confirmed one there: nothing typed
-   * in it, none of its saves on the way or unanswered, no conflict. Anything else of the form is left as it is. True when taken.
+   * a new prefix, R3; piece 4b, a post's address that follows its title). Taken as the confirmed text of that field, without a save, only while the
+   * form holds the confirmed one there: nothing typed in it, none of its saves on the way or unanswered, no conflict. Anything else of the form is
+   * left as it is. While a save of other fields is on its way, or one is unanswered, it is taken only once a save's answer confirms the form's text
+   * (and only if the field is still untouched then): that answer confirms the text the save sent — this field's old one with it — and taken before
+   * it, the field would then differ from its confirmed text and go out as if typed (piece 4b review I-1). True when taken, now or then.
    */
   adopt(name: string, value: unknown): boolean {
     if (this.blocked() || !(name in this.fields) || !same(this.fields[name], this.confirmed[name])) return false;
     if (this.flying !== null && name in this.flying && !same(this.flying[name], this.confirmed[name])) return false;
     if (this.unanswered.some((u) => name in u && !same(u[name], this.confirmed[name]))) return false;
     if (same(this.fields[name], value)) return true;
+    if (this.flying !== null || this.unanswered.length > 0) {
+      this.adoptLater = { ...this.adoptLater, [name]: value };
+      return true;
+    }
     this.fields = { ...this.fields, [name]: value };
     this.confirmed = { ...this.confirmed, [name]: value };
     if (this.uncertain()) this.keep();
     this.refresh();
     return true;
+  }
+
+  /** The field's text as the server last confirmed it (what a save would compare it with; a field that differs is typed, or a copy's not yet saved). */
+  confirmedValue(name: string): unknown {
+    return this.confirmed[name];
+  }
+
+  /** The adopt()s that waited for a save's answer, each taken now by adopt's own rule (a field typed in meanwhile keeps hers). */
+  private adoptWaiting(): void {
+    const later = this.adoptLater;
+    this.adoptLater = {};
+    for (const [name, value] of Object.entries(later)) this.adopt(name, value);
   }
 
   /**
@@ -465,6 +487,8 @@ export class AutosaveEngine {
         const refused = named.filter((n) => same(this.fields[n], patch[n]));
         for (const n of refused) this.serverInvalid.add(n);
         this.answered();
+        // (nothing of it was stored: the confirmed text stands, and what waited to be adopted is taken by its rule)
+        this.adoptWaiting();
         if (Object.keys(this.patch()).some((n) => refused.includes(n))) return this.wait();
         return this.goOn();
       }
@@ -475,6 +499,7 @@ export class AutosaveEngine {
     }
     if (status === 404) {
       this.gone = true;
+      this.adoptLater = {};
       this.rest();
       return false;
     }
@@ -508,13 +533,14 @@ export class AutosaveEngine {
     return false;
   }
 
-  /** The server holds `value` at `version`: the form's confirmed text. */
+  /** The server holds `value` at `version`: the form's confirmed text; then the adopt()s that waited for it. */
   private confirm(version: string, value: Fields, at: Date): void {
     this.version = version;
     this.confirmed = value;
     this.savedAt = at;
     this.unanswered = [];
     this.answered();
+    this.adoptWaiting();
   }
 
   /**
@@ -546,6 +572,7 @@ export class AutosaveEngine {
       return this.goOn();
     }
     this.conflict = { version, value };
+    this.adoptLater = {};
     this.clearDebounce();
     this.clearRetry();
     this.rest();

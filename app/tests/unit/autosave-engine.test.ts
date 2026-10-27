@@ -381,6 +381,87 @@ describe("the browser's copy", () => {
     expect(e.snapshot().fields.body).toBe("Minu");
   });
 
+  // piece 4b review I-1: a read that lands while a save of ANOTHER field is on its way. The save's answer confirms the text it sent — the old value of
+  // the adopted field with it — so an adopt taken at once would leave the field differing from its confirmed text, and the next save would send it as
+  // typed (a post's address would stop following its title). It is taken once the answer is in, and never sent.
+  test("adopt() while a save of another field is on its way: taken once its answer is in, and never sent as typed", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("body", "Uus tekst");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => c.body.patch)).toEqual([{ body: "Uus tekst" }]);
+    expect(e.adopt("title", "Serveri oma")).toBe(true);
+    // (not yet: the field shows what it showed, and its confirmed text is the one the save on its way carries)
+    expect(e.snapshot().fields.title).toBe("Pealkiri");
+    expect(e.confirmedValue("title")).toBe("Pealkiri");
+    s.calls[0].answer(ok("v2"));
+    await tick(DEBOUNCE_MS * 2);
+    expect(e.snapshot().fields).toEqual({ title: "Serveri oma", body: "Uus tekst" });
+    expect(e.confirmedValue("title")).toBe("Serveri oma");
+    expect(e.snapshot().status.kind).toBe("saved");
+    expect(e.unconfirmed()).toBeNull();
+    // nothing more went out: not the adopted field, not anything else
+    e.setField("body", "Veel");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => c.body)).toEqual([
+      { version: "v1", patch: { body: "Uus tekst" } },
+      { version: "v2", patch: { body: "Veel" } },
+    ]);
+  });
+
+  test("adopt() that waits for an answer: a field typed in meanwhile keeps hers; a conflict, a failure or a 404 takes nothing", async () => {
+    // typed in before the answer: hers, sent as typed
+    let s = server();
+    let e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Serveri oma");
+    e.setField("title", "Minu");
+    s.calls[0].answer(ok("v2"));
+    await tick(DEBOUNCE_MS);
+    expect(e.snapshot().fields.title).toBe("Minu");
+    expect(s.calls[1].body).toEqual({ version: "v2", patch: { title: "Minu" } });
+    e.stop();
+    localStorage.clear();
+    // the save on its way meets another tab's text: a conflict, nothing adopted
+    s = server();
+    e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Serveri oma");
+    s.calls[0].answer(stale("v3", { title: "Teine seade", body: "Tekst" }));
+    await tick();
+    expect(e.snapshot().fields.title).toBe("Pealkiri");
+    e.stop();
+    localStorage.clear();
+    // no answer: unanswered, the adopt waits on; the retry's answer confirms, then it is taken — the retry never carries it
+    s = server();
+    e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Serveri oma");
+    s.calls[0].answer(null);
+    await tick(RETRY_MS[0]);
+    expect(e.snapshot().fields.title).toBe("Pealkiri");
+    expect(s.calls[1].body.patch).toEqual({ body: "Uus" });
+    s.calls[1].answer(ok("v2"));
+    await tick();
+    expect(e.snapshot().fields).toEqual({ title: "Serveri oma", body: "Uus" });
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(2);
+    e.stop();
+    localStorage.clear();
+    // gone (404): nothing adopted
+    s = server();
+    e = make(s.send);
+    e.setField("body", "Uus");
+    await tick(DEBOUNCE_MS);
+    e.adopt("title", "Serveri oma");
+    s.calls[0].answer({ status: 404, body: { ok: false, error: "notFound" } });
+    await tick();
+    expect(e.snapshot().fields.title).toBe("Pealkiri");
+  });
+
   test("discardCopy() while a save is on its way: its answer leaves no copy behind", async () => {
     const s = server();
     const e = make(s.send);

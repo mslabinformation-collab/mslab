@@ -41,30 +41,40 @@ export function orLate<T>(p: Promise<T>, signal: AbortSignal): Promise<T | typeo
   });
 }
 
-export type Posted = { ok: true; body: unknown } | { ok: false; signedOut: boolean } | { late: true };
+/** A POST's answer: its JSON body (null when it has none); or not ok — `signedOut` for withAdmin's 401, `status` the answer's (0: no answer). */
+export type PostAnswer = { ok: true; body: unknown } | { ok: false; signedOut: boolean; status: number };
+export type Posted = PostAnswer | { late: true };
 
 /**
- * POST to one of the editor's routes, given up when `signal` is (the wait's bound): `late`. `signedOut` for withAdmin's 401; not ok for any other
- * refusal or no answer. `body`: sent as JSON (the site screens' publish, its versions); none, a bodiless POST (the course's presses, as before).
+ * POST to one of the admin's routes (the editors' presses, Uudised' „Lisa postitus +“ and „Kustuta postitus“): `body` sent as JSON, or none (a bodiless
+ * POST); `signal` aborts it. Never throws.
+ */
+export async function postTo(url: string, body?: unknown, signal?: AbortSignal): Promise<PostAnswer> {
+  const json = body === undefined ? {} : { body: JSON.stringify(body), headers: { accept: "application/json", "content-type": "application/json" } };
+  try {
+    const res = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" }, signal, ...json });
+    if (!res.ok) return { ok: false, signedOut: res.status === 401, status: res.status };
+    return { ok: true, body: await res.json().catch(() => null) };
+  } catch {
+    return { ok: false, signedOut: false, status: 0 };
+  }
+}
+
+/**
+ * POST to one of the editor's routes (postTo), given up when `signal` is (the wait's bound): `late`. `body`: sent as JSON (the site screens' publish,
+ * its versions; a post's „Avaldatud“); none, a bodiless POST (the course's presses, as before).
  */
 export async function post(url: string, signal: AbortSignal, body?: unknown): Promise<Posted> {
-  const json = body === undefined ? {} : { body: JSON.stringify(body), headers: { accept: "application/json", "content-type": "application/json" } };
-  const request = (async (): Promise<Posted> => {
-    try {
-      const res = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" }, signal, ...json });
-      if (!res.ok) return { ok: false, signedOut: res.status === 401 };
-      return { ok: true, body: await res.json().catch(() => null) };
-    } catch {
-      return { ok: false, signedOut: false };
-    }
-  })();
-  const answer = await orLate(request, signal);
+  const answer = await orLate(postTo(url, body, signal), signal);
   return answer === LATE ? { late: true } : answer;
 }
 
 /** A publish or a discard that failed (Dim 24.10, D-2): signed out, or its own line. */
 export const failedLine = (action: "publish" | "discard", signedOut: boolean) =>
   signedOut ? adminEt.leave.reasons.signedOut : action === "publish" ? adminEt.publish.publishFailed : adminEt.publish.discardFailed;
+
+/** Any other press that failed (a switch, „Lisa postitus +“, a delete): signed out „Logi uuesti sisse.“, else the admin's save line. */
+export const pressFailedLine = (signedOut: boolean) => (signedOut ? adminEt.leave.reasons.signedOut : adminEt.common.saveError);
 
 /**
  * A part „Avalda muudatused“ left in its draft: changed meanwhile, missing what its strict check asks for, or "invalid" — the strict check passed but a

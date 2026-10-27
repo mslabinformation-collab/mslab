@@ -13,7 +13,21 @@ import { LangSwitch } from "../EditLang";
 import { PublishBar } from "../PublishBar";
 import { SaveStatus } from "../SaveStatus";
 import { SectionMap, type SectionEntry } from "../SectionMap";
-import { blockedOf, heldErrors, usePublishPresses, useEditorRestarts, useFormOnScreen, type Change, type HeldPart, type Pressed, type Waits } from "../useEditorRestarts";
+import {
+  blockedOf,
+  heldErrors,
+  LATE,
+  orLate,
+  post,
+  pressFailedLine,
+  usePublishPresses,
+  useEditorRestarts,
+  useFormOnScreen,
+  type Change,
+  type HeldPart,
+  type Pressed,
+  type Waits,
+} from "../useEditorRestarts";
 import ui from "../ui.module.css";
 import styles from "./SiteEditorPage.module.css";
 import { focusSiteField, refusalText, useSitePart, type SitePartApi, type SitePartOptions } from "./useSitePart";
@@ -41,8 +55,8 @@ import { focusSiteField, refusalText, useSitePart, type SitePartApi, type SitePa
 //   <SiteEditorPage<HomePartValues> entity="home" parts={data.parts} stamp={data.stamp} render={(apis) => <HomeCards apis={apis} />} … />
 //
 // Piece 4b (Uudised, Task 2): the target may be a post (`entity={{ entity: "post", id }}`), and a post that is not published saves straight to its row
-// (R-a): `drafted={false}` — the same header with no bar, no „· avaldamata“ and the chip's plain words. A screen's own press (a post's instant
-// „Avaldatud“, R-b) gets the page's waits and holds from `render`'s second argument (SitePage). A part the last press held as "invalid" (a post's
+// (R-a): `drafted={false}` — the same header with no bar, no „· avaldamata“ and the chip's plain words. A screen's own instant press (a post's
+// „Avaldatud“, R-b) goes as „Avalda muudatused“ does through `render`'s second argument (SitePage.instant). A part the last press held as "invalid" (a post's
 // address another post has, ADM:2281) is said at its field — the part's `error(name)`, in its partOptions' `errorText` — and the focus goes there;
 // the bar lists only what is missing or changed meanwhile.
 
@@ -52,24 +66,29 @@ export type SiteValues = Record<string, Record<string, unknown>>;
 export type SiteApis<A extends SiteValues = SiteValues> = { [K in keyof A & string]: SitePartApi<A[K]> };
 
 /**
- * What a screen's own press gets of the page (`render`'s second argument): a post's „Avaldatud“ (piece 4b R-b) — the cards wait from its press until
- * the read its answer asks for, as for „Avalda muudatused“ (../useEditorRestarts.ts), and what it held is said as the publish's is.
+ * How a screen's instant press reads its route's answer (SitePage.instant): done, with the answer's stamp (the read that shows it; null: the next
+ * read); refused, with the parts it held (said as a publish's are); null for an answer it cannot read (the press failed).
+ */
+export type InstantOutcome = { done: true; stamp: number | null } | { held: HeldPart[] } | null;
+/** An instant press's end: done (the cards wait for the read), held, stopped by a save that did not go through, past the bound, refused at once
+ * because the cards wait already (`busy`), or failed with its line. */
+export type InstantResult = { kind: "done" | "held" | "unsaved" | "late" | "busy" } | { kind: "failed"; line: string };
+
+/**
+ * What a screen's own press gets of the page (`render`'s second argument).
+ * - `instant(url, body, outcome, { flush })`: an instant press (a post's „Avaldatud“, piece 4b R-b; made for Hüpikaken's „Lehel näidatakse“ too), as
+ *   „Avalda muudatused“ goes (../useEditorRestarts.ts usePublishPresses): the cards wait from the press within one bound (SAVE_TIMEOUT_MS); every
+ *   part's waiting save is sent first (unless `flush: false`) and one that did not go through stops it — the chip says why and is brought into view
+ *   with the focus on its „Näita“; then POST `url` with `body`; the answer, read by `outcome`, is done (the page read again from its stamp, the cards
+ *   starting over), held (said as a publish's: missing and changed on the bar, "invalid" at its field — read again when a part was changed meanwhile,
+ *   else the cards take typing), or failed (its line: signed out, else the save line). What the last press held is cleared at the press.
+ * - `held`: the parts the last press held (a publish's or the screen's own), until each one's next save.
+ * - `waitingNow()`: the cards wait now (a press is on its way, or its read).
  */
 export type SitePage = {
-  /** The cards wait from now, until a read starts them over or `release`; the signal is aborted at the wait's bound (SAVE_TIMEOUT_MS). */
-  hold: () => AbortSignal;
-  /** The cards take typing again, nothing is read (a refusal, a failure). */
-  release: () => void;
-  /** The page is read again, the cards waiting; they start over from a read at or past `from` (the answer's stamp; null: the next read). */
-  reload: (from: number | null) => void;
-  /** The cards wait now (a press is on its way, or its read). */
-  waitingNow: () => boolean;
-  /** Every part's waiting save, sent now and waited for: true for each part the server holds. */
-  flushAll: () => Promise<boolean[]>;
-  /** The parts the last press held (a publish's or the screen's own), until each one's next save. */
+  instant: (url: string, body: unknown, outcome: (answer: Record<string, unknown>) => InstantOutcome, o?: { flush?: boolean }) => Promise<InstantResult>;
   held: HeldPart[];
-  /** What the screen's own press held: said as a publish's is (missing and changed on the bar, "invalid" at its fields); null: nothing. */
-  setHeld: (parts: HeldPart[] | null) => void;
+  waitingNow: () => boolean;
 };
 
 /** What the bar says; it stays when the form starts over (a publish that held some parts lists them after the read). */
@@ -240,15 +259,43 @@ function SiteForm(props: Form & { apis: SiteApis }) {
       return [part, frozen ? { ...own, set: () => {}, commit: () => {} } : own];
     }),
   ) as SiteApis;
-  const page: SitePage = {
-    hold: waits.hold,
-    release: waits.release,
-    reload: (from) => waits.reload(undefined, from),
-    waitingNow: waits.waitingNow,
-    flushAll,
-    held,
-    setHeld: (parts) => setSaid((s) => ({ ...s, blocked: parts && parts.length > 0 ? { parts, generation, saves: savesNow() } : null })),
+  /** A screen's instant press (SitePage.instant, above). */
+  const instant: SitePage["instant"] = async (url, body, outcome, o = {}) => {
+    if (waits.waitingNow()) return { kind: "busy" };
+    setSaid((s) => ({ ...s, blocked: null }));
+    const signal = waits.hold();
+    if (o.flush !== false) {
+      const saved = await orLate(flushAll(), signal);
+      if (saved === LATE) return { kind: "late" };
+      if (saved.some((ok) => !ok)) {
+        waits.release();
+        setPointed((n) => n + 1);
+        return { kind: "unsaved" };
+      }
+    }
+    const answer = await post(url, signal, body);
+    if ("late" in answer) return { kind: "late" };
+    if (!answer.ok) {
+      waits.release();
+      return { kind: "failed", line: pressFailedLine(answer.signedOut) };
+    }
+    const read = typeof answer.body === "object" && answer.body !== null && !Array.isArray(answer.body) ? outcome(answer.body as Record<string, unknown>) : null;
+    if (read && "done" in read) {
+      waits.reload(undefined, read.stamp);
+      return { kind: "done" };
+    }
+    if (read && "held" in read) {
+      const saves = savesNow();
+      setSaid((s) => ({ ...s, blocked: read.held.length > 0 ? { parts: read.held, generation, saves } : null }));
+      // a part held as changed (another window's draft after this screen's read): the page is read again, so the bar shows what it lists
+      if (read.held.some((b) => b.reason === "changed")) waits.reload(undefined, null);
+      else waits.release();
+      return { kind: "held" };
+    }
+    waits.release();
+    return { kind: "failed", line: adminEt.common.saveError };
   };
+  const page: SitePage = { instant, held, waitingNow: waits.waitingNow };
 
   // (straight to the row: nothing waits for „Avalda muudatused“, so there is no bar and nothing is „· avaldamata“)
   const changed = drafted

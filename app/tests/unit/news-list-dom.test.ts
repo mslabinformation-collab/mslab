@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dayMonth, NewsList, NewsScreen, type NewsRow } from "@/components/admin/news/NewsList";
+import { NewsList, NewsScreen, type NewsRow } from "@/components/admin/news/NewsList";
+import { dayMonth, fullDay, newsHref } from "@/components/admin/news/news-view";
 import { stubFetch } from "../fakes";
 
 // C3 Uudised, the list (admin UX pass piece 4b, Task 2; README §4 C3; the Part 4 C3 frame; piece4-texts S4-18, S4-19, S4-23; ruling R-f): the rows the
@@ -86,6 +87,9 @@ describe("the rows (S4-18, the P4 C3 frame)", () => {
     for (const row of rows()) expect(row.querySelectorAll("a, button, input")).toHaveLength(0);
     expect(dayMonth("2026-12-24")).toBe("24.12");
     expect(dayMonth("")).toBe("—");
+    // (one day rule for the row and the editor's footer, review m4)
+    expect(fullDay("2026-12-24")).toBe("24.12.2026");
+    expect([newsHref("/admin/uudised", ""), newsHref("/admin/uudised/3", "kulmu värv"), newsHref("/admin/uudised", "kulmu", { kustutatud: "1" })]).toEqual(["/admin/uudised", "/admin/uudised/3?otsi=kulmu+v%C3%A4rv", "/admin/uudised?otsi=kulmu&kustutatud=1"]);
   });
 
   it("the status words and their colours: „Avaldatud“ #2f5d46, „Mustand“ #5e5559, „Avaldamata muudatused“ #6b4f5c (never „Mustand“ for a published post)", async () => {

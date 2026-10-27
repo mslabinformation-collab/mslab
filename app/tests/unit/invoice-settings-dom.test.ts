@@ -50,10 +50,13 @@ let fetched: ReturnType<typeof stubFetch>;
 let versions: Record<string, string>;
 let refuse: Record<string, Record<string, string>>;
 let statuses: [string, AutosaveStatus][];
+/** While set, a save waits for it before the route answers (a save on its way). */
+let gate: Promise<void> | null;
 const route = async (url: string, init: RequestInit | undefined): Promise<Response> => {
   const part = /^\/api\/admin\/seaded\/(\w+)$/.exec(url)?.[1];
   if (!part) return Response.json({ ok: false }, { status: 404 });
   const body = JSON.parse(String(init?.body)) as { version: string; patch: Record<string, unknown> };
+  if (gate) await gate;
   const refused = refuse[part];
   if (refused) {
     delete refuse[part];
@@ -98,6 +101,7 @@ beforeEach(() => {
   for (const fn of Object.values(router)) fn.mockReset();
   versions = { invoice: "i:t1.c1", prepayment: "p1" };
   refuse = {};
+  gate = null;
   statuses = [];
   localStorage.clear();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
@@ -326,6 +330,35 @@ describe("the number and the prefix commit on blur (behaviours conflict 13)", ()
     expect(input("nextSeq").value).toBe("50");
     expect(preview()).toBe("Järgmine arve: ABC2026-050");
     expect(sent("invoice").map((b) => b.patch)).toEqual([{ prefix: "abc" }, { nextSeq: "50" }]);
+    expect(statuses.at(-1)![1].kind).toBe("saved");
+  });
+
+  // piece 4b Task 2 review I-1: the engine's adopt of a field nobody typed in, while a save of ANOTHER field is on its way. Taken at once, that save's
+  // answer would confirm the old number over it, and the number would go out as if typed; it is taken once the answer is in, and never sent.
+  test("piece 4b review I-1: the new prefix's read lands while a seller's field's save is on its way: its number is taken once that save is answered, and never sent", async () => {
+    await show();
+    await type(input("prefix"), "abc");
+    await leave(input("prefix"));
+    await settle();
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // a seller's field typed and on its way (its answer held) when the read comes back
+    let open = () => {};
+    gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await type(input("company"), "Muu OÜ");
+    await wait(DEBOUNCE_MS + 100);
+    expect(sent("invoice").map((b) => b.patch)).toEqual([{ prefix: "abc" }, { company: "Muu OÜ" }]);
+    await show({ ...INITIAL, prefix: "ABC", nextSeq: 1, last: null, version: "i:t2.c2" }, BANK, OCTOBER, true);
+    expect(input("nextSeq").value).toBe("15");
+    gate = null;
+    await act(async () => open());
+    await settle();
+    await wait(DEBOUNCE_MS * 2);
+    await settle();
+    expect(input("nextSeq").value).toBe("1");
+    expect(preview()).toBe("Järgmine arve: ABC2026-001");
+    expect(sent("invoice").map((b) => b.patch)).toEqual([{ prefix: "abc" }, { company: "Muu OÜ" }]);
     expect(statuses.at(-1)![1].kind).toBe("saved");
   });
 

@@ -68,7 +68,7 @@ export function SingleImage({
         // eslint-disable-next-line @next/next/no-img-element -- a preview of an upload, no optimisation needed
         <img className={styles.singleImage} src={mediaUrl(value)} alt="" style={{ aspectRatio: ratio }} data-current-image={value} />
       ) : (
-        <p className={`${styles.noImage} ${ui.muted} ${ui.small}`} style={{ aspectRatio: ratio }}>
+        <p className={`${styles.noImage} ${ui.muted} ${ui.small}`} style={{ aspectRatio: ratio }} data-no-image="">
           {t.none}
         </p>
       )}

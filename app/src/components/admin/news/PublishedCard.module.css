@@ -1,0 +1,11 @@
+/* A post's „Avaldamine“ card (PublishedCard.tsx): the title, the switch, its hint and its refusal, 8 px apart. Its place beside the post's card is the
+   editor's (PostEditor.module.css). */
+
+.card {
+  display: grid;
+  gap: 8px;
+}
+
+.title {
+  margin-bottom: 10px;
+}

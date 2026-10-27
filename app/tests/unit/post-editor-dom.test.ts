@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,6 +52,8 @@ const remote = {
   avalda: (): Response => Response.json({ stamp: 5, published: ["post"], blocked: [] }),
   avaldatud: (): Response => Response.json({ ok: true, stamp: 5 }),
   log: [] as { version: string; patch: Record<string, unknown> }[],
+  /** While set, a save waits for it before the route answers (a save on its way). */
+  gate: null as Promise<void> | null,
 };
 function resetRemote(published: boolean, value: PostPartValue) {
   remote.published = published;
@@ -60,8 +64,9 @@ function resetRemote(published: boolean, value: PostPartValue) {
   remote.avalda = () => Response.json({ stamp: 5, published: ["post"], blocked: [] });
   remote.avaldatud = () => Response.json({ ok: true, stamp: 5 });
   remote.log = [];
+  remote.gate = null;
 }
-const respond = (url: string, init: RequestInit | undefined): Response => {
+const respond = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   if (url === `/api/admin/sisu/post/${ID}/avalda`) return remote.avalda();
   if (url === `/api/admin/sisu/post/${ID}/loobu`) return Response.json({ stamp: 5 });
   if (url === `/api/admin/uudised/${ID}/avaldatud`) return remote.avaldatud();
@@ -69,6 +74,11 @@ const respond = (url: string, init: RequestInit | undefined): Response => {
   if (url !== `/api/admin/sisu/post/${ID}/osa/post`) return Response.json({ ok: false }, { status: 404 });
   const body = JSON.parse(String(init?.body)) as { version: string; patch: Record<string, unknown> };
   remote.log.push(body);
+  const gate = remote.gate;
+  return gate ? gate.then(() => saveAnswer(body)) : saveAnswer(body);
+};
+/** The part's route's answer to a save (the version check, the value merged, the new version). */
+const saveAnswer = (body: { version: string; patch: Record<string, unknown> }): Response => {
   if (remote.refuse) return Response.json({ ok: false, error: "invalid", fields: remote.refuse }, { status: 400 });
   if (body.version !== remote.version) return Response.json({ ok: false, error: "conflict", version: remote.version, value: remote.value }, { status: 409 });
   remote.n += 1;
@@ -88,7 +98,7 @@ const settle = () =>
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
   });
 type Props = Parameters<typeof PostEditor>[0];
-const props = (over: Partial<Props> = {}): Props => ({ id: ID, published: true, parts: partsOf(POST), stamp: 1, created: false, listHref: "/admin/uudised", ...over });
+const props = (over: Partial<Props> = {}): Props => ({ id: ID, published: true, parts: partsOf(POST), stamp: 1, created: false, search: "", ...over });
 const show = async (over: Partial<Props> = {}) => {
   await act(async () => root.render(createElement(PostEditor, props(over))));
   await settle();
@@ -166,6 +176,8 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
       (el) => el.getAttribute("data-single-image") ?? el.getAttribute("data-i18n") ?? el.getAttribute("data-field"),
     );
     expect(order).toEqual(["cover", "post.title", "post.body", "post.slug", "post.category", "post.excerpt", "post.publishedAt"]);
+    // the card's name is „Postitus“ (ADM:2259), not its text field's (review m7)
+    expect(card?.getAttribute("aria-label")).toBe("Postitus");
     expect(field("post.body")?.tagName).toBe("TEXTAREA");
     // „Avaldamine“ is its own card, with the switch and its hint
     expect(text($("[data-post-publish] h2"))).toBe("Avaldamine");
@@ -187,6 +199,19 @@ describe("a post that is not published (R-a): the same header, no bar", () => {
     expect($("[data-unpublished]")).toBeNull();
     expect(chipWords()).toMatch(/^Salvestatud \d\d:\d\d$/);
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(false);
+  });
+
+  it("no cover yet: the empty area is the drawn one, across the card and 220 px tall, with „Vali pilt“ under it (review m10); other screens keep theirs", async () => {
+    resetRemote(false, NEW);
+    await show({ published: false, parts: partsOf(NEW) });
+    const empty = $('[data-single-image="cover"] [data-no-image]');
+    expect(text(empty)).toBe("Pilti pole veel valitud.");
+    expect(empty?.closest('[class*="cover"]')).not.toBeNull();
+    expect(text($('[data-single-image="cover"]'))).toContain("Vali pilt");
+    const css = readFileSync(join(process.cwd(), "src/components/admin/PostEditor.module.css"), "utf8");
+    expect(css).toMatch(/\.cover img\[data-current-image\],\s*\.cover \[data-no-image\] \{\s*max-width: none;\s*height: 220px;\s*border-radius: 16px;/);
+    // (SingleImage's own box, which the other screens use, is as it was)
+    expect(readFileSync(join(process.cwd(), "src/components/admin/site-editor.module.css"), "utf8")).toMatch(/\.singleImage,\s*\.noImage \{\s*width: 100%;\s*max-width: 420px;/);
   });
 
   it("„Lisa postitus +“ opened it (`?loodud=1`): ADM:2273's line, and the cursor is in „Pealkiri“", async () => {
@@ -236,7 +261,7 @@ describe("„Avaldatud“ (R-b, S4-22)", () => {
     expect($("[data-site-view]")).not.toBeNull();
   });
 
-  it("a save that does not go through switches nothing: no switch POST, the chip says why", async () => {
+  it("a save that does not go through switches nothing: no switch POST, the chip says why — brought into view, the focus on its „Näita“ (review m5)", async () => {
     resetRemote(false, NEW);
     await show({ published: false, parts: partsOf(NEW) });
     remote.refuse = { title: "required" };
@@ -245,6 +270,9 @@ describe("„Avaldatud“ (R-b, S4-22)", () => {
     expect(posts()).toEqual([`/api/admin/sisu/post/${ID}/osa/post`]);
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(false);
     expect($("[data-save-status]")?.getAttribute("data-save-kind")).toBe("invalid");
+    expect(document.activeElement).toBe($("[data-save-status] button"));
+    expect(text(document.activeElement)).toBe("Näita");
+    expect($("[data-cards-waiting]")).toBeNull();
   });
 
   it("off, refused because a draft was changed meanwhile: the bar lists it after the page's read", async () => {
@@ -330,6 +358,82 @@ describe("the address follows the title until the post is first published (R-g; 
     expect(field("post.slug")!.value).toBe("minu-aadress");
   });
 
+  // review I-1 (1): the page's read for one title lands while the save of the next title is on its way. Its address is that earlier title's: not taken
+  // while the save is on its way (and never sent: the engine would have sent it as typed, and the address would stop following); the field shows the
+  // address the newest title makes until the read after that save brings the stored one.
+  it("a new post's title typed while another save is on its way still follows: the read's address is never sent, the next read's is taken", async () => {
+    resetRemote(false, NEW);
+    await show({ published: false, parts: partsOf(NEW) });
+    await type(field("post.title"), "Kevad");
+    await leave(field("post.title"));
+    const first = remote.version;
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // the next title goes out and hangs
+    let open = () => {};
+    remote.gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await type(field("post.title"), "Kevadine");
+    await leave(field("post.title"));
+    expect(remote.log.map((b) => b.patch)).toEqual([{ title: { et: "Kevad" } }, { title: { et: "Kevadine" } }]);
+    // the read asked for after „Kevad“ lands now, with the address the server made of it
+    const readOne = { ...NEW, title: { et: "Kevad" }, slug: "kevad" };
+    await show({ published: false, parts: { post: { version: first, value: readOne, live: readOne } } });
+    expect(field("post.slug")!.value).toBe("kevadine");
+    remote.gate = null;
+    await act(async () => open());
+    await settle();
+    await act(async () => void (await new Promise((r) => setTimeout(r, 1700))));
+    await settle();
+    // nothing went out for the address: it still follows the title
+    expect(remote.log.map((b) => b.patch)).toEqual([{ title: { et: "Kevad" } }, { title: { et: "Kevadine" } }]);
+    expect(field("post.slug")!.value).toBe("kevadine");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/kevadine");
+    // the read after „Kevadine“: its stored address (numbered) is taken
+    const readTwo = { ...NEW, title: { et: "Kevadine" }, slug: "kevadine-2" };
+    await show({ published: false, parts: { post: { version: remote.version, value: readTwo, live: readTwo } } });
+    expect(field("post.slug")!.value).toBe("kevadine-2");
+    expect(remote.log).toHaveLength(2);
+  });
+
+  // review I-1 (2): an address she typed, kept in this browser's copy and not saved (she left with the save queued, R-i), comes back with the next
+  // visit: it is hers — saved, shown, and never put back by a read made before its save.
+  it("a restored typed address is not reverted by a stale read", async () => {
+    resetRemote(false, NEW);
+    localStorage.setItem(`mslab-draft:site:post:${ID}:post:old`, JSON.stringify({ version: "l:post", fields: { ...NEW, slug: "minu-aadress" }, sent: [], at: 1 }));
+    await show({ published: false, parts: partsOf(NEW) });
+    expect(remote.log.map((b) => b.patch)).toEqual([{ slug: "minu-aadress" }]);
+    expect(field("post.slug")!.value).toBe("minu-aadress");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/minu-aadress");
+    // a read from before its save (its version is not the part's now), then the same read again
+    await show({ published: false, parts: partsOf(NEW) });
+    await show({ published: false, parts: partsOf(NEW) });
+    await act(async () => void (await new Promise((r) => setTimeout(r, 1700))));
+    expect(field("post.slug")!.value).toBe("minu-aadress");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/minu-aadress");
+    expect(remote.log).toHaveLength(1);
+    // and the title does not move it
+    await type(field("post.title"), "Kevad");
+    expect(field("post.slug")!.value).toBe("minu-aadress");
+  });
+
+  it("an emptied address is the title's again: the field, its hint and the footer say the title's address, never an empty one (review m6)", async () => {
+    resetRemote(false, NEW);
+    await show({ published: false, parts: partsOf(NEW) });
+    await type(field("post.slug"), "minu-aadress");
+    await leave(field("post.slug"));
+    await type(field("post.slug"), "");
+    expect(field("post.slug")!.value).toBe("uus-postitus");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/uus-postitus");
+    expect(text(field("post.slug")!.closest("[class]")?.parentElement ?? null)).toContain("Lehe aadress: /uudised/uus-postitus.");
+    await leave(field("post.slug"));
+    expect(remote.log.at(-1)?.patch).toEqual({ slug: "" });
+    // following again: a new title makes it
+    await type(field("post.title"), "Kevad");
+    expect(field("post.slug")!.value).toBe("kevad");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/kevad");
+  });
+
   it("a published post's address never follows", async () => {
     await show();
     await type(field("post.title"), "Kevad");
@@ -351,7 +455,7 @@ describe("„Kustuta postitus“ (S4-23)", () => {
   it("its ConfirmPanel, with the public line for a published post; „Katkesta“ gives the focus back; yes: the post goes, the list opens with `?kustutatud=1`", async () => {
     localStorage.setItem(`mslab-draft:site:post:${ID}:post:old`, JSON.stringify({ version: "l:post", fields: POST, sent: [], at: 1 }));
     localStorage.setItem("mslab-draft:site:post:70:post:old", "{}");
-    await show({ listHref: "/admin/uudised?otsi=kulmu" });
+    await show({ search: "kulmu" });
     await click(button("Kustuta postitus"));
     const panel = $("[data-confirm-panel]");
     expect(text(panel?.querySelector("p") ?? null)).toBe("Kas kustutan selle postituse?");

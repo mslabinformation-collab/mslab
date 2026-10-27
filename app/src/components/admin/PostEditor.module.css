@@ -1,8 +1,8 @@
 /* C3 Uudised, the post (admin UX pass piece 4b, Task 2; the Part 4 C3 frame): the post's card — the cover across the card, 220 px tall with radius 16
-   (drawn), „Pealkiri“, „Tekst“ in its 150 px box (drawn; its border is the accent while it waits for „Avalda muudatused“, I18nInput's own), the kept
-   fields, then the footer line (13 px #716a6d over a 1 px #e6e1e3 rule, drawn) with „Kustuta postitus“ (600 12 px #8a3b3b, drawn) — and „Avaldamine“:
-   at the right of a wide editor column (280 px), else first. „← Uudised“ only below 1180 px: from there the list is beside the editor (R-f).
-   Colours from tokens.css. */
+   (drawn; the empty area while there is no cover is the same, review m10), „Pealkiri“, „Tekst“ in its 150 px box (drawn; its border is the accent while
+   it waits for „Avalda muudatused“, I18nInput's own), the kept fields, then the footer (news/PostFoot.module.css) — and „Avaldamine“
+   (news/PublishedCard.tsx): at the right of a wide editor column (280 px), else first. „← Uudised“ only below 1180 px: from there the list is beside
+   the editor (R-f). Colours from tokens.css. */
 
 /* „← Uudised“ (as the course editor's „← Koolitused“: 600 13 px over the H1, a 44 px target) */
 .back {
@@ -46,21 +46,14 @@
   }
 }
 
-.cardTitle {
-  margin-bottom: 10px;
-}
-
-.publish {
-  display: grid;
-  gap: 8px;
-}
-
 .post {
   display: grid;
   gap: 16px;
 }
 
-.cover img[data-current-image] {
+/* the cover, or the empty area before one is chosen: across the card, 220 px tall (drawn) — SingleImage's own box stays as it is elsewhere */
+.cover img[data-current-image],
+.cover [data-no-image] {
   max-width: none;
   height: 220px;
   border-radius: 16px;
@@ -68,45 +61,4 @@
 
 .body textarea {
   min-height: 150px;
-}
-
-.foot {
-  display: grid;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.footRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 16px;
-}
-
-.where {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.remove {
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--bad);
-  font: 600 12px/1.3 var(--font-body);
-  cursor: pointer;
-}
-
-.remove:hover {
-  text-decoration: underline;
-}
-
-.remove:focus-visible {
-  outline: 2px solid var(--rose);
-  outline-offset: 2px;
 }

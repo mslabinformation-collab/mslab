@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { newsHref } from "@/components/admin/news/news-view";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
@@ -28,7 +29,7 @@ export default async function PostEditPage({ params, searchParams }: Props) {
   await requireAdmin();
   const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
   const q = parseSearch(sp.otsi);
-  const listHref = q ? `/admin/uudised?${new URLSearchParams({ otsi: q })}` : "/admin/uudised";
+  const listHref = newsHref("/admin/uudised", q);
   const id = parseRowId(raw);
   const db = getDb();
   const post = id === null ? null : await readPost(db, id);
@@ -51,5 +52,5 @@ export default async function PostEditPage({ params, searchParams }: Props) {
   }
 
   // (a new mount for another post: its parts start from its own read)
-  return <PostEditor key={id} id={id} published={post.published} parts={read.parts} stamp={read.stamp} created={sp.loodud === "1"} listHref={listHref} />;
+  return <PostEditor key={id} id={id} published={post.published} parts={read.parts} stamp={read.stamp} created={sp.loodud === "1"} search={q} />;
 }

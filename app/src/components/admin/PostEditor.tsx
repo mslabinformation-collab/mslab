@@ -1,23 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { postSlug, slugFollowsTitle } from "@/domain/site-checks";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import { POST_PART, type PostPartValue, type SitePartState } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { dropSiteCopies } from "@/lib/site-copies";
-import { ConfirmPanel } from "./ConfirmPanel";
 import { I18nInput } from "./I18nInput";
+import { fullDay, newsHref } from "./news/news-view";
+import { PostFoot } from "./news/PostFoot";
+import { PublishedCard } from "./news/PublishedCard";
 import { SingleImage } from "./SingleImage";
-import { Switch } from "./Switch";
 import { TextField } from "./TextField";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SitePage } from "./site/SiteEditorPage";
 import { refusalText, type SitePartApi } from "./site/useSitePart";
-import { LATE, orLate, post, stampOf, type HeldPart } from "./useEditorRestarts";
 import ui from "./ui.module.css";
 import styles from "./PostEditor.module.css";
 
@@ -28,17 +26,18 @@ import styles from "./PostEditor.module.css";
 // - A published post saves into its draft: the bar „Avaldamata muudatused: {n} · Tekst“ (S4-24's labels), „Eelvaade ↗“ the public page at its LIVE
 //   address in draft mode, „Avalda muudatused“ the publish with S4-Q1 A's check (cover, title and text in ET and RU; S4-22 `Puudub: …` under the bar).
 // - A post that is not published saves straight to its row (R-a): the same header with no bar, no „· avaldamata“, no „Vaata lehel ↗“.
-// - The card, as drawn: the cover (220 px), „Pealkiri“, „Tekst“ (the 150 px text box, its border the accent when it waits for the publish), then the
-//   fields the frame leaves out and that stay — „Aadress“, „Kategooria“, „Lühitekst“, „Kuupäev“ — and the footer line `Avaldatud {dd.mm.yyyy} ·
-//   /uudised/{slug}` / `Mustand · /uudised/{slug}` (S4-20) with „Kustuta postitus“, which asks in a ConfirmPanel (S4-23) and goes back to the list,
-//   which says „Postitus kustutatud.“.
-// - „Avaldamine“: the switch „Avaldatud“ (R-b), instant. On, for a post that is not published: its publish (the cards wait from the press until the
-//   page's read; refused, `Puudub: kaanepilt, …` under it, S4-22). Off, on a published post: its drafts are published first, then it is hidden (a
-//   draft changed meanwhile refuses it, listed on the bar). Either way what is typed is saved first.
-// - The address follows the title until the post is first published, unless Maria typed one (R-g; the server makes it, Task 1's hand-off): a title
-//   saved while it follows goes without the address, the field shows the address the new title makes, and the page read after the save brings the
-//   stored one (numbered when taken: `kevad-2`), taken as saved (adopt). An address another post has is refused with ADM:2281 at the field, at a save
-//   and at the publish or the switch (the bar's "invalid" hold).
+// - The card „Postitus“, as drawn: the cover (220 px across the card, also while there is none), „Pealkiri“, „Tekst“ (the 150 px text box, its border
+//   the accent when it waits for the publish), then the fields the frame leaves out and that stay — „Aadress“, „Kategooria“, „Lühitekst“, „Kuupäev“ —
+//   and the footer (news/PostFoot.tsx: S4-20's line and „Kustuta postitus“, S4-23).
+// - „Avaldamine“ (news/PublishedCard.tsx): the instant switch „Avaldatud“ (R-b), the page's instant press (SitePage.instant).
+// - The address follows the title until the post is first published, unless Maria typed one (R-g; the server makes it, Task 1's hand-off):
+//   - a title saved while it follows goes without the address (the engine sends only what was typed), and the field shows the address the new title
+//     makes until the page's read after the save brings the stored one (numbered when taken: `kevad-2`), taken as saved (adopt, nothing sent) — only
+//     a NEW read, and only when no save has landed since it was read (its version is the part's own): an older read's address may be an older title's
+//     (review I-1; the engine itself waits for a save on its way before it takes one);
+//   - an address she typed, or a copy of one restored and not yet saved, or one saved as hers, is hers: it never follows and no read moves it;
+//   - an emptied address is the title's again (the server makes it from the title): the field, its hint and the footer say the title's (review m6).
+//   An address another post has is refused with ADM:2281 at the field, at a save and at the publish or the switch (the bar's "invalid" hold).
 // - What a row of the list shows (the title, the cover, the day; a published post's „Avaldamata muudatused“) is read again after a save that changes it.
 
 /** The post editor's values (SiteEditorPage's): the one part. */
@@ -50,12 +49,6 @@ type Post = { post: PostPartValue };
  */
 const ROW_FIELDS = ["title", "coverKey", "publishedAt"];
 
-/** A day "YYYY-MM-DD" as the footer says it, "dd.mm.yyyy" (S4-20); anything else as it is. */
-const fullDay = (day: string): string => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : day;
-};
-
 /** A post's refusals at its fields: the editors' words, and ADM:2281 for an address another post has. */
 const errorText = (code: string): string => (code === "slugTaken" ? adminEt.post.slugTaken : refusalText(code));
 
@@ -66,27 +59,28 @@ export function PostEditor({
   parts,
   stamp,
   created,
-  listHref,
+  search,
 }: {
   id: number;
   published: boolean;
   parts: Record<string, SitePartState>;
   stamp: number;
-  /** „Lisa postitus +“ opened it (`?loodud=1`): ADM:2273's line, and the cursor in „Pealkiri“ (S4-19). */
+  /** „Lisa postitus +“ opened it (`?loodud=1`): ADM:2273's line (until it is published), and the cursor in „Pealkiri“ (S4-19). */
   created: boolean;
-  /** The list's address with its search: „← Uudised“, and after a delete. */
-  listHref: string;
+  /** The list's search (`?otsi=`): „← Uudised“ and the list after a delete keep it. */
+  search: string;
 }) {
   const t = adminEt.post;
   const target = useMemo(() => ({ entity: "post" as const, id }), [id]);
   const state = parts[POST_PART];
   const live = state.live as PostPartValue;
-  const read = state.value as PostPartValue;
   // the part's version as the page last read it, then as each save left it: a published post's first draft, or its last one gone, changes its row
   const version = useRef(state.version);
   useEffect(() => {
     version.current = state.version;
   }, [state]);
+  // R-g: the server holds an address she typed (a save that sent one; an emptied one is the title's again)
+  const [ownSaved, setOwnSaved] = useState(false);
   // (once per post: its own mount)
   useEffect(() => {
     if (created) document.querySelector<HTMLElement>('[data-site-editor] [data-i18n="post.title"]')?.focus();
@@ -97,7 +91,7 @@ export function PostEditor({
       title={(apis) => apis.post.fields.title.et.trim() || t.newTitle}
       back={
         <p className={styles.back} data-post-back="">
-          <Link className={ui.link} href={listHref}>
+          <Link className={ui.link} href={newsHref("/admin/uudised", search)}>
             {t.back}
           </Link>
         </p>
@@ -116,18 +110,25 @@ export function PostEditor({
       thing={t.thing}
       parts={parts}
       stamp={stamp}
-      partOptions={{ post: { errorText } }}
+      partOptions={{
+        post: {
+          errorText,
+          saved: (patch) => {
+            if (typeof patch.slug === "string") setOwnSaved(patch.slug.trim() !== "");
+          },
+        },
+      }}
       readAfterSave={(_part, patch, after) => {
         const before = version.current;
         version.current = after;
         return published ? before.startsWith("d:") !== after.startsWith("d:") : ROW_FIELDS.some((f) => Object.hasOwn(patch, f));
       }}
-      render={(apis, page) => <PostCards api={apis.post} page={page} id={id} published={published} live={live} read={read} listHref={listHref} />}
+      render={(apis, page) => <PostCards api={apis.post} page={page} id={id} published={published} live={live} read={state} ownSaved={ownSaved} search={search} />}
     />
   );
 }
 
-/** The post's cards: „Avaldamine“ beside (from a wide editor column; else first) and the post's own card. */
+/** The post's cards: „Avaldamine“ beside (from a wide editor column; else first) and the post's own card „Postitus“. */
 function PostCards({
   api,
   page,
@@ -135,32 +136,41 @@ function PostCards({
   published,
   live,
   read,
-  listHref,
+  ownSaved,
+  search,
 }: {
   api: SitePartApi<PostPartValue>;
   page: SitePage;
   id: number;
   published: boolean;
   live: PostPartValue;
-  read: PostPartValue;
-  listHref: string;
+  /** The page's latest read of the part: its version and value. */
+  read: SitePartState;
+  ownSaved: boolean;
+  search: string;
 }) {
   const t = adminEt.post;
   const v = api.fields;
-  // R-g: Maria typed in „Aadress“ (on this mount): from then on it is hers
-  const [typed, setTyped] = useState(false);
-  const following = !published && !typed && slugFollowsTitle(read.slug, read.title.et);
-  // while it follows and the title has changed since the page's read, the address the new title makes (the server may number it: the next read says)
-  const slug = following && v.title.et !== read.title.et ? postSlug("", v.title.et) : v.slug;
-  // the page read again holds the address the server made from the saved title: taken as saved, nothing sent
+  const stored = read.value as PostPartValue;
+  // R-g: whose the address is (see the top of the file)
+  const typed = v.slug.trim() !== "";
+  const hers = typed && (ownSaved || v.slug !== api.stored("slug"));
+  const following = !published && !hers && slugFollowsTitle(stored.slug, stored.title.et);
+  const fromTitle = postSlug("", v.title.et);
+  // the address: emptied, the title's; while it follows, the server's when it is the title's (numbered or not), else the one the title makes
+  const slug = !typed || (following && !slugFollowsTitle(v.slug, v.title.et)) ? fromTitle : v.slug;
+  // a new read of the page: its address taken as saved while it follows, unless a save has landed since it was read (review I-1)
+  const lastRead = useRef(read);
   useEffect(() => {
-    if (following) api.adopt("slug", read.slug);
-  }, [following, read.slug, api]);
+    if (lastRead.current === read) return;
+    lastRead.current = read;
+    if (following && stored.slug !== v.slug && read.version === api.versionNow()) api.adopt("slug", stored.slug);
+  });
 
   return (
     <div className={styles.cards} data-post-editor="">
-      <PublishedCard page={page} id={id} published={published} />
-      <SiteCard id="postitus" label={t.sections.text} parts={[api]} className={styles.post}>
+      <PublishedCard page={page} id={id} published={published} className={styles.publish} />
+      <SiteCard id="postitus" label={adminEt.siteChanges.post.post} parts={[api]} className={styles.post}>
         <div className={styles.cover}>
           <SingleImage
             label={t.sections.cover}
@@ -193,10 +203,7 @@ function PostCards({
         <TextField
           label={t.slug}
           value={slug}
-          onChange={(x) => {
-            setTyped(true);
-            api.set("slug", x);
-          }}
+          onChange={(x) => api.set("slug", x)}
           maxLength={80}
           hint={fill(t.slugHint, { slug: slug || "…" }) + (published && v.slug !== live.slug ? ` ${t.slugChanged}` : "")}
           error={api.error("slug")}
@@ -217,150 +224,14 @@ function PostCards({
           unpublished={api.unpublished("excerpt")}
         />
         <TextField label={t.date} type="date" value={v.publishedAt} onChange={(x) => api.set("publishedAt", x)} hint={t.dateHint} error={api.error("publishedAt")} name="post.publishedAt" unpublished={api.unpublished("publishedAt")} />
-        <PostFoot api={api} id={id} published={published} line={published ? fill(t.foot.published, { date: fullDay(live.publishedAt), slug: live.slug }) : fill(t.foot.draft, { slug })} listHref={listHref} />
-      </SiteCard>
-    </div>
-  );
-}
-
-/**
- * „Avaldamine“ with the instant switch „Avaldatud“ (R-b, the course's switch as piece 3a built it): what is typed is saved first (a save that does not
- * go through switches nothing: the chip says why), then POST /api/admin/uudised/<id>/avaldatud `{ on }`. The cards wait from the press; done, the page
- * is read again from the answer's stamp and the editor starts over from it (a published post with its bar, or a hidden one without). Refused: on,
- * `Puudub: …` under the switch (S4-22) or the address at its field ("invalid"); off, a draft changed meanwhile, on the bar after the page's read.
- */
-function PublishedCard({ page, id, published }: { page: SitePage; id: number; published: boolean }) {
-  const t = adminEt.post;
-  const uid = useId();
-  /** The switch shows what was asked until the read that starts the editor over (or a refusal). */
-  const [asked, setAsked] = useState<boolean | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
-  const missing = published ? [] : page.held.filter((b) => b.reason === "missing").flatMap((b) => b.fields);
-  const said = failed ?? (missing.length > 0 ? fill(adminEt.publish.missing, { fields: missing.join(", ") }) : null);
-
-  const switchTo = async (on: boolean) => {
-    if (asked !== null || page.waitingNow()) return;
-    setAsked(on);
-    setFailed(null);
-    page.setHeld(null);
-    const signal = page.hold();
-    const saved = await orLate(page.flushAll(), signal);
-    if (saved === LATE) return;
-    if (saved.some((ok) => !ok)) {
-      page.release();
-      return setAsked(null);
-    }
-    const answer = await post(`/api/admin/uudised/${id}/avaldatud`, signal, { on });
-    if ("late" in answer) return;
-    const body = answer.ok && typeof answer.body === "object" && answer.body !== null ? (answer.body as Record<string, unknown>) : null;
-    if (body?.ok === true) return page.reload(stampOf(body));
-    setAsked(null);
-    if (Array.isArray(body?.missing)) {
-      page.release();
-      return page.setHeld([{ part: POST_PART, reason: "missing", fields: body.missing as string[] }]);
-    }
-    if (Array.isArray(body?.blocked)) {
-      const blocked = body.blocked as HeldPart[];
-      page.setHeld(blocked);
-      // a draft another window saved after this screen's read: the page is read again, so the bar shows what it lists
-      return blocked.some((b) => b.reason === "changed") ? page.reload(null) : page.release();
-    }
-    page.release();
-    setFailed(!answer.ok && "signedOut" in answer && answer.signedOut ? adminEt.leave.reasons.signedOut : adminEt.common.saveError);
-  };
-
-  return (
-    <section className={`${ui.card} ${styles.publish}`} aria-labelledby={`${uid}-title`} data-post-publish="">
-      <h2 id={`${uid}-title`} className={`${ui.h3} ${styles.cardTitle}`}>
-        {t.sections.publish}
-      </h2>
-      <Switch label={t.published} checked={asked ?? published} onChange={(on) => void switchTo(on)} describedBy={said ? `${uid}-hint ${uid}-said` : `${uid}-hint`} data-field="post.published" />
-      <p id={`${uid}-hint`} className={ui.hint}>
-        {t.publishedHint}
-      </p>
-      {said && (
-        <p id={`${uid}-said`} role="alert" className={ui.error} data-switch-error="">
-          {said}
-        </p>
-      )}
-    </section>
-  );
-}
-
-/**
- * The card's footer (S4-20): where the post is (`line`) and „Kustuta postitus“, which asks in its place (S4-23: „Kas kustutan selle postituse?“, for a
- * published post „Postitus kaob blogist ja avalehelt.“, „Seda ei saa tagasi võtta.“, „Jah, kustuta“ / „Katkesta“). Yes: the post goes with its drafts
- * (POST …/kustuta, R-h), this browser's copies of it go, and the list opens with „Postitus kustutatud.“.
- */
-function PostFoot({ api, id, published, line, listHref }: { api: SitePartApi<PostPartValue>; id: number; published: boolean; line: string; listHref: string }) {
-  const t = adminEt.post;
-  const router = useRouter();
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const back = useRef(false);
-  // the question closed: the focus back on „Kustuta postitus“ (ConfirmPanel's rule)
-  useEffect(() => {
-    if (asking || !back.current) return;
-    back.current = false;
-    trigger.current?.focus();
-  }, [asking]);
-
-  const remove = async () => {
-    setBusy(true);
-    setFailed(null);
-    try {
-      const res = await fetch(`/api/admin/uudised/${id}/kustuta`, { method: "POST", cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" } });
-      if (res.ok) {
-        // nothing of it is sent or kept any more, in this tab or another's copy
-        api.discardCopy();
-        dropSiteCopies({ entity: "post", id });
-        startTransition(() => {
-          router.push(`${listHref}${listHref.includes("?") ? "&" : "?"}kustutatud=1`);
-          router.refresh();
-        });
-        return;
-      }
-      setFailed(res.status === 404 ? t.notFound : res.status === 401 ? adminEt.leave.reasons.signedOut : adminEt.common.saveError);
-    } catch {
-      setFailed(adminEt.common.saveError);
-    }
-    setBusy(false);
-  };
-
-  return (
-    <div className={styles.foot} data-post-foot="">
-      <div className={styles.footRow}>
-        <span className={styles.where} data-post-where="">
-          {line}
-        </span>
-        {!asking && (
-          <button ref={trigger} type="button" className={styles.remove} onClick={() => setAsking(true)} data-post-delete="">
-            {t.remove.button}
-          </button>
-        )}
-      </div>
-      {asking && (
-        <ConfirmPanel
-          question={t.remove.question}
-          lines={published ? [t.remove.public, t.remove.final] : [t.remove.final]}
-          yesLabel={t.remove.yes}
-          tone="danger"
-          busy={busy}
-          onYes={() => void remove()}
-          onCancel={() => {
-            back.current = true;
-            setAsking(false);
-            setFailed(null);
-          }}
+        <PostFoot
+          id={id}
+          published={published}
+          line={published ? fill(t.foot.published, { date: fullDay(live.publishedAt), slug: live.slug }) : fill(t.foot.draft, { slug })}
+          search={search}
+          discardCopy={api.discardCopy}
         />
-      )}
-      {failed && (
-        <p role="alert" className={ui.error}>
-          {failed}
-        </p>
-      )}
+      </SiteCard>
     </div>
   );
 }
