@@ -27,8 +27,8 @@ import styles from "./ReviewsPanel.module.css";
 // - The page is refreshed by the actions, so the cards show the new state; a review that is not there any more is answered in words (the status
 //   line) and its card goes.
 // - The focus (D5) stays on the card acted on (`id="arvustus-<id>"`, the address's anchor too, R-d), or, when the refresh takes it out of a
-//   status-filtered list or „Kustuta“ took it, goes to the next card (else the one before, else the status line). After „Võta tagasi“ it goes back to
-//   the card when it fell with the bar, never from where she has moved it since.
+//   status-filtered list or „Kustuta“ took it, goes to the next card (else the one before; with none left, the empty list's words, which are drawn
+//   and can hold it: Task 2 review I-2). After „Võta tagasi“ it goes back to the card when it fell with the bar, never from where she has moved it since.
 // A review of a draft course says „(mustand)“ after the course; a quiet hint says that the home page shows the newest six. This file runs on old iPads:
 // no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
@@ -43,8 +43,8 @@ const FOCUS_WAIT_MS = 5000;
 
 /**
  * Where the focus goes once the cards show an action's result: the card `id`, or when it is gone, the `neighbours` (the next ones first, then the ones
- * before) and else the status line. `ifFell` (an undo pressed in the bar): it waits for the card, which the refresh brings back, and takes the focus
- * only when it has nowhere to be — never from where she has moved it since.
+ * before), else any card, else the empty list's words. `ifFell` (an undo pressed in the bar): it waits for the card, which the refresh brings back,
+ * and takes the focus only when it has nowhere to be — never from where she has moved it since.
  */
 type FocusWant = { id: number; neighbours: number[]; until: number; ifFell: boolean };
 const focusWant = (id: number, o: { neighbours?: number[]; ifFell?: boolean } = {}): FocusWant => ({
@@ -82,6 +82,8 @@ export function ReviewsPanel({
   /** „Avalehel“ pressed, shown as asked until the refreshed cards come (`over`: the cards it was pressed on). */
   const [featuring, setFeaturing] = useState<{ id: number; on: boolean; over: ReviewRowView[] } | null>(null);
   const statusLine = useRef<HTMLParagraphElement>(null);
+  /** The empty list's words: where the focus goes when the last card has gone (the status line is not drawn while it is empty). */
+  const emptyState = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<FocusWant | null>(null);
 
   // a refusal in words takes the focus: the card it was about may be gone
@@ -111,7 +113,8 @@ export function ReviewsPanel({
       return;
     }
     if (refreshed || !own) focusAfter.current = null;
-    (own ?? want.neighbours.map(card).find((el) => el !== null) ?? statusLine.current)?.focus();
+    const left = want.neighbours.map(card).find((el) => el !== null) ?? document.querySelector<HTMLElement>("[data-review-list] [data-review]");
+    (own ?? left ?? emptyState.current)?.focus();
   }, []);
   useEffect(() => placeFocus(true), [rows, gone, placeFocus]);
 
@@ -207,15 +210,9 @@ export function ReviewsPanel({
       )}
 
       {visible.length === 0 ? (
-        filtered ? (
-          <div data-reviews-empty="">
-            <ListEmpty things={t.things} filtered clearHref={REVIEWS_HREF} />
-          </div>
-        ) : (
-          <p className={ui.empty} data-reviews-empty="">
-            {t.empty}
-          </p>
-        )
+        <div ref={emptyState} tabIndex={-1} className={styles.empty} data-reviews-empty="">
+          {filtered ? <ListEmpty things={t.things} filtered clearHref={REVIEWS_HREF} /> : <p className={ui.empty}>{t.empty}</p>}
+        </div>
       ) : (
         <ul className={styles.grid} data-review-list="">
           {visible.map((r) => {
@@ -301,6 +298,7 @@ export function ReviewsPanel({
                     <div className={styles.featured}>
                       <Switch
                         label={t.featured}
+                        ariaLabel={label(t.featured)}
                         checked={featuredOf(r)}
                         onChange={(on) => feature(r, on)}
                         describedBy={`${cardId}-who${homeHint ? " reviews-home-hint" : ""}`}

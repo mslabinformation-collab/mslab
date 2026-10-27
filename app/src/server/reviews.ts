@@ -9,7 +9,7 @@ import {
 } from "@/domain/review";
 import type { I18n } from "@/i18n/field";
 import { contentVersion } from "@/lib/version";
-import { fieldCodes } from "./autosave-route";
+import { fieldCodes, refusedFields } from "./autosave-route";
 
 // The student reviews (spec §2, §4, §5), without Next.js: the student's withdrawal, Maria's decisions and her own reviews, the admin's list, and the
 // two public reads. A student's review is made by the feedback's submit (server/course-feedback.ts), as a copy of her answer and the name she
@@ -202,23 +202,23 @@ export async function restoreReviewDecision(
 
 /**
  * „Avalehel“: a published review also on the home page, or not. Turning it on needs `published` (`notPublished` otherwise: a pending or hidden one
- * is not shown anywhere); turning it off has no condition. `gone`: the row does not exist. `decided_at` is not touched: it is when she last
- * published or hid the review.
+ * is not shown anywhere); turning it off has no condition. `gone`: the row does not exist (any more); `removed`: it is a review Maria added and
+ * removed (piece 4c: in another tab), not purged yet. `decided_at` is not touched: it is when she last published or hid the review.
  */
 export async function setFeatured(
   db: Db,
   id: number,
   featured: boolean,
   now: Date,
-): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "notPublished" }> {
+): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "removed" | "notPublished" }> {
   const result = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
-    if (!row) return "gone" as const;
+    if (!row) return missingAs(tx, id);
     if (featured && row.status !== "published") return "notPublished" as const;
     await tx.update(reviews).set({ featured, updatedAt: now }).where(eq(reviews.id, id));
     return row.slug;
   });
-  if (result === "gone" || result === "notPublished") return { ok: false, error: result };
+  if (result === "gone" || result === "removed" || result === "notPublished") return { ok: false, error: result };
   log(id, featured ? "featured" : "unfeatured");
   return { ok: true, courseSlug: result };
 }
@@ -226,44 +226,32 @@ export async function setFeatured(
 // ---------- the reviews Maria adds (D4) ----------
 
 /**
- * „Lisa arvustus“ (new: `id` null) or an edit of a review Maria added: `raw` is the form as it came (domain/review.ts checkManualReview names every
- * wrong field; a course that does not exist is `courseId: "invalid"`). A new review is published at once (she adds it herself), not featured; the
- * day she gives is the Estonian midnight of it. An edit changes the form's fields only: its status, `featured` and `decided_at` stay (a hidden
- * one stays hidden). Only a `manual` review: a student's answers `{ form: "notManual" }`, an id that does not exist `{ form: "gone" }`. When an
- * edit moves the review to another course, `previousCourseSlug` names the page it left, which the caller refreshes as well.
+ * „Lisa arvustus“: `raw` is the form as it came (domain/review.ts checkManualReview names every wrong field; a course that does not exist is
+ * `courseId: "invalid"`). A new review is published at once (she adds it herself), not featured; the day she gives is the Estonian midnight of it.
+ * Only a create (piece 4c, ruling c3): an edit is „Muuda“'s autosave from the version it read (writeManualReview, R-c).
  */
-export async function saveManualReview(
-  db: Db,
-  id: number | null,
-  raw: unknown,
-  now: Date,
-): Promise<{ ok: true; id: number; courseSlug: string; previousCourseSlug?: string } | { ok: false; fields: Record<string, string> }> {
+export async function saveManualReview(db: Db, raw: unknown, now: Date): Promise<{ ok: true; id: number; courseSlug: string } | { ok: false; fields: Record<string, string> }> {
   const checked = checkManualReview(raw);
   if (!checked.ok) return { ok: false, fields: checked.fields };
   const form = checked.value;
   const writtenAt = tallinnInstant(form.writtenAt, "00:00");
   if (writtenAt === null) return { ok: false, fields: { writtenAt: "invalid" } }; // (checkManualReview has seen a real day)
-  const fields = { name: form.name, text: form.text, locale: form.locale, writtenAt, note: form.note, courseId: form.courseId, updatedAt: now };
-  const saved = await db.transaction(async (tx): Promise<{ fields: Record<string, string> } | { id: number; courseSlug: string; added: boolean; previousCourseSlug?: string }> => {
+  const saved = await db.transaction(async (tx): Promise<{ fields: Record<string, string> } | { id: number; courseSlug: string }> => {
     // the course first, then the review: the order a course's deletion takes them in (it cascades to its reviews)
     const [course] = await tx.select({ slug: courses.slug }).from(courses).where(eq(courses.id, form.courseId)).for("key share");
     if (!course) return { fields: { courseId: "invalid" } };
-    if (id === null) {
-      const [row] = await tx
-        .insert(reviews)
-        .values({ ...fields, feedbackId: null, kind: "manual", status: "published", featured: false, decidedAt: now, createdAt: now })
-        .returning();
-      return { id: row.id, courseSlug: course.slug, added: true };
-    }
-    const current = await lockReview(tx, id);
-    if (!current) return { fields: { form: "gone" } };
-    if (current.kind !== "manual") return { fields: { form: "notManual" } };
-    await tx.update(reviews).set(fields).where(eq(reviews.id, id));
-    return { id, courseSlug: course.slug, added: false, ...(current.courseId !== form.courseId ? { previousCourseSlug: current.slug } : {}) };
+    const [row] = await tx
+      .insert(reviews)
+      .values({
+        name: form.name, text: form.text, locale: form.locale, writtenAt, note: form.note, courseId: form.courseId,
+        feedbackId: null, kind: "manual", status: "published", featured: false, decidedAt: now, createdAt: now, updatedAt: now,
+      })
+      .returning();
+    return { id: row.id, courseSlug: course.slug };
   });
   if ("fields" in saved) return { ok: false, fields: saved.fields };
-  log(saved.id, saved.added ? "added" : "edited");
-  return { ok: true, id: saved.id, courseSlug: saved.courseSlug, ...(saved.previousCourseSlug ? { previousCourseSlug: saved.previousCourseSlug } : {}) };
+  log(saved.id, "added");
+  return { ok: true, id: saved.id, courseSlug: saved.courseSlug };
 }
 
 // ---------- „Muuda“: a review Maria added, autosaved (piece 4c, R-c) ----------
@@ -316,16 +304,6 @@ export async function readManualReview(q: Q, id: number): Promise<{ version: str
 }
 
 /**
- * The fields a refusal names (the rule of server/session-edit.ts refusedFields): when none of the refused fields was sent (a stored field the rules no
- * longer take), every field sent is named with it, so that the drawer does not send them again unchanged.
- */
-function refusedOf(fields: Record<string, string>, sent: string[]): Record<string, string> {
-  if (Object.keys(fields).some((n) => sent.includes(n))) return fields;
-  const code = Object.values(fields)[0] ?? "invalid";
-  return { ...fields, ...Object.fromEntries(sent.map((n) => [n, code])) };
-}
-
-/**
  * „Muuda“'s autosave (the route's `write`; server/autosave-route.ts' contract): `patch` (some of the fields) over the review at `version`, under the
  * review's lock. The answers:
  * - ok with the version after it; a patch that changes nothing answers the version it came from and writes nothing (so a decision's „Võta tagasi“
@@ -352,17 +330,19 @@ export async function writeManualReview(
     const current = await editVersionOf(row);
     if (version !== current) return { answer: { ok: false, error: "conflict", version: current, value: fieldsOfReview(row) }, courseSlugs: [] };
     const checked = checkManualReview({ ...fieldsOfReview(row), ...parsed.data });
-    if (!checked.ok) return { answer: { ok: false, error: "invalid", fields: refusedOf(checked.fields, sent) }, courseSlugs: [] };
+    if (!checked.ok) return { answer: { ok: false, error: "invalid", fields: refusedFields(checked.fields, sent) }, courseSlugs: [] };
     // a field sent is stored as checked (trimmed; the day its Estonian midnight), one not sent stays as it is (a day keeps its time of day)
     const form = checked.value;
-    const day = fieldsOfReview(row).writtenAt;
+    const dayChanged = sent.includes("writtenAt") && form.writtenAt !== fieldsOfReview(row).writtenAt;
+    const writtenAt = dayChanged ? tallinnInstant(form.writtenAt, "00:00") : row.writtenAt;
+    if (writtenAt === null) return { answer: { ok: false, error: "invalid", fields: { writtenAt: "invalid" } }, courseSlugs: [] }; // (checkManualReview has seen a real day)
     const next: EditableRow & { note: string } = {
       courseId: sent.includes("courseId") ? form.courseId : row.courseId,
       name: sent.includes("name") ? form.name : row.name,
       text: sent.includes("text") ? form.text : row.text,
       locale: sent.includes("locale") ? form.locale : row.locale,
       note: sent.includes("note") ? form.note : (row.note ?? ""),
-      writtenAt: sent.includes("writtenAt") && form.writtenAt !== day ? tallinnInstant(form.writtenAt, "00:00")! : row.writtenAt, // (checkManualReview has seen a real day)
+      writtenAt,
     };
     const same = next.courseId === row.courseId && next.name === row.name && next.text === row.text && next.locale === row.locale && next.note === (row.note ?? "") && next.writtenAt === row.writtenAt;
     if (same) return { answer: { ok: true, version: current, savedAt: now.toISOString() }, courseSlugs: [] };

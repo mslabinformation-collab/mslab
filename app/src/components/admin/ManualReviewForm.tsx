@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { startTransition, useCallback, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import {
   checkManualReview, MANUAL_REVIEW_FIELDS, REVIEW_NAME_MAX, REVIEW_NOTE_MAX, REVIEW_TEXT_MAX, type ManualReviewFields,
 } from "@/domain/review";
@@ -12,9 +12,9 @@ import { saveManualReviewAction } from "@/server/actions/admin-reviews";
 import { patchSender, type Fields, type SendPatch } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
 import { useDrawerClose } from "./Drawer";
-import { useGuardSource } from "./LeaveGuard";
 import { SaveStatus } from "./SaveStatus";
 import type { ReviewCourseOption } from "./review-view";
+import { focusFormField, useNewRecord } from "./useNewRecord";
 import ed from "./editor.module.css";
 import ui from "./ui.module.css";
 import styles from "./ReviewsPanel.module.css";
@@ -68,10 +68,7 @@ function problemsOf(f: ManualReviewFields): Partial<Record<Field, string>> {
 const errorText = (code: string): string => (t.errors as Record<string, string>)[code] ?? t.errors.invalid;
 
 /** The drawer's field `name` (the first in the open drawer, else any): „Jää siia“, „Näita“ and a refused create. */
-function focusField(name: string): void {
-  const all = Array.from(document.querySelectorAll<HTMLElement>(`[data-review-form] [name="${name}"]`));
-  (all.find((el) => el.closest("dialog[data-drawer][open]") !== null) ?? all[0])?.focus();
-}
+const focusField = (name: string): void => focusFormField("[data-review-form]", name);
 
 // ---------- the fields (both drawers) ----------
 
@@ -250,36 +247,17 @@ function ReviewFieldList({ view }: { view: FieldsView }) {
 /** The fields of a new review: no course chosen (an explicit choice, so that a review is never filed under the first course by mistake), today's day, Estonian. */
 export const emptyReview = (today: string): ManualReviewFields => ({ courseId: "", name: "", text: "", writtenAt: today, locale: "et", note: "" });
 
-/** The first field that is not the new form's own (the leave guard names it), or null: nothing typed. */
-const firstTyped = (f: ManualReviewFields, empty: ManualReviewFields): Field | null => MANUAL_REVIEW_FIELDS.find((k) => f[k] !== empty[k]) ?? null;
-
-/** The copy, read defensively: each field a text over a new review's; the course only while it is one of `courses`, the language only et or ru. */
-function readCopy(empty: ManualReviewFields, courses: ReviewCourseOption[]): ManualReviewFields | null {
-  try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(NEW_REVIEW_COPY) ?? "null");
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
-    const copy = raw as Record<string, unknown>;
-    const out: ManualReviewFields = { ...empty };
-    for (const f of MANUAL_REVIEW_FIELDS) {
-      const v = copy[f];
-      if (typeof v !== "string") continue;
-      if (f === "courseId") out.courseId = courses.some((c) => String(c.id) === v) ? v : "";
-      else if (f === "locale") out.locale = v === "ru" ? "ru" : "et";
-      else out[f] = v;
-    }
-    return out;
-  } catch {
-    return null;
+/** A kept copy's fields: each a text over a new review's; the course only while it is one of `courses`, the language only et or ru. */
+function readCopy(raw: Record<string, unknown>, empty: ManualReviewFields, courses: ReviewCourseOption[]): ManualReviewFields {
+  const out: ManualReviewFields = { ...empty };
+  for (const f of MANUAL_REVIEW_FIELDS) {
+    const v = raw[f];
+    if (typeof v !== "string") continue;
+    if (f === "courseId") out.courseId = courses.some((c) => String(c.id) === v) ? v : "";
+    else if (f === "locale") out.locale = v === "ru" ? "ru" : "et";
+    else out[f] = v;
   }
-}
-
-function writeCopy(fields: ManualReviewFields | null): void {
-  try {
-    if (fields) window.localStorage.setItem(NEW_REVIEW_COPY, JSON.stringify(fields));
-    else window.localStorage.removeItem(NEW_REVIEW_COPY);
-  } catch {
-    // full or blocked: nothing is kept
-  }
+  return out;
 }
 
 type CreateResult = Awaited<ReturnType<typeof saveManualReviewAction>>;
@@ -288,57 +266,34 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
   const uid = useId();
   const close = useDrawerClose();
   const empty = useMemo(() => emptyReview(today), [today]);
-  const [values, setValues] = useState<ManualReviewFields>(empty);
-  /** The refused fields' codes (the form's own check before the press, or the server's), until each is typed in again. */
-  const [refused, setRefused] = useState<Partial<Record<Field, string>>>({});
+  // the fields, their refusals, this browser's copy (NEW_REVIEW_COPY) and the leave guard's „Arvustust pole veel lisatud.“ (S4-39): useNewRecord, as
+  // Kalender's new session has them
+  const record = useNewRecord({
+    copyKey: NEW_REVIEW_COPY,
+    empty,
+    read: (raw) => readCopy(raw, empty, courses),
+    order: MANUAL_REVIEW_FIELDS,
+    thing: t.newThing,
+    label: labelOf,
+    focus: focusField,
+  });
+  const { fields: values, refused } = record;
   /** A refusal of the whole, in words. */
   const [failed, setFailed] = useState<string | null>(null);
-  const [focusTo, setFocusTo] = useState<{ name: Field } | null>(null);
   const [pending, start] = useTransition();
-  /** Added, or thrown away by „Katkesta“: nothing is left to ask about or to keep while the drawer closes. */
-  const done = useRef(false);
-
-  // the copy an earlier visit kept comes back (after the first render: the server knows no browser storage); from then on it follows the fields
-  const restored = useRef(false);
-  useEffect(() => {
-    if (!restored.current) {
-      restored.current = true;
-      const copy = readCopy(empty, courses);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the storage is only known in the browser, after hydration
-      if (copy && firstTyped(copy, empty) !== null) setValues(copy);
-      return;
-    }
-    if (!done.current) writeCopy(firstTyped(values, empty) === null ? null : values);
-  }, [values, empty, courses]);
-
-  useEffect(() => {
-    if (focusTo) focusField(focusTo.name);
-  }, [focusTo]);
-
-  // the leave guard (S4-39): typed and not added yet — it asks, naming the first field typed into, with „Arvustust pole veel lisatud.“
-  const typed = firstTyped(values, empty);
-  useGuardSource({
-    id: uid,
-    label: () => labelOf(typed ?? "courseId"),
-    flush: async () => false,
-    unconfirmed: () => (!done.current && typed ? { reason: "notCreated", thing: t.newThing } : null),
-    focus: () => focusField(typed ?? "courseId"),
-  });
 
   const refuse = (codes: Record<string, string>, words: string | null) => {
-    setRefused(codes as Partial<Record<Field, string>>);
+    record.refuse(codes);
     setFailed(words);
-    const first = MANUAL_REVIEW_FIELDS.find((f) => codes[f] !== undefined);
-    if (first) setFocusTo({ name: first });
   };
 
   const create = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     // (added: the drawer is closing; a second press would add another)
-    if (pending || done.current) return;
+    if (pending || record.finished()) return;
     const checked = checkManualReview(values);
     if (!checked.ok) return refuse(checked.fields, null);
-    setRefused({});
+    record.clearRefused();
     setFailed(null);
     start(async () => {
       let r: CreateResult;
@@ -350,8 +305,7 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
       }
       if (r.ok) {
         // R-c: the drawer closes with no result line; the new review is on the page the action refreshed, and the focus is back on „Lisa arvustus +“
-        done.current = true;
-        writeCopy(null);
+        record.finish();
         close?.();
         return;
       }
@@ -362,8 +316,7 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
   /** „Katkesta“: the drawer closes and the typed text goes with it (nothing to ask: she said so). */
   const cancel = () => {
     if (pending) return;
-    done.current = true;
-    writeCopy(null);
+    record.finish();
     close?.();
   };
 
@@ -371,8 +324,7 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
     values,
     set: (f, value) => {
       if (pending) return; // (the create is on its way: the fields are read-only, and a select's choice is not taken either)
-      setRefused((r) => (r[f] === undefined ? r : { ...r, [f]: undefined }));
-      setValues((v) => ({ ...v, [f]: value }));
+      record.setField(f, value);
     },
     onChoose: () => {},
     onLeave: () => {},

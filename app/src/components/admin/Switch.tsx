@@ -12,6 +12,8 @@ import styles from "./Switch.module.css";
  * - `label`: the switch's name (the row's visible text).
  * - `checked`, `onChange(on)`: the state is the caller's (an instant switch saves in its handler).
  * - `disabled`; `describedBy`: the id(s) of what describes it (a refusal under it).
+ * - `ariaLabel`: a fuller name for a screen reader than the visible label, when one switch of many in a list says the same (Tagasiside's „Avalehel:
+ *   {name}“ on each card, piece 4c); without it the visible label is the name.
  * - Any `data-*` attribute goes on the input (the screens' hooks).
  */
 export function Switch({
@@ -20,6 +22,7 @@ export function Switch({
   onChange,
   disabled,
   describedBy,
+  ariaLabel,
   ...data
 }: {
   label: string;
@@ -27,6 +30,7 @@ export function Switch({
   onChange: (on: boolean) => void;
   disabled?: boolean;
   describedBy?: string;
+  ariaLabel?: string;
 } & { [attribute: `data-${string}`]: string | undefined }) {
   const id = useId();
   return (
@@ -41,6 +45,7 @@ export function Switch({
           className={styles.input}
           checked={checked}
           disabled={disabled}
+          aria-label={ariaLabel}
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.checked)}
         />

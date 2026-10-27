@@ -32,8 +32,8 @@ const rowId = z.number().int().min(1).max(ROW_ID_MAX);
 const decisionInput = z.object({ id: rowId, decision: z.enum(["publish", "hide"]) });
 const featuredInput = z.object({ id: rowId, featured: z.boolean() });
 const idOnly = z.object({ id: rowId });
-/** The form's `id`: null for „Lisa arvustus“, the review's row id for „Muuda“. The fields are checked by saveManualReview (domain/review.ts). */
-const saveTarget = z.object({ id: rowId.nullable() });
+/** The form's `id`: always null, „Lisa arvustus“ (piece 4c, ruling c3: „Muuda“ autosaves on its route). The fields are checked by saveManualReview. */
+const saveTarget = z.object({ id: z.null() });
 const reviewStatus = z.enum(REVIEW_STATUSES);
 /** What decideReviewAction answered as `expected` (domain/review.ts DecisionExpected), sent back by its „Võta tagasi“. */
 const undoInput = z.object({
@@ -100,7 +100,8 @@ export const undoDecisionAction = adminAction(async (_admin, input: { id: number
 
 /**
  * „Avalehel“: `{ id, featured }`. A published review is put on the home page or taken off it. Done: `{ ok: true }`. `notPublished`: the review is
- * pending or hidden (its row was stale), `gone`: no such review any more; both are answered in words, with the page refreshed.
+ * pending or hidden (its row was stale), `gone`: no such review any more, `manualGone`: a review Maria added and removed (in another tab, piece 4c
+ * ruling c4: in her words, as the decision answers it); each is answered in words, with the page refreshed.
  */
 export const setFeaturedAction = adminAction(async (_admin, input: { id: number; featured: boolean }) => {
   const parsed = featuredInput.safeParse(input);
@@ -115,37 +116,28 @@ export const setFeaturedAction = adminAction(async (_admin, input: { id: number;
   }
   if (!result.ok) {
     refresh();
-    return fail(result.error);
+    return fail(result.error === "removed" ? "manualGone" : result.error);
   }
   changed(result.courseSlug);
   return { ok: true as const };
 });
 
 /**
- * „Lisa arvustus“ (`id: null`) or „Muuda“ (the id of a review Maria added): the form as typed, checked by saveManualReview (every wrong field comes
- * back by name in `fields`: required, tooLong or invalid; nothing is stored then). Saved: `{ ok: true, id }`; a moved review refreshes the page of the
- * course it left as well (ruling R4). A student's review is `notManual` (never edited), one that is not there `manualGone`.
+ * „Lisa arvustus“ (`{ id: null, …the form }`): the form as typed, checked by saveManualReview (every wrong field comes back by name in `fields`:
+ * required, tooLong or invalid; nothing is stored then). Saved: `{ ok: true, id }`. Only a create (piece 4c, ruling c3): any `id` but null is
+ * `{ form: "invalid" }`, nothing read or written — „Muuda“ autosaves from the version it read (POST /api/admin/arvustus/<id>, R-c).
  */
-export const saveManualReviewAction = adminAction(async (_admin, input: { id: number | null } & ManualReviewInput) => {
+export const saveManualReviewAction = adminAction(async (_admin, input: { id: null } & ManualReviewInput) => {
   const target = saveTarget.safeParse(input);
   if (!target.success) return { ok: false as const, fields: { form: "invalid" } };
-  const { id } = target.data;
   let result: Awaited<ReturnType<typeof saveManualReview>>;
   try {
-    result = await saveManualReview(getDb(), id, input, new Date());
+    result = await saveManualReview(getDb(), input, new Date());
   } catch (e) {
-    logFailure(id === null ? "[reviews] a new review's save failed" : `[reviews] review ${id}: the save failed`, e);
+    logFailure("[reviews] a new review's save failed", e);
     return fail("server");
   }
-  if (!result.ok) {
-    if (result.fields.form === "gone") {
-      refresh();
-      return fail("manualGone");
-    }
-    if (result.fields.form === "notManual") return fail("notManual");
-    return { ok: false as const, fields: result.fields };
-  }
-  if (result.previousCourseSlug) revalidatePublic({ kind: "reviews", course: result.previousCourseSlug });
+  if (!result.ok) return { ok: false as const, fields: result.fields };
   changed(result.courseSlug);
   return { ok: true as const, id: result.id };
 });

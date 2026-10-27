@@ -27,7 +27,8 @@ vi.mock("next/navigation", async (original) => ({
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return {
-    Drawer: ({ children, label }: { children: React.ReactNode; label: string }) => createElement("div", { "data-drawer-stand-in": label }, children),
+    Drawer: ({ children, label, returnFocus }: { children: React.ReactNode; label: string; returnFocus?: string }) =>
+      createElement("div", { "data-drawer-stand-in": label, "data-return-focus": returnFocus }, children),
     useDrawerClose: () => null,
   };
 });
@@ -230,10 +231,12 @@ describe("„Arvustused“", () => {
       .returning();
     const created = await render({ vaade: "arvustused", id: "uus" });
     expect(created).toContain('data-drawer-stand-in="Uus arvustus"');
+    expect(created).toContain('data-return-focus="review-add"');
     expect(created).toContain('data-review-form="new"');
     expect(inner(created, "data-review-field", "courseId")).toContain(mari.course.title.et);
     const edited = await render({ vaade: "arvustused", olek: "avaldatud", id: String(manual.id) });
     expect(edited).toContain('data-drawer-stand-in="Muuda arvustust"');
+    expect(edited).toContain(`data-return-focus="arvustus-${manual.id}-muuda"`);
     expect(edited).toContain(`data-review-form="${manual.id}"`);
     expect(tag(edited, "data-review-field", "name")).toContain('value="Anu A."');
     expect(tag(edited, "data-review-field", "writtenAt")).toContain('value="2026-09-20"');
@@ -244,6 +247,8 @@ describe("„Arvustused“", () => {
     for (const id of [students.id, 99_999]) {
       const html = await render({ vaade: "arvustused", id: String(id) });
       expect(html).toContain('data-drawer-stand-in="Seda arvustust enam pole."');
+      // (Task 2 review M-4: no card of it has a „Muuda“ to go back to; the header's „Lisa arvustus +“ takes the focus)
+      expect(html).toContain('data-return-focus="review-add"');
       expect(html).not.toContain("data-review-form=");
     }
   });

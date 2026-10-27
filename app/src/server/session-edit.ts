@@ -12,7 +12,7 @@ import {
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
-import { fieldCodes } from "./autosave-route";
+import { fieldCodes, refusedFields } from "./autosave-route";
 import { revalidatePublic } from "./public-cache";
 
 // A calendar session's edits (admin UX pass piece 3b, Task 2; README B3; rulings R-a, R-b, R-c). The Kalender drawer:
@@ -140,17 +140,6 @@ async function changeLocked(
   if (!checked.ok) return checked;
   const [after] = await tx.update(courseSessions).set({ ...checked.columns, status }).where(eq(courseSessions.id, row.id)).returning();
   return { ok: true, row: after };
-}
-
-/**
- * A refusal's fields as the drawer holds them back (3a's rule, server/course-parts.ts refusedFields): when none of the refused fields was sent (the course
- * of a session row under an e-course, which the patch does not carry), every field sent is named with the refusal too, so the screen does not send them
- * again unchanged.
- */
-function refusedFields(fields: Record<string, string>, sent: string[]): Record<string, string> {
-  if (Object.keys(fields).some((n) => sent.includes(n))) return fields;
-  const code = Object.values(fields)[0] ?? "invalid";
-  return { ...fields, ...Object.fromEntries(sent.map((n) => [n, code])) };
 }
 
 /** The patch's own fields (any other is not read: the status has its own action). */

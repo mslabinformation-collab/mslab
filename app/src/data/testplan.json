@@ -5344,7 +5344,7 @@
         "Ava kontaktkoolituse leht, millele Proov 1 registreerus, ja keri lehe lõppu."
       ],
       "expect": [
-        "Kaardi ülaosas on tähed: hinne 9–10 on viis tähte, 7–8 neli, 5–6 kolm, 3–4 kaks, 1–2 üks.",
+        "Kaardi ülaosas on tähed: hinne 9–10 on viis tähte, 7–8 neli, 5–6 kolm, 3–4 kaks, 0–2 üks.",
         "Pärast „Avalda“ on ribal „Arvustus avaldatud.“ ja nupp „Võta tagasi“.",
         "Pärast „Peida“ on ribal „Arvustus peidetud.“ ja nupp „Võta tagasi“.",
         "Pärast „Võta tagasi“ on olek jälle „Ootab kinnitust“ ja kaardil on nupud „Avalda“ ja „Peida“.",

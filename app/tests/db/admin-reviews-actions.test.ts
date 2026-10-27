@@ -72,7 +72,7 @@ const form = (courseId: number, over: Record<string, unknown> = {}) =>
     locale: "et",
     note: "Paberil vormil, 20.09.2026",
     ...over,
-  }) as { id: number | null } & ManualReviewInput;
+  }) as { id: null } & ManualReviewInput;
 
 describe("decideReviewAction: „Avalda“ and „Peida“", () => {
   test("„Avalda“ on a pending review: it is published, decided now; the course's pages are revalidated, then the open page is refreshed", async () => {
@@ -195,6 +195,22 @@ describe("setFeaturedAction: „Avalehel“", () => {
     expect(await reviewOf(review.id)).toMatchObject({ status: "hidden", featured: false });
   });
 
+  test("piece 4c, ruling c4: „Avalehel“ on a review Maria added and removed in another tab is `manualGone` in her words; nothing written or revalidated, the page refreshed", async () => {
+    const { course } = await protocolCourse(db);
+    const added = await actions.saveManualReviewAction(form(course.id));
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    await actions.removeReviewAction({ id: added.id }); // (the other tab)
+    const before = await reviewOf(added.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    for (const featured of [true, false]) {
+      expect(await actions.setFeaturedAction({ id: added.id, featured })).toEqual({ ok: false, error: "manualGone", text: "Seda arvustust enam pole." });
+    }
+    expect(await reviewOf(added.id)).toEqual(before);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(2);
+  });
+
   test("an id or a flag the page never sends is `gone` without touching anything", async () => {
     const { review } = await pendingOf();
     for (const bad of [{ id: 0, featured: true }, { id: review.id, featured: "yes" }, { id: review.id }, { id: "1", featured: false }, null]) {
@@ -205,7 +221,7 @@ describe("setFeaturedAction: „Avalehel“", () => {
   });
 });
 
-describe("saveManualReviewAction: „Lisa arvustus“ and „Muuda“", () => {
+describe("saveManualReviewAction: „Lisa arvustus“ (a create only: „Muuda“ autosaves, tests/db/review-edit.test.ts)", () => {
   test("a new review is published at once, not on the home page, with the day she gave (Estonian midnight) and her note; its course's pages are revalidated, then the page refreshes", async () => {
     const { course } = await protocolCourse(db);
     const answer = await actions.saveManualReviewAction(form(course.id));
@@ -242,48 +258,19 @@ describe("saveManualReviewAction: „Lisa arvustus“ and „Muuda“", () => {
     expect(cache.refresh).not.toHaveBeenCalled();
   });
 
-  test("an edit changes the fields only: a hidden review stays hidden and keeps „Avalehel“; the page of its course is revalidated once", async () => {
+  test("piece 4c, ruling c3: a numeric id (the old edit path) is `form: invalid`; nothing is read, written, revalidated or refreshed", async () => {
     const { course } = await protocolCourse(db);
     const added = await actions.saveManualReviewAction(form(course.id));
-    const id = (added as { id: number }).id;
-    await actions.setFeaturedAction({ id, featured: true });
-    await actions.decideReviewAction({ id, decision: "hide" });
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    const before = await all();
     pub.revalidatePublic.mockClear();
     cache.refresh.mockClear();
-    expect(await actions.saveManualReviewAction(form(course.id, { id, text: "Parandatud tekst.", note: "Kiri, 21.09.2026" }))).toEqual({ ok: true, id });
-    expect(await reviewOf(id)).toMatchObject({ text: "Parandatud tekst.", note: "Kiri, 21.09.2026", status: "hidden", featured: true });
-    expect(revalidated()).toEqual([{ kind: "reviews", course: course.slug }]);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("R4: an edit that moves the review to another course revalidates both courses' pages", async () => {
-    const first = await protocolCourse(db);
-    const second = await protocolCourse(db, { slug: "ripsmete-tostmine", title: { et: "Ripsmete tõstmine", ru: "Лифтинг ресниц" } });
-    const added = await actions.saveManualReviewAction(form(first.course.id));
-    pub.revalidatePublic.mockClear();
-    cache.refresh.mockClear();
-    expect(await actions.saveManualReviewAction(form(second.course.id, { id: (added as { id: number }).id }))).toMatchObject({ ok: true });
-    expect(revalidated()).toEqual(expect.arrayContaining([{ kind: "reviews", course: second.course.slug }, { kind: "reviews", course: first.course.slug }]));
-    expect(revalidated()).toHaveLength(2);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-    expect(pub.revalidatePublic.mock.invocationCallOrder[1]).toBeLessThan(cache.refresh.mock.invocationCallOrder[0]);
-  });
-
-  test("a student's review is never edited: `notManual` in words, its text and name unchanged, nothing revalidated or refreshed", async () => {
-    const { review, course } = await pendingOf();
-    const answer = await actions.saveManualReviewAction(form(course.id, { id: review.id, text: "Maria kirjutas ümber." }));
-    expect(answer).toEqual({ ok: false, error: "notManual", text: E.notManual });
-    expect(await reviewOf(review.id)).toMatchObject({ text: RECOMMEND, name: "Mari M.", kind: "student" });
+    for (const id of [added.id, 4242]) {
+      expect(await actions.saveManualReviewAction({ ...form(course.id, { text: "Parandatud tekst." }), id } as never), String(id)).toEqual({ ok: false, fields: { form: "invalid" } });
+    }
+    expect(await all()).toEqual(before);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
     expect(cache.refresh).not.toHaveBeenCalled();
-  });
-
-  test("an edit of a review that is gone (deleted in another tab) says so and refreshes the page, so that the row goes", async () => {
-    const { course } = await protocolCourse(db);
-    const answer = await actions.saveManualReviewAction(form(course.id, { id: 4242 }));
-    expect(answer).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
-    expect(pub.revalidatePublic).not.toHaveBeenCalled();
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
   });
 
   test("a throw is `server`, logged by its class and no text; a log line never holds a name or a text", async () => {

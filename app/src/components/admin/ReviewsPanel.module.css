@@ -19,6 +19,16 @@
   display: none;
 }
 
+/* the empty list's words: they take the focus when the last card has gone (Task 2 review I-2), so they are drawn and show the ring */
+.empty {
+  border-radius: 22px;
+}
+
+.empty:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

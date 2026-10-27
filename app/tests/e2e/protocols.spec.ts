@@ -6,7 +6,7 @@ import {
   protocolRows, runName, saved, SAVE_ROUTE, saveStatus, saveWords, sendAllLines, sendAllYes,
   storedFeedback, storedProtocol, studentContext, studentPage,
 } from "./protocols";
-import { smallTargets } from "./targets";
+import { smallSwitchRows, smallTargets } from "./targets";
 import { test, expect } from "./test";
 
 // Phase protocols (spec §10 "End to end"): Maria's course day — the headings in the course editor, two students written while switching between
@@ -365,6 +365,8 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
       expect(await noOverflow(v.page), where).toBe(true);
       // (a switch's target is its row of 44 px, not its 48×28 checkbox: the reviews' „Avalehel“, admin UX pass piece 4c)
       expect((await smallTargets(scope)).filter((html) => !SWITCH.test(html)), where).toEqual([]);
+      // … and the switch's real target, its row, is measured instead (Task 2 review M-3)
+      expect(await smallSwitchRows(scope), where).toEqual([]);
     }
   }
   await student.close();

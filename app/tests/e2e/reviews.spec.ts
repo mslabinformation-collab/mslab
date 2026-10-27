@@ -197,11 +197,23 @@ test("a review from the student's tick to her withdrawal: answered with her perm
     await expect(row).toHaveAttribute("data-review-status", "pending");
     await expect(bar).toHaveCount(0);
     expect(await stored()).toMatchObject({ status: "pending", decided: false });
-    // and published for good
+    // and published for good, from the menu badge's address (?olek=ootel): the card leaves the list and the focus lands on what is left — the next
+    // waiting card, or with none (Task 2 review I-2) the empty list's words — never on the page
+    await page.goto("/admin/tagasiside?vaade=arvustused&olek=ootel");
+    await adminReady(page);
+    const waiting = page.locator("[data-review-list] [data-review]");
+    const others = (await waiting.count()) - 1;
     await row.locator("[data-review-publish]").click();
-    await expect(row).toHaveAttribute("data-review-status", "published");
-    await expect(row.locator("[data-review-tag]")).toHaveText("Avaldatud");
+    await expect(row).toHaveCount(0);
+    await expect(bar).toContainText("Arvustus avaldatud.");
+    if (others === 0) await expect(page.locator("[data-reviews-empty]")).toBeFocused();
+    else await expect(page.locator("[data-review-list] [data-review]:focus")).toHaveCount(1);
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
     expect(await stored()).toMatchObject({ status: "published", featured: false, name: SHOWN, text: WORDS, decided: true });
+    // back on the view of all for what follows
+    await page.goto("/admin/tagasiside?vaade=arvustused");
+    await adminReady(page);
+    await expect(row.locator("[data-review-tag]")).toHaveText("Avaldatud");
 
     await visitor.goto(COURSE_PAGE);
     const block = visitor.locator('[data-reviews="course"]');

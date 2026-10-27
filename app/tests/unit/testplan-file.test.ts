@@ -431,6 +431,8 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     expect(text("kontakt-arvustus-lisa")).toContain(`„${t.form.create}“`);
     expect(text("kontakt-arvustus-lisa")).toContain(`„${adminEt.common.cancel}“`);
     expect(text("kontakt-arvustus-tagasi")).toContain("viis tähte");
+    // (S4-Q5's split, domain/review.ts starsOf: a score of 0 is one star too, not none)
+    expect(text("kontakt-arvustus-tagasi")).toContain("3–4 kaks, 0–2 üks.");
     const all = plan.items.map((i) => [...i.steps, ...i.expect].join("\n")).join("\n");
     for (const gone of ["Arvustusi ootab kinnitust", "Selles vaates arvustusi pole.", "Arvustus on kustutatud."]) expect(all, gone).not.toContain(gone);
   });

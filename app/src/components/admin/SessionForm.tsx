@@ -19,6 +19,7 @@ import { ConfirmPanel } from "./ConfirmPanel";
 import { focusFell } from "./focus-fell";
 import { useGuardSource } from "./LeaveGuard";
 import { SaveStatus } from "./SaveStatus";
+import { focusFormField, useNewRecord } from "./useNewRecord";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./SessionForm.module.css";
@@ -82,10 +83,7 @@ const problemsOf = (f: SessionFields, stored: SessionFields | null, counts: { co
   sessionFieldProblems(f, { stored, confirmed: counts.confirmed, booked: counts.booked });
 
 /** The drawer's field `name` (the first in the open drawer's form, else any): SaveStatus's „Näita“ and the guard's „Jää siia“. */
-function focusField(name: string): void {
-  const all = Array.from(document.querySelectorAll<HTMLElement>(`[data-session-form] [name="${name}"]`));
-  (all.find((el) => el.closest("dialog[data-drawer][open]") !== null) ?? all[0])?.focus();
-}
+const focusField = (name: string): void => focusFormField("[data-session-form]", name);
 
 // ---------- the fields (both drawers) ----------
 
@@ -369,7 +367,7 @@ export function SessionDrawer(p: DrawerProps) {
   const codeOf = (f: SessionField): string | undefined => {
     if (f === "capacity" && capacityText !== null) return undefined; // being typed: judged when it is left
     if (!held) return undefined;
-    // (a refusal of the course that names the fields sent with it — a session row under an e-course, server/session-edit.ts refusedFields — is said
+    // (a refusal of the course that names the fields sent with it — a session row under an e-course, server/autosave-route.ts refusedFields — is said
     // under „Koolitus“ alone: the other fields are held back with it, and „Näita“ goes to the course)
     return local[f] ?? (f === "courseId" || refused[f] !== "course" ? refused[f] : undefined);
   };
@@ -696,34 +694,17 @@ function SessionDelete({ id, all }: { id: number; all: number }) {
 /** A new session's fields: the course to choose, and Algus 10:00, Kohti 4, Keel ET filled in (S3-P3-g). */
 const EMPTY: SessionFields = { courseId: null, date: "", time: "10:00", city: "", venue: "", language: "ET", capacity: "4" };
 
-/** The copy, read defensively: each field of the right kind over a new session's; the course only while it is one of `courses` (else „—“). */
-function readCopy(courses: SessionCourse[]): SessionFields | null {
-  try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(NEW_SESSION_COPY) ?? "null");
-    if (!isRecord(raw)) return null;
-    const out: SessionFields = { ...EMPTY };
-    for (const f of SESSION_FIELDS) {
-      const v = raw[f];
-      if (f === "courseId") {
-        if (typeof v === "number" && courses.some((c) => c.id === v)) out.courseId = v;
-      } else if (typeof v === "string") out[f] = v;
-    }
-    return out;
-  } catch {
-    return null;
+/** A kept copy's fields: each of the right kind over a new session's; the course only while it is one of `courses` (else „—“). */
+function readCopy(raw: Record<string, unknown>, courses: SessionCourse[]): SessionFields {
+  const out: SessionFields = { ...EMPTY };
+  for (const f of SESSION_FIELDS) {
+    const v = raw[f];
+    if (f === "courseId") {
+      if (typeof v === "number" && courses.some((c) => c.id === v)) out.courseId = v;
+    } else if (typeof v === "string") out[f] = v;
   }
+  return out;
 }
-
-function writeCopy(fields: SessionFields | null): void {
-  try {
-    if (fields) window.localStorage.setItem(NEW_SESSION_COPY, JSON.stringify(fields));
-    else window.localStorage.removeItem(NEW_SESSION_COPY);
-  } catch {
-    // full or blocked: nothing is kept
-  }
-}
-
-const sameFields = (a: SessionFields, b: SessionFields) => SESSION_FIELDS.every((f) => a[f] === b[f]);
 
 /** The list's address with the new session's drawer open on it and the „Toimumine lisatud.“ of ?lisatud=. */
 function createdHref(listHref: string, id: number): string {
@@ -736,53 +717,28 @@ function createdHref(listHref: string, id: number): string {
 type CreateResult = Awaited<ReturnType<typeof createSessionAction>>;
 
 export function NewSession({ courses, listHref }: { courses: SessionCourse[]; listHref: string }) {
-  const uid = useId();
   const router = useRouter();
-  const [fields, setFields] = useState<SessionFields>(EMPTY);
-  /** The words of the refused fields (the drawer's own check before the press, or the server's), until each is typed in again. */
-  const [errors, setErrors] = useState<Partial<Record<SessionField, string>>>({});
-  const [failed, setFailed] = useState<"invalid" | "server" | null>(null);
-  const [focusTo, setFocusTo] = useState<{ name: SessionField } | null>(null);
-  const [pending, start] = useTransition();
-  /** Created: nothing is left to ask about while the drawer moves on to it. */
-  const created = useRef(false);
-
-  // the copy an earlier visit kept comes back (after the first render: the server knows no browser storage); from then on it follows the fields
-  const restored = useRef(false);
-  useEffect(() => {
-    if (!restored.current) {
-      restored.current = true;
-      const copy = readCopy(courses);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the storage is only known in the browser, after hydration
-      if (copy && !sameFields(copy, EMPTY)) setFields(copy);
-      return;
-    }
-    if (!created.current) writeCopy(sameFields(fields, EMPTY) ? null : fields);
-  }, [fields, courses]);
-
-  useEffect(() => {
-    if (focusTo) focusField(focusTo.name);
-  }, [focusTo]);
-
-  // the leave guard (S3-P3-g): typed and not created yet — it asks, naming the first field typed into, with „Toimumist pole veel lisatud.“
-  const typed = SESSION_FIELDS.find((f) => fields[f] !== EMPTY[f]) ?? null;
-  useGuardSource({
-    id: uid,
-    label: () => labelOf(typed ?? "courseId"),
-    flush: async () => false,
-    unconfirmed: () => (!created.current && typed ? { reason: "notCreated", thing: t.drawer.newThing } : null),
-    focus: () => focusField(typed ?? "courseId"),
+  // the fields, their refusals, this browser's copy (NEW_SESSION_COPY) and the leave guard's „Toimumist pole veel lisatud.“ (S3-P3-g): useNewRecord
+  const record = useNewRecord({
+    copyKey: NEW_SESSION_COPY,
+    empty: EMPTY,
+    read: (raw) => readCopy(raw, courses),
+    order: SESSION_FIELDS,
+    thing: t.drawer.newThing,
+    label: labelOf,
+    focus: focusField,
   });
+  const { fields, refused: errors } = record;
+  const [failed, setFailed] = useState<"invalid" | "server" | null>(null);
+  const [pending, start] = useTransition();
 
   const refuse = (codes: Partial<Record<SessionField, string>>) => {
-    setErrors(codes);
+    record.refuse(codes);
     setFailed("invalid");
-    const first = SESSION_FIELDS.find((f) => codes[f] !== undefined);
-    if (first) setFocusTo({ name: first });
   };
   const create = () => {
     // (created: the drawer is on its way to the new session; a second press would make another)
-    if (pending || created.current) return;
+    if (pending || record.finished()) return;
     const problems = problemsOf(fields, null, { confirmed: 0, booked: 0 });
     if (Object.keys(problems).length > 0) return refuse(problems);
     const sent = { ...fields };
@@ -795,8 +751,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
         r = { ok: false, error: "server" };
       }
       if (r.ok) {
-        created.current = true;
-        writeCopy(null);
+        record.finish();
         router.replace(createdHref(listHref, r.id), { scroll: false });
         return;
       }
@@ -810,8 +765,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
     value: (f) => shownOf(fields[f]),
     set: (f, raw) => {
       if (pending) return; // (the create is on its way: the fields are read-only, and a select's choice is not taken either)
-      setErrors((r) => (r[f] ? { ...r, [f]: undefined } : r));
-      setFields((d) => ({ ...d, [f]: parseField(f, raw) }));
+      record.setField(f, parseField(f, raw));
     },
     onLeave: () => {},
     onChoose: () => {},

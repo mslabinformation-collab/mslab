@@ -45,6 +45,17 @@ export function fieldCodes(issues: readonly z.core.$ZodIssue[]): Record<string, 
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/**
+ * A `write`'s refused fields as the screen holds them back (3a's rule, server/course-parts.ts): when none of the refused fields was `sent` (a stored
+ * field the rules no longer take, or one the patch does not carry: a session row under an e-course), every field sent is named with the refusal's
+ * code too, so the screen does not send them again unchanged. The Kalender drawer's (server/session-edit.ts) and „Muuda“'s (server/reviews.ts).
+ */
+export function refusedFields(fields: Record<string, string>, sent: string[]): Record<string, string> {
+  if (Object.keys(fields).some((n) => sent.includes(n))) return fields;
+  const code = Object.values(fields)[0] ?? "invalid";
+  return { ...fields, ...Object.fromEntries(sent.map((n) => [n, code])) };
+}
+
 function answer(a: SaveAnswer): Response {
   if (a.ok) return json({ ok: true, version: a.version, savedAt: a.savedAt }, 200);
   if (a.error === "conflict") return json({ ok: false, error: "conflict", version: a.version, value: a.value }, 409);

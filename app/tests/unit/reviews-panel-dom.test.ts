@@ -244,9 +244,13 @@ describe("the controls follow the status and the kind", () => {
     expect(edit.getAttribute("aria-label")).toBe("Muuda: Anu A.");
   });
 
-  test("„Avalehel“ is a switch (48 × 28: the shared Switch), on when the review is on the home page, described by whose it is and the home hint", async () => {
+  test("„Avalehel“ is a switch (48 × 28: the shared Switch), on when the review is on the home page, named „Avalehel: {name}“, described by whose it is and the home hint", async () => {
     await show([student({ id: 1, status: "published" }), student({ id: 2, status: "published", featured: true, name: "Kati K." })]);
     expect(switchOf(1).getAttribute("role")).toBe("switch");
+    // (Task 2 review M-5: the buttons' own pattern, „{action}: {name}“; the visible label stays „Avalehel“)
+    expect(switchOf(1).getAttribute("aria-label")).toBe("Avalehel: Mari M.");
+    expect(switchOf(2).getAttribute("aria-label")).toBe("Avalehel: Kati K.");
+    expect(text(switchOf(2).closest("label"))).toBe("Avalehel");
     expect(switchOf(1).checked).toBe(false);
     expect(switchOf(2).checked).toBe(true);
     expect(described(switchOf(2))).toEqual(["Kati K. · Kulmude lamineerimine · 13.10.2026", "Avalehel näidatakse kuni 6 uusimat."]);
@@ -361,6 +365,21 @@ describe("„Avalda“ and „Peida“ act at once, with „Võta tagasi“ (R-a
     expect(status()).toBe("");
   });
 
+  test("a withdrawn review answered by „Avalehel“ is the same: its words, its card gone; one Maria removed in another tab: her words („manualGone“), the card gone", async () => {
+    actions.setFeaturedAction.mockResolvedValue({ ok: false, error: "gone", text: E.gone });
+    await show([student({ status: "published" })]);
+    await click(switchOf(1));
+    expect(status()).toBe(E.gone);
+    expect($("[data-review]")).toBeNull();
+    expect($("[data-reviews-empty]")).not.toBeNull();
+    actions.setFeaturedAction.mockResolvedValue({ ok: false, error: "manualGone", text: E.manualGone });
+    await show([manual({ id: 7, status: "published" })]);
+    await click(switchOf(7));
+    expect(status()).toBe("Seda arvustust enam pole.");
+    expect($('[data-review="7"]')).toBeNull();
+    expect(bar()).toBeNull();
+  });
+
   test("„Avalehel“ refused (the review was hidden in another tab) is shown in words; the switch shows the stored state again", async () => {
     actions.setFeaturedAction.mockResolvedValue({ ok: false, error: "notPublished", text: E.notPublished });
     await show([student({ status: "published" })]);
@@ -385,15 +404,41 @@ describe("the focus after „Avalda“ or „Peida“ (D5; the final review's M4
     expect(document.activeElement).toBe(rowOf(3));
   });
 
-  test("the last card: the focus goes to the card before it; the only card: to the status line", async () => {
+  test("the last card: the focus goes to the card before it; the only card (the menu badge's path): to the empty list's words, never the empty status line", async () => {
     await show([waiting(1), waiting(2)], { filtered: true });
     await press("hide", 2);
     await refreshTo([waiting(1)]);
     expect(document.activeElement).toBe(rowOf(1));
     await press("publish", 1);
     await refreshTo([]);
-    expect(text($("[data-reviews-empty]"))).toContain("Selle valikuga arvustusi pole.");
+    // (Task 2 review I-2: the status line is empty and not drawn, `.status:empty { display: none }`, so it cannot hold the focus; the empty state can)
+    const empty = $("[data-reviews-empty]")!;
+    expect(document.activeElement).toBe(empty);
+    expect(empty.getAttribute("tabindex")).toBe("-1");
+    expect(text($("p", empty))).toBe("Selle valikuga arvustusi pole.");
+    expect(status()).toBe("");
+    expect(document.activeElement).not.toBe($("[data-reviews-status]"));
+  });
+
+  test("the refresh arrives before the answer does: the focus goes where the answer finds it (the next card)", async () => {
+    let finish: (v: unknown) => void = () => {};
+    actions.decideReviewAction.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await show([waiting(1), waiting(2), waiting(3)], { filtered: true });
+    await press("publish", 1);
+    await refreshTo([waiting(2), waiting(3)]);
+    await act(async () => finish({ ok: true, expected: EXPECTED }));
+    await settle();
+    expect(document.activeElement).toBe(rowOf(2));
+  });
+
+  test("a refusal does not move the focus to a neighbour: the card stays and the words have the focus, also after a refresh", async () => {
+    actions.decideReviewAction.mockResolvedValue({ ok: false, error: "server", text: E.server });
+    await show([waiting(1), waiting(2)], { filtered: true });
+    await press("publish", 1);
     expect(document.activeElement).toBe($("[data-reviews-status]"));
+    await refreshTo([waiting(1), waiting(2)]);
+    expect(document.activeElement).toBe($("[data-reviews-status]"));
+    expect($('[data-review="1"]')).not.toBeNull();
   });
 
   test("in the view of all, the card stays (its status changes): the focus is on it", async () => {
@@ -439,6 +484,15 @@ describe("„Kustuta“ on a review Maria added: no question, a soft delete with
     expect(document.activeElement).toBe(rowOf(6));
     expect(document.body.textContent).not.toContain("Jah, kustuta");
     expect(status()).toBe("");
+  });
+
+  test("„Kustuta“ on the only card: the focus goes to the empty list's words („Arvustusi pole veel.“), which are drawn", async () => {
+    actions.removeReviewAction.mockResolvedValue({ ok: true });
+    await show([manual({ id: 2 })]);
+    await click($("[data-review-delete]"));
+    const empty = $("[data-reviews-empty]")!;
+    expect(text(empty)).toBe("Arvustusi pole veel.");
+    expect(document.activeElement).toBe(empty);
   });
 
   test("„Võta tagasi“ brings the card back, with the focus", async () => {

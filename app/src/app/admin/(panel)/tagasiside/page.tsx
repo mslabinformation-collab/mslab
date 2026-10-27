@@ -153,7 +153,13 @@ async function reviewsPage(view: Parsed) {
         </Drawer>
       )}
       {editing !== null && (
-        <Drawer label={edited ? t.form.editTitle : t.errors.manualGone} closeHref={listHref} closeLabel={adminEt.common.close} returnFocus={`${reviewCardId(editing)}-muuda`}>
+        <Drawer
+          label={edited ? t.form.editTitle : t.errors.manualGone}
+          closeHref={listHref}
+          closeLabel={adminEt.common.close}
+          // (none to edit: its card has no „Muuda“ to go back to — a student's, or none — so the focus goes to the header's „Lisa arvustus +“)
+          returnFocus={edited ? `${reviewCardId(editing)}-muuda` : ADD_ID}
+        >
           {edited ? <EditReviewForm key={editing} id={editing} version={edited.version} fields={edited.value} courses={options} /> : <p className={ui.empty}>{t.errors.manualGone}</p>}
         </Drawer>
       )}
