@@ -260,6 +260,40 @@ describe("a save queued behind the one on its way, when the screen goes (piece 4
     expect(copies).toHaveLength(1);
     expect(JSON.parse(localStorage.getItem(copies[0])!)).toMatchObject({ version: "v2", fields: { title: "AB" } });
   });
+
+  // piece 4b final review m1: the screen goes with a save on its way and more typed, the same part mounts again and resumes the copy, and only then does
+  // the old save's answer come. The stopped engine must not write the copy again: the new mount took it, and once its text is saved it releases the
+  // copy it read — a copy written over in between would stay behind for good and come back on a later visit.
+  test("unmount, remount, then the late answer: the stopped engine leaves the copy the new mount took, and nothing is left once the text is saved", async () => {
+    const first = server();
+    const before = new AutosaveEngine({ owner: "course", key: "12", version: "v1", fields: { ...FIELDS }, send: first.send, tab: "a" });
+    before.start(localStorage);
+    before.setField("title", "A");
+    await tick(DEBOUNCE_MS);
+    expect(first.calls).toHaveLength(1);
+    before.setField("title", "AB"); // typed while the save is on its way: kept in the copy
+    before.stop();
+    const s = server();
+    const e = new AutosaveEngine({ owner: "course", key: "12", version: "v1", fields: { ...FIELDS }, send: s.send, tab: "b" });
+    engine = e;
+    e.start(localStorage);
+    expect(e.snapshot().fields.title).toBe("AB");
+    const taken = localStorage.getItem("mslab-draft:course:12:a");
+    expect(JSON.parse(taken!)).toMatchObject({ fields: { title: "AB" }, takenBy: "b" });
+    // the old save's answer comes now: the stopped engine does not write its copy again
+    first.calls[0].answer(ok("v2"));
+    await tick();
+    expect(localStorage.getItem("mslab-draft:course:12:a")).toBe(taken);
+    // the new mount's save from the copy's version meets the old one's stored text (its own, sent by that copy): confirmed, then saved on top
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { title: "AB" } }]);
+    s.calls[0].answer(stale("v2", { title: "A", body: "Tekst" }));
+    await tick();
+    expect(s.calls[1].body).toEqual({ version: "v2", patch: { title: "AB" } });
+    s.calls[1].answer(ok("v3"));
+    await tick();
+    expect(e.snapshot()).toMatchObject({ status: { kind: "saved" }, fields: { title: "AB", body: "Tekst" } });
+    expect(Object.keys(localStorage).filter((k) => k.startsWith("mslab-draft:course:12:"))).toEqual([]);
+  });
 });
 
 describe("the browser's copy", () => {
@@ -1237,6 +1271,48 @@ describe("another tab or device saved first (409)", () => {
     await tick();
     expect(s.calls[1].body).toEqual({ version: "v2", patch: { title: "AB" } });
     expect(e.snapshot().conflict).toBeNull();
+  });
+
+  // piece 4b final review I-1: a hidden post's address follows its title, so the server stores the title save with an address it made itself. The
+  // save's answer is lost, and the retry's 409 holds the title she typed and an address she never touched: her own save, not another window's.
+  test("a lost answer whose stored value has a field the server moved with it (a following address): ours — confirmed, the address taken, no conflict, nothing sent as typed", async () => {
+    const s = server();
+    const e = new AutosaveEngine({ owner: "site", key: "post", version: "l:v1", fields: { title: "Uus postitus", slug: "uus-postitus" }, send: s.send, tab: "t1" });
+    engine = e;
+    e.start(localStorage);
+    e.setField("title", "Kevad");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[0].body).toEqual({ version: "l:v1", patch: { title: "Kevad" } });
+    s.calls[0].answer(null); // stored, with the address made from the title, but no answer
+    await tick(RETRY_MS[0]);
+    expect(s.calls[1].body).toEqual({ version: "l:v1", patch: { title: "Kevad" } });
+    s.calls[1].answer(stale("l:v2", { title: "Kevad", slug: "kevad" }));
+    await tick();
+    expect(e.snapshot()).toMatchObject({ status: { kind: "saved" }, fields: { title: "Kevad", slug: "kevad" }, conflict: null });
+    expect(e.confirmedValue("slug")).toBe("kevad");
+    expect(e.unconfirmed()).toBeNull();
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(2);
+    // the next save goes from the server's version and still carries no address
+    e.setField("title", "Kevadine");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[2].body).toEqual({ version: "l:v2", patch: { title: "Kevadine" } });
+  });
+
+  test("a 409 whose stored value differs on a field the form typed is a conflict, even when the fields it never touched differ too", async () => {
+    const s = server();
+    const e = new AutosaveEngine({ owner: "site", key: "post", version: "l:v1", fields: { title: "Uus postitus", slug: "uus-postitus" }, send: s.send, tab: "t1" });
+    engine = e;
+    e.start(localStorage);
+    e.setField("title", "Kevad");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null);
+    await tick(RETRY_MS[0]);
+    s.calls[1].answer(stale("l:v2", { title: "Teise akna pealkiri", slug: "teise-akna-pealkiri" }));
+    await tick();
+    expect(e.snapshot()).toMatchObject({ status: { kind: "conflict" }, fields: { title: "Kevad", slug: "uus-postitus" } });
+    expect(e.snapshot().conflict).toEqual({ version: "l:v2", value: { title: "Teise akna pealkiri", slug: "teise-akna-pealkiri" } });
+    expect(s.calls).toHaveLength(2);
   });
 });
 

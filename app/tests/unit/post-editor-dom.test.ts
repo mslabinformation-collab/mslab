@@ -54,6 +54,8 @@ const remote = {
   log: [] as { version: string; patch: Record<string, unknown> }[],
   /** While set, a save waits for it before the route answers (a save on its way). */
   gate: null as Promise<void> | null,
+  /** While set, the next save is stored — with these fields the server makes too (the address that follows the title) — but answered 500, once. */
+  lost: null as null | Record<string, unknown>,
 };
 function resetRemote(published: boolean, value: PostPartValue) {
   remote.published = published;
@@ -65,6 +67,7 @@ function resetRemote(published: boolean, value: PostPartValue) {
   remote.avaldatud = () => Response.json({ ok: true, stamp: 5 });
   remote.log = [];
   remote.gate = null;
+  remote.lost = null;
 }
 const respond = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   if (url === `/api/admin/sisu/post/${ID}/avalda`) return remote.avalda();
@@ -84,6 +87,11 @@ const saveAnswer = (body: { version: string; patch: Record<string, unknown> }): 
   remote.n += 1;
   remote.value = { ...remote.value, ...body.patch };
   remote.version = remote.published ? `d:1.${remote.n}` : `l:row-${remote.n}`;
+  if (remote.lost) {
+    remote.value = { ...remote.value, ...remote.lost };
+    remote.lost = null;
+    return Response.json({ ok: false, error: "server" }, { status: 500 });
+  }
   return Response.json({ ok: true, version: remote.version, savedAt: "2026-10-27T09:15:00.000Z" });
 };
 
@@ -415,6 +423,34 @@ describe("the address follows the title until the post is first published (R-g; 
     // and the title does not move it
     await type(field("post.title"), "Kevad");
     expect(field("post.slug")!.value).toBe("minu-aadress");
+  });
+
+  // piece 4b final review I-1: the title's save is stored — with the address the server makes from it — but its answer is lost. The retry meets the
+  // stored value in a 409: her own save, not another window's. No conflict notice, the address is the server's, and it goes on following the title.
+  it("a lost answer of a title save, then the retry's 409: no conflict, the address shows the server's `kevad` and goes on following", async () => {
+    resetRemote(false, NEW);
+    await show({ published: false, parts: partsOf(NEW) });
+    remote.lost = { slug: "kevad" };
+    await type(field("post.title"), "Kevad");
+    await leave(field("post.title"));
+    expect(remote.log.map((b) => b.patch)).toEqual([{ title: { et: "Kevad" } }]);
+    // back online: the retry goes from the version the lost answer never brought
+    await act(async () => void window.dispatchEvent(new Event("online")));
+    await settle();
+    expect(remote.log).toEqual([
+      { version: "l:post", patch: { title: { et: "Kevad" } } },
+      { version: "l:post", patch: { title: { et: "Kevad" } } },
+    ]);
+    expect(chipWords()).not.toContain("teises aknas");
+    expect(button("Taasta minu tekst")).toBeNull();
+    expect(field("post.slug")!.value).toBe("kevad");
+    expect(text($("[data-post-where]"))).toBe("Mustand · /uudised/kevad");
+    // a new title moves it again, and the address was never sent as typed
+    await type(field("post.title"), "Kevadine");
+    expect(field("post.slug")!.value).toBe("kevadine");
+    await leave(field("post.title"));
+    expect(remote.log.at(-1)).toEqual({ version: "l:row-1", patch: { title: { et: "Kevadine" } } });
+    expect(remote.log.some((b) => "slug" in b.patch)).toBe(false);
   });
 
   // Task 2 re-review N-2: the read after a title save is skipped when another save landed before it (review I-1), so the engine still holds the old

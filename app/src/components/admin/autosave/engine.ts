@@ -18,9 +18,11 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - the tab hidden sends a waiting save at once; the page put away (pagehide) sends it as a keepalive request while the page's bodies fit the
 //   browsers' 64 KiB for them (KEEPALIVE_MAX_BYTES, shared by every engine of the page), else leaves it to the copy;
 // - a refusal (409) brings the server's version and value: this form's own text (another tab typed the same) or one of its saves whose answer
-//   was lost (protocol-autosave.ts:1134-1138) is not a conflict: it is confirmed, and newer text goes on from there; any other text is another
-//   tab's or device's: the status is `conflict`, the form's text stays as it is (and in the copy), nothing is sent over the other text by itself,
-//   and restore() („Taasta minu tekst“, B13) saves the form's text over the server's version: an explicit overwrite;
+//   was lost (protocol-autosave.ts:1134-1138) is not a conflict — also when a field the form never touched differs, which a server rule moved with
+//   the save (piece 4b: a post's address that follows its title) and which the form then takes: it is confirmed, and newer text goes on from
+//   there; any other text is another tab's or device's: the status is `conflict`, the form's text stays as it is (and in the copy), nothing is
+//   sent over the other text by itself, and restore() („Taasta minu tekst“, B13) saves the form's text over the server's version: an explicit
+//   overwrite;
 // - the row deleted meanwhile (404) is `gone`: the text stays in this browser, nothing is tried again;
 // - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
 //   and this engine sends and keeps nothing more (the screen starts a new one from what is stored);
@@ -82,11 +84,29 @@ function getRaw(storage: Storage, key: string): string | null {
   }
 }
 
-function writeKey(storage: Storage, key: string, value: unknown): void {
+/**
+ * Another tab's copy, resumed by the tab `by`: written again with `takenBy`, its text otherwise as it was (piece 4b final review m1). The copy and its
+ * new text, or null when it could not be written (then it stays as it was).
+ */
+function markTaken(storage: Storage, t: { key: string; raw: string }, by: string): { key: string; raw: string } | null {
   try {
-    storage.setItem(key, JSON.stringify(value));
+    const c: unknown = JSON.parse(t.raw);
+    if (!isRecord(c)) return null;
+    const raw = writeKey(storage, t.key, { ...c, takenBy: by });
+    return raw === null ? null : { key: t.key, raw };
   } catch {
-    // full or blocked: the copy is not kept
+    return null;
+  }
+}
+
+/** Writes `value` as JSON under `key`; the text written, or null when it could not be. */
+function writeKey(storage: Storage, key: string, value: unknown): string | null {
+  const raw = JSON.stringify(value);
+  try {
+    storage.setItem(key, raw);
+    return raw;
+  } catch {
+    return null; // full or blocked: the copy is not kept
   }
 }
 
@@ -196,6 +216,8 @@ export class AutosaveEngine {
   private resumed = false;
   /** Other tabs' copies read by resume: removed once this form's text is confirmed, each only if nobody wrote it since. */
   private taken: { key: string; raw: string }[] = [];
+  /** The text of this tab's copy as this engine last wrote it: after stop() it writes the copy again only while it is still that (keep). */
+  private wrote: string | null = null;
   private readonly listeners = new Set<() => void>();
   private snap: Snapshot | null = null;
 
@@ -582,14 +604,17 @@ export class AutosaveEngine {
 
   /**
    * A 409. The server holds this form's text (another tab typed the same), or a save of this form whose answer was lost (it remembered what it
-   * sent): confirmed at the server's version, and newer text goes on from there. Anything else is another tab's or device's text: conflict.
+   * sent): confirmed at the server's version, and newer text goes on from there (oursIn: a field this form never touched may differ, a rule of the
+   * server moved it with the save, and it takes the server's value). Anything else is another tab's or device's text: conflict.
    */
   private refused(version: string, value: unknown, sent: Fields): Promise<boolean> | boolean {
     const stored = this.over(value);
     const mine = remember(this.unanswered, sent);
     this.unanswered = [];
     this.answered();
-    if (same(stored, this.fields) || mine.some((m) => same(m, stored))) {
+    const moved = this.oursIn(stored, mine);
+    if (moved) {
+      this.fields = { ...this.fields, ...moved };
       this.confirm(version, stored, new Date());
       return this.goOn();
     }
@@ -599,6 +624,21 @@ export class AutosaveEngine {
     this.clearRetry();
     this.rest();
     return false;
+  }
+
+  /**
+   * Is the stored value of a 409 this form's own? It is when one text — the form's, or one of the saves sent without an answer (`mine`) — holds it on
+   * every field the form touched since its confirmed text (typed, or sent by a save without an answer). A field the form never touched may differ:
+   * a rule of the server moved it with this form's save (piece 4b final review I-1: a post's address that follows its title is made again when the
+   * title is saved, and Seaded's invoice number after a new prefix), and nobody here typed it. The answer is those fields with the server's values
+   * (the form takes them, as adopt would), or null when the stored value is another tab's or device's: a conflict.
+   */
+  private oursIn(stored: Fields, mine: readonly Fields[]): Fields | null {
+    const names = Object.keys(this.fields);
+    const touched = (n: string): boolean => !same(this.fields[n], this.confirmed[n]) || mine.some((m) => n in m && !same(m[n], this.confirmed[n]));
+    const holds = (text: Fields): boolean => names.every((n) => same(stored[n], text[n]) || !touched(n));
+    if (!holds(this.fields) && !mine.some(holds)) return null;
+    return Object.fromEntries(names.filter((n) => !touched(n) && !same(stored[n], this.fields[n])).map((n) => [n, stored[n]]));
   }
 
   private failed(why: "offline" | "error"): false {
@@ -684,6 +724,9 @@ export class AutosaveEngine {
     const fields: Fields = { ...this.fields };
     for (const n of Object.keys(fields)) if (n in copy.fields && !untouched(n)) fields[n] = copy.fields[n];
     if (same(fields, this.fields)) return this.dropCopy();
+    // the other tabs' copies it resumed are marked as taken, their text as it was: a stopped engine of theirs no longer writes them (keep), so the
+    // copy this engine releases once its text is saved is the one it read
+    this.taken = this.taken.map((t) => markTaken(storage, t, this.tab) ?? t);
     this.fields = fields;
     this.version = copy.version;
     this.unanswered = copy.sent.map((s) => {
@@ -708,16 +751,20 @@ export class AutosaveEngine {
 
   /**
    * Keeps the form's text under this tab's key, with the texts sent without an answer and the confirmed text it was typed over (`base`: what a
-   * resume takes as untyped). After stop only while that key still exists: a screen opened again resumes the copy and releases it, and writing it
-   * back would bring back a copy nobody holds.
+   * resume takes as untyped). After stop only while that key still holds what this engine wrote last: a screen opened again that resumed the copy
+   * has marked it as taken (resume) and releases it once its text is saved, so writing it again would leave a stale copy that nobody holds (piece
+   * 4b final review m1: the late answer of a save that was on its way when the screen went); a copy already released stays released.
    */
   private keep(): void {
     const storage = this.storage;
     if (!storage || this.discarded) return;
     const key = this.copyKey();
-    if (!this.running && getRaw(storage, key) === null) return;
+    if (!this.running) {
+      const now = getRaw(storage, key);
+      if (now === null || now !== this.wrote) return;
+    }
     const sent = this.flying ? remember(this.unanswered, this.flying) : this.unanswered;
-    writeKey(storage, key, { version: this.version, fields: this.fields, base: this.confirmed, sent, at: Date.now() });
+    this.wrote = writeKey(storage, key, { version: this.version, fields: this.fields, base: this.confirmed, sent, at: Date.now() });
   }
 
   /** The server holds the form's text: this tab's copy goes, and so do the copies it resumed. */

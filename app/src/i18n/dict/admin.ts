@@ -2364,7 +2364,7 @@ export const adminEt = {
     thing: "postitust",
     // {date}: dd.mm.yyyy; {slug}: the address
     foot: { published: "Avaldatud {date} · /uudised/{slug}", draft: "Mustand · /uudised/{slug}" },
-    sections: { text: "Tekst", cover: "Kaanepilt", publish: "Avaldamine" },
+    sections: { cover: "Kaanepilt", publish: "Avaldamine" },
     title: "Pealkiri",
     slug: "Aadress",
     slugHint: "Lehe aadress: /uudised/{slug}. Väikesed tähed, numbrid ja sidekriipsud. Tühjaks jättes tehakse see pealkirjast.",

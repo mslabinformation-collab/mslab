@@ -1618,6 +1618,7 @@
       "title": "Avaldatud postituse muutmine ja eelvaade",
       "href": "/admin/uudised",
       "steps": [
+        "Avaldatud muudatus on kohe päris blogis näha: tee see kontroll kiiresti ja kustuta sõna kohe.",
         "Ava „Uudised“ ja vali loendist mõni avaldatud postitus.",
         "Lisa „Tekst“ lõppu sõna Proov ja oota, kuni olek on „Mustand salvestatud“.",
         "Ava sama postitus teises brauseris, kus sa pole sisse logitud.",
@@ -1740,6 +1741,7 @@
       "title": "Hüpikaken: lüliti ja pakkumine",
       "href": "/admin/kampaania",
       "steps": [
+        "Avaldatud muudatus on kohe päris avalehel ja jaluses näha: tee see kontroll kiiresti ja pane kõik kohe tagasi.",
         "Ava „Hüpikaken“ ja kirjuta selle kontrolli märkusesse praegune „Pealkiri“ ja „Soodustus (%)“.",
         "Lülita „Lehel näidatakse“ välja ja vajuta all ribal „Võta tagasi“.",
         "Kirjuta „Pealkiri“ lõppu: proov ja „Soodustus (%)“: 15, siis liigu väljalt edasi.",
@@ -1796,6 +1798,7 @@
       "title": "Seaded: tervituskood",
       "href": "/admin/seaded",
       "steps": [
+        "See on päris tervituskood, mille iga uus liituja kohe saab: tee kontroll kiiresti ja pane kood kohe tagasi.",
         "Ava „Seaded“ ja vali jaotiste loendist „Uudiskiri“.",
         "Kirjuta selle kontrolli märkusesse praegune „Tervituskood“.",
         "Kirjuta „Tervituskood“: proov-1 ja liigu väljalt edasi.",
