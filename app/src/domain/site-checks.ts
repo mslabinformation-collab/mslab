@@ -132,6 +132,36 @@ export function loosePackage(v: PackageDraft): LooseProblems {
  */
 export const postSlug = (typed: string, titleEt: string): string => typed.trim().toLowerCase() || slugify(titleEt.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
 
+/**
+ * The address's refusal of its form (R-g), the one rule the save to the row and the publish's strict check name it by: null when the address as
+ * stored (postSlug: typed, or made from the title) is a slug; else "slugFormat", or "required" when there is neither an address nor a title.
+ */
+export function postSlugProblem(typed: string, titleEt: string): "slugFormat" | "required" | null {
+  if (isSlug(postSlug(typed, titleEt))) return null;
+  return typed.trim() || titleEt.trim() ? "slugFormat" : "required";
+}
+
+/** The `n`th address of `base`'s series (n ≥ 2, S4-19): `base-n`, `base` cut first so that the whole is at most SLUG_MAX, with no dash left at its end. */
+export function numberedSlug(base: string, n: number): string {
+  const suffix = `-${n}`;
+  return `${base.slice(0, SLUG_MAX - suffix.length).replace(/-+$/, "")}${suffix}`;
+}
+
+/**
+ * Is `slug` in the title's series (R-g): the address made from the Estonian title (postSlug of no typed address) or it numbered (numberedSlug:
+ * `uus-postitus-2`, as „Lisa postitus +“ numbers a taken one)? While a post is not published and its address is in its title's series, the address
+ * follows the title: a save that changes the title and sends no address makes it again from the new title, numbered when taken
+ * (server/admin-site.ts, the post's Part.live.follow). An address Maria typed is in no title's series, and stays. The editor shows the address by the
+ * same rule.
+ */
+export function slugFollowsTitle(slug: string, titleEt: string): boolean {
+  const base = postSlug("", titleEt);
+  if (!base) return false;
+  if (slug === base) return true;
+  const numbered = /^.+-([1-9][0-9]{0,5})$/.exec(slug);
+  return numbered !== null && Number(numbered[1]) >= 2 && slug === numberedSlug(base, Number(numbered[1]));
+}
+
 /** Is the post's day a calendar day (YYYY-MM-DD, as the date field writes it)? The day is stored at 09:00 Estonian time (server/admin-site.ts). */
 export const isPostDay = (day: string): boolean => tallinnInstant(day.trim(), "09:00") !== null;
 
@@ -144,8 +174,9 @@ export const isPostDay = (day: string): boolean => tallinnInstant(day.trim(), "0
 export function loosePost(v: PostPartValue): LooseProblems {
   const c = new Check();
   c.text("title", v.title, L.postTitle, { required: true });
-  const typed = v.slug.trim();
-  if (typed && !isSlug(typed.toLowerCase())) c.fail("slug", "slugFormat");
+  // (a typed address's form; an empty one is made from the title when it is stored)
+  const slug = v.slug.trim() ? postSlugProblem(v.slug, v.title.et) : null;
+  if (slug) c.fail("slug", slug);
   c.text("category", v.category, L.category);
   c.text("excerpt", v.excerpt, L.excerpt);
   c.text("body", v.body, L.postBody);

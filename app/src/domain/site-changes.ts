@@ -61,8 +61,8 @@ const rowNumber = (s: string | undefined): number | null => (s !== undefined && 
 export function siteFieldLabel(entity: SiteDraftEntity, part: string, path: string): string {
   const [field, row, sub] = path.split(".");
   if (entity === "post") {
-    const label = Object.hasOwn(POST_FIELDS, field) ? POST_FIELDS[field] : T.post.title;
-    return row === "ru" ? fill(T.ru, { label }) : label;
+    if (!Object.hasOwn(POST_FIELDS, field)) return T.post.post;
+    return row === "ru" ? fill(T.ru, { label: POST_FIELDS[field] }) : POST_FIELDS[field];
   }
   const n = rowNumber(row);
   if (entity === "home") {

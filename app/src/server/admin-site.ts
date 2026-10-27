@@ -3,7 +3,7 @@ import type { Db, Q, Tx } from "@/db/client";
 import { replaceGallery, setSetting, upsertCampaign, upsertPage } from "@/db/queries/admin";
 import type { Campaign, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "@/db/schema";
 import {
-  deletePostRow,
+  freePostSlug,
   insertPost,
   isPostSlugTaken,
   lockTables,
@@ -60,7 +60,7 @@ import {
   type TrainerDraft,
   type WorkDraft,
 } from "@/domain/site-editor";
-import { isPostDay, looseBody, looseFaq, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug } from "@/domain/site-checks";
+import { isPostDay, looseBody, looseFaq, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
 import { POST_PART, type PostPartValue } from "@/domain/site-entities";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
@@ -135,10 +135,17 @@ export type Part<V> = {
   rowCheck?: (q: Q, value: V) => Promise<Record<string, FieldError>>;
   /**
    * A part whose row is saved straight while it is not published (piece 4b, ruling R-a: a post that is not published has no draft and no bar, as an
-   * unpublished course in 3a): `now(stored)`, whether a save of that stored value writes the row; `write`, the row's write of a value the schema, the
-   * loose check and `rowCheck` passed, under the part's tables' lock (the texts as typed: the publish's strict check trims them).
+   * unpublished course in 3a), under the part's tables' lock (server/site-drafts.ts rowDecision):
+   * - `now(stored)`: whether a save of that stored value writes the row (and a draft of it is ignored everywhere);
+   * - `follow` (R-g): the value as the row then stores it, given the fields the save sent (`sent`; null for a draft taken into the row whole): a
+   *   post's address that follows its title is made again from the new title;
+   * - `write`: the row's write of a value the schema, the loose check, `follow` and `rowCheck` passed (the texts as typed: the publish trims them).
    */
-  live?: { now: (stored: unknown) => boolean; write: (tx: Tx, value: V, stored: unknown) => Promise<void> };
+  live?: {
+    now: (stored: unknown) => boolean;
+    follow?: (q: Q, value: V, stored: unknown, sent: readonly string[] | null) => Promise<V>;
+    write: (tx: Tx, value: V, stored: unknown) => Promise<void>;
+  };
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a page's parts have different draft types
 export type Parts = Record<string, Part<any>>;
@@ -645,11 +652,25 @@ function postInstant(stored: Post | null, day: string): Date | null {
   return stored && tallinnFormParts(stored.publishedAt).date === d ? stored.publishedAt : at;
 }
 
-/** The address's refusal of the stored rule (R-g): not one even when made from the title, or another post's (ADM:2281). */
+/** The address's refusal of the stored rule (R-g): not one even when made from the title (postSlugProblem), or another post's (ADM:2281). */
 async function postAddress(q: Q, id: number, v: PostPartValue): Promise<Record<string, FieldError>> {
-  const slug = postSlug(v.slug, v.title.et);
-  if (!isSlug(slug)) return { slug: v.slug.trim() || v.title.et.trim() ? "slugFormat" : "required" };
-  return (await isPostSlugTaken(q, slug, id)) ? { slug: "slugTaken" } : {};
+  const problem = postSlugProblem(v.slug, v.title.et);
+  if (problem) return { slug: problem };
+  return (await isPostSlugTaken(q, postSlug(v.slug, v.title.et), id)) ? { slug: "slugTaken" } : {};
+}
+
+/**
+ * R-g, "the address follows the title until the post is first published, unless Maria typed one": a save of a post that is not published which
+ * sends the title and no address, while the stored address is in the stored title's series (domain/site-checks.ts slugFollowsTitle: `uus-postitus`,
+ * `uus-postitus-2`), stores the address made from the new title, numbered when another post has it (freePostSlug: `kevad-2`, never a refusal). An
+ * address already in the new title's series stays as it is (no number taken back). An address Maria typed is in no title's series: it stays, and a
+ * typed one another post has is refused at the save (the unique index cannot hold it).
+ */
+async function followedSlug(q: Q, id: number, v: PostPartValue, stored: Post | null, sent: readonly string[] | null): Promise<PostPartValue> {
+  if (!stored || stored.published || !sent || !sent.includes("title") || sent.includes("slug")) return v;
+  if (!slugFollowsTitle(stored.slug, stored.title.et) || slugFollowsTitle(stored.slug, v.title.et)) return v;
+  const base = postSlug("", v.title.et);
+  return isSlug(base) ? { ...v, slug: await freePostSlug(q, base, id) } : v;
 }
 
 function postPart(id: number): Part<PostPartValue> {
@@ -672,7 +693,8 @@ function postPart(id: number): Part<PostPartValue> {
       const title = c.text(`${p}title`, v.title, L.postTitle, { required: true });
       const body = c.text(`${p}body`, v.body, L.postBody, { required: true });
       const slug = postSlug(v.slug, v.title.et);
-      if (!isSlug(slug)) c.fail(`${p}slug`, v.slug.trim() || v.title.et.trim() ? "slugFormat" : "required");
+      const slugProblem = postSlugProblem(v.slug, v.title.et);
+      if (slugProblem) c.fail(`${p}slug`, slugProblem);
       const category = c.text(`${p}category`, v.category, L.category, { required: true });
       const excerpt = c.text(`${p}excerpt`, v.excerpt, L.excerpt);
       const day = v.publishedAt.trim();
@@ -686,6 +708,7 @@ function postPart(id: number): Part<PostPartValue> {
     },
     live: {
       now: (stored) => stored !== null && !(stored as Post).published,
+      follow: (q, v, stored, sent) => followedSlug(q, id, v, stored as Post | null, sent),
       write: async (tx, v, stored) => {
         const publishedAt = postInstant(stored as Post | null, v.publishedAt);
         if (!publishedAt) throw new Error(`[admin-site] post ${id}: its day was not checked before its write`);
@@ -772,9 +795,13 @@ export async function savePostForm(db: Db, formData: FormData): Promise<EditResu
   return { ok: true, id: outcome.id, created: d.id == null, saved: outcome.saved };
 }
 
-/** "Kustuta postitus": field id. */
+/**
+ * "Kustuta postitus" of the old editor's form: field id. The post goes with its drafts (piece 4b R-h: server/site-drafts.ts deletePost, read when it
+ * is called, as site-drafts.ts reads this module's parts).
+ */
 export async function deletePostForm(db: Db, formData: FormData): Promise<EditResult> {
   const id = z.coerce.number().int().positive().max(ID_MAX).safeParse(field(formData, "id"));
   if (!id.success) return { ok: false, error: "invalid" };
-  return (await deletePostRow(db, id.data)) ? { ok: true, id: id.data, deleted: true } : { ok: false, error: "notFound" };
+  const { deletePost } = await import("./site-drafts");
+  return (await deletePost(db, id.data)) ? { ok: true, id: id.data, deleted: true } : { ok: false, error: "notFound" };
 }

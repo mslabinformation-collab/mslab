@@ -18,7 +18,7 @@ import {
 import type { LessonCleanup } from "./admin-lessons";
 import { fieldCodes } from "./autosave-route";
 import { checkOutline, liveOutline, OUTLINE_SCHEMA, outlineFromDraft, outlineLabels, outlineRows, publishOutline, readLayout, type OutlineRows } from "./course-outline";
-import { discardDrafts, draftVersion, finishDraftSave, publishDraftsIn, readDrafts, type DraftPart, type Publisher } from "./drafts";
+import { discardDrafts, draftVersion, finishDraftSave, publishDraftsIn, readDrafts, SwitchRefused, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
@@ -359,12 +359,6 @@ export type PublishResult = { published: string[]; blocked: BlockedPart[] };
 
 /** The course is not there (deleted meanwhile): nothing to publish. */
 class CourseGone extends Error {}
-/** The „Avaldatud“ switch is refused: a part could not be published. */
-class SwitchRefused extends Error {
-  constructor(readonly blocked: string[]) {
-    super("blocked");
-  }
-}
 
 /**
  * The course's Publisher with what it decided (R-c). `priceRule`: whether a published course's price is required ("published": when the course is

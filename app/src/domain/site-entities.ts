@@ -48,7 +48,7 @@ export function parseSiteTarget(entity: string, id: string): SiteTarget | null {
 
 /**
  * The advisory lock's name of an entity row's drafts (R-c): every save, discard, publish and switch of the row takes it first, and so does deleting
- * a post with its drafts (db/queries/admin-site.ts deletePostRow).
+ * a post with its drafts (server/site-drafts.ts deletePost).
  */
 export const siteDraftLockKey = (entity: SiteDraftEntity, id: number): string => `site-draft:${entity}:${id}`;
 

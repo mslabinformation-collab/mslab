@@ -1,10 +1,9 @@
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
-import type { Db, Q, Tx } from "../client";
-import { campaign, contentDrafts, faq, galleryItems, heroSlides, pages, posts, practicePackages } from "../schema";
+import type { Q, Tx } from "../client";
+import { campaign, faq, galleryItems, heroSlides, pages, posts, practicePackages } from "../schema";
 import type { Campaign, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "../schema";
-import { siteDraftLockKey } from "@/domain/site-entities";
+import { numberedSlug } from "@/domain/site-checks";
 import type { I18n } from "@/i18n/field";
-import { SLUG_MAX } from "@/lib/slug";
 
 // The site content editors' reads and writes (Task 13B): hero slides, FAQ, text pages, settings, practice packages, the
 // trainer works gallery, the campaign and posts. Callers must already have checked the admin session. The readers take
@@ -124,15 +123,15 @@ export async function updatePackage(tx: Tx, code: string, fields: PackageFields)
 }
 
 /**
- * The first address of `slug`'s series no post has (admin UX pass piece 4b, ruling R-g; S4-19): `slug` itself, else `slug-2`, `slug-3` … (cut to
- * SLUG_MAX before its number). Inside a transaction that has the posts table locked (lockTables), so nothing takes it before the insert.
+ * The first address of `slug`'s series that no post but `exceptId` has (admin UX pass piece 4b, ruling R-g; S4-19): `slug` itself, else `slug-2`,
+ * `slug-3` … (domain/site-checks.ts numberedSlug). Inside a transaction that has the posts table locked (lockTables), so nothing takes it before the
+ * write: „Lisa postitus +“ (insertPost) and an address that follows its title (server/admin-site.ts) number it so.
  */
-async function freePostSlug(q: Q, slug: string): Promise<string> {
-  if (!(await isPostSlugTaken(q, slug))) return slug;
+export async function freePostSlug(q: Q, slug: string, exceptId?: number): Promise<string> {
+  if (!(await isPostSlugTaken(q, slug, exceptId))) return slug;
   for (let n = 2; ; n++) {
-    const suffix = `-${n}`;
-    const next = `${slug.slice(0, SLUG_MAX - suffix.length).replace(/-+$/, "")}${suffix}`;
-    if (!(await isPostSlugTaken(q, next))) return next;
+    const next = numberedSlug(slug, n);
+    if (!(await isPostSlugTaken(q, next, exceptId))) return next;
   }
 }
 
@@ -152,16 +151,10 @@ export async function updatePost(tx: Tx, id: number, fields: Partial<PostFields>
 }
 
 /**
- * Deletes a post and its drafts (admin UX pass piece 4b, ruling R-h) in one transaction (a savepoint of the caller's): the post's draft lock first, as
- * its saves, publish and switch take it (domain/site-entities.ts siteDraftLockKey; server/site-drafts.ts), so no save writes a draft of a post that is
- * going; then the posts table, as every post writer locks it. The deleted row; null when there was none.
+ * Deletes a post's row, inside the caller's transaction: server/site-drafts.ts deletePost, which takes the post's draft lock and the posts table first
+ * and deletes its drafts in the same transaction (piece 4b, ruling R-h). The deleted row; null when there was none.
  */
-export async function deletePostRow(db: Q, id: number): Promise<Post | null> {
-  return (db as Db).transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${siteDraftLockKey("post", id)}))`);
-    await lockTables(tx, ["posts"]);
-    await tx.delete(contentDrafts).where(and(eq(contentDrafts.entity, "post"), eq(contentDrafts.entityId, id)));
-    const [row] = await tx.delete(posts).where(eq(posts.id, id)).returning();
-    return row ?? null;
-  });
+export async function deletePostRow(tx: Tx, id: number): Promise<Post | null> {
+  const [row] = await tx.delete(posts).where(eq(posts.id, id)).returning();
+  return row ?? null;
 }

@@ -835,12 +835,16 @@ export async function deleteFaq(db: Db, id: number): Promise<void> {
   await db.delete(faq).where(eq(faq.id, id));
 }
 
-/** A post of the admin's list: `changes` is true while the draft layer holds a draft of it (admin UX pass piece 4b; the list's „Avaldamata muudatused“). */
+/**
+ * A post of the admin's list: `changes` is true while the draft layer holds a draft of a published post (admin UX pass piece 4b; the list's
+ * „Avaldamata muudatused“). A post that is not published saves straight to its row, so a draft left on it is ignored, here as everywhere (R-a).
+ */
 export type PostListRow = Post & { changes: boolean };
 
 /**
  * Every post, the unpublished ones included, newest first (the admin list; the public listPosts stays published-only), each with whether the draft
- * layer (`content_drafts`, entity "post", entity_id the post's id: piece 4b R-a) holds a draft of it, as listAllCourses says it of a course.
+ * layer (`content_drafts`, entity "post", entity_id the post's id: piece 4b R-a) holds a draft of it while it is published, as listAllCourses says it
+ * of a course.
  */
 export async function listAllPosts(db: Db): Promise<PostListRow[]> {
   const [rows, drafted] = await Promise.all([
@@ -848,7 +852,7 @@ export async function listAllPosts(db: Db): Promise<PostListRow[]> {
     db.selectDistinct({ id: contentDrafts.entityId }).from(contentDrafts).where(eq(contentDrafts.entity, "post")),
   ]);
   const withChange = new Set(drafted.map((d) => d.id));
-  return rows.map((p) => ({ ...p, changes: withChange.has(p.id) }));
+  return rows.map((p) => ({ ...p, changes: p.published && withChange.has(p.id) }));
 }
 
 /** Creates or updates a post (by `id` when given, otherwise by unique `slug`). */

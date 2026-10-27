@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { looseBody, looseFaq, loosePackage, looseSlides, looseTrainer, looseWorks } from "@/domain/site-checks";
+import { looseBody, looseFaq, loosePackage, loosePost, looseSlides, looseTrainer, looseWorks, numberedSlug, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
 import { newSlideDraft, type PackageDraft, type SlideDraft, type TrainerDraft } from "@/domain/site-editor";
 import { homeParts, trainerParts } from "@/server/admin-site";
 import { Check } from "@/server/edit-check";
@@ -116,5 +116,44 @@ describe("what the strict check refuses besides is refused at the save, by the f
 
   test("every part of Avaleht and Koolitaja has its loose check", () => {
     expect(Object.entries({ ...homeParts, ...trainerParts }).filter(([, p]) => !p.loose).map(([n]) => n)).toEqual([]);
+  });
+});
+
+describe("a post's rules (piece 4b; R-a, R-g; the browser and the server share them)", () => {
+  const post = { title: { et: "Uus postitus" }, slug: "uus-postitus", category: { et: "" }, excerpt: { et: "" }, body: { et: "" }, coverKey: "", publishedAt: "2026-10-27" };
+
+  test("loosePost holds the Estonian title and the day at every save; the cover, category, text and Russian wait for the publish", () => {
+    expect(loosePost(post)).toEqual({});
+    expect(loosePost({ ...post, body: { et: "", ru: "Только по-русски" }, category: { et: "", ru: "Новость" } })).toEqual({});
+    expect(loosePost({ ...post, title: { et: " " } })).toEqual({ title: "required" });
+    expect(loosePost({ ...post, publishedAt: "" })).toEqual({ publishedAt: "required" });
+    expect(loosePost({ ...post, publishedAt: "2026-02-30" })).toEqual({ publishedAt: "date" });
+    expect(loosePost({ ...post, slug: "Mitte Nii!" })).toEqual({ slug: "slugFormat" });
+    expect(loosePost({ ...post, slug: "" })).toEqual({});
+    expect(loosePost({ ...post, coverKey: "https://evil.example/a.jpg" })).toEqual({ coverKey: "image" });
+  });
+
+  test("the address: typed in small letters, or made from the title; its form's one refusal", () => {
+    expect(postSlug(" Talvine-Uudis ", "x")).toBe("talvine-uudis");
+    expect(postSlug("", "Kevadine uudis!")).toBe("kevadine-uudis");
+    expect(postSlugProblem("", "Kevad")).toBeNull();
+    expect(postSlugProblem("Mitte Nii!", "Kevad")).toBe("slugFormat");
+    expect(postSlugProblem("", "!!!")).toBe("slugFormat");
+    expect(postSlugProblem("", " ")).toBe("required");
+  });
+
+  test("the title's series (S4-19): the title's own address or it numbered from 2, cut to 80 before the number; a typed address is in none", () => {
+    expect(slugFollowsTitle("uus-postitus", "Uus postitus")).toBe(true);
+    expect(slugFollowsTitle("uus-postitus-2", "Uus postitus")).toBe(true);
+    expect(slugFollowsTitle("uus-postitus-12", "Uus postitus")).toBe(true);
+    expect(slugFollowsTitle("uus-postitus-1", "Uus postitus")).toBe(false);
+    expect(slugFollowsTitle("uus-postitus-02", "Uus postitus")).toBe(false);
+    expect(slugFollowsTitle("minu-aadress", "Uus postitus")).toBe(false);
+    expect(slugFollowsTitle("uus-postitus-2", "Kevad")).toBe(false);
+    expect(slugFollowsTitle("", "!!!")).toBe(false);
+    const long = "a".repeat(85);
+    expect(numberedSlug(postSlug("", long), 2)).toBe(`${"a".repeat(78)}-2`);
+    expect(slugFollowsTitle(`${"a".repeat(78)}-2`, long)).toBe(true);
+    expect(numberedSlug("uus-postitus", 3)).toBe("uus-postitus-3");
   });
 });

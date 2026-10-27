@@ -57,6 +57,16 @@ export type Publisher = {
   hold?(tx: Tx, parts: { part: string; value: unknown; id: number; version: number }[]): Promise<string[]>;
 };
 
+/**
+ * An instant switch refused because a part could not be published first (piece 3a R-d, the course's „Avaldatud“ switched off; piece 4b R-b, a
+ * post's): thrown inside the switch's transaction so that it takes back what was published; `blocked`, the parts (publishDraftsIn's).
+ */
+export class SwitchRefused extends Error {
+  constructor(readonly blocked: string[]) {
+    super("blocked");
+  }
+}
+
 /** The cast of db/queries/payments.ts releaseHold: on the Db union (and an open transaction of it), returning(fields) has no common overload. */
 const pg = (db: Q) => db as unknown as PostgresJsDatabase<typeof schema>;
 

@@ -10,7 +10,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { slugify } from "@/lib/slug";
 import { contentVersion } from "@/lib/version";
 import { homeParts, postParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
-import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, publishDraftsIn, readDrafts, type DraftPart, type Publisher } from "./drafts";
+import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, publishDraftsIn, readDrafts, SwitchRefused, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
@@ -171,14 +171,36 @@ function issueOf(entity: SiteDraftEntity, part: string, issue: z.core.$ZodIssue)
 }
 
 /**
+ * The rules of a value written straight into its part's row (Part.live; R-a, R-g), the one sequence for a save of a post that is not published
+ * (writeSitePart) and for the drafts a post switched off takes into its row (the publisher's rule "row"): the part's loose check; then the value as
+ * the row stores it (Part.live.follow: an address that follows its title, made again from the new title — only for a save that `sent` the title and
+ * no address; null for a draft, which is taken whole); then the rules against the stored rows (Part.rowCheck). The value to write, or what refused
+ * it, by path: "loose", the loose check; "row", Part.rowCheck (`slugTaken`).
+ */
+async function rowDecision(
+  q: Q,
+  def: Part<unknown>,
+  value: unknown,
+  stored: unknown,
+  sent: readonly string[] | null,
+): Promise<{ ok: true; value: unknown } | { ok: false; by: "loose" | "row"; problems: Record<string, FieldError> }> {
+  const loose = (def.loose?.(value) ?? {}) as Record<string, FieldError>;
+  if (Object.keys(loose).length > 0) return { ok: false, by: "loose", problems: loose };
+  const followed = def.live?.follow ? await def.live.follow(q, value, stored, sent) : value;
+  const refused = (await def.rowCheck?.(q, followed)) ?? {};
+  if (Object.keys(refused).length > 0) return { ok: false, by: "row", problems: refused };
+  return { ok: true, value: followed };
+}
+
+/**
  * An editor card's save (the autosave route's `write`; server/autosave-route.ts' contract): `patch` (some of the part's fields; another field is
  * refused) over the part's value at `version`, under the entity's advisory lock, into its draft. The answers: ok with the part's version after it; a
  * conflict with the stored version and value (another tab, a publish or a discard meanwhile; a part that is gone: version "", value null); invalid
  * by field: the part's schema (types), then its loose check (R-d: nothing required, so an incomplete row is kept). The same value again writes
  * nothing; typed back to live, the draft goes ("l:" again). Never a live row, never a table lock (R-c) — but for a part whose row saves straight
- * (Part.live, R-a: a post that is not published): its tables are locked after the advisory lock and it is read again under them, its value is checked
- * against the stored rows too (Part.rowCheck: refused by field, `slugTaken`), and the row is written; the answer is the row's new version "l:<hash>".
- * `admin`: the admin's e-mail.
+ * (Part.live, R-a: a post that is not published): its tables are locked after the advisory lock and it is read again under them, the row's rules
+ * decide (rowDecision: the loose check, the address's follow of the title, Part.rowCheck; refused by field, `slugTaken`), and the row is written;
+ * the answer is the row's new version "l:<hash>". `admin`: the admin's e-mail.
  */
 export async function writeSitePart(db: Db, target: SiteTarget, part: string, patch: unknown, version: string, admin: string, now: Date): Promise<SaveAnswer> {
   const savedAt = now.toISOString();
@@ -202,16 +224,17 @@ export async function writeSitePart(db: Db, target: SiteTarget, part: string, pa
     if (unknown.length > 0) return refusal(entity, part, unknown.map((k) => [k, "invalid"]), names);
     const parsed = def.schema.safeParse(fromEditorValue(entity, part, { ...s.value, ...sent }));
     if (!parsed.success) return refusal(entity, part, parsed.error.issues.map((i) => issueOf(entity, part, i)), names);
+    if (s.direct && def.live) {
+      const decided = await rowDecision(tx, def, parsed.data, s.stored, names);
+      if (!decided.ok) return refusal(entity, part, Object.entries(decided.problems), names);
+      if (sameSiteValue(toEditorValue(entity, part, decided.value), s.value)) return { ok: true, version: s.version, savedAt };
+      await def.live.write(tx, decided.value, s.stored);
+      return { ok: true, version: `l:${(await liveOf(entity, part, def, await def.read(tx))).hash}`, savedAt };
+    }
     const problems = Object.entries(def.loose?.(parsed.data) ?? {});
     if (problems.length > 0) return refusal(entity, part, problems, names);
     const value = toEditorValue(entity, part, parsed.data);
     if (sameSiteValue(value, s.value)) return { ok: true, version: s.version, savedAt };
-    if (s.direct && def.live) {
-      const refused = Object.entries((await def.rowCheck?.(tx, parsed.data)) ?? {});
-      if (refused.length > 0) return refusal(entity, part, refused, names);
-      await def.live.write(tx, parsed.data, s.stored);
-      return { ok: true, version: `l:${(await liveOf(entity, part, def, await def.read(tx))).hash}`, savedAt };
-    }
     // typed back to what is live, the draft goes; else the draft is made or saved (server/drafts.ts finishDraftSave)
     return finishDraftSave(tx, {
       entity,
@@ -285,6 +308,19 @@ function revalidateEntity(entity: SiteDraftEntity, written: string[]): void {
 }
 
 /**
+ * S4-Q1 A's one decision on a part's value as it goes public, which the bar's „Avalda muudatused“ and a post's „Avaldatud“ switched on (R-b) both
+ * run: `raw` (a draft's value; null: the stored value itself) over the stored value, through the part's strict check (strictDraft: Part.check), then
+ * the rules against the stored rows (Part.rowCheck). The Write, or why the part is held: "missing" with the refused fields' labels as „Puudub: …“
+ * lists them, or "invalid" with the codes (`slugTaken`).
+ */
+async function strictDecision(tx: Tx, entity: SiteDraftEntity, part: string, def: Part<unknown>, stored: unknown, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> {
+  const { value: shown, check: c, write } = strictDraft(entity, part, def, stored, raw);
+  if (!c.ok || !write) return { reason: "missing", fields: missingOf(entity, part, c.errors, shown) };
+  const refused = (await def.rowCheck?.(tx, fromEditorValue(entity, part, shown))) ?? {};
+  return Object.keys(refused).length > 0 ? invalidOf(entity, part, refused) : write;
+}
+
+/**
  * How a publish takes the drafts:
  * - `versions`: the screen's (review I-1: a draft at another version, or one the screen sent none for, is held as changed); null for a publish that
  *   takes the drafts as they are stored (a post's „Avaldatud“ switched off, R-b: no screen's bar is published, the pending drafts are kept);
@@ -298,8 +334,9 @@ type PublishRules = { versions: Readonly<Record<string, string>> | null; rule: "
  * The target's Publisher (server/drafts.ts) with what it decided:
  * - lock (R-c): the target's advisory lock, then every table of its parts at once (lockTables, alphabetical), before any draft is read;
  * - liveVersion: the hash of the part's draft-shaped live value (R-b), read under that lock (and kept for its write);
- * - hold: first, each part's draft against the screen's `versions` (when given): one that is newer than what the screen showed is held, and named as
- *   changed (blockedOf); then each other part's rules (`rule` above) on its draft's value: a part they refuse is held as "missing" with its fields'
+ * - hold: a part whose row saves straight (a post that is not published, R-a) keeps its draft unwritten and unnamed (ignored); each other part's draft
+ *   against the screen's `versions` (when given): one that is newer than what the screen showed is held, and named as changed (blockedOf); then each
+ *   other part's rules (`rule` above: strictDecision, or rowDecision) on its draft's value: a part they refuse is held as "missing" with its fields'
  *   labels (R-d, R-i), or as "invalid" with its codes (Part.rowCheck);
  * - write: the Write the rules answered, with the stored value read under the lock;
  * - revalidate: once, after the commit, the target's pages (Koolitaja's by the parts written).
@@ -314,24 +351,16 @@ function makeSitePublisher(target: SiteTarget, o: PublishRules) {
   const newer = new Set<string>();
   const written: string[] = [];
   const defOf = (part: string): Part<unknown> | undefined => (parts && Object.hasOwn(parts, part) ? parts[part] : undefined);
-  /** The save's rules on a draft (rule "row"): the Write into the row, or why it is held. */
+  /** The parts whose row saves straight (a post that is not published, R-a): their drafts are ignored — not written, not named, kept. */
+  const ignored = new Set<string>();
+  /** The row's rules on a draft (rule "row", rowDecision as a save to the row runs them): the Write into the row, or why it is held. */
   const rowRules = async (tx: Tx, part: string, def: Part<unknown>, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> => {
     const value = draftValueOf(entity, part, def, toEditorValue(entity, part, def.draft(stored.get(part))), raw);
-    const draft = fromEditorValue(entity, part, value);
-    const problems = (def.loose?.(draft) ?? {}) as Record<string, FieldError>;
-    if (Object.keys(problems).length > 0) return { reason: "missing", fields: missingOf(entity, part, problems, value) };
-    const refused = (await def.rowCheck?.(tx, draft)) ?? {};
-    if (Object.keys(refused).length > 0) return invalidOf(entity, part, refused);
+    const decided = await rowDecision(tx, def, fromEditorValue(entity, part, value), stored.get(part), null);
+    if (!decided.ok) return decided.by === "loose" ? { reason: "missing", fields: missingOf(entity, part, decided.problems, value) } : invalidOf(entity, part, decided.problems);
     const live = def.live;
     if (!live) throw new Error(`[site-drafts] ${entity} ${part} has no row of its own to save into`);
-    return async (t: Tx, s: unknown) => live.write(t, draft, s);
-  };
-  /** The publish's rules on a draft (rule "strict"): the strict check's Write, or why it is held. */
-  const strictRules = async (tx: Tx, part: string, def: Part<unknown>, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> => {
-    const { value: shown, check: c, write } = strictDraft(entity, part, def, stored.get(part), raw);
-    if (!c.ok || !write) return { reason: "missing", fields: missingOf(entity, part, c.errors, shown) };
-    const refused = (await def.rowCheck?.(tx, fromEditorValue(entity, part, shown))) ?? {};
-    return Object.keys(refused).length > 0 ? invalidOf(entity, part, refused) : write;
+    return async (t: Tx, s: unknown) => live.write(t, decided.value, s);
   };
   const publisher: Publisher = {
     async lock(tx) {
@@ -352,16 +381,20 @@ function makeSitePublisher(target: SiteTarget, o: PublishRules) {
       for (const { part, value: raw, id, version } of candidates) {
         const def = defOf(part);
         if (!def) continue;
+        if (def.live?.now(stored.get(part))) {
+          ignored.add(part);
+          continue;
+        }
         // (another window saved this draft after the screen read it, or the screen did not know of it: never published from a bar that did not show it)
         if (o.versions && (!Object.hasOwn(o.versions, part) || o.versions[part] !== draftVersion(id, version))) {
           newer.add(part);
           continue;
         }
-        const decided = o.rule === "row" ? await rowRules(tx, part, def, raw) : await strictRules(tx, part, def, raw);
+        const decided = o.rule === "row" ? await rowRules(tx, part, def, raw) : await strictDecision(tx, entity, part, def, stored.get(part), raw);
         if (typeof decided === "function") writes.set(part, decided);
         else held.set(part, decided);
       }
-      return [...held.keys(), ...newer];
+      return [...held.keys(), ...newer, ...ignored];
     },
     async write(tx, part) {
       const write = writes.get(part);
@@ -377,7 +410,7 @@ function makeSitePublisher(target: SiteTarget, o: PublishRules) {
 /**
  * The blocked parts with their reasons: the held ones as decided, the others changed meanwhile (live, or their draft by another window), with their
  * drafts' changes' labels row by row, as the PublishBar names them (domain/site-changes.ts siteChangeLabels: `Slaid 2 pealkiri`; read after the
- * publish).
+ * publish). A part whose row saves straight (a post that is not published) is left out: its draft is ignored (R-a).
  */
 async function blockedOf(db: Q, target: SiteTarget, names: string[], held: Map<string, Omit<SiteBlockedPart, "part">>): Promise<SiteBlockedPart[]> {
   if (names.length === 0) return [];
@@ -393,6 +426,7 @@ async function blockedOf(db: Q, target: SiteTarget, names: string[], held: Map<s
     }
     const def = Object.hasOwn(parts, part) ? parts[part] : undefined;
     const s = def ? await partStateOf(db, entity, part, def, drafts) : null;
+    if (s?.direct) continue;
     out.push({ part, reason: "changed", fields: s ? siteChangeLabels(entity, [{ part, live: s.live, draft: s.value }]) : [] });
   }
   return out;
@@ -475,22 +509,15 @@ export type PostSwitchResult =
   | { ok: false; missing: string[] }
   | { ok: false; blocked: SiteBlockedPart[] };
 
-/** A switch off refused: a pending draft could not be published (the transaction takes back what was). */
-class SwitchRefused extends Error {
-  constructor(readonly blocked: string[]) {
-    super("blocked");
-  }
-}
-
 /**
  * A post's „Avaldatud“, instant (R-b), under the post's advisory lock, then the posts table (the lock order of its saves and its publish):
- * - ON, for a post that is not published: the post's publish. Its row's value passes S4-Q1 A's strict check (Part.check: the cover, the title and the
- *   text in Estonian and Russian, the category, the address's form and the day) and its address is no other post's (Part.rowCheck); then it is
- *   written trimmed with `published` true, and a draft an earlier way of saving left on it is dropped (R-a: such a post holds none). Refused, nothing
- *   is written.
- * - OFF, on a published post: its pending drafts are published first in the same transaction, by the save's own rules (a hidden post needs no cover
- *   or Russian text), then `published` is false; a draft that cannot be published (changed meanwhile, its address taken) refuses the switch, and
- *   nothing is published or hidden (3a's switchCoursePublished rule) — the drafts are never lost.
+ * - ON, for a post that is not published: the post's publish, by the bar's own decision (strictDecision: S4-Q1 A's strict check — the cover, the
+ *   title and the text in Estonian and Russian, the category, the address's form and the day — then the address against the other posts) on the
+ *   row's value; then it is written trimmed with `published` true, and a draft an earlier way of saving left on it is dropped (R-a: such a post's
+ *   drafts are ignored, so it never takes effect). Refused ("missing" → `missing`, "invalid" → `blocked`), nothing is written.
+ * - OFF, on a published post: its pending drafts are published first in the same transaction, by the save's own rules (rowDecision: a hidden post
+ *   needs no cover or Russian text), then `published` is false; a draft that cannot be published (changed meanwhile, its address taken) refuses the
+ *   switch, and nothing is published or hidden (3a's switchCoursePublished rule, with its SwitchRefused) — the drafts are never lost.
  * The post pages are revalidated once after a change. `now`: the request's time, as the course's switch takes it (a post stores no time of change).
  */
 export async function switchPostPublished(db: Db, id: number, on: boolean, now: Date): Promise<PostSwitchResult> {
@@ -504,13 +531,9 @@ export async function switchPostPublished(db: Db, id: number, on: boolean, now: 
       if (!stored) return { ok: false, error: "notFound" };
       if (stored.published) return "same";
       const def: Part<unknown> = (await partsOf(tx, target))[POST_PART];
-      const { live: value } = await liveOf("post", POST_PART, def, stored);
-      const c = new Check();
-      const write = def.check(c, fromEditorValue("post", POST_PART, value), POST_PART);
-      if (!c.ok || !write) return { ok: false, missing: missingOf("post", POST_PART, c.errors, value) };
-      const refused = (await def.rowCheck?.(tx, fromEditorValue("post", POST_PART, value))) ?? {};
-      if (Object.keys(refused).length > 0) return { ok: false, blocked: [{ part: POST_PART, ...invalidOf("post", POST_PART, refused) }] };
-      await write(tx, stored);
+      const decided = await strictDecision(tx, "post", POST_PART, def, stored, null);
+      if (typeof decided !== "function") return decided.reason === "invalid" ? { ok: false, blocked: [{ part: POST_PART, ...decided }] } : { ok: false, missing: decided.fields };
+      await decided(tx, stored);
       await updatePost(tx, id, { published: true });
       await discardDrafts(tx, "post", id);
       return "changed";
@@ -541,11 +564,17 @@ export async function switchPostPublished(db: Db, id: number, on: boolean, now: 
 }
 
 /**
- * „Kustuta postitus“ (R-h): the post and its drafts deleted in one transaction (db/queries/admin-site.ts deletePostRow: the post's advisory lock, then
- * the posts table); the post pages revalidated when it was published. False when there was no such post.
+ * „Kustuta postitus“ (R-h; the new editor's route and the old editor's form alike): the post and its drafts deleted in one transaction, under the
+ * post's advisory lock and then the posts table (the lock order of its saves, publish and switch: no save writes a draft of a post that is going);
+ * the post pages revalidated when it was published. False when there was no such post.
  */
 export async function deletePost(db: Db, id: number): Promise<boolean> {
-  const row = await deletePostRow(db, id);
+  const row = await db.transaction(async (tx) => {
+    await lockEntity(tx, postTarget(id));
+    await lockTables(tx, ["posts"]);
+    await discardDrafts(tx, "post", id);
+    return deletePostRow(tx, id);
+  });
   if (row?.published) revalidatePosts(`post ${id} deleted`);
   return row !== null;
 }

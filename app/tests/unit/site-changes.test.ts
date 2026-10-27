@@ -47,6 +47,14 @@ describe("siteFieldLabel: S4-1's label of a field, by its path in the part's edi
     expect(siteFieldLabel("practice", "MAXI", "items.3")).toBe("MAXI punkt 4");
     expect(siteFieldLabel("practice", "MINI", "items")).toBe("MINI punktid");
   });
+
+  test("a post (piece 4b, S4-24): each field's label, the Russian side with „(RU)“, a path it does not know by the part itself („Postitus“)", () => {
+    expect(["title", "slug", "category", "excerpt", "body", "publishedAt", "coverKey"].map((f) => siteFieldLabel("post", "post", f))).toEqual(["Pealkiri", "Aadress", "Kategooria", "Lühitekst", "Tekst", "Kuupäev", "Kaanepilt"]);
+    expect(siteFieldLabel("post", "post", "title.ru")).toBe("Pealkiri (RU)");
+    expect(missingCase(siteFieldLabel("post", "post", "body.ru"))).toBe("tekst (RU)");
+    expect(siteFieldLabel("post", "post", "coverPos")).toBe("Postitus");
+    expect(siteFieldLabel("post", "post", "")).toBe("Postitus");
+  });
 });
 
 describe("missingCase: S4-2's casing for „Puudub: …“", () => {
@@ -254,5 +262,14 @@ describe("siteChangeLabels: Koolitaja (S4-17)", () => {
     expect(trainer({ center_story: { ...PAGE, title: { et: "Lugu", ru: "Рассказ" } } })).toEqual(["Koolituskeskuse lugu (RU)"]);
     expect(trainer({ center_story: { title: { et: "Lugu", ru: "Рассказ" }, body: { et: "Uus tekst", ru: "Текст" } } })).toEqual(["Koolituskeskuse lugu"]);
     expect(trainer({ works: { works: [{ key: "img/a.jpg", alt: { et: "Kulm", ru: "Брови" } }] } })).toEqual(["Galerii (RU)"]);
+  });
+});
+
+describe("siteChangeLabels: a post (piece 4b, S4-24)", () => {
+  const live = { title: { et: "Uudis", ru: "Новость" }, slug: "uudis", category: { et: "Uudis" }, excerpt: { et: "" }, body: { et: "Tekst.", ru: "Текст." }, coverKey: "", publishedAt: "2026-10-27" };
+  test("the changed fields in the bar's order, a Russian side alone with „(RU)“", () => {
+    const draft = { ...live, coverKey: "img/a.jpg", body: { et: "Tekst.", ru: "Другой текст." }, title: { et: "Uus uudis", ru: "Новость" } };
+    expect(siteChangeLabels("post", [{ part: "post", live, draft }])).toEqual(["Pealkiri", "Tekst (RU)", "Kaanepilt"]);
+    expect(siteChangeLabels("post", [{ part: "post", live, draft: { ...live } }])).toEqual([]);
   });
 });

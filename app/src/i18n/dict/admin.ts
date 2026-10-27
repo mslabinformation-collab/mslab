@@ -291,6 +291,8 @@ export const adminEt = {
       body: "Tekst",
       publishedAt: "Kuupäev",
       coverKey: "Kaanepilt",
+      // a path the post's labels do not know is named by the part itself, as S4-1 names any part's (the word of ADM:2259, news.col.post)
+      post: "Postitus",
     },
     // S4-1: a label whose only change is the Russian text ({label}: any of the above, e.g. „Slaid 2 pealkiri (RU)“)
     ru: "{label} (RU)",

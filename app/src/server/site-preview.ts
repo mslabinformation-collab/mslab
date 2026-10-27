@@ -17,8 +17,9 @@ import { partsOf, readSiteEditor, strictDraft } from "./site-drafts";
  *   package's row with the price in cents, the hero slides in their new order with every slide, shown or not; a new row's id a placeholder below 0);
  * - a part that fails (an empty price, a new slide without its picture), and every part without a draft, is left out of `parts`: `pick` keeps live
  *   there (it closes over `live`). With no part to lay over, `live` itself comes back and `pick` is not called.
- * Drafts of a part the entity no longer has (a package deleted meanwhile) are left out. Changed live meanwhile is not checked: the preview shows the
- * draft, as the course's does (the publish holds such a part back and says so).
+ * Drafts of a part the entity no longer has (a package deleted meanwhile), and of a post that is not published (its drafts are ignored, piece 4b R-a),
+ * are left out. Changed live meanwhile is not checked: the preview shows the draft, as the course's does (the publish holds such a part back and
+ * says so).
  */
 export async function withSiteDrafts<T>(db: Q, target: SiteTarget, live: T, pick: (parts: Record<string, unknown>) => T): Promise<T> {
   const { entity, id } = siteRowOf(target);
@@ -30,6 +31,8 @@ export async function withSiteDrafts<T>(db: Q, target: SiteTarget, live: T, pick
     const def = Object.hasOwn(parts, draft.part) ? parts[draft.part] : undefined;
     if (!def) continue;
     const stored = await def.read(db);
+    // (a part whose row saves straight, a post that is not published: its draft is ignored, R-a)
+    if (def.live?.now(stored)) continue;
     const { check, write } = strictDraft(entity, draft.part, def, stored, draft.value);
     if (check.ok && write?.shown) shown[draft.part] = write.shown(stored);
   }
@@ -43,5 +46,5 @@ export async function withSiteDrafts<T>(db: Q, target: SiteTarget, live: T, pick
  */
 export async function siteChangeCount(db: Q, target: SiteTarget): Promise<number> {
   const { parts } = await readSiteEditor(db, target);
-  return siteChangeLabels(siteRowOf(target).entity,Object.entries(parts).map(([part, s]) => ({ part, live: s.live, draft: s.value }))).length;
+  return siteChangeLabels(siteRowOf(target).entity, Object.entries(parts).map(([part, s]) => ({ part, live: s.live, draft: s.value }))).length;
 }

@@ -34,6 +34,7 @@ import { POST as createRoute } from "@/app/api/admin/uudised/uus/route";
 import { POST as switchRoute } from "@/app/api/admin/uudised/[id]/avaldatud/route";
 import { POST as deleteRoute } from "@/app/api/admin/uudised/[id]/kustuta/route";
 import { createPost, deletePost, discardSite, publishSite, readSiteEditor, switchPostPublished, writeSitePart } from "@/server/site-drafts";
+import { withSiteDrafts } from "@/server/site-preview";
 
 const ORIGIN = "https://mslab.example";
 const ADMIN = "admin@example.test";
@@ -94,6 +95,8 @@ describe("„Lisa postitus +“ (createPost, S4-19, R-g)", () => {
   });
 
   test("two presses at once (two tabs) make two posts with two addresses, never a unique-index error (Review Focus 2)", async () => {
+    // (PGlite runs one transaction at a time, so this pins the numbering of presses that come together, not the lock: on Postgres it is
+    // createPost's `LOCK posts IN EXCLUSIVE MODE` that puts the second press's look for a free address after the first one's insert)
     const made = await Promise.all([createPost(db, NOW), createPost(db, NOW), createPost(db, NOW)]);
     expect(made.map((p) => p.slug).sort()).toEqual(["uus-postitus", "uus-postitus-2", "uus-postitus-3"]);
     expect(new Set(made.map((p) => p.id)).size).toBe(3);
@@ -166,6 +169,54 @@ describe("a post that is not published saves straight to its row (R-a)", () => {
     expect((await save(id, { slug: "", title: { et: "Kevadine uudis" } })).ok).toBe(true);
     expect((await rowOf(id)).slug).toBe("kevadine-uudis");
     expect(await postDrafts()).toHaveLength(0);
+  });
+});
+
+describe("the address follows the title until the post is first published, unless Maria typed one (R-g)", () => {
+  test("post 2 (`uus-postitus-2`) retitled „Kevad“ gets `kevad`; a title whose address another post has gets `-2`, never a refusal", async () => {
+    await createPost(db, NOW);
+    const b = await createPost(db, NOW);
+    expect(b.slug).toBe("uus-postitus-2");
+    expect(await save(b.id, { title: { et: "Kevad" } })).toMatchObject({ ok: true });
+    expect((await rowOf(b.id)).slug).toBe("kevad");
+    // the editor's read has it (the screen shows the address by the same rule: domain/site-checks.ts slugFollowsTitle)
+    expect((await valueOf(b.id)).slug).toBe("kevad");
+    const [seed] = await seedPosts();
+    const c = await createPost(db, NOW);
+    expect(await save(c.id, { title: { et: seed.title.et } })).toMatchObject({ ok: true });
+    expect((await rowOf(c.id)).slug).toBe(`${seed.slug}-2`);
+    // still following: retitled again, the number goes with the old title
+    expect(await save(c.id, { title: { et: "Talvine uudis" } })).toMatchObject({ ok: true });
+    expect((await rowOf(c.id)).slug).toBe("talvine-uudis");
+    expect(await postDrafts()).toHaveLength(0);
+  });
+
+  test("an address already in the new title's series stays as it is: no number is taken back by a title that makes the same address", async () => {
+    const a = await createPost(db, NOW);
+    const b = await createPost(db, NOW);
+    expect(await deletePost(db, a.id)).toBe(true);
+    expect(await save(b.id, { title: { et: "Uus postitus!" } })).toMatchObject({ ok: true });
+    expect((await rowOf(b.id)).slug).toBe("uus-postitus-2");
+  });
+
+  test("a typed address stays as typed after the title changes; a typed one another post has is refused at the save (ADM:2281)", async () => {
+    const { id } = await createPost(db, NOW);
+    expect(await save(id, { slug: "minu-aadress" })).toMatchObject({ ok: true });
+    expect(await save(id, { title: { et: "Talv" } })).toMatchObject({ ok: true });
+    expect(await rowOf(id)).toMatchObject({ slug: "minu-aadress", title: { et: "Talv" } });
+    // a title and an address sent together: the address is the typed one
+    expect(await save(id, { title: { et: "Kevad" }, slug: "veel-uks" })).toMatchObject({ ok: true });
+    expect((await rowOf(id)).slug).toBe("veel-uks");
+    const [seed] = await seedPosts();
+    expect(await save(id, { slug: seed.slug })).toEqual({ ok: false, error: "invalid", fields: { slug: "slugTaken" } });
+  });
+
+  test("a published post's address never follows: its title's draft keeps the address, and so does its publish", async () => {
+    const [seed] = await seedPosts();
+    expect(await save(seed.id, { title: { et: "Täiesti uus pealkiri", ru: seed.title.ru } })).toMatchObject({ ok: true, version: expect.stringMatching(/^d:/) });
+    expect((await valueOf(seed.id)).slug).toBe(seed.slug);
+    expect(await publishNow(seed.id)).toMatchObject({ published: ["post"], blocked: [] });
+    expect(await rowOf(seed.id)).toMatchObject({ slug: seed.slug, title: { et: "Täiesti uus pealkiri" } });
   });
 });
 
@@ -263,7 +314,9 @@ describe("„Avalda muudatused“ of a published post (publishSite, S4-Q1 A)", (
 
 describe("„Avaldatud“ (switchPostPublished, R-b)", () => {
   test("on, for a post never published: refused without its cover — `kaanepilt`; without the Russian title and text — in S4-22's order; complete, it publishes", async () => {
-    const { id, slug } = await createPost(db, NOW);
+    const { id } = await createPost(db, NOW);
+    // (the address follows the title, R-g)
+    const slug = "sugisene-uudis";
     expect((await save(id, { ...COMPLETE, coverKey: "" })).ok).toBe(true);
     expect(await switchPostPublished(db, id, true, NOW)).toEqual({ ok: false, missing: ["kaanepilt"] });
     expect((await save(id, { coverKey: UPLOAD, title: { et: "Sügisene uudis" }, body: { et: "Esimene lõik." } })).ok).toBe(true);
@@ -330,13 +383,22 @@ describe("„Avaldatud“ (switchPostPublished, R-b)", () => {
     expect(await switchPostPublished(db, 99999, false, NOW)).toEqual({ ok: false, error: "notFound" });
   });
 
-  test("on drops a draft an earlier way of saving left on a hidden post (R-a: such a post holds none), so it never shows up as a change later", async () => {
+  test("a draft an earlier way of saving left on a hidden post is ignored everywhere (R-a): the editor, the list, the preview, the bar's publish; on drops it", async () => {
     const { id } = await createPost(db, NOW);
     expect((await save(id, COMPLETE)).ok).toBe(true);
+    const row = await rowOf(id);
     const base = (await read(id)).parts.post.version.slice(2);
-    expect(await saveDraftPart(db, { entity: "post", entityId: id, part: "post", value: { ...COMPLETE, excerpt: { et: "Vana." } }, baseVersion: base, version: null, by: ADMIN })).toMatchObject({ ok: true });
-    // (a hidden post shows its row, never that draft)
-    expect((await read(id)).parts.post.version).toBe(`l:${base}`);
+    const left = { ...(await valueOf(id)), excerpt: { et: "Vana." } };
+    expect(await saveDraftPart(db, { entity: "post", entityId: id, part: "post", value: left, baseVersion: base, version: null, by: ADMIN })).toMatchObject({ ok: true });
+    // the editor shows the row, never that draft
+    expect((await read(id)).parts.post).toMatchObject({ version: `l:${base}`, value: { excerpt: { et: "" } } });
+    // the list says no change, the preview lays nothing over, the bar's publish publishes and names nothing
+    expect((await listAllPosts(db)).find((p) => p.id === id)).toMatchObject({ changes: false });
+    expect(await withSiteDrafts(db, target(id), "live", () => "drafted")).toBe("live");
+    expect(await publishSite(db, target(id), { post: (await read(id)).parts.post.version })).toEqual({ stamp: expect.any(Number), published: [], blocked: [] });
+    expect(await rowOf(id)).toEqual(row);
+    expect(await postDrafts()).toHaveLength(1);
+    // switched on, the post goes public with its row's text, and the draft is gone: it never shows up as a change later
     expect(await switchPostPublished(db, id, true, NOW)).toEqual({ ok: true, stamp: expect.any(Number) });
     expect(await postDrafts()).toHaveLength(0);
     expect((await rowOf(id)).excerpt).toEqual({ et: "" });
