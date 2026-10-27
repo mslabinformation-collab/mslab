@@ -1,11 +1,12 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { lessonFiles } from "@/db/schema";
+import { PURGE_AFTER_MS } from "@/domain/undo";
 import { logFailure } from "./log";
 import type { FileStore } from "./media";
 
 // The purge of removed lesson files (admin UX pass piece 3a, R-f). A lesson file's „Eemalda“ only sets lesson_files.removed_at, so that the
-// UndoBar (8 s) can bring the file back by clearing it; every reader leaves a marked file out. Once the mark is at least PURGE_AFTER_MS old
+// UndoBar (8 s) can bring the file back by clearing it; every reader leaves a marked file out. Once the mark is at least PURGE_AFTER_MS old (domain/undo.ts)
 // the row and its R2 object go: after each lesson-file action (server/actions/admin-lessons.ts: „Eemalda“ and „Võta tagasi“) and each read of the
 // course editor (app/admin/(panel)/koolitused/[id]/page.tsx), both in `after()` so no answer waits for R2, and by the daily sweep (app/api/cron/sweep)
 // as the backstop for the last removal of a session. 10 s is a minimum: a purge never takes a file whose UndoBar could still be open, and a late
@@ -13,8 +14,6 @@ import type { FileStore } from "./media";
 // goes with the next one. The daily sweep drains instead (drainRemovedLessonFiles, Task 10 review M3): batch after batch until none is due,
 // within PURGE_MAX_BATCHES batches and its deadline, so that a backlog cannot build behind the cap.
 
-/** How old the mark must be before a file is purged: the UndoBar's 8 s and a margin. Never less. */
-export const PURGE_AFTER_MS = 10_000;
 /** The most files one run takes (each is one R2 delete, one after the other): the oldest marks first. */
 export const PURGE_BATCH = 20;
 

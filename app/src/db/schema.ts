@@ -520,6 +520,10 @@ export const reviews = pgTable(
     /** Maria's internal „Kust see pärit on?“, for a manual review only; never shown publicly. */
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * When the row last changed. Every write of a review sets it (a decision, its undo, „Avalehel“, an edit, „Kustuta“ and its undo): the guard of a
+     * decision's „Võta tagasi“ (server/reviews.ts restoreReviewDecision, piece 4c R-a) relies on it, so a write that left it alone could be overwritten.
+     */
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     /** When Maria's „Kustuta“ marked this manual review (piece 4c, R-b); null while it is not removed. Never set on a student's review. */
     removedAt: timestamp("removed_at", { withTimezone: true }),

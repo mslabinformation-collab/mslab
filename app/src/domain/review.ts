@@ -14,6 +14,8 @@ import { FEEDBACK_TEXT_MAX } from "./protocols";
 export type ReviewKind = "student" | "manual";
 /** Waiting for Maria, shown on the public pages, or hidden by her (D2). */
 export type ReviewStatus = "pending" | "published" | "hidden";
+/** Every ReviewStatus, for the checks of what comes from the browser (a decision's undo, piece 4c). */
+export const REVIEW_STATUSES = ["pending", "published", "hidden"] as const satisfies readonly ReviewStatus[];
 
 /** A review's text is the form's answer, so it has the form's limit: one constant. */
 export const REVIEW_TEXT_MAX = FEEDBACK_TEXT_MAX;

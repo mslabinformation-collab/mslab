@@ -2,7 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseModules, courses, lessonFiles, lessons } from "@/db/schema";
-import { deleteDueFiles, drainRemovedLessonFiles, PURGE_AFTER_MS, PURGE_BATCH, PURGE_MAX_BATCHES, purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
+import { PURGE_AFTER_MS } from "@/domain/undo";
+import { deleteDueFiles, drainRemovedLessonFiles, PURGE_BATCH, PURGE_MAX_BATCHES, purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
 import { fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
 

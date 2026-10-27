@@ -626,6 +626,18 @@ describe("piece 4c, R-b: „Kustuta“ on a review Maria added is a soft delete,
     expect((await all()).map((r) => r.id)).toEqual([restored.id, again.id]);
   });
 
+  test("review M-3: a student's review is never purged, even with a mark (forced here: nothing in the code sets one); her withdrawal is the only way it goes", async () => {
+    const { review } = await pendingOf();
+    const { course } = await protocolCourse(db, { slug: "ripsmed", title: { et: "Ripsmed" } });
+    await addReview(course.id, { removedAt: at(-60_000) }); // (Maria's, removed a minute ago: it goes)
+    await db.update(reviews).set({ removedAt: at(-60_000) }).where(eq(reviews.id, review.id));
+    expect(await purgeRemovedReviews(db, LATER)).toBe(1);
+    expect((await all()).map((r) => r.id)).toEqual([review.id]);
+    // (a stale candidate list that names her review does not take it either: the DELETE checks the kind again)
+    expect(await deleteDueReviews(db, sql`select ${reviews.id} from ${reviews} where ${reviews.id} = ${review.id}`, at(-10_000).toISOString())).toEqual([]);
+    expect((await all()).map((r) => r.id)).toEqual([review.id]);
+  });
+
   test("purgeRemovedReviews never throws: a database that fails is logged by class and code, and answers 0", async () => {
     const failing = { delete: () => ({ where: () => ({ returning: () => Promise.reject(Object.assign(new Error("connect ECONNREFUSED db.example.test"), { code: "ECONNREFUSED" })) }) }) };
     expect(await purgeRemovedReviews(failing as never, LATER)).toBe(0);
@@ -736,18 +748,78 @@ describe("piece 4c, R-a: „Võta tagasi“ of „Avalda“ / „Peida“", () =
     expect(await restoreReviewDecision(db, review.id, again.expected, new Date("2026-10-21T10:02:04Z"))).toEqual({ ok: false, error: "changed" });
   });
 
-  test("a review that is gone (the student took her permission back, or Maria's was removed): `gone`", async () => {
+  test("a review that is gone (the student took her permission back, or it never was): `gone`; one of Maria's removed since: `removed` (review M-1)", async () => {
     const { client, review } = await pendingOf();
     const hidden = await decideReview(db, review.id, "hide", HIDDEN_AT);
     if (!hidden.ok) throw new Error("not hidden");
     await withdrawReview(db, client.id, review.id);
     expect(await restoreReviewDecision(db, review.id, hidden.expected, UNDONE_AT)).toEqual({ ok: false, error: "gone" });
+    expect(await restoreReviewDecision(db, 99_999, hidden.expected, UNDONE_AT)).toEqual({ ok: false, error: "gone" });
 
     const { course } = await protocolCourse(db, { slug: "ripsmed", title: { et: "Ripsmed" } });
-    const manual = await addReview(course.id);
+    const manual = await addReview(course.id, { decidedAt: LATER });
     const hiddenManual = await decideReview(db, manual.id, "hide", HIDDEN_AT);
     if (!hiddenManual.ok) throw new Error("not hidden");
     await removeManualReview(db, manual.id, HIDDEN_AT);
+    expect(await restoreReviewDecision(db, manual.id, hiddenManual.expected, UNDONE_AT)).toEqual({ ok: false, error: "removed" });
+    expect(await reviewOf(manual.id)).toMatchObject({ status: "hidden", removedAt: HIDDEN_AT }); // (nothing written)
+    // purged: nothing is left of it, so it is plain `gone`
+    await purgeRemovedReviews(db, new Date(HIDDEN_AT.getTime() + 11_000));
     expect(await restoreReviewDecision(db, manual.id, hiddenManual.expected, UNDONE_AT)).toEqual({ ok: false, error: "gone" });
+  });
+
+  describe("review I-1: a forged `previous` (the browser brings it back) is refused as `changed` and writes nothing", () => {
+    /** The press's real `expected` with `previous` replaced, and the row as the press left it. */
+    async function forge(id: number, decision: "publish" | "hide", previous: Record<string, unknown>) {
+      const done = await decideReview(db, id, decision, HIDDEN_AT);
+      if (!done.ok) throw new Error("not decided");
+      return { expected: { ...done.expected, previous } as never, before: await reviewOf(id) };
+    }
+
+    test("a review Maria added is never put back to `pending` (she adds them published), even with decided_at null", async () => {
+      const { course } = await protocolCourse(db);
+      const manual = await addReview(course.id, { decidedAt: LATER });
+      const { expected, before } = await forge(manual.id, "hide", { status: "pending", decidedAt: null });
+      expect(await restoreReviewDecision(db, manual.id, expected, UNDONE_AT)).toEqual({ ok: false, error: "changed" });
+      expect(await reviewOf(manual.id)).toEqual(before);
+    });
+
+    test("`pending` with a decided_at, and a decided status without one, on a student's review", async () => {
+      const { review } = await pendingOf();
+      for (const previous of [
+        { status: "pending", decidedAt: LATER.toISOString() },
+        { status: "published", decidedAt: null },
+        { status: "hidden", decidedAt: null },
+      ]) {
+        const { expected, before } = await forge(review.id, "hide", previous);
+        expect(await restoreReviewDecision(db, review.id, expected, UNDONE_AT), JSON.stringify(previous)).toEqual({ ok: false, error: "changed" });
+        expect(await reviewOf(review.id), JSON.stringify(previous)).toEqual(before);
+      }
+    });
+
+    test("a decided_at later than the press, or one that is no time", async () => {
+      const { review } = await pendingOf();
+      for (const decidedAt of [new Date(HIDDEN_AT.getTime() + 1).toISOString(), "2099-01-01T00:00:00.000Z", "soon"]) {
+        const { expected, before } = await forge(review.id, "hide", { status: "published", decidedAt });
+        expect(await restoreReviewDecision(db, review.id, expected, UNDONE_AT), decidedAt).toEqual({ ok: false, error: "changed" });
+        expect(await reviewOf(review.id), decidedAt).toEqual(before);
+      }
+    });
+
+    test("a status that is none", async () => {
+      const { review } = await pendingOf();
+      for (const status of ["removed", "", "PUBLISHED"]) {
+        const { expected, before } = await forge(review.id, "publish", { status, decidedAt: LATER.toISOString() });
+        expect(await restoreReviewDecision(db, review.id, expected, UNDONE_AT), status).toEqual({ ok: false, error: "changed" });
+        expect(await reviewOf(review.id), status).toEqual(before);
+      }
+    });
+
+    test("what passes is a state Maria could have made herself: a decided status with a decided_at no later than the press", async () => {
+      const { review } = await pendingOf();
+      const { expected } = await forge(review.id, "hide", { status: "published", decidedAt: HIDDEN_AT.toISOString() });
+      expect(await restoreReviewDecision(db, review.id, expected, UNDONE_AT)).toMatchObject({ ok: true });
+      expect(await reviewOf(review.id)).toMatchObject({ status: "published", decidedAt: HIDDEN_AT });
+    });
   });
 });

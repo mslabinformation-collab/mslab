@@ -3,6 +3,7 @@ import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UndoProvider, useUndo } from "@/components/admin/UndoBar";
+import { PURGE_AFTER_MS, UNDO_LASTS_MS } from "@/domain/undo";
 import { adminEt } from "@/i18n/dict/admin";
 
 // UndoBar (admin UX pass, README §1.7, screens §2.5): "{Mis juhtus}." + „Võta tagasi“ for 8 s after a reversible one-tap action. One bar at a
@@ -59,6 +60,14 @@ afterEach(async () => {
   document.querySelectorAll("dialog").forEach((d) => d.remove());
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("the bar's time and the purges' minimum (domain/undo.ts, piece 4c review M-2)", () => {
+  it("8 s on offer; a soft delete is purged 10 s after the tap at the earliest, so never while its bar can still be pressed", () => {
+    expect(UNDO_LASTS_MS).toBe(8000);
+    expect(PURGE_AFTER_MS).toBe(10_000);
+    expect(PURGE_AFTER_MS).toBeGreaterThan(UNDO_LASTS_MS);
+  });
 });
 
 describe("UndoBar", () => {

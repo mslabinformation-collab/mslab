@@ -2,11 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { UNDO_LASTS_MS } from "@/domain/undo";
 import { adminEt } from "@/i18n/dict/admin";
 import styles from "./UndoBar.module.css";
 
-/** How long „Võta tagasi“ is on offer. The server purges a soft-deleted thing 10 s after the tap (README §1.7, B5), so this is shorter. */
-const LASTS_MS = 8000;
+/** How long „Võta tagasi“ is on offer. The server purges a soft-deleted thing 10 s after the tap (README §1.7, B5; domain/undo.ts PURGE_AFTER_MS), so this is shorter. */
+const LASTS_MS = UNDO_LASTS_MS;
 
 export type UndoOffer = {
   /** What happened, as a sentence with its full stop: „Pilt eemaldatud.“ */

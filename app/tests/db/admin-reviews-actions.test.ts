@@ -17,10 +17,15 @@ import { contactStudent, RECOMMEND, submit } from "./reviews-fixtures";
 // undo is refused when the review moved since (R-a, Review Focus 1); „Kustuta“ is a soft delete with its own undo, and the purge of what is due runs
 // after the answer (R-b).
 
-const state = vi.hoisted(() => ({ db: null as unknown, after: [] as (() => Promise<void>)[] }));
+const state = vi.hoisted(() => ({ db: null as unknown, after: [] as (() => Promise<void>)[], dbThrows: false }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
-vi.mock("@/db/client", () => ({ getDb: () => state.db }));
+vi.mock("@/db/client", () => ({
+  getDb: () => {
+    if (state.dbThrows) throw new Error("DATABASE_URL is not set"); // (the database's setup failing: getDb itself throws)
+    return state.db;
+  },
+}));
 vi.mock("next/cache", () => cache);
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: (fn: () => Promise<void>) => void state.after.push(fn) }));
 vi.mock("@/server/public-cache", () => pub);
@@ -35,6 +40,7 @@ beforeEach(async () => {
   db = await makeTestDb();
   state.db = db;
   state.after = [];
+  state.dbThrows = false;
   cache.refresh.mockReset();
   pub.revalidatePublic.mockReset();
   const spies = (["info", "warn", "error"] as const).map((method) => vi.spyOn(console, method).mockImplementation(() => {}));
@@ -362,6 +368,36 @@ describe("piece 4c, R-a: undoDecisionAction, „Võta tagasi“ of „Avalda“ 
     expect(cache.refresh).toHaveBeenCalledTimes(1);
   });
 
+  test("review M-1: a review Maria added and removed since the press is `manualGone` in her words, not the student's; the page refreshed, nothing written", async () => {
+    const { course } = await protocolCourse(db);
+    const added = await actions.saveManualReviewAction(form(course.id));
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    const expected = await decided(added.id, "hide");
+    await actions.removeReviewAction({ id: added.id }); // (another tab)
+    const before = await reviewOf(added.id);
+    pub.revalidatePublic.mockClear();
+    cache.refresh.mockClear();
+    expect(await actions.undoDecisionAction({ id: added.id, expected })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
+    expect(E.manualGone).toBe("Seda arvustust enam pole.");
+    expect(await reviewOf(added.id)).toEqual(before);
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("a forged `previous` (review I-1: a review Maria added put back to `pending`) is S4-38's `changed`, and writes nothing", async () => {
+    const { course } = await protocolCourse(db);
+    const added = await actions.saveManualReviewAction(form(course.id));
+    if (!added.ok || !("id" in added)) throw new Error("not added");
+    const expected = await decided(added.id, "hide");
+    const before = await reviewOf(added.id);
+    expect(await actions.undoDecisionAction({ id: added.id, expected: { ...expected, previous: { status: "pending", decidedAt: null } } })).toEqual({
+      ok: false,
+      error: "changed",
+      text: E.changed,
+    });
+    expect(await reviewOf(added.id)).toEqual(before);
+  });
+
   test("an undo the page never sends is `gone` without touching anything: a bad id, a status that is none, an instant that is none, a missing part", async () => {
     const { review } = await pendingOf();
     const expected = await decided(review.id, "hide");
@@ -427,6 +463,15 @@ describe("piece 4c, R-b: removeReviewAction and undoRemoveReviewAction, „Kustu
     expect(await all()).toHaveLength(2);
     await runAfter();
     expect((await all()).map((r) => r.id)).toEqual([id]);
+  });
+
+  test("review M-5: a purge after the answer that fails (here the database's setup) is logged by its class, never thrown", async () => {
+    const { id } = await added();
+    await actions.removeReviewAction({ id });
+    state.dbThrows = true;
+    await expect(runAfter()).resolves.toBeUndefined();
+    expect(logged()).toContain("[reviews] the removed reviews' purge failed: Error");
+    expect(logged()).not.toContain("DATABASE_URL");
   });
 
   test("„Võta tagasi“ within the UndoBar's time brings it back; its course's pages are revalidated once, then the page refreshes", async () => {

@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import type { DecisionExpected, ManualReviewInput } from "@/domain/review";
+import { REVIEW_STATUSES, type DecisionExpected, type ManualReviewInput } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
@@ -34,7 +34,7 @@ const featuredInput = z.object({ id: rowId, featured: z.boolean() });
 const idOnly = z.object({ id: rowId });
 /** The form's `id`: null for „Lisa arvustus“, the review's row id for „Muuda“. The fields are checked by saveManualReview (domain/review.ts). */
 const saveTarget = z.object({ id: rowId.nullable() });
-const reviewStatus = z.enum(["pending", "published", "hidden"]);
+const reviewStatus = z.enum(REVIEW_STATUSES);
 /** What decideReviewAction answered as `expected` (domain/review.ts DecisionExpected), sent back by its „Võta tagasi“. */
 const undoInput = z.object({
   id: rowId,
@@ -74,8 +74,9 @@ export const decideReviewAction = adminAction(async (_admin, input: { id: number
 /**
  * „Võta tagasi“ of „Avalda“ / „Peida“ (piece 4c, R-a): `{ id, expected }`, the `expected` that decision answered. The status and `decided_at` of
  * the moment before the press come back. Done: `{ ok: true }`. `changed`: the review moved since the press (another tab decided it, „Avalehel“, an
- * edit), S4-38's words, nothing overwritten; `gone`: it is not there any more. Both refresh the page, so that the row shows what it is now. An
- * undo the page never sends is `gone` without a read.
+ * edit; or a `previous` no press replaced), S4-38's words, nothing overwritten; `manualGone`: a review Maria added and removed since (review M-1);
+ * `gone`: it is not there any more. Each refreshes the page, so that the row shows what it is now. An undo the page never sends is `gone` without a
+ * read.
  */
 export const undoDecisionAction = adminAction(async (_admin, input: { id: number; expected: DecisionExpected }) => {
   const parsed = undoInput.safeParse(input);
@@ -90,7 +91,7 @@ export const undoDecisionAction = adminAction(async (_admin, input: { id: number
   }
   if (!result.ok) {
     refresh();
-    return fail(result.error);
+    return fail(result.error === "removed" ? "manualGone" : result.error);
   }
   changed(result.courseSlug);
   return { ok: true as const };
@@ -169,10 +170,24 @@ export const deleteManualReviewAction = adminAction(async (_admin, input: { id: 
 });
 
 /**
- * The purge of the reviews removed 10 s ago and more (server/review-purge.ts, R-b), once the answer has gone: „Kustuta“ never waits for it. It never
- * throws (a failing database is logged there and counts 0), and it never takes the review just removed: its mark is younger than 10 s.
+ * What comes after a stored change runs once the answer has gone (`after`), and never throws: whatever fails is logged here (the shape of the lesson
+ * actions' afterwards, server/actions/admin-lessons.ts; review M-5).
  */
-const purgeAfter = () => after(async () => void (await purgeRemovedReviews(getDb(), new Date())));
+function afterwards(what: string, work: () => Promise<void>): void {
+  after(async () => {
+    try {
+      await work();
+    } catch (e) {
+      logFailure(`[reviews] ${what} failed`, e);
+    }
+  });
+}
+
+/**
+ * The purge of the reviews removed 10 s ago and more (server/review-purge.ts, R-b), once the answer has gone: „Kustuta“ never waits for it. It never
+ * takes the review just removed: its mark is younger than 10 s.
+ */
+const purgeAfter = () => afterwards("the removed reviews' purge", async () => void (await purgeRemovedReviews(getDb(), new Date())));
 
 /**
  * „Kustuta“ on a review Maria added (piece 4c, R-b): `{ id }`. The review is only marked (server/reviews.ts removeManualReview), so the page puts up

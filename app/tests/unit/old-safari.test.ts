@@ -143,6 +143,8 @@ const BROWSER_FILES = [
   "src/domain/field-check.ts",
   // piece 4b, Task 2 review m4: Uudised' list address with its search and a post's day as the row and the footer write it (pure; the admin dict)
   "src/components/admin/news/news-view.ts",
+  // piece 4c, Task 1 review M-2: the UndoBar's time and the purges' minimum as one fact (pure, imports nothing; the bar runs it in the browser)
+  "src/domain/undo.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

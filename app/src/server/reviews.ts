@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "
 import type { Db, Q, Tx } from "@/db/client";
 import { courseAccess, courseFeedback, courses, protocols, registrations, reviews } from "@/db/schema";
 import { tallinnInstant } from "@/domain/calendar";
-import { checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, type DecisionExpected, type ReviewKind, type ReviewStatus } from "@/domain/review";
+import { checkManualReview, COURSE_REVIEWS_MAX, HOME_REVIEWS_MAX, REVIEW_STATUSES, type DecisionExpected, type ReviewKind, type ReviewStatus } from "@/domain/review";
 import type { I18n } from "@/i18n/field";
 
 // The student reviews (spec §2, §4, §5), without Next.js: the student's withdrawal, Maria's decisions and her own reviews, the admin's list, and the
@@ -124,25 +124,54 @@ export async function decideReview(
 }
 
 /**
+ * Whether `expected.previous` is a state a review of `kind` can have been in before that press (piece 4c, Task 1 review I-1): the browser brings it
+ * back, so it is checked before it is written. A real status; never `pending` for a review Maria added (she adds them published); `decided_at`
+ * null exactly while `pending`; and a `decided_at` that is a time no later than the press. What passes is a state Maria could have made herself.
+ */
+function possibleBefore(kind: ReviewKind, expected: DecisionExpected): boolean {
+  const { status, decidedAt } = expected.previous;
+  if (!(REVIEW_STATUSES as readonly string[]).includes(status)) return false;
+  if (kind === "manual" && status === "pending") return false;
+  if ((status === "pending") !== (decidedAt === null)) return false;
+  if (decidedAt === null) return true;
+  const at = Date.parse(decidedAt);
+  return Number.isFinite(at) && at <= Date.parse(expected.updatedAt);
+}
+
+/**
  * „Võta tagasi“ of „Avalda“ or „Peida“ (piece 4c, R-a): the status and `decided_at` the press replaced (`expected.previous`) are put back, while the
  * review is still as that press left it: its status and its `updated_at` are `expected`'s. Anything since (a decision in another tab, the same
- * press again, „Avalehel“, an edit) is `changed`, and nothing is written: the bar says S4-38's „Arvustust muudeti vahepeal. Vaata see üle.“.
- * `featured` is not touched (a decision never changes it). `gone`: the review is not there (any more), or Maria removed it. Under the row's lock,
- * so that two undos, or an undo and a decision, queue.
+ * press again, „Avalehel“, an edit) is `changed`, and nothing is written: the bar says S4-38's „Arvustust muudeti vahepeal. Vaata see üle.“. A
+ * `previous` no press can have replaced (possibleBefore: a forged one) is `changed` too, and writes nothing. `featured` is not touched (a decision
+ * never changes it). `removed`: it is a review Maria added and removed since (review M-1: the action answers in her words, not the student's);
+ * `gone`: the review is not there (any more). Under the row's lock, so that two undos, or an undo and a decision, queue.
  */
-export async function restoreReviewDecision(db: Db, id: number, expected: DecisionExpected, now: Date): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "changed" }> {
+export async function restoreReviewDecision(
+  db: Db,
+  id: number,
+  expected: DecisionExpected,
+  now: Date,
+): Promise<{ ok: true; courseSlug: string } | { ok: false; error: "gone" | "removed" | "changed" }> {
   const { previous } = expected;
   const result = await db.transaction(async (tx) => {
     const row = await lockReview(tx, id);
-    if (!row) return "gone" as const;
+    if (!row) {
+      // (a light read: is it one of Maria's, removed and not purged yet?)
+      const [removed] = await tx
+        .select({ id: reviews.id })
+        .from(reviews)
+        .where(and(eq(reviews.id, id), eq(reviews.kind, "manual"), isNotNull(reviews.removedAt)));
+      return removed ? ("removed" as const) : ("gone" as const);
+    }
     if (row.status !== expected.status || row.updatedAt.getTime() !== Date.parse(expected.updatedAt)) return "changed" as const;
+    if (!possibleBefore(row.kind, expected)) return "changed" as const;
     await tx
       .update(reviews)
       .set({ status: previous.status, decidedAt: previous.decidedAt === null ? null : new Date(previous.decidedAt), updatedAt: now })
       .where(eq(reviews.id, id));
     return { slug: row.slug };
   });
-  if (result === "gone" || result === "changed") return { ok: false, error: result };
+  if (result === "gone" || result === "removed" || result === "changed") return { ok: false, error: result };
   log(id, `back to ${previous.status}`);
   return { ok: true, courseSlug: result.slug };
 }
