@@ -502,10 +502,14 @@ export const trainerWorks: SeedImage[] = [
   { key: img("maria-standing.jpg"), alt: t("Koolitaja Maria Sosnina", "Преподаватель Мария Соснина") },
 ];
 
-// ---------- campaign popup (prototype D CAMP_DEFAULT; CTA wording M4) ----------
+// ---------- the popups (prototype D CAMP_DEFAULT; CTA wording M4; phase 2c) ----------
 
+/**
+ * The old campaign offer (row 1): switched off. Since admin UX pass piece 4b no screen edits it and the site never shows it (spec D3, ruling R-d); the
+ * row stays, as it is on the live database.
+ */
 export const campaignSeed: CampaignInput = {
-  active: true,
+  active: false,
   kicker: t("Talvine pakkumine", "Зимнее предложение"),
   title: t("−15% Lash Lift BOTOX koolitusele", "−15% на курс Lash Lift BOTOX"),
   text: t("Kehtib registreerumisel kuni 30.11. Sisesta kood ostukorvis.", "Действует при регистрации до 30.11. Введите код в корзине."),
@@ -515,9 +519,9 @@ export const campaignSeed: CampaignInput = {
   imageKey: img("lash-editorial.jpg"),
 };
 
-/** The newsletter popup (phase 2c): switched off; the same row the migration adds, for a database the seed resets. */
+/** The newsletter popup (phase 2c), the home page's one popup (piece 4b, D3): shown; the row the migration adds, for a database the seed resets. */
 export const newsletterPopupSeed: CampaignInput = {
-  active: false,
+  active: true,
   kicker: t("MS LABi kirjad", "Письма MS LAB"),
   title: t("Hea järgmine samm. Otse sinu postkasti.", "Ваш следующий шаг. В вашем почтовом ящике."),
   text: t("Uued koolitused, kasulikud mõtted ja tervitussoodustus sinu esimesele koolitusele.", "Новые курсы, полезные идеи и приветственная скидка на первый курс."),

@@ -1,78 +1,69 @@
 import { describe, expect, test } from "vitest";
-import { campaignCtaLabel, campaignDelay, campaignView, CAMPAIGN_DELAY_MS, CAMPAIGN_SEEN_KEY, NEWSLETTER_LANDING_PARAM, NEWSLETTER_SIGNED_KEY, newsletterLanding, newsletterPopupView, popupFlags, popupShown } from "@/domain/campaign";
+import { NEWSLETTER_LANDING_PARAM, NEWSLETTER_SIGNED_KEY, newsletterLanding, newsletterPopupView, POPUP_DELAY_MS, POPUP_SEEN_KEY, popupDelay, popupDue, popupSeenWithin } from "@/domain/campaign";
 import type { Campaign } from "@/db/schema";
-import { et } from "@/i18n/dict/et";
-import { ru } from "@/i18n/dict/ru";
+
+// The home page's popup (admin UX pass piece 4b, Task 4; ruling R-e, builder notes §5; spec D3): one popup, the newsletter sign-up (row 2). It opens on
+// the home page only, 8 s after the page appears, once in 30 days per browser (a localStorage stamp), never again in a browser that signed up; the
+// admin's draft preview skips the time and the stamp.
+
+const DAY = 86_400_000;
+const NOW = Date.UTC(2026, 9, 27, 9, 0, 0);
 
 const row = (patch: Partial<Campaign> = {}): Campaign => ({
-  id: 1,
+  id: 2,
   active: true,
-  kind: "campaign",
-  kicker: { et: "Talvine pakkumine" },
-  title: { et: "−15% Lash Lift BOTOX koolitusele", ru: "−15% на курс Lash Lift BOTOX" },
-  text: { et: "Kehtib registreerumisel kuni 30.11." },
-  code: " TALV15 ",
-  ctaLabel: { et: "Leia enda koolitus" },
-  ctaHref: "/koolitused/lash-lift-botox",
+  kind: "newsletter",
+  kicker: { et: "MS LABi kirjad", ru: "Письма MS LAB" },
+  title: { et: "Hea järgmine samm.", ru: "Ваш следующий шаг." },
+  text: { et: "Tekst" },
+  code: "",
+  ctaLabel: { et: "" },
+  ctaHref: "",
   imageKey: "img/0b6f3b7e-2c4d-4f7a-9a59-3d7c2f1e8a10.jpg",
   ...patch,
 });
 
-describe("campaign popup", () => {
-  test("the session key and the delay are the ones Maria saw in D", () => {
-    expect(CAMPAIGN_SEEN_KEY).toBe("mslab-camp");
-    expect(CAMPAIGN_DELAY_MS).toBe(6000);
+describe("when the popup opens (R-e)", () => {
+  test("8 s after the page appears, unless a test page sets its own delay (a finite number of ms, 0 or more)", () => {
+    expect(POPUP_DELAY_MS).toBe(8000);
+    expect(popupDelay(undefined)).toBe(8000);
+    expect(popupDelay(250)).toBe(250);
+    expect(popupDelay(0)).toBe(0);
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, "300", null, {}]) expect(popupDelay(bad), String(bad)).toBe(8000);
   });
 
-  test("the button text: the admin's own text, else the dictionary's 'Leia enda koolitus' in the page's language (M4)", () => {
-    expect(campaignCtaLabel({ et: "Leia enda koolitus" }, "et", et.campaign.cta)).toBe("Leia enda koolitus");
-    expect(campaignCtaLabel({ et: "Leia enda koolitus" }, "ru", ru.campaign.cta)).toBe("Найти свой курс");
-    expect(campaignCtaLabel({ et: "" }, "et", et.campaign.cta)).toBe("Leia enda koolitus");
-    expect(campaignCtaLabel({ et: "  " }, "ru", ru.campaign.cta)).toBe("Найти свой курс");
-    expect(campaignCtaLabel(null, "ru", ru.campaign.cta)).toBe("Найти свой курс");
-    // her own wording wins; without a Russian one the Estonian text is shown (content falls back to et)
-    expect(campaignCtaLabel({ et: "Vaata pakkumist" }, "et", et.campaign.cta)).toBe("Vaata pakkumist");
-    expect(campaignCtaLabel({ et: "Vaata pakkumist" }, "ru", ru.campaign.cta)).toBe("Vaata pakkumist");
-    expect(campaignCtaLabel({ et: "Vaata pakkumist", ru: "Смотреть" }, "ru", ru.campaign.cta)).toBe("Смотреть");
-    expect(campaignCtaLabel({ et: "Leia enda koolitus", ru: " " }, "ru", ru.campaign.cta)).toBe("Найти свой курс");
+  test("seen within 30 days is read from the localStorage stamp: the time it was shown, in ms; a stamp of any other shape is none", () => {
+    expect(POPUP_SEEN_KEY).toBe("mslab-popup");
+    expect(popupSeenWithin(String(NOW), NOW)).toBe(true);
+    expect(popupSeenWithin(String(NOW - 29 * DAY), NOW)).toBe(true);
+    expect(popupSeenWithin(String(NOW - 30 * DAY + 1), NOW)).toBe(true);
+    expect(popupSeenWithin(String(NOW - 30 * DAY), NOW)).toBe(false); // 30 days on: due again
+    expect(popupSeenWithin(String(NOW - 400 * DAY), NOW)).toBe(false);
+    // no stamp, the old session key's "1" (once per visit, 6 s: no longer the rule) and anything else that is not a time
+    for (const none of [null, "", "1", "abc", "-5", "12.5", " 1730000000000", "1e12"]) expect(popupSeenWithin(none, NOW), String(none)).toBe(false);
+    // a stamp from the future (the clock was set back): not seen, so the popup is not held back for longer than 30 days
+    expect(popupSeenWithin(String(NOW + DAY), NOW)).toBe(false);
   });
 
-  test("the card from the stored row: texts in the page's language, the R2 picture through /media, the code trimmed", () => {
-    expect(campaignView(row(), "et", et.campaign.cta)).toEqual({
-      image: "/media/img/0b6f3b7e-2c4d-4f7a-9a59-3d7c2f1e8a10.jpg",
-      kicker: "Talvine pakkumine",
-      title: "−15% Lash Lift BOTOX koolitusele",
-      text: "Kehtib registreerumisel kuni 30.11.",
-      code: "TALV15",
-      ctaLabel: "Leia enda koolitus",
-      ctaHref: "/koolitused/lash-lift-botox",
-    });
-    const r = campaignView(row({ imageKey: "/seed/lash-editorial.jpg" }), "ru", ru.campaign.cta)!;
-    expect(r.title).toBe("−15% на курс Lash Lift BOTOX");
-    expect(r.kicker).toBe("Talvine pakkumine"); // no Russian text: Estonian
-    expect(r.ctaLabel).toBe("Найти свой курс");
-    expect(r.image).toBe("/seed/lash-editorial.jpg");
+  test("due: not seen within 30 days and not signed up here; a browser that signed up never sees it", () => {
+    expect(NEWSLETTER_SIGNED_KEY).toBe("mslab-nl");
+    expect(popupDue({ seen: null, signed: null }, NOW)).toBe(true);
+    expect(popupDue({ seen: String(NOW - 31 * DAY), signed: null }, NOW)).toBe(true);
+    expect(popupDue({ seen: String(NOW - DAY), signed: null }, NOW)).toBe(false);
+    expect(popupDue({ seen: null, signed: "1" }, NOW)).toBe(false);
+    expect(popupDue({ seen: String(NOW - 400 * DAY), signed: "1" }, NOW)).toBe(false);
   });
 
-  test("no popup for a switched-off campaign, a missing row or one without a title", () => {
-    expect(campaignView(null, "et", et.campaign.cta)).toBeNull();
-    expect(campaignView(row({ active: false }), "et", et.campaign.cta)).toBeNull();
-    expect(campaignView(row({ title: { et: "  " } }), "ru", ru.campaign.cta)).toBeNull();
-  });
-
-  test("the delay: 6 s unless a test page sets its own (a finite number of ms, 0 or more)", () => {
-    expect(campaignDelay(undefined)).toBe(6000);
-    expect(campaignDelay(250)).toBe(250);
-    expect(campaignDelay(0)).toBe(0);
-    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, "300", null, {}]) expect(campaignDelay(bad), String(bad)).toBe(6000);
+  test("the admin's draft preview skips the stamp, not the sign-up: shown seen or not, never in a browser that signed up", () => {
+    expect(popupDue({ seen: String(NOW - DAY), signed: null }, NOW, { preview: true })).toBe(true);
+    expect(popupDue({ seen: String(NOW), signed: null }, NOW, { preview: true })).toBe(true);
+    expect(popupDue({ seen: null, signed: "1" }, NOW, { preview: true })).toBe(false);
   });
 });
 
-describe("the newsletter popup (phase 2c)", () => {
-  const nl = (over: Partial<Campaign> = {}): Campaign => ({ ...row(), id: 2, kind: "newsletter", code: "", ctaLabel: { et: "" }, ctaHref: "", ...over });
-
-  test("its card: the picture, kicker, title and text in the page's language (no code, no button)", () => {
-    expect(newsletterPopupView(nl({ kicker: { et: "MS LABi kirjad", ru: "Письма MS LAB" }, title: { et: "Hea järgmine samm.", ru: "Ваш следующий шаг." }, text: { et: "Tekst" } }), "ru")).toEqual({
+describe("the popup's card (R-d: the newsletter row only)", () => {
+  test("the picture, kicker, title and text in the page's language (no code, no button)", () => {
+    expect(newsletterPopupView(row(), "ru")).toEqual({
       image: "/media/img/0b6f3b7e-2c4d-4f7a-9a59-3d7c2f1e8a10.jpg",
       kicker: "Письма MS LAB",
       title: "Ваш следующий шаг.",
@@ -80,16 +71,11 @@ describe("the newsletter popup (phase 2c)", () => {
     });
   });
 
-  test("none for a switched-off row, a missing one, one without a title, or the campaign's row; and the campaign card is never the newsletter's", () => {
-    expect(newsletterPopupView(nl({ active: false }), "et")).toBeNull();
+  test("none for a switched-off row, a missing one, one without a title, or the old campaign offer's row (kind campaign, row 1), active or not", () => {
+    expect(newsletterPopupView(row({ active: false }), "et")).toBeNull();
     expect(newsletterPopupView(null, "et")).toBeNull();
-    expect(newsletterPopupView(nl({ title: { et: " " } }), "et")).toBeNull();
-    expect(newsletterPopupView(row(), "et")).toBeNull();
-    expect(campaignView(nl(), "et", et.campaign.cta)).toBeNull();
-  });
-
-  test("a sign-up from the popup is remembered under its own key", () => {
-    expect(NEWSLETTER_SIGNED_KEY).toBe("mslab-nl");
+    expect(newsletterPopupView(row({ title: { et: " " } }), "et")).toBeNull();
+    expect(newsletterPopupView(row({ id: 1, kind: "campaign", code: "TALV15" }), "et")).toBeNull();
   });
 
   test("the confirmation link's landing: ?uudiskiri= with any value, an empty one too, is a landing; no parameter is not", () => {
@@ -101,20 +87,5 @@ describe("the newsletter popup (phase 2c)", () => {
     expect(newsletterLanding("")).toBeNull();
     expect(newsletterLanding("?utm_source=x")).toBeNull();
     expect(newsletterLanding("?Uudiskiri=kinnitatud")).toBeNull(); // the parameter is spelt as FlashNotice spells it
-  });
-});
-
-describe("Lehel näidatakse: one popup or none (phase 2c)", () => {
-  test("the choice from the two rows' flags (both on cannot be stored; the campaign wins if it ever were)", () => {
-    expect(popupShown(true, false)).toBe("campaign");
-    expect(popupShown(false, true)).toBe("newsletter");
-    expect(popupShown(false, false)).toBe("off");
-    expect(popupShown(true, true)).toBe("campaign");
-  });
-
-  test("the flags for a choice: at most one on", () => {
-    expect(popupFlags("campaign")).toEqual({ campaign: true, newsletter: false });
-    expect(popupFlags("newsletter")).toEqual({ campaign: false, newsletter: true });
-    expect(popupFlags("off")).toEqual({ campaign: false, newsletter: false });
   });
 });

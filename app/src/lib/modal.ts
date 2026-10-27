@@ -1,8 +1,11 @@
 // What the site's modal dialogs share (the image lightbox, the campaign popup, the phone menu; the admin side menu):
 // keeping Tab inside, and keeping the page behind still.
 
-/** The elements a modal moves the focus between. */
-export const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/**
+ * The elements a modal moves the focus between: what Tab reaches — not a hidden input, nor anything taken out of the tab order (tabindex -1: the
+ * newsletter form's honeypot field, which people never see or fill, in the home page's popup).
+ */
+export const FOCUSABLE = 'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
 
 type TabKey = { key: string; shiftKey: boolean; preventDefault(): void };
 

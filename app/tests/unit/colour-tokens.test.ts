@@ -68,9 +68,9 @@ const COURSE_CSS = [
   // Hindamine and the test review (e-course completion)
   "src/app/admin/(panel)/hindamine/assessment.module.css",
   "src/components/admin/TestReview.module.css",
-  // the site's modal dialog (the campaign popup and the account's change request)
+  // the site's modal dialog (the home page's popup and the account's change request)
   "src/components/ui/modal.module.css",
-  "src/components/site/CampaignPopup.module.css",
+  "src/components/site/PopupDialog.module.css",
   // the course editor's "Teadmiste test" (e-course completion, Task 3)
   "src/components/admin/TestEditor.module.css",
   // Maria's assessment screen and its photo viewer (phase e-course completion, Task 11)

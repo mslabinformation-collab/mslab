@@ -375,6 +375,9 @@ export const et = {
     sentText: "Saatsime sulle tervituskirja.",
     // the newsletter popup's answer after a sign-up (components/site/NewsletterPopup.tsx, phase 2c): title and line in one
     popupSent: "Aitäh, oled liitunud! Saatsime sulle tervituskirja.",
+    // the newsletter popup's button while Seaded has a welcome code (admin UX pass piece 4b, S4-Q4 A: one will come in the welcome mail); without
+    // one it is `submit`, as the footer's form always is (components/site/NewsletterPopupCard.tsx popupFormTexts)
+    popupSubmitCode: "Saa kood",
     // Home page notice after the unsubscribe link of the welcome mail (/?uudiskiri=loobutud).
     unsubscribedTitle: "Oled uudiskirjast loobunud.",
     unsubscribedText: "Me ei saada sulle enam MS LABi uudiskirja.",
@@ -481,16 +484,6 @@ export const et = {
       // the payment's invoice is attached as a PDF (invoices, spec §4: verbatim)
       invoiceAttached: "Arve on lisatud.",
     },
-  },
-
-  // Campaign popup. No "Mitte praegu" button (M3); the CTA label is editable in admin, this is the default (M4).
-  campaign: {
-    cta: "Leia enda koolitus",
-    codeLabel: "Sooduskood",
-    copy: "Kopeeri",
-    copied: "Kopeeritud",
-    // when the browser gives no clipboard: the code is selected for the visitor to copy
-    selected: "Kood on märgitud.",
   },
 
   common: {

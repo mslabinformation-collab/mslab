@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BlogCarousel } from "@/components/site/BlogCarousel";
-import { CampaignPopup } from "@/components/site/CampaignPopup";
 import { ContactBlock } from "@/components/site/ContactBlock";
 import { CourseCard } from "@/components/site/CourseCard";
 import { courseCardData } from "@/components/site/course-card-data";
@@ -12,6 +11,7 @@ import { FormatsBlock, type FormatTab } from "@/components/site/FormatsBlock";
 import { Hero, type HeroSlideView } from "@/components/site/Hero";
 import { Icon } from "@/components/site/Icon";
 import { NewsletterPopup } from "@/components/site/NewsletterPopup";
+import { popupFormTexts } from "@/components/site/NewsletterPopupCard";
 import { PracticeBlock } from "@/components/site/PracticeBlock";
 import { PreviewBar } from "@/components/site/PreviewBar";
 import { ReviewList } from "@/components/site/ReviewList";
@@ -22,10 +22,11 @@ import { UpcomingStrip } from "@/components/site/UpcomingStrip";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getHomeData, listUpcomingSessions } from "@/db/queries/public";
-import { campaignView, NEWSLETTER_LANDING_PARAM, newsletterPopupView } from "@/domain/campaign";
+import { NEWSLETTER_LANDING_PARAM, newsletterPopupView } from "@/domain/campaign";
 import { firstParagraph, nextSessionByCourse, nextSessions, pickHomeCourses } from "@/domain/home";
 import { linkFor } from "@/domain/site-editor";
 import { formatEUR } from "@/domain/money";
+import { welcomeCodeOf } from "@/domain/welcome-code";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
@@ -67,7 +68,8 @@ export default async function Home({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  // the signed-in admin's draft preview (api/admin/eelvaade; piece 4a, R-f) shows the drafts of the home page, the trainer and the packages: previewActive()
+  // the signed-in admin's draft preview (api/admin/eelvaade; piece 4a, R-f) shows the drafts of the home page, the trainer, the packages, the posts and
+  // the popup (piece 4b): previewActive()
   // is false, with no cookie read, for every visitor and for the static render, so the page stays the one cached by revalidation
   const drafts = await previewActive();
   const [home, sessions, reviews] = await Promise.all([getHomeData(db, { drafts }), listUpcomingSessions(db, upcomingFrom(new Date())), homeReviews(db)]);
@@ -97,10 +99,10 @@ export default async function Home({ params }: Props) {
     { key: "h", name: f.hybrid.name, question: f.hybrid.question, definition: f.hybrid.definition },
   ];
 
-  // The home page's popup (Task 14; phase 2c): the one the admin shows, the campaign or the newsletter sign-up; none when off.
-  // This page is / and /ru, the only pages that show it.
-  const campaign = campaignView(home.popup, locale, d.campaign.cta);
+  // The home page's popup (phase 2c; admin UX pass piece 4b, D3, R-d): the newsletter sign-up, while Hüpikaken's „Lehel näidatakse“ is on; none when
+  // off. This page is / and /ru, the only pages that show it (R-e). Its button follows Seaded's welcome code (S4-Q4): „Saa kood“ while there is one.
   const newsletterPopup = newsletterPopupView(home.popup, locale);
+  const welcomeCode = welcomeCodeOf(home.settings.newsletter) !== "";
 
   const statement = home.pages.statement;
   const bio = home.pages.trainer_bio;
@@ -272,31 +274,8 @@ export default async function Home({ params }: Props) {
 
       <FlashNotice param={NEWSLETTER_LANDING_PARAM} notices={newsletterNotices} fragments={accountNotices} closeLabel={d.common.close} />
 
-      {campaign && (
-        <CampaignPopup c={campaign} locale={locale} t={{ close: d.common.close, copy: d.campaign.copy, copied: d.campaign.copied, selected: d.campaign.selected }} />
-      )}
-
-      {newsletterPopup && (
-        <NewsletterPopup
-          n={newsletterPopup}
-          locale={locale}
-          t={{
-            close: d.common.close,
-            form: {
-              emailLabel: d.newsletter.emailLabel,
-              emailPlaceholder: d.newsletter.emailPlaceholder,
-              submit: d.newsletter.submit,
-              notice: d.newsletter.notice,
-              privacy: d.footer.privacy,
-              sentTitle: "",
-              sentText: d.newsletter.popupSent,
-              errorEmail: d.forms.errorEmail,
-              errorTooMany: d.forms.errorTooMany,
-              errorGeneric: d.forms.errorGeneric,
-            },
-          }}
-        />
-      )}
+      {/* (the admin's draft preview opens it at once and leaves the 30-day stamp alone, R-e) */}
+      {newsletterPopup && <NewsletterPopup n={newsletterPopup} locale={locale} preview={drafts} t={{ close: d.common.close, form: popupFormTexts(d, welcomeCode) }} />}
       {previewBar}
     </>
   );

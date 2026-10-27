@@ -47,9 +47,8 @@ const BROWSER_FILES = [
   "src/components/account/texts.ts",
   "src/i18n/dict/et.ts",
   "src/i18n/dict/ru.ts",
-  // the final review: the site's favourite hearts and the home page's two popups (lib/favourites, lib/typography)
+  // the final review: the site's favourite hearts and the home page's popup (lib/favourites, lib/typography; one popup since admin UX pass piece 4b)
   "src/components/site/FavouriteButton.tsx",
-  "src/components/site/CampaignPopup.tsx",
   "src/components/site/NewsletterPopup.tsx",
   // e-course completion, Task 1: the rules the test and practical pages and the course editor share
   "src/domain/completion.ts",
@@ -239,7 +238,7 @@ describe("old iPads and phones (iOS Safari before 16.4)", () => {
     const graph = browserGraph(["src/components/account/AccountLoader.tsx"]);
     const storable = join(SRC, "lib", "storable.ts");
     expect(path(storable, graph)).toBe("src/components/account/AccountLoader.tsx → src/components/account/useAccount.ts → src/lib/favourites.ts → src/lib/storable.ts");
-    expect(path(join(SRC, "lib", "typography.ts"), browserGraph(["src/components/site/CampaignPopup.tsx"]))).toContain("src/components/site/CampaignCard.tsx → src/lib/typography.ts");
+    expect(path(join(SRC, "lib", "typography.ts"), browserGraph(["src/components/site/NewsletterPopup.tsx"]))).toContain("src/components/site/NewsletterPopupCard.tsx → src/lib/typography.ts");
   });
 
   test("the walk leaves out what the browser does not load: imports of types only, and a 'use server' file's own imports", () => {

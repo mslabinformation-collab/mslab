@@ -116,6 +116,29 @@ export async function ensureCourseTermsPage(): Promise<boolean> {
   }
 }
 
+// ---------- the home page's popup ----------
+// Since admin UX pass piece 4b (spec D3, ruling R-d) the home page's one popup is the newsletter sign-up (campaign row 2), and the seed has it shown,
+// the old campaign offer (row 1) off. A local database seeded before that has row 1 on — which the site no longer shows — and row 2 off, so its
+// home page would have no popup at all (campaign.spec.ts reads the seed's). Every run first switches the two there, once: a database whose row 1 is
+// off is left as it is (the seed's own rule: rows that exist are not touched). Only the LOCAL database, like every fixture here.
+
+/** Shows the newsletter popup instead of the old campaign offer in a local database seeded before piece 4b; true when it switched them. */
+export async function ensureSeedPopup(): Promise<boolean> {
+  const sql = connect();
+  try {
+    return await sql.begin(async (tx) => {
+      const [old] = await tx<{ active: boolean }[]>`select active from campaign where id = 1 for update`;
+      if (!old?.active) return false;
+      // (row 1 off first: at most one popup is on, campaign_one_active)
+      await tx`update campaign set active = false where id = 1`;
+      await tx`update campaign set active = true where id = 2`;
+      return true;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
 // ---------- sample session dates ----------
 // The seed dates the sample sessions relative to the day it runs (src/db/seed-dates.ts). A local database seeded weeks
 // ago would by now have sessions in the past (the calendar hides them), so every run first moves the LOCAL database's
@@ -1229,7 +1252,7 @@ export async function insertPreviewDraft(slug: string, title: string): Promise<s
 export const PRACTICE_DRAFTS_LOCK = "e2e-practice-drafts";
 
 /** Deletes every draft of a site entity (under its lock they are the holder's own); returns how many there were. */
-async function removeSiteDrafts(entity: "practice" | "trainer" | "home"): Promise<number> {
+async function removeSiteDrafts(entity: "practice" | "trainer" | "home" | "popup"): Promise<number> {
   const sql = connect(false); // (a draft is on no page a visitor gets)
   try {
     const gone = await sql`delete from content_drafts where entity = ${entity} returning id`;
@@ -1259,6 +1282,12 @@ export const HOME_DRAFTS_LOCK = "e2e-home-drafts";
 
 /** Deletes every home draft (under HOME_DRAFTS_LOCK they are the holder's own); returns how many there were. */
 export const removeHomeDrafts = (): Promise<number> => removeSiteDrafts("home");
+
+// Hüpikaken's offer is one entity too (admin UX pass piece 4b, Task 4), drafted by one test only (admin-site.spec.ts, the desktop project: one popup
+// row), so it needs no turn: that test drops every popup draft when it starts and when it ends.
+
+/** Deletes every popup draft; returns how many there were. */
+export const removePopupDrafts = (): Promise<number> => removeSiteDrafts("popup");
 
 /** Deletes every preview draft fixture; returns how many are left (0 when clean). */
 export async function removePreviewDrafts(): Promise<number> {

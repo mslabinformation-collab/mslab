@@ -344,6 +344,7 @@ export const ru: Dict = {
     sentTitle: "Спасибо, вы подписались!",
     sentText: "Мы отправили вам приветственное письмо.",
     popupSent: "Спасибо, вы подписались! Мы отправили вам приветственное письмо.",
+    popupSubmitCode: "Получить код",
     unsubscribedTitle: "Вы отписались от рассылки.",
     unsubscribedText: "Мы больше не будем присылать вам рассылку MS LAB.",
     unsubscribePage: {
@@ -425,14 +426,6 @@ export const ru: Dict = {
       // Draft (invoices Task 4, for Dim's wording sheet)
       invoiceAttached: "Счёт во вложении.",
     },
-  },
-
-  campaign: {
-    cta: "Найти свой курс",
-    codeLabel: "Промокод",
-    copy: "Копировать",
-    copied: "Скопировано",
-    selected: "Код выделен.",
   },
 
   common: {

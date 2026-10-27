@@ -21,8 +21,8 @@ const notFound = () => Response.json({ ok: false, error: "notFound" }, { status:
 /**
  * POST /api/admin/sisu/<entity>/<id>/osa/<part> — a site editor card's autosave into its part's draft (admin UX pass piece 4a, Task 1; README B2;
  * rulings R-a … R-d): `{ version, patch }` for Avaleht ("home/0": slides, statement, teaser, faq), Koolitaja ("trainer/0": trainer, bio, works,
- * center_story, trainer_journey), Praktika ("practice/0": a package's code) or a post ("post/<the post's id>": its part `post`, piece 4b R-a; a post
- * that is not published saves straight to its row), from the part's version ("l:<hash>", or "d:<draft row id>.<n>"), answered by autosaveHandler
+ * center_story, trainer_journey), Praktika ("practice/0": a package's code), Hüpikaken ("popup/0": its part `offer`, piece 4b R-c) or a post
+ * ("post/<the post's id>": its part `post`, piece 4b R-a; a post that is not published saves straight to its row), from the part's version ("l:<hash>", or "d:<draft row id>.<n>"), answered by autosaveHandler
  * (server/autosave-route.ts: 200 the new version, 409 what is stored, 400 by field, 404 for an entity, an id or a part that is none: server/site-
  * drafts.ts parseSiteTarget). Nothing public is written: „Avalda muudatused“ is …/avalda. Signed-in admins only, a cross-site POST is 403 (withAdmin).
  */

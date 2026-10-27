@@ -10,10 +10,10 @@ import { PROD_BUILD } from "./target";
 //   blocked in the browser: a deployment's
 //   database and notifications are real, and tests must never submit to it. Tests that submit call submitsForms()
 //   and are skipped there.
-// - The campaign popup (Task 14) opens on the home page 6 s after it loads and would cover whatever a test does there.
-//   Unless a spec asks for it (`test.use({ campaignPopup: … })`), every page starts as if this browser session had seen
-//   it already (sessionStorage "mslab-camp": the site's own once-per-session rule). "site" keeps the site's 6 s; a
-//   number sets a shorter delay in ms through the page's test hook (window.__mslabCampaignDelay).
+// - The home page's popup (the newsletter sign-up; admin UX pass piece 4b, R-e) opens 8 s after the page loads and would cover whatever a test
+//   does there. Unless a spec asks for it (`test.use({ campaignPopup: … })`), every page starts as if this browser had just seen it (localStorage
+//   "mslab-popup", the time it was shown: the site's own once-in-30-days rule). "site" keeps the site's 8 s; a number sets a shorter delay in ms
+//   through the page's test hook (window.__mslabCampaignDelay).
 export type CampaignPopup = "off" | "site" | number;
 
 /** A page of the public site (not the admin, the API, /media or the design-review hub), which carries the ready mark (the pay page /maksa/<token> is standalone HTML: no ready mark either). */
@@ -53,7 +53,7 @@ export const test = base.extend<{ visitorIp: string; campaignPopup: CampaignPopu
       if (campaignPopup === "off")
         await context.addInitScript(() => {
           try {
-            sessionStorage.setItem("mslab-camp", "1");
+            localStorage.setItem("mslab-popup", String(Date.now()));
           } catch {
             // a document without storage (about:blank, blocked storage)
           }

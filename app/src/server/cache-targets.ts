@@ -21,11 +21,11 @@ export type PublicChange =
   | { kind: "trainer"; parts: string[] }
   /** a post saved or deleted */
   | { kind: "posts" }
-  /** Hüpikaken (the home page's popup: the campaign or the newsletter sign-up); its „Lehel näidatakse“ switched (piece 4b) */
+  /** Hüpikaken's „Lehel näidatakse“ switched (piece 4b): the home page's popup, the newsletter sign-up */
   | { kind: "campaign" }
   /** Hüpikaken's offer published (piece 4b, R-c): the popup on the home page and its discount in the footer's sign-up block */
   | { kind: "popup" }
-  /** Seaded: contact and newsletter (footer, every page), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
+  /** Seaded: contact (footer, every page), newsletter (the welcome code: the home page's popup button, piece 4b S4-Q4), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
   | { kind: "settings"; parts: string[] };
 
 export type CacheTarget = { path: string; type?: "page" | "layout" };
@@ -83,8 +83,8 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
     }
     case "settings": {
       const parts = new Set(change.parts);
-      // contact details and the newsletter discount are in the footer
-      if (parts.has("contact") || parts.has("newsletter")) return [EVERY_PAGE];
+      // the contact details are in the footer of every page
+      if (parts.has("contact")) return [EVERY_PAGE];
       // the contracts (contracts, D1): "contract_contact" (Seaded → Kontaktkoolituse leping, Maria's contact contract, published from its draft) is the text the course pages' registration
       // form shows inline, and "terms" (the public „Õppetingimused“) is that text until she writes her own, so each revalidates the course pages:
       // the form refuses a stale contract version and refreshes, and a page kept for minutes would show the student the same refusal again.
@@ -92,7 +92,10 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
       // toggle, instalments D4) is the course page's „Võimalik tasuda ka järelmaksuga (Inbank).“ line and its registration form's choice, and the
       // cart's choice, so it revalidates the course pages and the carts. "prepayment" (where to pay) is read through the account's JSON only
       // (GET /api/konto, never cached), so it has no target
+      // "newsletter" is the welcome code alone since piece 4b (the discount is Hüpikaken's, published as { kind: "popup" }, R-c): only the home page's
+      // popup shows that there is one, on its button („Saa kood“, S4-Q4); the code itself is on no page (the welcome mail, the confirmed notice's fragment)
       return [
+        ...(parts.has("newsletter") ? [HOME] : []),
         ...(parts.has("privacy") ? [page("/privaatsus")] : []),
         ...(parts.has("terms") ? [page("/tingimused")] : []),
         ...(parts.has("terms") || parts.has("contract_contact") || parts.has("financing") ? [COURSE_PAGES] : []),

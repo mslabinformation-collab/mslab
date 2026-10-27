@@ -407,6 +407,12 @@ describe("trainer page", () => {
 });
 
 describe("campaign (D adminCamp + image upload, M3–M5)", () => {
+  // the old form path (saveCampaignForm), whose screen piece 4b Task 4 replaced and Task 5 removes: from the state it was built for, the old campaign
+  // offer shown (the seed has it off since Task 4, R-d)
+  beforeEach(async () => {
+    await db.update(campaign).set({ active: true }).where(eq(campaign.id, 1));
+  });
+
   test("the uploaded image, code and texts are stored; an empty button text becomes 'Leia enda koolitus'", async () => {
     const c = await loadCampaign(db);
     expect(c.values.campaign).toMatchObject({ active: true, code: "TALV15", ctaLabel: { et: "Leia enda koolitus" }, imageKey: "/seed/lash-editorial.jpg" });

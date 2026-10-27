@@ -247,15 +247,15 @@ test.describe("the comment button keeps clear of the site's messages", () => {
     }
   });
 
-  test.describe("campaign", () => {
+  test.describe("the home page's popup", () => {
     test.use({ campaignPopup: 1500 }); // the popup after 1.5 s (test hook), once the widget is on the page
 
-    test("above the campaign sheet on a phone", async ({ page, isMobile }) => {
+    test("above the popup's sheet on a phone", async ({ page, isMobile }) => {
       test.skip(!isMobile, "the bottom sheet is the phone layout");
       await page.goto("/");
       await expect(fab(page)).toBeVisible();
       await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10000 });
-      await clearOf(page, page.locator("[data-campaign-panel]"));
+      await clearOf(page, page.locator("[data-newsletter-panel]"));
     });
   });
 });

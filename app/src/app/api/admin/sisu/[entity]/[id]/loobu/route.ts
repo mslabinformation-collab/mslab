@@ -13,7 +13,7 @@ const json = (body: unknown, status: number) => Response.json(body, { status, he
 
 /**
  * POST /api/admin/sisu/<entity>/<id>/loobu — „Loobu muudatustest“ of Avaleht, Koolitaja or Praktika (id 0; admin UX pass piece 4a, Task 1; README §1.8,
- * B2; ruling R-e) or of a post (post/<its id>; piece 4b): every draft of it deleted (server/site-drafts.ts discardSite); live stays as it is, so
+ * B2; ruling R-e), of Hüpikaken ("popup/0"; piece 4b) or of a post (post/<its id>; piece 4b): every draft of it deleted (server/site-drafts.ts discardSite); live stays as it is, so
  * nothing is revalidated. Pictures uploaded into a draft stay in the store (harmless orphans). 200 `{ stamp }`: the database's clock after the commit
  * (server/read-stamp.ts; null when it cannot be read). 404 for an entity or an id that is none (a post that is not there); 500 `{ ok: false, error:
  * "server" }`, logged. Signed-in admins only, a cross-site POST is 403 (withAdmin).

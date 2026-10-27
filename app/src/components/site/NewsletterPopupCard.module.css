@@ -1,5 +1,5 @@
-/* Prototype D .camp (the campaign popup's card) in Jost / Manrope. Two columns when the card has at least 640px,
-   otherwise D's phone layout: the picture on top (16:9), the text under it. */
+/* The home page's popup card (NewsletterPopupCard.tsx; until admin UX pass piece 4b also the campaign offer's): prototype D .camp in Jost / Manrope.
+   Two columns when the card has at least 640px, otherwise D's phone layout: the picture on top (16:9), the text under it. */
 
 .wrap {
   container-type: inline-size;
@@ -46,7 +46,7 @@
   font: 400 clamp(28px, 3vw, 42px) / 1.08 var(--font-display);
   letter-spacing: -0.02em;
   /* "pretty", not "balance": balancing evened the lines out by breaking inside a name ("−15% Lash / Lift BOTOX /
-     koolitusele"); filling each line keeps D's "−15% Lash Lift / BOTOX / koolitusele" and only avoids a lone last word (N6) */
+     koolitusele"); filling each line keeps a name together and only avoids a lone last word (N6) */
   text-wrap: pretty;
   overflow-wrap: anywhere;
 }
@@ -58,47 +58,7 @@
   line-height: 1.55;
 }
 
-/* D .code: the code in a dashed pill with its copy button */
-.code {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 24px;
-  padding: 4px 4px 4px 20px;
-  border: 1.5px dashed var(--fog);
-  border-radius: 999px;
-  background: var(--canvas);
-}
-
-.code span {
-  font: 600 18px/1 var(--font-display);
-  letter-spacing: 0.12em;
-  overflow-wrap: anywhere;
-}
-
-.code button {
-  flex: none;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  font: 500 13px/1 var(--font-body);
-  box-shadow: 0 1px 2px rgba(34, 34, 34, 0.08);
-  cursor: pointer;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 20px;
-  margin-top: 22px;
-}
-
-/* the newsletter popup's form in place of the code and the button (NewsletterPopupCard, phase 2c) */
+/* the sign-up form under the text (phase 2c) */
 .signup {
   margin-top: 18px;
 }

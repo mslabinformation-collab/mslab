@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, courseAccess, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
+import { campaign, clients, courseAccess, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
 import { runSeed } from "@/db/seed";
 import { applySeed, SeedRefusal, studentDataRefusal } from "@/db/seed-apply";
 import * as seedData from "@/db/seed-data";
@@ -128,7 +128,7 @@ describe("prototype seed", () => {
     ]);
   });
 
-  test("home data: five slides (first is the flower, tones light/dark/dark/light/dark as in prototype B), faq, posts, campaign without a 'not now' button", async () => {
+  test("home data: five slides (first is the flower, tones light/dark/dark/light/dark as in prototype B), faq, posts; the old campaign offer off (piece 4b, R-d)", async () => {
     const home = await getHomeData(db);
     expect(home.slides.map((s) => s.tone)).toEqual(["light", "dark", "dark", "light", "dark"]);
     expect(home.slides[0].imageKey).toBe("/seed/flower-hero.png");
@@ -136,7 +136,13 @@ describe("prototype seed", () => {
     expect(home.slides[4].imageKey).toBe("/seed/brow-editorial.jpg");
     expect(home.faq).toHaveLength(6);
     expect(home.posts).toHaveLength(6);
-    expect(home.popup).toMatchObject({ kind: "campaign", ctaLabel: { et: "Leia enda koolitus" } });
+    // the old campaign offer (row 1) is seeded off, and the home page never shows it; the newsletter popup's row is the migration's (off), which the
+    // seed does not overwrite — a reset seeds it shown ("seed modes")
+    expect(home.popup).toBeNull();
+    expect((await db.select().from(campaign).orderBy(campaign.id)).map((r) => [r.id, r.kind, r.active])).toEqual([
+      [1, "campaign", false],
+      [2, "newsletter", false],
+    ]);
     expect(Object.keys(home.pages).sort()).toEqual(["center_story", "privacy", "statement", "terms", "trainer_bio", "trainer_journey", "trainer_teaser"]);
     expect(home.settings).toHaveProperty("contact");
     expect(home.settings).toHaveProperty("newsletter", { discountLabel: "10%", welcomeCode: "" });
@@ -232,6 +238,9 @@ describe("seed modes", () => {
     expect(counts.course_sessions).toBe(8);
     expect((await getCourseBySlug(db, "lash-lift-botox"))?.title.et).toBe("Lash Lift BOTOX baaskoolitus");
     expect((await db.select().from(courses).orderBy(courses.id))[0].id).toBe(1);
+    // the home page's popup as the seed has it since piece 4b: the newsletter sign-up shown, the old campaign offer off (D3, R-d)
+    expect((await getHomeData(db)).popup).toMatchObject({ id: 2, kind: "newsletter", active: true, imageKey: "/seed/gift-bag-serum.jpg" });
+    expect((await db.select().from(campaign).where(eq(campaign.id, 1)))[0].active).toBe(false);
   });
 
   test("--reset refuses to delete registrations unless forced", async () => {

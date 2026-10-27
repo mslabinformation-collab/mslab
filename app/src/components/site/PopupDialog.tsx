@@ -1,16 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CAMPAIGN_SEEN_KEY, campaignDelay } from "@/domain/campaign";
+import { NEWSLETTER_SIGNED_KEY, POPUP_SEEN_KEY, popupDelay, popupDue } from "@/domain/campaign";
 import { lockPageScroll, trapTab } from "@/lib/modal";
 import { Icon } from "./Icon";
 import modal from "@/components/ui/modal.module.css";
-import ui from "./ui.module.css";
-import styles from "./CampaignPopup.module.css";
+import styles from "./PopupDialog.module.css";
 
 declare global {
   interface Window {
-    /** e2e only (tests/e2e/test.ts): a shorter delay than D's 6 s, in ms. */
+    /** e2e only (tests/e2e/test.ts): a shorter delay than the site's 8 s, in ms. */
     __mslabCampaignDelay?: number;
   }
 }
@@ -21,45 +20,61 @@ const SWIPE_CLOSE_PX = 80;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * A popup was shown during this page load already. The module lives as long as the document, through client-side moves (home →
- * course → home remounts the popup), so this keeps "once" when sessionStorage is refused; a new page load starts over.
+ * The popup was shown during this page load already. The module lives as long as the document, through client-side moves (home →
+ * course → home remounts the popup), so this keeps "once" when localStorage is refused; a new page load starts over.
  */
 let shownThisLoad = false;
 
 const NEVER = () => false;
 
+/** What this browser's storage says of the popup: when it was last shown, and a sign-up here; null when the browser refuses storage. */
+function storedState(): { seen: string | null; signed: string | null } | null {
+  try {
+    return { seen: localStorage.getItem(POPUP_SEEN_KEY), signed: localStorage.getItem(NEWSLETTER_SIGNED_KEY) };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * When the home page's popup opens (prototype D `maybeAutoCampaign`; the campaign, and from phase 2c the newsletter popup): 6 s after
- * the page appears, once per browser session (sessionStorage "mslab-camp", set when it is shown; without storage at most once per
- * page load, also across client-side moves back home). It waits while another modal (the phone menu, a lightbox) is open, and fetches
- * `image` meanwhile. `skip()` true: this browser does not get it at all (the newsletter popup after a sign-up from it). [open, close].
+ * When the home page's popup opens (admin UX pass piece 4b, ruling R-e; before it prototype D's 6 s, once per browser session): 8 s after the page
+ * appears, once in 30 days per browser (localStorage "mslab-popup", the time it was shown, set when it is shown), never again in a browser that signed
+ * up from it ("mslab-nl"; domain/campaign.ts popupDue); without storage at most once per page load, also across client-side moves back home. It waits
+ * while another modal (the phone menu, a lightbox) is open, and fetches `image` meanwhile. `skip()` true: this page load does not get it at all (a
+ * newsletter landing). `preview`: the signed-in admin's draft preview — at once, whatever the stamp says, and no stamp written; a sign-up here still
+ * keeps it away. [open, close].
  */
-export function usePopupOpen(image: string, skip: () => boolean = NEVER): [boolean, () => void] {
+export function usePopupOpen(image: string, o: { skip?: () => boolean; preview?: boolean } = {}): [boolean, () => void] {
   const [open, setOpen] = useState(false);
+  const skip = o.skip ?? NEVER;
+  const preview = o.preview === true;
   useEffect(() => {
-    if (shownThisLoad || skip()) return;
-    try {
-      if (sessionStorage.getItem(CAMPAIGN_SEEN_KEY) === "1") return;
-    } catch {
-      // no storage: this page load may still show it once
-    }
+    if ((!preview && shownThisLoad) || skip()) return;
+    // (no storage: this page load may still show it once)
+    const stored = storedState();
+    if (stored && !popupDue(stored, Date.now(), { preview })) return;
     // Fetch the picture while waiting, so the card opens with it.
     if (image) new Image().src = image;
-    let timer = window.setTimeout(function show() {
-      if (document.querySelector("dialog[open]")) {
-        timer = window.setTimeout(show, 1000);
-        return;
-      }
-      shownThisLoad = true;
-      try {
-        sessionStorage.setItem(CAMPAIGN_SEEN_KEY, "1");
-      } catch {
-        // shown anyway: shownThisLoad keeps it to once for this page load
-      }
-      setOpen(true);
-    }, campaignDelay(window.__mslabCampaignDelay));
+    let timer = window.setTimeout(
+      function show() {
+        if (document.querySelector("dialog[open]")) {
+          timer = window.setTimeout(show, 1000);
+          return;
+        }
+        if (!preview) {
+          shownThisLoad = true;
+          try {
+            localStorage.setItem(POPUP_SEEN_KEY, String(Date.now()));
+          } catch {
+            // shown anyway: shownThisLoad keeps it to once for this page load
+          }
+        }
+        setOpen(true);
+      },
+      preview ? 0 : popupDelay(window.__mslabCampaignDelay),
+    );
     return () => window.clearTimeout(timer);
-  }, [image, skip]);
+  }, [image, skip, preview]);
   const close = useCallback(() => setOpen(false), []);
   return [open, close];
 }
@@ -69,20 +84,18 @@ export function usePopupOpen(image: string, skip: () => boolean = NEVER): [boole
  * it for its corner. No "Mitte praegu" (M3). Focus moves to ✕, Tab stays inside, the page behind does not scroll; Esc, ✕ and the
  * backdrop close it and give the focus back; a link inside closes it on its way (the focus belongs to the next page then). Under
  * 640px it is D's bottom sheet, which also closes when pulled down; with reduced motion nothing slides. `name` marks its parts for
- * the tests (data-<name>-popup, -backdrop, -panel, -close); `status` is read out (role=status).
+ * the tests (data-<name>-popup, -backdrop, -panel, -close; the newsletter popup's, the one popup since piece 4b). The card's own form has its status region.
  */
 export function PopupDialog({
   name,
   titleId,
   closeLabel,
-  status = "",
   onClose,
   children,
 }: {
-  name: "campaign" | "newsletter";
+  name: "newsletter";
   titleId: string;
   closeLabel: string;
-  status?: string;
   onClose: () => void;
   children: (close: ReactNode) => ReactNode;
 }) {
@@ -203,9 +216,6 @@ export function PopupDialog({
           </button>,
         )}
       </div>
-      <p className={ui.srOnly} role="status">
-        {status}
-      </p>
     </dialog>
   );
 }

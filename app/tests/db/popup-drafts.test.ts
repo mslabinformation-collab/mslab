@@ -15,7 +15,8 @@ import { makeTestDb } from "./helpers";
 // `settings.newsletter`, the discount and the code's days. Its version hashes only those fields, so Seaded's „Tervituskood“ in the same settings row
 // never blocks it. A draft waits for „Avalda muudatused“; the footer and the welcome mail keep the published values. „Lehel näidatakse“ is no part:
 // the instant switch acts on the live row (switchPopup), refused when the live row lacks a field a shown popup needs (`Puudub: pilt`) or when another
-// tab changed the row meanwhile. On PGlite with the prototype seed (row 1 the old campaign offer, shown; row 2 the newsletter popup, off).
+// tab changed the row meanwhile. On PGlite with the prototype seed, row 1 (the old campaign offer) switched on, as a database from before piece 4b may
+// have it (the seed has it off since Task 4), and row 2 the newsletter popup, off (the migration's row).
 
 const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
@@ -44,6 +45,7 @@ let db: Db;
 beforeEach(async () => {
   db = await makeTestDb();
   await applySeed(db);
+  await db.update(campaign).set({ active: true }).where(eq(campaign.id, 1));
   state.db = db;
   state.cookie = undefined;
   pub.revalidatePublic.mockReset();

@@ -131,7 +131,7 @@ describe("public queries", () => {
     expect(await getPracticePackages(db)).toEqual([]);
   });
 
-  test("getHomeData bundles active slides, courses, faq, posts, practice, pages, settings and the active campaign", async () => {
+  test("getHomeData bundles active slides, courses, faq, posts, practice, pages, settings and the newsletter popup while it is shown — never the old campaign offer (piece 4b, R-d)", async () => {
     await upsertHeroSlide(db, { imageKey: "/seed/a.jpg", kicker: { et: "k" }, title: { et: "t2" }, text: { et: "" }, ctaLabel: { et: "" }, ctaHref: "/", sort: 2 });
     await upsertHeroSlide(db, { imageKey: "/seed/a.jpg", kicker: { et: "k" }, title: { et: "t1" }, text: { et: "" }, ctaLabel: { et: "" }, ctaHref: "/", sort: 1 });
     await upsertHeroSlide(db, { imageKey: "/seed/a.jpg", kicker: { et: "k" }, title: { et: "off" }, text: { et: "" }, ctaLabel: { et: "" }, ctaHref: "/", sort: 0, active: false });
@@ -151,13 +151,18 @@ describe("public queries", () => {
     expect(home.settings).toEqual({ newsletter: { discountLabel: "10%" } });
     expect(home.popup).toBeNull();
 
+    // the old campaign offer (row 1) shown, as a database from before piece 4b may have it: the site no longer shows it
     await upsertCampaign(db, { active: true, kicker: { et: "k" }, title: { et: "t" }, text: { et: "x" }, ctaLabel: { et: "Leia enda koolitus" }, ctaHref: "/koolitused", imageKey: "/seed/a.jpg" });
-    expect((await getHomeData(db)).popup).toMatchObject({ kind: "campaign", ctaLabel: { et: "Leia enda koolitus" } });
+    expect((await db.select().from(campaign).where(eq(campaign.id, 1)))[0].active).toBe(true);
+    expect((await getHomeData(db)).popup).toBeNull();
 
     // the newsletter row shown instead (at most one active): the home page gets that one
     await db.update(campaign).set({ active: false }).where(eq(campaign.id, 1));
     await db.update(campaign).set({ active: true }).where(eq(campaign.id, 2));
     expect((await getHomeData(db)).popup).toMatchObject({ id: 2, kind: "newsletter" });
+    // and none while it is off
+    await db.update(campaign).set({ active: false }).where(eq(campaign.id, 2));
+    expect((await getHomeData(db)).popup).toBeNull();
   });
 });
 

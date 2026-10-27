@@ -1,0 +1,23 @@
+/* Prototype D's campaign popup (#campRoot, .camp-bd, .camp .x), the home page's popup (PopupDialog.tsx; the newsletter sign-up's card since phase 2c,
+   its only one since admin UX pass piece 4b), in the site's modal dialog (components/ui/modal.module.css: the dimmed, blurred page, the card rising
+   into place, ✕, the bottom sheet under 640 px). Here: the card's width (up to 840 px; the whole width as a sheet) and the sheet's own corners. */
+
+.panel {
+  width: min(840px, 100%);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    width: 100%;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .panel [data-newsletter-card] {
+    border-radius: 28px 28px 0 0;
+  }
+
+  /* over the picture: D's slightly see-through white ✕ */
+  .panel .close {
+    background: color-mix(in srgb, var(--paper) 90%, transparent);
+  }
+}

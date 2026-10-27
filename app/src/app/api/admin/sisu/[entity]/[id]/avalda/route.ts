@@ -18,7 +18,8 @@ const publishBody = z.object({
 
 /**
  * POST /api/admin/sisu/<entity>/<id>/avalda — „Avalda muudatused“ of Avaleht, Koolitaja or Praktika (id 0; admin UX pass piece 4a, Task 1; README §1.8,
- * B2; rulings R-c, R-d) or of a published post (post/<its id>; piece 4b: S4-Q1 A's check): `{ versions }`, every part's version as the screen holds
+ * B2; rulings R-c, R-d), of Hüpikaken ("popup/0"; piece 4b R-c: the newsletter popup's row and the two numbers in `settings.newsletter`) or of a
+ * published post (post/<its id>; piece 4b: S4-Q1 A's check): `{ versions }`, every part's version as the screen holds
  * it after its flush (piece 4a final review I-1: a part whose draft is not the one the screen sent — another window saved it meanwhile — is held back
  * as changed). The drafts written live in one transaction through the parts' strict checks and writers (server/site-drafts.ts publishSite), the
  * public pages revalidated once. 200 `{ stamp, published, blocked }`: the database's clock after the commit (server/read-stamp.ts, a number, null when

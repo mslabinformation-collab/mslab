@@ -2398,41 +2398,32 @@ export const adminEt = {
     },
   },
 
-  // Hüpikaken (prototype D adminCamp, Maria C38/C42 ("Meeldib, jätame.") + C43 (image upload), M3, M4; phase 2c: what the home page shows, and the
-  // newsletter popup's texts and picture). Owner wording 08.10: "Avalehel", and no "nõusolek" in the newsletter lead.
+  // C4 Hüpikaken (admin UX pass piece 4b, Task 4; README §4 C4, the Part 4 C4 frame; piece4-texts S4-25…S4-29, D3: one popup, the newsletter sign-up,
+  // with the instant „Lehel näidatakse“ and its offer on the draft layer). Kept from before (§3): the eyebrow, the H1, „Lehel näidatakse“, „Silt“,
+  // „Pealkiri“, „Tekst“, „Pilt“, „Eelvaade“ and its note. The card's name „Pakkumine“ (S4-27) is siteChanges.popup.offer, the bar's labels S4-30.
+  // The three-way choice, the campaign offer's fields, the old lead and the rules list went with the campaign popup (§4).
   campaign: {
     eyebrow: "Turundus",
     title: "Hüpikaken",
-    lead: "Avalehel kord külastuse jooksul kuvatav aken: kampaania pakkumine või uudiskirjaga liitumine. Korraga on näha üks või mitte ükski.",
     shown: "Lehel näidatakse",
-    shownOptions: { campaign: "Kampaania", newsletter: "Uudiskiri", off: "Väljas" },
-    form: "Kampaania",
-    newsletterForm: "Uudiskiri",
-    newsletterLead: "Hüpikaknas on e-posti väli ja „Liitu“. Tervituskood saadetakse alles pärast kinnitamist (Seaded → Tervituskood), aknas seda ei näidata.",
+    // S4-25: under the switch, in place of the old lead
+    shownHint: "Avaneb uuele külastajale 8 s pärast · üks kord 30 päeva jooksul",
+    // S4-26: switched off, the UndoBar (on again: no bar); a press or its undo refused because another tab changed the popup (W7's shape). A switch on
+    // refused because the live popup lacks a field says publish.missing under it („Puudub: pilt“)
+    hidden: "Hüpikaken peidetud.",
+    changed: "Hüpikakent muudeti vahepeal. Vaata see üle.",
     kicker: "Silt",
     titleField: "Pealkiri",
     text: "Tekst",
-    code: "Sooduskood",
-    codeHint: "Tühjaks jättes koodi ei näidata.",
-    ctaLabel: "Nupu tekst",
-    ctaLabelHint: "Tühjaks jättes: „Leia enda koolitus“.",
-    ctaHref: "Nupp viib",
-    ctaHrefHint: "Koolituse või lehe aadress, nt /koolitused/lash-lift-botox, või täielik https://-aadress.",
     image: "Pilt",
+    // S4-27 (S4-Q2 A, S4-Q3 A): the two numbers side by side, S4-28 under them
+    discount: "Soodustus (%)",
+    codeDays: "Kood kehtib (päeva)",
+    codeWhere: "Koodi saad muuta: Seaded → „Tervituskood“.",
     preview: "Eelvaade",
     previewNote: "Nii näeb hüpikaken välja avalehel. Laiemal ekraanil on pilt teksti kõrval.",
-    off: "Seda akent avalehel praegu ei näidata.",
-    copy: "Kopeeri",
-    close: "Sulge",
-    rules: "Reeglid",
-    rulesList: [
-      "Kuvatakse avalehel 6 sekundi pärast",
-      "Kord külastuse jooksul",
-      "Korraga üks aken: kampaania või uudiskiri",
-      "Uudiskirja akent ei näidata enam brauseris, kust sellega liituti",
-      "Mitte ostukorvis, tundides ega testides",
-      "Sulgub Esc, ✕ või taustale vajutades, telefonis ka alla libistades",
-    ],
+    // S4-29 (Dim 26.10: reworded, the sign-up has no confirmation step since 09.10): under the preview
+    rulesLine: "Reeglid: kood saadetakse e-postiga kohe pärast liitumist; üks kasutus tellija kohta; ei liitu teiste soodustustega.",
   },
 
   // Seaded (admin UX pass piece 3b, Task 4; README B4): one page with a section map; its sections, as the map names them. The page lead is gone (the

@@ -3,16 +3,16 @@ import type { BrowserContext, Locator, Page, TestInfo } from "@playwright/test";
 import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
 import { LOCAL_ADMINS } from "../local-secrets";
-import { adminReady, editLang, saveBarButton, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, seadedAutosave, seadedStatus, signInAsAdmin } from "./admin-login";
 import { holdContractTexts, holdLegalDraft, legalDraftOf } from "./contracts";
-import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
+import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePopupDrafts, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 import { holdNewsletter } from "./newsletter";
 
-// Task 13B: the site content editors (home page, practice, trainer, news, campaign, settings), each followed through to
+// Task 13B: the site content editors (home page, practice, trainer, news, the popup, settings), each followed through to
 // the public site. They change shared seed content, so they run after every other test (playwright.config.ts: the
 // "chromium-edit" / "mobile-edit" projects) and put it back (fixtures.ts: row snapshots; posts "e2e-uudis-<project>-…").
 // The two projects run side by side, so each changes rows the other does not: desktop MAXI, the hero slides and the
-// statement, the trainer card and works, the contact settings and the campaign; phone MINI, the FAQ, the centre's story
+// statement, the trainer card and works, the contact settings and the popup; phone MINI, the FAQ, the centre's story
 // and the privacy page. Both make their own post. Local dev server only: they sign in as Dim through the devLink.
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
@@ -43,12 +43,12 @@ async function changing(...snapshots: Parameters<typeof snapshotRows>[]): Promis
 /** Signs in as Dim through the devLink, under the login lock shared by all workers (admin-login.ts); lands on /admin. */
 const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmin(page, context, ip, created);
 
-const status = (page: Page) => page.locator("[data-save-status]");
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-async function save(page: Page): Promise<void> {
-  await saveBarButton(page).click();
-  await expect(status(page)).toHaveText("Salvestatud.");
-}
+/** The space between the bottom of a text and the top of the form under it, in px (the popup's card and its preview). */
+const gapAboveForm = async (text: Locator, form: Locator) => {
+  const [t, f] = [await text.boundingBox(), await form.boundingBox()];
+  return f!.y - (t!.y + t!.height);
+};
 const one = async <T>(query: (sql: Parameters<Parameters<typeof onLocalDb>[0]>[0]) => Promise<T[]>): Promise<T> => (await onLocalDb(query))[0];
 
 // The site editors on the draft layer (admin UX pass piece 4a: Praktika): the page's one status chip (SaveStatus, README §1.4; its status region speaks
@@ -765,97 +765,152 @@ test.describe("news", () => {
   });
 });
 
-test.describe("campaign (M2–M5)", () => {
-  // The home page popup (Task 14) is followed here too: these tests change the campaign row, which the popup tests of
-  // campaign.spec.ts read, so they run in this file's late projects. A short delay instead of the site's 6 s.
-  test.use({ campaignPopup: 300 });
+// C4 Hüpikaken on the draft layer (admin UX pass piece 4b, Task 4; README §4 C4, the Part 4 C4 frame; piece4-texts S4-25…S4-30; rulings R-c, R-d,
+// R-e): the instant „Lehel näidatakse“ with its UndoBar, the offer's fields autosaved into the popup's draft and published by „Avalda muudatused“, the
+// preview following the page's ET | RU; the home page's popup then shows the new title after the site's own 8 s. These tests change the popup row,
+// which campaign.spec.ts reads, so they run in this file's late projects; one popup row: the desktop project changes it, the phone only looks.
+test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
+  test.use({ campaignPopup: "site" }); // (the visitor's tab waits the site's own 8 s)
+  const switchAnswer = (page: Page) => page.waitForResponse((r) => r.url().endsWith("/api/admin/hupikaken/naita") && r.request().method() === "POST");
+  const offerSaved = (page: Page) => page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/popup/0/osa/offer") && r.request().method() === "POST" && r.status() === 200);
+  const popupRow = () => one((sql) => sql<{ active: boolean; title: { et: string; ru?: string }; image: string }[]>`select active, title, image_key as image from campaign where id = 2`);
+  const discount = () => one((sql) => sql<{ n: string | null }[]>`select value->>'discountPercent' as n from settings where key = 'newsletter'`);
 
-  test("the uploaded image is stored, /media serves it and the admin preview shows it; a script link is refused", async ({ page, context, visitorIp }, info) => {
-    test.skip(phone(info), "one campaign: desktop changes it; the phone project only looks (next test)");
-    await changing(["campaign"]);
+  test("„Lehel näidatakse“ off → „Hüpikaken peidetud.“ → „Võta tagasi“ → on; a picture, a title and a discount wait for „Avalda muudatused“ (the preview follows ET | RU); published, the home page's popup shows them after 8 s and the footer the discount; at 375 px the preview is under the card and nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "one popup row: desktop changes it");
+    test.slow(); // one long flow: the switch, the offer, a publish, the site's 8 s and a second width
+    await changing(["campaign"], ["settings", { column: "key", value: "newsletter" }]);
+    await removePopupDrafts();
+    undo.push(removePopupDrafts);
+    // the seed's popup, shown (the old campaign offer, row 1, off: at most one is on)
+    await onLocalDb(async (sql) => {
+      await sql`update campaign set active = false where id = 1`;
+      await sql`update campaign set active = true where id = 2`;
+    });
+    const before = await popupRow();
     await signIn(page, context, visitorIp);
     await page.goto("/admin/kampaania");
     await adminReady(page);
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Turundus");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hüpikaken");
-    const camp = page.locator('[data-popup-section="campaign"]'); // the page has two editors: the campaign's fields
-    const preview = page.locator("[data-campaign-preview]");
-    await expect(preview.getByRole("heading")).toHaveText("−15% Lash Lift BOTOX koolitusele");
-    await expect(page.getByText("Mitte praegu")).toHaveCount(0); // M3
-    await expect(preview.locator("[data-campaign-card] a")).toHaveText("Leia enda koolitus"); // M4
+    await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect((await page.locator("main").innerText()).toLowerCase()).not.toContain("kampaania");
 
-    const image = page.locator('[data-single-image="campaign"]');
-    await image.locator('input[type="file"]').setInputFiles([jpeg("gift-bag-serum.jpg")]);
+    // the switch: off at once with its undo, „Võta tagasi“ switches it on again; on says nothing, and nothing of it is on the bar
+    const shown = page.getByRole("switch", { name: "Lehel näidatakse" });
+    await expect(shown).toBeChecked();
+    await expect(page.locator("[data-popup-shown]")).toContainText("Avaneb uuele külastajale 8 s pärast · üks kord 30 päeva jooksul");
+    let answer = switchAnswer(page);
+    await shown.click();
+    expect((await answer).status()).toBe(200);
+    const undoBar = page.locator("[data-undo-bar]");
+    await expect(undoBar).toContainText("Hüpikaken peidetud.");
+    await expect(shown).not.toBeChecked();
+    await expect.poll(async () => (await popupRow()).active).toBe(false);
+    answer = switchAnswer(page);
+    await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    expect((await answer).status()).toBe(200);
+    await expect(undoBar).toHaveCount(0);
+    await expect(shown).toBeChecked();
+    expect((await popupRow()).active).toBe(true);
+    await expect(publishBar(page)).toHaveCount(0);
+
+    // the offer: a new picture, title and discount autosave into the popup's draft; the bar names them; live keeps its own
+    const card = page.locator("#pakkumine");
+    const preview = page.locator("[data-newsletter-preview]");
+    const image = page.locator('[data-single-image="popup"]');
+    let saved = offerSaved(page);
+    await image.locator('input[type="file"]').setInputFiles([jpeg("brow-closeup.jpg")]);
     await expect(image.locator("[data-upload-status]")).toHaveText("Pilt lisatud.");
+    await saved;
     const src = await image.locator("[data-current-image]").getAttribute("data-current-image");
     expect(src).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
     await expect(preview.locator("img")).toHaveAttribute("src", `/media/${src}`);
-    // the texts follow in the preview, ET and RU
-    await camp.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill("E2E kampaania");
-    await expect(preview.getByRole("heading")).toHaveText("E2E kampaania");
-    await camp.getByRole("textbox", { name: "Sooduskood", exact: true }).fill("e2e-10");
-    await expect(preview.locator("[data-campaign-code]")).toHaveText("E2E-10");
-    // a script link: refused, nothing saved
-    const href = camp.getByRole("combobox", { name: "Nupp viib", exact: true });
-    await href.fill("javascript:alert(1)");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
-    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
-    await expect(href).toBeFocused();
-    expect(await one((sql) => sql<{ image: string }[]>`select image_key as image from campaign where id = 1`)).toEqual({ image: "/seed/lash-editorial.jpg" });
-    await href.fill("/koolitused/lash-lift-botox");
-    // an empty button text in both languages: "Leia enda koolitus" (M4); the seed's Russian text is cleared too
-    await camp.getByRole("textbox", { name: "Nupu tekst (eesti keeles)", exact: true }).fill("");
+    const title = card.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    saved = offerSaved(page);
+    await title.fill("E2E hüpikaken");
+    await title.blur();
+    await saved;
+    await expect(preview.getByRole("heading", { level: 2 })).toHaveText("E2E hüpikaken");
+    const percent = card.getByRole("textbox", { name: "Soodustus (%)", exact: true });
+    saved = offerSaved(page);
+    await percent.fill("17");
+    await percent.blur();
+    await saved;
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(barWords(page)).toHaveText(draftWords("Pealkiri, Pilt, Soodustus"));
+    await expect(card.getByText("Koodi saad muuta: Seaded → „Tervituskood“.")).toBeVisible();
+    expect(await popupRow()).toEqual(before);
+    // the preview follows the page's ET | RU, with the rules line under it
     await editLang(page, "ru");
-    await camp.getByRole("textbox", { name: "Nupu tekst (vene keeles)", exact: true }).fill("");
-    await save(page);
+    await expect(preview).toHaveAttribute("lang", "ru");
+    await expect(preview.getByRole("heading", { level: 2 })).toHaveText(before.title.ru ?? "");
+    await editLang(page, "et");
+    await expect(preview.getByRole("heading", { level: 2 })).toHaveText("E2E hüpikaken");
+    // the preview is a picture of the popup: no form inside the page; as tall as the popup's card (the same gap above the form), the privacy word a
+    // span (not a link) that makes the line 44 px high like the link
+    await expect(page.locator("[data-campaign-editor] form")).toHaveCount(0);
+    await expect.poll(() => gapAboveForm(preview.getByText("Uued koolitused, kasulikud mõtted"), preview.locator("[data-newsletter-form]"))).toBeCloseTo(18, 0);
+    await expect(preview.locator("[data-newsletter-notice] a")).toHaveCount(0);
+    expect((await preview.locator("[data-newsletter-notice]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator("[data-popup-rules]")).toHaveText("Reeglid: kood saadetakse e-postiga kohe pärast liitumist; üks kasutus tellija kohta; ei liitu teiste soodustustega.");
 
-    const stored = await one((sql) => sql<{ image: string; code: string; cta: { et: string }; title: { et: string } }[]>`select image_key as image, code, cta_label as cta, title from campaign where id = 1`);
-    expect(stored).toEqual({ image: src, code: "E2E-10", cta: { et: "Leia enda koolitus" }, title: { et: "E2E kampaania", ru: "−15% на курс Lash Lift BOTOX" } });
-    const media = await page.request.get(`/media/${src}`);
-    expect(media.status()).toBe(200);
-    expect(media.headers()["content-type"]).toBe("image/jpeg");
-    // after a reload the preview still shows the stored image
-    await page.reload();
-    await expect(page.locator("[data-campaign-preview] img")).toHaveAttribute("src", `/media/${src}`);
-    await expect(page.locator("[data-campaign-preview] [data-campaign-card] a")).toHaveText("Leia enda koolitus");
+    // „Avalda muudatused“: the row and the discount go live, the bar goes
+    const published = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/popup/0/avalda") && r.request().method() === "POST");
+    await page.locator("[data-publish-go]").click();
+    expect((await published).status()).toBe(200);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await popupRow()).toEqual({ active: true, title: { ...before.title, et: "E2E hüpikaken" }, image: src });
+    expect(await discount()).toEqual({ n: "17" });
 
-    // the popup on the home page shows the uploaded picture and the saved texts (M1, M5)
-    await page.goto("/");
-    const popup = page.getByRole("dialog", { name: "E2E kampaania" });
-    await expect(popup).toBeVisible();
-    const picture = popup.locator("[data-campaign-card] img");
+    // a visitor's tab: the popup after the site's 8 s, with the new title and picture (served from the store); the footer's discount
+    const visitor = await context.newPage();
+    const start = Date.now();
+    await visitor.goto("/", { waitUntil: "commit" });
+    const dialog = visitor.getByRole("dialog", { name: "E2E hüpikaken" });
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
+    expect(Date.now() - start, "not before its 8 s").toBeGreaterThanOrEqual(8000);
+    const picture = dialog.locator("[data-newsletter-card] img");
     await expect(picture).toHaveAttribute("src", `/media/${src}`);
-    await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0); // R2 served it
-    await expect(popup.locator("[data-campaign-code]")).toHaveText("E2E-10");
-    await expect(popup.getByRole("link", { name: "Leia enda koolitus" })).toHaveAttribute("href", "/koolitused/lash-lift-botox");
-    await expect(popup.getByText("Mitte praegu")).toHaveCount(0);
+    await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    await visitor.keyboard.press("Escape");
+    await expect(visitor.locator("footer").getByText("17% tervitussoodustus")).toBeVisible();
+    await visitor.close();
+
+    // 375 px: the preview under the card, nothing scrolls sideways
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/admin/kampaania");
+    await adminReady(page);
+    const [cardBox, previewBox] = [(await page.locator("#pakkumine").boundingBox())!, (await page.locator("[data-newsletter-preview]").boundingBox())!];
+    expect(cardBox.y + cardBox.height, "the preview under the card").toBeLessThanOrEqual(previewBox.y);
+    expect(await noOverflow(page)).toBe(true);
   });
 
-  test("a switched-off campaign shows no popup; switched on again, it does", async ({ page }, info) => {
-    test.skip(phone(info), "one campaign: desktop changes it");
+  test("on refused, the live popup lacks its picture: „Puudub: pilt“ under the switch, which stays off; no bar", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "one popup row: desktop changes it");
     await changing(["campaign"]);
-    await onLocalDb((sql) => sql`update campaign set active = false where id = 1`);
-    for (const path of ["/", "/ru"]) {
-      await page.goto(path);
-      await page.waitForTimeout(1500);
-      await expect(page.getByRole("dialog"), path).toHaveCount(0);
-      expect(await page.evaluate(() => sessionStorage.getItem("mslab-camp")), path).toBeNull();
-    }
-    await onLocalDb((sql) => sql`update campaign set active = true where id = 1`);
-    await page.goto("/");
-    await expect(page.getByRole("dialog", { name: "−15% Lash Lift BOTOX koolitusele" })).toBeVisible();
+    await onLocalDb((sql) => sql`update campaign set active = false, image_key = '' where id = 2`);
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/kampaania");
+    await adminReady(page);
+    const shown = page.getByRole("switch", { name: "Lehel näidatakse" });
+    await expect(shown).not.toBeChecked();
+    const answer = switchAnswer(page);
+    await shown.click();
+    expect(await (await answer).json()).toEqual({ ok: false, missing: ["pilt"] });
+    await expect(page.locator("[data-switch-error]")).toHaveText("Puudub: pilt");
+    await expect(shown).not.toBeChecked();
+    await expect(page.locator("[data-undo-bar]")).toHaveCount(0);
+    await expect(publishBar(page)).toHaveCount(0);
+    expect(await one((sql) => sql<{ active: boolean }[]>`select active from campaign where id = 2`)).toEqual({ active: false });
   });
 });
 
 test.describe("the newsletter popup (phase 2c)", () => {
   test.use({ campaignPopup: 300 });
 
-  /** The space between the bottom of a text and the top of the form under it, in px. */
-  const gapAboveForm = async (text: Locator, form: Locator) => {
-    const [t, f] = [await text.boundingBox(), await form.boundingBox()];
-    return f!.y - (t!.y + t!.height);
-  };
-
-  /** The newsletter popup shown instead of the campaign (at most one active: the campaign first goes off). */
+  /** The newsletter popup shown, the old campaign offer off (at most one active: the campaign first goes off). */
   const showNewsletter = () =>
     onLocalDb(async (sql) => {
       await sql`update campaign set active = false where id = 1`;
@@ -887,7 +942,7 @@ test.describe("the newsletter popup (phase 2c)", () => {
     expect(await storedSubscriber(addr)).toMatchObject({ email: addr, confirmed: true }); // one step: subscribed at once
     expect(await page.evaluate(() => localStorage.getItem("mslab-nl"))).toBe("1");
     await page.keyboard.press("Escape");
-    await page.evaluate(() => sessionStorage.removeItem("mslab-camp")); // a new browser session …
+    await page.evaluate(() => localStorage.removeItem("mslab-popup")); // its 30 days over …
     await page.reload();
     await page.waitForTimeout(1200);
     await expect(page.getByRole("dialog")).toHaveCount(0); // … still none: signed up here
@@ -903,7 +958,7 @@ test.describe("the newsletter popup (phase 2c)", () => {
     await page.waitForTimeout(1500); // well past the 300 ms delay of this describe
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem("mslab-nl"))).toBe("1");
-    expect(await page.evaluate(() => sessionStorage.getItem("mslab-camp"))).toBeNull(); // the popup did not use up the session's turn either
+    expect(await page.evaluate(() => localStorage.getItem("mslab-popup"))).toBeNull(); // the popup did not use up its turn either
     await page.reload(); // the address is plain "/" by now (FlashNotice took the parameter and the code out)
     await page.waitForTimeout(1500);
     await expect(page.getByRole("dialog")).toHaveCount(0); // signed up in this browser: still none
@@ -937,7 +992,7 @@ test.describe("the newsletter popup (phase 2c)", () => {
     await expect(page.getByRole("dialog", { name: "Hea järgmine samm. Otse sinu postkasti." })).toBeVisible();
   });
 
-  test("Russian, at a phone's width: the sheet with the form fits (no overflow, 44 px targets); the campaign is not shown meanwhile; switched off, none", async ({ page }, info) => {
+  test("Russian, at a phone's width: the sheet with the form fits (no overflow, 44 px targets); switched off, none; the old campaign offer's row on, none either (R-d)", async ({ page }, info) => {
     test.skip(phone(info), "one popup row: desktop changes it (and sets the phone's width here)");
     await changing(["campaign"]);
     await showNewsletter();
@@ -953,45 +1008,19 @@ test.describe("the newsletter popup (phase 2c)", () => {
     expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await popup.locator("[data-newsletter-panel]").evaluate((p) => p.scrollWidth <= p.clientWidth)).toBe(true);
-    await expect(page.getByRole("dialog", { name: "−15% на курс Lash Lift BOTOX" })).toHaveCount(0);
     await onLocalDb((sql) => sql`update campaign set active = false`);
-    await page.evaluate(() => sessionStorage.removeItem("mslab-camp"));
+    await page.evaluate(() => localStorage.removeItem("mslab-popup"));
     await page.goto("/");
     await page.waitForTimeout(1200);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-
-  test("Hüpikaken: 'Lehel näidatakse' Uudiskiri, its texts and the preview, saved; the home page shows it; Väljas shows none", async ({ page, context, visitorIp }, info) => {
-    test.skip(phone(info), "one popup row: desktop changes it");
-    await changing(["campaign"]);
-    await signIn(page, context, visitorIp);
-    await page.goto("/admin/kampaania");
-    await adminReady(page);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hüpikaken");
-    const shown = page.getByRole("group", { name: "Lehel näidatakse" });
-    await expect(shown.getByRole("radio", { name: "Kampaania" })).toBeChecked();
-    await shown.getByRole("radio", { name: "Uudiskiri" }).check();
-    const nl = page.locator('[data-popup-section="newsletter"]');
-    await nl.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true }).fill("E2E uudiskiri");
-    const preview = page.locator("[data-newsletter-preview]");
-    await expect(preview.getByRole("heading")).toHaveText("E2E uudiskiri");
-    await expect(preview.getByRole("button", { name: "Liitu" })).toBeVisible();
-    await expect(page.locator("[data-campaign-editor] form")).toHaveCount(0); // the preview's form is a picture: no form inside the editor's
-    // the picture is as tall as the popup: the same gap above the form, and the privacy word (a span, not a link) makes the line 44 px high like the link
-    await expect.poll(() => gapAboveForm(preview.getByText("Uued koolitused, kasulikud mõtted"), preview.locator("[data-newsletter-form]"))).toBeCloseTo(18, 0);
-    await expect(preview.locator("[data-newsletter-notice] a")).toHaveCount(0);
-    expect((await preview.locator("[data-newsletter-notice]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    await save(page);
-    const rows = await onLocalDb((sql) => sql<{ id: number; active: boolean }[]>`select id, active from campaign order by id`);
-    expect(rows.map((r) => r.active)).toEqual([false, true]);
-    await page.goto("/");
-    await expect(page.getByRole("dialog", { name: "E2E uudiskiri" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.goto("/admin/kampaania");
-    await adminReady(page);
-    await page.getByRole("group", { name: "Lehel näidatakse" }).getByRole("radio", { name: "Väljas" }).check();
-    await save(page);
-    expect((await onLocalDb((sql) => sql<{ active: boolean }[]>`select active from campaign order by id`)).map((r) => r.active)).toEqual([false, false]);
+    // the old campaign offer (row 1) on, as a database from before piece 4b may have it: the site shows it nowhere
+    await onLocalDb((sql) => sql`update campaign set active = true where id = 1`);
+    for (const path of ["/", "/ru"]) {
+      await page.evaluate(() => localStorage.removeItem("mslab-popup"));
+      await page.goto(path);
+      await page.waitForTimeout(1200);
+      await expect(page.getByRole("dialog"), path).toHaveCount(0);
+    }
   });
 });
 
@@ -1296,10 +1325,10 @@ test.describe("every editor at phone width", () => {
       for (const el of await page.locator("main button:visible, main input:visible:not([type=checkbox]):not([type=radio]):not([type=file]), main select:visible, main textarea:visible").all())
         expect((await el.boundingBox())!.height, `${path}: ${await el.evaluate((e) => e.outerHTML.slice(0, 80))}`).toBeGreaterThanOrEqual(44);
     }
-    // the campaign preview: the card, D's wording, no "Mitte praegu"
+    // Hüpikaken's preview: the popup's card, under the offer's card at this width
     await page.goto("/admin/kampaania");
     await adminReady(page);
-    await expect(page.locator("[data-campaign-preview] [data-campaign-card]")).toBeVisible();
+    await expect(page.locator("[data-newsletter-preview] [data-newsletter-card]")).toBeVisible();
     await expect(page.getByText("Mitte praegu")).toHaveCount(0);
   });
 });

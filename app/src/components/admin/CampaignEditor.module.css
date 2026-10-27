@@ -1,0 +1,89 @@
+/* C4 Hüpikaken (admin UX pass piece 4b, Task 4; the Part 4 C4 frame): under the template's header and bar, 16 px apart (drawn), the card „Lehel
+   näidatakse“ (radius 18, padding 14 px 20 px; the label 15 px bold, S4-25's line under it, the switch at the right), then from 1180 px „Pakkumine“
+   beside the 440 px preview, 22 px apart (`minmax(0,1fr) 440px`, drawn); below 1180 px one column, the preview under the card (the old editor's
+   breakpoint; a media query, which the old iPads read). „Pakkumine“: radius 22, padding 22 (drawn; ui.card's 20 px below 900 px kept), its title Jost
+   300 26 px, the two numbers side by side 12 px apart. The preview: the home page's card on the dark of the page behind it (drawn #2a2629, radius 22,
+   padding 30; mixed from the palette's tokens), the rules line 12 px muted under it. Colours from tokens.css and ui.module.css only. */
+
+.screen {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* (inside .screen: over ui.card's padding and radius, whichever of the two stylesheets comes first) */
+.screen .shown {
+  display: grid;
+  gap: 2px;
+  padding: 14px 20px;
+  border-radius: 18px;
+}
+
+.shown [data-switch-row] {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shown [role="alert"] {
+  margin-top: 6px;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  min-width: 0;
+}
+
+@media (min-width: 1180px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr) 440px;
+  }
+}
+
+.screen .offer {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 22px;
+}
+
+.offerTitle {
+  margin: 0;
+  font: 300 26px/1.15 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.aside {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stage {
+  padding: 30px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--ink) 94%, var(--rose));
+  pointer-events: none;
+}
+
+@media (max-width: 899.98px) {
+  .screen .offer {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .stage {
+    padding: 16px;
+  }
+}

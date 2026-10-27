@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { TERMS_PAGE_KEY } from "@/domain/course-terms";
-import { POST_PART } from "@/domain/site-entities";
+import { POPUP_PART, POST_PART } from "@/domain/site-entities";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import { campaign, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "../schema";
@@ -22,7 +22,10 @@ export type HomeData = {
   practice: PracticePackage[];
   pages: Record<string, Page>;
   settings: Record<string, unknown>;
-  /** The popup the home page shows: the one active `campaign` row, of either kind (phase 2c); null when every popup is off. */
+  /**
+   * The popup the home page shows: the newsletter sign-up's row while it is on (`campaign` row 2, kind newsletter); null when it is off. The old
+   * campaign offer's row 1 is never it, active or not (admin UX pass piece 4b, R-d).
+   */
   popup: Campaign | null;
 };
 
@@ -115,7 +118,8 @@ export async function listUpcomingSessions(db: Db, fromDate: Date, only?: { slug
 
 // ---------- the site content in the admin's draft preview (admin UX pass piece 4a, Task 3; ruling R-f) ----------
 // `opts.drafts` on the readers of the home page, /koolitaja, /praktika and the posts (/uudised, /uudised/<slug>, the home page's carousel; piece 4b): the
-// signed-in admin's preview lays the drafts of the entities home, trainer, practice and each post over the live data, each part as „Avalda muudatused“
+// signed-in admin's preview lays the drafts of the entities home, trainer, practice, each post and the popup (the home page's; piece 4b) over the live
+// data, each part as „Avalda muudatused“
 // would store it, a part whose draft fails its check left live
 // (server/site-preview.ts withSiteDrafts). Only a page that has asked server/preview.ts previewActive passes it; the draft layer is loaded only then, so
 // every other reader (and the static pages) never touch it. The `pick`s below put each part's stored value where the reader keeps it.
@@ -163,7 +167,8 @@ export async function getTrainerPage(db: Db, opts: { drafts?: boolean } = {}): P
 
 /**
  * The home page's data in the admin's preview: its own drafts (home: the hero slides, shown ones only, the statement, the trainer card's text, the
- * FAQ), the trainer's (the card's setting and the bio its text falls back to), the packages' and the carousel's posts', each from its own entity.
+ * FAQ), the trainer's (the card's setting and the bio its text falls back to), the packages', the carousel's posts' and the popup's (Hüpikaken's offer,
+ * piece 4b: the newsletter row as its publish would store it, shown while live is), each from its own entity.
  */
 async function homeWithDrafts(db: Db, live: HomeData): Promise<HomeData> {
   const { withSiteDrafts } = await import("@/server/site-preview");
@@ -183,8 +188,13 @@ async function homeWithDrafts(db: Db, live: HomeData): Promise<HomeData> {
     pages: Object.hasOwn(p, "bio") ? { ...home.pages, trainer_bio: p.bio as Page } : home.pages,
   }));
   const practice = await withSiteDrafts(db, "practice", trainer, (p) => ({ ...trainer, practice: packagesOver(trainer.practice)(p) }));
+  // the popup's offer (piece 4b; server/admin-site.ts PopupStored: the row with its `active` as live, so an off popup stays off)
+  const popup = await withSiteDrafts(db, "popup", practice, (p) => {
+    const row = Object.hasOwn(p, POPUP_PART) ? (p[POPUP_PART] as { popup: Campaign | null }).popup : practice.popup;
+    return { ...practice, popup: row?.active ? row : null };
+  });
   // the blog carousel's posts, each with its own drafts (piece 4b)
-  return { ...practice, posts: await Promise.all(practice.posts.map((post) => postWithDrafts(db, post))) };
+  return { ...popup, posts: await Promise.all(popup.posts.map((post) => postWithDrafts(db, post))) };
 }
 
 /**
@@ -232,8 +242,8 @@ export async function getSettings(db: Db): Promise<Record<string, unknown>> {
 }
 
 /**
- * Everything the home page needs in one call. The popup is the active one of the campaign and the newsletter popup, or null. The e-course terms
- * (account-only) are not part of it. `opts.drafts`: the admin's preview (the site content's drafts, above: homeWithDrafts).
+ * Everything the home page needs in one call. The popup is the newsletter sign-up's row while it is on, else null (R-d: never the old campaign
+ * offer's). The e-course terms (account-only) are not part of it. `opts.drafts`: the admin's preview (the site content's drafts, above: homeWithDrafts).
  */
 export async function getHomeData(db: Db, opts: { drafts?: boolean } = {}): Promise<HomeData> {
   const [slides, courseList, faqItems, postList, practice, pageRows, settingsMap, popupRow] = await Promise.all([
@@ -244,7 +254,7 @@ export async function getHomeData(db: Db, opts: { drafts?: boolean } = {}): Prom
     getPracticePackages(db),
     db.select().from(pages).where(ne(pages.key, TERMS_PAGE_KEY)),
     getSettings(db),
-    db.select().from(campaign).where(eq(campaign.active, true)).limit(1),
+    db.select().from(campaign).where(and(eq(campaign.kind, "newsletter"), eq(campaign.active, true))).limit(1),
   ]);
   const live: HomeData = {
     slides,

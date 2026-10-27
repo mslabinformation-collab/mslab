@@ -414,21 +414,23 @@
       "title": "Hüpikaken avalehel",
       "href": "/",
       "steps": [
-        "Kontrolli, et halduses „Hüpikaken“ all pole valitud „Väljas“.",
-        "Ava avaleht uues brauseri vahekaardis ja oota 6 sekundit.",
-        "Sulge aken ✕ nupuga.",
-        "Liigu mõnele teisele lehele ja tule avalehele tagasi.",
-        "Ava avaleht veel ühes uues vahekaardis ja libista aken sõrmega alla."
+        "Kontrolli, et halduses „Hüpikaken“ on „Lehel näidatakse“ sees.",
+        "Ava avaleht uues privaatses aknas ja oota 8 sekundit.",
+        "Sulge aken ✕ nupuga, värskenda lehte ja oota jälle 8 sekundit.",
+        "Ava samas aknas „Koolitused“ ja oota 8 sekundit.",
+        "Ava avaleht veel ühes uues privaatses aknas ja libista aken sõrmega alla."
       ],
       "expect": [
-        "Umbes 6 sekundi pärast avaneb hüpikaken, mis on halduses „Hüpikaken“ all valitud.",
-        "✕ sulgeb akna.",
-        "Samas vahekaardis aken uuesti ei avane.",
-        "Uues vahekaardis avaneb aken jälle ja alla libistamine sulgeb selle."
+        "Umbes 8 sekundi pärast avaneb aken halduse „Pakkumine“ pealkirja ja pildiga.",
+        "✕ sulgeb akna ja pärast värskendamist see ei avane: samas brauseris tuleb see kord 30 päeva jooksul.",
+        "Lehel „Koolitused“ akent ei tule: see avaneb ainult avalehel.",
+        "Uues privaatses aknas avaneb aken jälle ja alla libistamine sulgeb selle."
       ],
-      "why": "Hüpikaken toob kampaania või uudiskirja ette ainult korra.",
+      "why": "Hüpikaken pakub uudiskirja uuele külastajale, kuid ei tüüta korduvalt.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-jalus",
@@ -469,11 +471,14 @@
       "expect": [
         "Näed teadet „Aitäh, oled liitunud!“ ja „Saatsime sulle tervituskirja.“.",
         "Postkasti tuleb kiri „Tere tulemast MS LABi!“.",
-        "Halduse tellijate loendis on see aadress."
+        "Halduse tellijate loendis on see aadress.",
+        "Jaluse nupp on alati „Liitu“; hüpikakna nupp on „Saa kood“, kui Seadetes on „Tervituskood“."
       ],
       "why": "Uudiskiri on Maria otsene tee õpilaste juurde.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-resend",
@@ -1731,24 +1736,29 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Hüpikakna valik",
+      "title": "Hüpikaken: lüliti ja pakkumine",
       "href": "/admin/kampaania",
       "steps": [
-        "Ava „Hüpikaken“.",
-        "Vali „Lehel näidatakse“ alt „Uudiskiri“ ja vajuta „Salvesta“.",
-        "Ava avaleht uues vahekaardis ja oota 6 sekundit.",
-        "Vali „Väljas“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
-        "Vali „Kampaania“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
-        "Pane tagasi valik, mis oli enne, ja salvesta."
+        "Ava „Hüpikaken“ ja kirjuta selle kontrolli märkusesse praegune „Pealkiri“ ja „Soodustus (%)“.",
+        "Lülita „Lehel näidatakse“ välja ja vajuta all ribal „Võta tagasi“.",
+        "Kirjuta „Pealkiri“ lõppu: proov ja „Soodustus (%)“: 15, siis liigu väljalt edasi.",
+        "Vali päises RU ja vaata eelvaadet, siis vali uuesti ET.",
+        "Vajuta „Avalda muudatused“, ava avaleht uues privaatses aknas ja oota 8 sekundit.",
+        "Pane „Pealkiri“ ja „Soodustus (%)“ tagasi endiseks ja vajuta „Avalda muudatused“."
       ],
       "expect": [
-        "„Uudiskiri“ korral avaneb aken e-posti välja ja nupuga „Liitu“.",
-        "„Väljas“ korral ei avane ükski aken.",
-        "„Kampaania“ korral avaneb sooduspakkumise aken."
+        "„Lehel näidatakse“ all on rida „Avaneb uuele külastajale 8 s pärast · üks kord 30 päeva jooksul“.",
+        "Välja lülitades tuleb all riba „Hüpikaken peidetud.“; „Võta tagasi“ lülitab akna uuesti sisse.",
+        "Päise all on „Avaldamata muudatused: 2 · Pealkiri, Soodustus“; avalehel on veel vana pealkiri.",
+        "RU valikul on eelvaates venekeelne tekst ja nupp, ET valikul eestikeelne.",
+        "Umbes 8 sekundi pärast avaneb aken uue pealkirjaga ja jaluses on „15% tervitussoodustus“.",
+        "Lehel pole nuppu „Salvesta“ ega kuskil sõna „kampaania“."
       ],
-      "why": "Maria otsustab, mida avaleht pakub.",
+      "why": "Maria otsustab, kas avaleht pakub uudiskirja ja millise soodustusega.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -1786,12 +1796,14 @@
         "Ava „Seaded“ ja vali jaotiste loendist „Uudiskiri“.",
         "Kirjuta selle kontrolli märkusesse praegune „Tervituskood“.",
         "Kirjuta „Tervituskood“: proov-1 ja liigu väljalt edasi.",
+        "Värskenda lehte ja vali jaotiste loendist uuesti „Uudiskiri“.",
         "Pane „Tervituskood“ tagasi endiseks ja liigu väljalt edasi."
       ],
       "expect": [
         "Kaardil „Uudiskiri“ on ainult väli „Tervituskood“: soodustuse protsent on nüüd lehel „Hüpikaken“.",
         "Välja all on vihje „Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; …“.",
-        "Kood salvestub ise suurtähtedega, PROOV-1, ja päis ütleb „Salvestatud …“; nuppu „Salvesta“ pole."
+        "Väljalt edasi liikudes ütleb päis „Salvestatud …“; nuppu „Salvesta“ pole.",
+        "Pärast värskendamist on väljal kood suurtähtedega: PROOV-1."
       ],
       "why": "Tervituskood läheb igale uuele tellijale tervituskirjas.",
       "risk": "med",

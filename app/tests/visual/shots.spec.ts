@@ -9,7 +9,7 @@ import { LOCAL_FIXTURES } from "../e2e/fixtures";
 // - no console errors or uncaught page errors while it loads and is scrolled through;
 // - a full-page screenshot in visual-shots/<local|remote>/<width>/<page>.png, with a <page>.json next to it (address,
 //   status, widths, errors), for checking Maria's list against the pictures.
-// The campaign popup is shown on its own pictures (avaleht-kampaania), not over every home page picture.
+// The home page's popup (the newsletter sign-up) is shown on its own pictures (avaleht-kampaania), not over every home page picture.
 
 const PAGES: [key: string, path: string][] = [
   ["avaleht", "/"],
@@ -94,11 +94,11 @@ for (const locale of ["et", "ru"] as const) {
       });
     }
 
-    test.describe("campaign popup", () => {
-      test.use({ campaignPopup: 0 }); // shown at once (test hook), as it shows 6 s after the home page opens
+    test.describe("the home page's popup", () => {
+      test.use({ campaignPopup: 0 }); // shown at once (test hook), as it shows 8 s after the home page opens
       const url = locale === "et" ? "/" : "/ru";
       test(`${locale}-avaleht-kampaania ${url}`, async ({ page }) => {
-        const shown = page.waitForSelector("[data-campaign-popup][open]", { timeout: 15_000 });
+        const shown = page.waitForSelector("[data-newsletter-popup][open]", { timeout: 15_000 });
         await check(page, `${locale}-avaleht-kampaania`, url, { status: 200, fullPage: false });
         await shown;
         await expect(page.getByRole("dialog")).toBeVisible();

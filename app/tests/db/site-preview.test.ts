@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
+import { isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { getHomeData, getPost, getPracticePackages, getTrainerPage, listPosts } from "@/db/queries/public";
-import { courses, posts, type PracticePackage } from "@/db/schema";
+import { campaign, courses, posts, settings, type PracticePackage } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { newSlideDraft, type FaqDraft, type PackageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { PostPartValue, SiteEntity } from "@/domain/site-entities";
@@ -55,6 +56,7 @@ import PracticePage from "@/app/[locale]/(site)/praktika/page";
 import NewsPage from "@/app/[locale]/(site)/uudised/page";
 import PostPage from "@/app/[locale]/(site)/uudised/[slug]/page";
 import SiteLayout from "@/app/[locale]/(site)/layout";
+import { NewsletterPopup } from "@/components/site/NewsletterPopup";
 import { previewActive } from "@/server/preview";
 import { publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
 import { withSiteDrafts } from "@/server/site-preview";
@@ -447,6 +449,54 @@ describe("the posts in the admin's preview (piece 4b): each published post's dra
     const visitor = await newsPage();
     expect(visitor).not.toContain("Kulmukoolituse valik, uus pealkiri");
     expect(visitor).not.toContain("Lõpeta eelvaade");
+  });
+});
+
+describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R-e, S4-Q4)", () => {
+  const show = (on: boolean) => db.update(campaign).set({ active: on }).where(eq(campaign.id, 2));
+  const homeTree = (locale: "et" | "ru" = "et") => HomePage({ params: Promise.resolve({ locale }) });
+  /** The page's NewsletterPopup element (a client component: nothing of it is in the server's HTML), or null. */
+  function popupOf(node: unknown): { n: { title: string }; preview: boolean; t: { form: { submit: string } } } | null {
+    if (!isValidElement(node)) return Array.isArray(node) ? (node.map(popupOf).find(Boolean) ?? null) : null;
+    if (node.type === NewsletterPopup) return node.props as never;
+    return popupOf((node.props as { children?: unknown }).children);
+  }
+
+  test("the offer's draft over the shown popup, as its publish would store it; a draft that fails the strict check (no picture), an off popup and the old campaign offer: as live", async () => {
+    await show(true);
+    await save("popup", "offer", { title: { et: "Uus pakkumine", ru: "Новое предложение" }, discountPercent: "15" });
+    const live = await getHomeData(db);
+    const shown = await getHomeData(db, { drafts: true });
+    expect(shown.popup).toMatchObject({ id: 2, kind: "newsletter", active: true, title: { et: "Uus pakkumine", ru: "Новое предложение" }, imageKey: live.popup!.imageKey });
+    expect(live.popup?.title.et).toBe("Hea järgmine samm. Otse sinu postkasti.");
+    // (the footer's discount is the layout's, always live)
+    expect(shown.settings.newsletter).toEqual(live.settings.newsletter);
+    // a shown popup needs its picture: that draft shows live
+    await save("popup", "offer", { imageKey: "" });
+    expect((await getHomeData(db, { drafts: true })).popup).toEqual(live.popup);
+    // switched off, the preview shows none either, draft or not
+    await save("popup", "offer", { imageKey: UPLOAD });
+    await show(false);
+    expect((await getHomeData(db, { drafts: true })).popup).toBeNull();
+    // the old campaign offer's row on (a database from before piece 4b): never the home page's popup
+    await db.update(campaign).set({ active: true }).where(eq(campaign.id, 1));
+    expect((await getHomeData(db, { drafts: true })).popup).toBeNull();
+    expect((await getHomeData(db)).popup).toBeNull();
+  });
+
+  test("the page: the popup opens at once in her preview (`preview`), never for a visitor; its button follows Seaded's code („Saa kood“ / „Получить код“, else „Liitu“)", async () => {
+    await show(true);
+    await save("popup", "offer", { title: { et: "Uus pakkumine" } });
+    const visitor = popupOf(await homeTree());
+    expect(visitor).toMatchObject({ n: { title: "Hea järgmine samm. Otse sinu postkasti." }, preview: false, t: { form: { submit: "Liitu" } } });
+    await asAdmin();
+    expect(popupOf(await homeTree())).toMatchObject({ n: { title: "Uus pakkumine" }, preview: true });
+    state.draftOn = false;
+    await db.update(settings).set({ value: { discountLabel: "10%", welcomeCode: "TERE10" } }).where(eq(settings.key, "newsletter"));
+    expect(popupOf(await homeTree())?.t.form.submit).toBe("Saa kood");
+    expect(popupOf(await homeTree("ru"))?.t.form.submit).toBe("Получить код");
+    await show(false);
+    expect(popupOf(await homeTree())).toBeNull();
   });
 });
 

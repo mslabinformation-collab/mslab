@@ -1137,3 +1137,50 @@ describe("piece 3b sweep (Task 8)", () => {
     expect(check.why).toContain("telefonis");
   });
 });
+
+describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
+  const item = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [item(id).title, ...item(id).steps, ...item(id).expect, item(id).why].join("\n");
+  const t = adminEt.campaign;
+
+  test("haldus-hupikaken (redo): the instant switch with its undo, the offer waiting for „Avalda muudatused“, the preview's ET | RU, the home page after 8 s", () => {
+    const check = item("haldus-hupikaken");
+    expect(check).toMatchObject({ mark: "redo", href: "/admin/kampaania" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    for (const words of [t.shown, t.shownHint, t.hidden, adminEt.common.undo, t.discount, adminEt.publish.publish, "8 sekundit", "privaatses aknas"]) expect(whole("haldus-hupikaken"), words).toContain(words);
+    // the three-way choice and „Salvesta“ are gone, and no admin screen says „kampaania“ (only this check, which asks for it to be missing)
+    expect(whole("haldus-hupikaken")).not.toMatch(/Väljas|„Kampaania“|„Uudiskiri“|„Salvesta“ ja|6 sekund/);
+  });
+
+  test("avalik-hupikaken (redo): 8 s, once in 30 days per browser, the home page only — new visitors in a private window", () => {
+    const check = item("avalik-hupikaken");
+    expect(check).toMatchObject({ mark: "redo", href: "/" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const text = whole("avalik-hupikaken");
+    for (const words of ["8 sekundit", "30 päeva", "privaatses aknas", "„Koolitused“", "ainult avalehel"]) expect(text, words).toContain(words);
+    expect(text).not.toMatch(/6 sekund|kampaania|Samas vahekaardis/);
+  });
+
+  test("avalik-uudiskiri (reworded): the footer's button stays „Liitu“; the popup's follows Seaded's code (S4-Q4)", () => {
+    const check = item("avalik-uudiskiri");
+    expect(check).toMatchObject({ mark: "reworded" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const line = check.expect.find((l) => l.includes(`„${et.newsletter.popupSubmitCode}“`));
+    expect(line).toContain(`„${et.newsletter.submit}“`);
+    expect(line).toContain("„Tervituskood“");
+  });
+
+  test("haldus-seaded-uudiskiri: the code in capitals is checked after a reload (the save's answer carries no value); still a new check", () => {
+    const check = item("haldus-seaded-uudiskiri");
+    expect(check).toMatchObject({ mark: "new" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const reload = check.steps.findIndex((s) => /^Värskenda lehte/.test(s));
+    expect(reload).toBeGreaterThan(check.steps.findIndex((s) => s.includes("proov-1")));
+    expect(reload).toBeLessThan(check.steps.findIndex((s) => s.includes("tagasi endiseks")));
+    expect(check.expect.find((l) => l.includes("PROOV-1"))).toMatch(/^Pärast värskendamist/);
+  });
+});
