@@ -11,11 +11,12 @@ import { contactCourse, registrationOn } from "./payments-fixtures";
 
 // Seaded's autosave (admin UX pass piece 3b, Task 4; README B4, B21; rulings R-f, R3): POST /api/admin/seaded/<part> for every card of the page —
 // contact | newsletter | prepayment | invoice | certificate | financing — under server/autosave-route.ts' contract (200 the part's new version, 409
-// what is stored, 400 by field, 404 for no such part). A contact, newsletter, prepayment or financing part's version is the hash of its stored
-// setting; the invoice's and the certificate's (their stored JSON, which an issue also writes) is two hashes, of the texts and of the number series'
-// counter, so an invoice issued while Maria types is no conflict of her texts, while a number another tab saved is. A number already issued is
-// `taken` whatever version it was sent from (Review Focus 1: "a number field that another tab took shows `taken` in the field"). On PGlite, with the
-// admin's session cookie faked (as tests/db/course-parts-routes.test.ts does).
+// what is stored, 400 by field, 404 for no such part). A contact, newsletter or prepayment part's version is the hash of its card's fields as
+// stored (piece 4b: a key the card does not show, Hüpikaken's discount in `newsletter`, never makes its save a conflict), financing's the hash of
+// its stored setting; the invoice's and the certificate's (their stored JSON, which an issue also writes) is two hashes, of the texts and of the
+// number series' counter, so an invoice issued while Maria types is no conflict of her texts, while a number another tab saved is. A number
+// already issued is `taken` whatever version it was sent from (Review Focus 1: "a number field that another tab took shows `taken` in the
+// field"). On PGlite, with the admin's session cookie faked (as tests/db/course-parts-routes.test.ts does).
 
 const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
@@ -80,7 +81,7 @@ describe("the route", () => {
 });
 
 describe("contact, newsletter, prepayment: the settings parts", () => {
-  test("contact: a field saved trimmed and the other keys kept, the version the stored setting's hash; the footer pages revalidated once", async () => {
+  test("contact: a field saved trimmed and the other keys kept, the version the card's hash; the footer pages revalidated once", async () => {
     await signIn();
     await setSetting(db, "contact", { email: "info@example.test", phone: "", address: "Pärnu", instagram: "", facebook: "", extra: "kept" });
     const v1 = await versionOf("contact");
@@ -118,14 +119,27 @@ describe("contact, newsletter, prepayment: the settings parts", () => {
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
-  test("newsletter: the welcome code in capitals, the discount required; a code alone on a missing row is saved", async () => {
+  test("newsletter: the welcome code in capitals, the card's one field (the discount moved to Hüpikaken, piece 4b S4-Q2 A); a code alone on a missing row is saved", async () => {
     await signIn();
     const v = await versionOf("newsletter");
-    expect(await save("newsletter", { version: v, patch: { discountLabel: " " } })).toMatchObject({ status: 400, body: { fields: { discountLabel: "required" } } });
+    expect(await save("newsletter", { version: v, patch: { discountLabel: "15%" } })).toMatchObject({ status: 400, body: { fields: { discountLabel: "invalid" } } });
     expect(await save("newsletter", { version: v, patch: { welcomeCode: "tere 10" } })).toMatchObject({ status: 400, body: { fields: { welcomeCode: "codeFormat" } } });
     expect(await save("newsletter", { version: v, patch: { welcomeCode: " tere-10 " } })).toMatchObject({ status: 200 });
     expect(await setting("newsletter")).toEqual({ welcomeCode: "TERE-10" });
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "settings", parts: ["newsletter"] });
+  });
+
+  test("newsletter: the version is the card's (the code), so Hüpikaken's discount and days in the same row (R-c) never make a code's save a conflict; they are kept", async () => {
+    await signIn();
+    await setSetting(db, "newsletter", { welcomeCode: "TERE10", discountPercent: 10, codeDays: null });
+    const v = await versionOf("newsletter");
+    // Hüpikaken's „Avalda muudatused“ writes the two numbers meanwhile
+    await setSetting(db, "newsletter", { welcomeCode: "TERE10", discountPercent: 15, codeDays: 30 });
+    expect(await versionOf("newsletter")).toBe(v);
+    expect(await save("newsletter", { version: v, patch: { welcomeCode: "SUGIS15" } })).toMatchObject({ status: 200 });
+    expect(await setting("newsletter")).toEqual({ welcomeCode: "SUGIS15", discountPercent: 15, codeDays: 30 });
+    // another tab's code is still a conflict, with the card's value
+    expect(await save("newsletter", { version: v, patch: { welcomeCode: "TALV" } })).toMatchObject({ status: 409, body: { value: { welcomeCode: "SUGIS15" } } });
   });
 
   test("prepayment: the IBAN without spaces in capitals, a bad one refused with its own code; all four keys stored", async () => {

@@ -567,24 +567,25 @@ describe("settings", () => {
     expect(await saveLegalParts(db, { contact: { version: (await loadSettings(db)).versions.contact, value: good } } as never)).toEqual({ ok: false, error: "invalid" });
   });
 
-  test("newsletter discount label (required) and the legal pages (their own writer)", async () => {
+  test("„Uudiskiri“ is the welcome code alone: the discount moved to Hüpikaken (piece 4b S4-Q2 A); the legal pages have their own writer", async () => {
     const s = await loadLegalParts(db);
-    expect(refusedOf(await savePart("newsletter", { discountLabel: " " }))).toEqual({ discountLabel: "required" });
+    expect((await loadSettings(db)).values.newsletter).toEqual({ welcomeCode: "" });
+    expect(refusedOf(await savePart("newsletter", { discountLabel: "15%" }))).toEqual({ discountLabel: "invalid" });
     expect(fieldsOf(await saveLegalParts(db, { terms: { version: s.versions.terms, value: { title: { et: "" }, body: { et: "" } } } }))).toEqual({ "terms.title": "required", "terms.body": "required" });
-    expect(await savePart("newsletter", { discountLabel: "15%" })).toMatchObject({ ok: true });
     const r = await saveLegalParts(db, { privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } } });
     expect(r).toMatchObject({ ok: true });
-    expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "15%", welcomeCode: "" });
+    expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%", welcomeCode: "" });
     expect(await getPage(db, "privacy")).toMatchObject({ title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } });
   });
 
-  test("Tervituskood: stored in capitals next to the discount; another shape or over 30 is refused; a save without it keeps it", async () => {
+  test("Tervituskood: stored in capitals; another shape or over 30 is refused; the row's other keys (the old label, Hüpikaken's two numbers) are kept", async () => {
     expect(refusedOf(await savePart("newsletter", { welcomeCode: "tere 10" }))).toEqual({ welcomeCode: "codeFormat" });
     expect(refusedOf(await savePart("newsletter", { welcomeCode: "A".repeat(31) }))).toEqual({ welcomeCode: "tooLong" });
-    expect(await savePart("newsletter", { discountLabel: "10%", welcomeCode: " tere-10 " })).toMatchObject({ ok: true });
+    expect(await savePart("newsletter", { welcomeCode: " tere-10 " })).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%", welcomeCode: "TERE-10" });
-    expect(await savePart("newsletter", { discountLabel: "15%" })).toMatchObject({ ok: true });
-    expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "15%", welcomeCode: "TERE-10" });
+    await db.update(settings).set({ value: { welcomeCode: "TERE-10", discountPercent: 15, codeDays: 30 } }).where(eq(settings.key, "newsletter"));
+    expect(await savePart("newsletter", { welcomeCode: "" })).toMatchObject({ ok: true });
+    expect((await getSettings(db)).newsletter).toEqual({ welcomeCode: "", discountPercent: 15, codeDays: 30 });
   });
 
   describe("E-koolituse tingimused (course_terms)", () => {
@@ -876,11 +877,11 @@ describe("missing rows", () => {
     const s = await loadSettings(db);
     const legal = await loadLegalParts(db);
     expect(legal.values.terms).toEqual({ title: { et: "" }, body: { et: "" } });
-    expect(s.values.newsletter).toEqual({ discountLabel: "", welcomeCode: "" });
+    expect(s.values.newsletter).toEqual({ welcomeCode: "" });
     const r = await saveLegalParts(db, { terms: { version: legal.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } } });
     expect(r).toMatchObject({ ok: true });
-    expect(await writeSettingsPart(db, "newsletter", { discountLabel: "10%" }, s.versions.newsletter, new Date())).toMatchObject({ ok: true });
+    expect(await writeSettingsPart(db, "newsletter", { welcomeCode: "TERE" }, s.versions.newsletter, new Date())).toMatchObject({ ok: true });
     expect(await getPage(db, "terms")).toMatchObject({ title: { et: "Tingimused" }, body: { et: "Tekst." } });
-    expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%" });
+    expect((await getSettings(db)).newsletter).toEqual({ welcomeCode: "TERE" });
   });
 });

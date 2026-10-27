@@ -410,6 +410,27 @@ describe("the welcome mail (phase 2c; one step, 09.10)", () => {
     expect(mail.html).toContain("Maria arvestab soodustuse sinu arvelt maha.");
   });
 
+  test("with the code's days (Hüpikaken „Kood kehtib (päeva)“, S4-Q3 A): one line after the code's lines, in the language's number form; none without a code", () => {
+    const mail = welcomeMail("uus@example.test", "TERE10", "et", LINK, 30);
+    expect(mail.text).toBe(
+      [
+        "Tere!", "", "Aitäh, et liitusid MS LABi uudiskirjaga.", "",
+        "Sinu tervituskood:", "", "TERE10", "",
+        "Lisa kood registreerimisel lahtrisse „Sõnum“.", "Maria arvestab soodustuse sinu arvelt maha.", "Kood kehtib 30 päeva.", "",
+        `Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: ${LINK}`, "",
+        "MS LAB Koolituskeskus",
+      ].join("\n"),
+    );
+    expect(mail.html).toContain("Kood kehtib 30 päeva.");
+    expect(mail.html!.indexOf("Kood kehtib")).toBeGreaterThan(mail.html!.indexOf("arvestab soodustuse"));
+    expect(welcomeMail("uus@example.test", "TERE10", "et", LINK, 1).text).toContain("\nKood kehtib 1 päev.\n");
+    expect(welcomeMail("uus@example.test", "TERE10", "ru", LINK, 5).text).toContain("\nКод действует 5 дней.\n");
+    for (const [code, days] of [[null, 30], ["TERE10", null], ["TERE10", undefined]] as const) {
+      const other = welcomeMail("uus@example.test", code, "et", LINK, days);
+      expect(other.text + other.html, `${code} ${days}`).not.toContain("Kood kehtib");
+    }
+  });
+
   test("Estonian, without a code: no code lines (nor the text about using one), the unsubscribe line stays", () => {
     const mail = welcomeMail("uus@example.test", null, "et", LINK);
     expect(mail.text).toBe(

@@ -4,7 +4,7 @@ import { readSetting } from "@/db/queries/public";
 import { clients, subscribers } from "@/db/schema";
 import type { Subscriber } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { welcomeCodeOf } from "@/domain/welcome-code";
+import { codeDaysOf, welcomeCodeOf } from "@/domain/welcome-code";
 import { welcomeMail } from "./account-mail";
 import { reserveNewsletterMail } from "./client-auth";
 import { logFailure, logNote } from "./log";
@@ -52,7 +52,8 @@ const welcomeMarkKey = async (address: string) => `rl:welcome:${await sha256(add
 
 /**
  * The welcome mail to a newly subscribed address (the sign-up, "Saada mulle uudiskirja", the old confirmation link): the greeting, Seaded's
- * welcome code when there is one (without a code the mail still goes out), and the unsubscribe link of the address's row. Never throws, and
+ * welcome code when there is one (without a code the mail still goes out) with how many days it is valid when Hüpikaken has published them
+ * (piece 4b S4-Q3 A), and the unsubscribe link of the address's row. Never throws, and
  * logs no address, no token and no code. No mail when: the address is a sample one; Resend is not set up; the address has no subscriber row
  * (it unsubscribed meanwhile: there is no link to give); the address had its welcome this year (a KV mark, read first and written only once
  * the day's quota has a place for the mail; a store that fails lets the mail go, as the other limits do); the newsletter's daily cap is
@@ -68,7 +69,9 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
       console.info("[newsletter] welcome e-mail skipped: the address is no longer subscribed");
       return;
     }
-    const code = welcomeCodeOf(await readSetting(deps.db, "newsletter")) || null;
+    // the published setting (Seaded's code, Hüpikaken's days): a draft on Hüpikaken is not mailed until it is published
+    const setting = await readSetting(deps.db, "newsletter");
+    const code = welcomeCodeOf(setting) || null;
     const mark = await welcomeMarkKey(address);
     try {
       if (await deps.env.KV.get(mark)) {
@@ -89,7 +92,7 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
     }
     let sent = false;
     try {
-      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)), { count: deps.db });
+      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token), codeDaysOf(setting)), { count: deps.db });
     } catch (e) {
       logFailure("[newsletter] welcome e-mail failed to send", e);
     }

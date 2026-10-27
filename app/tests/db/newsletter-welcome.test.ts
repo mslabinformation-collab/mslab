@@ -1,9 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
+import { setSetting } from "@/db/queries/admin";
 import { clients, clientSessions, mailQuota, settings, subscribers } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS, CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, NEWSLETTER_MAIL_DAILY_CAP } from "@/server/client-auth";
+import { saveDraftPart } from "@/server/drafts";
 import { clientNewsletter, confirmNewsletter, newsletterState, sendWelcome } from "@/server/newsletter";
 import type { Env } from "@/server/notify";
 import { newToken, sha256 } from "@/server/token";
@@ -250,4 +252,38 @@ test("Minu andmed: switching the newsletter on with no code in Seaded sends the 
   expect(mails().map((m) => [m.to, m.subject])).toEqual([["kati@example.com", "Добро пожаловать в\u00a0MS LAB!"]]);
   expect(mails()[0].text).not.toContain("приветственный код");
   expect(mails()[0].text).toContain(`${SITE}/api/newsletter/loobu?t=${row.token}`);
+});
+
+test("the welcome mail says how long the code is valid (S4-Q3 A): one line after the code's, only with a code and Hüpikaken's days; Russian in its number forms; a draft's days never", async () => {
+  const mails = outbox();
+  let n = 0;
+  /** The welcome mail of a new address in `locale` with the newsletter setting `value`: its text. */
+  const welcome = async (value: Record<string, unknown>, locale: "et" | "ru" = "et") => {
+    await setSetting(db, "newsletter", value);
+    n += 1;
+    const email = `uus${n}@example.com`;
+    await db.insert(subscribers).values({ email, locale, token: `${"k".repeat(40)}${String(n).padStart(3, "0")}`, confirmedAt: NOW });
+    await sendWelcome({ db, env: env(), now: NOW, siteUrl: SITE }, { email, locale });
+    const mail = mails().at(-1)!;
+    expect(mail.to).toBe(email);
+    return mail.text;
+  };
+  const et = await welcome({ welcomeCode: "TERE10", discountPercent: 15, codeDays: 30 });
+  expect(et).toContain("Maria arvestab soodustuse sinu arvelt maha.\nKood kehtib 30 päeva.\n");
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 1 })).toContain("Kood kehtib 1 päev.");
+  // no days set (none, or nothing whole in 1–365), or no code: no such line
+  for (const value of [{ welcomeCode: "TERE10" }, { welcomeCode: "TERE10", codeDays: null }, { welcomeCode: "TERE10", codeDays: 0 }, { welcomeCode: "", codeDays: 30 }]) {
+    const text = await welcome(value);
+    expect(text, JSON.stringify(value)).not.toContain("Kood kehtib");
+    expect(text, JSON.stringify(value)).not.toContain("päev");
+  }
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 30 }, "ru")).toContain("Мария вычтет скидку из вашего счёта.\nКод действует 30 дней.\n");
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 1 }, "ru")).toContain("Код действует 1 день.");
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 2 }, "ru")).toContain("Код действует 2 дня.");
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 21 }, "ru")).toContain("Код действует 21 день.");
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 12 }, "ru")).toContain("Код действует 12 дней.");
+  expect(await welcome({ welcomeCode: "", codeDays: 30 }, "ru")).not.toContain("Код действует");
+  // Hüpikaken's draft of other days is not published: the mail keeps the published ones (Review Focus 4)
+  await saveDraftPart(db, { entity: "popup", entityId: 0, part: "offer", value: { codeDays: "7" }, baseVersion: "x", version: null, by: "admin@example.test" });
+  expect(await welcome({ welcomeCode: "TERE10", codeDays: 30 })).toContain("Kood kehtib 30 päeva.");
 });

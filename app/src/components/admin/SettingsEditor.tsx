@@ -96,11 +96,14 @@ function ContactCard({ version, value, onStatus }: { version: string; value: Con
   );
 }
 
-/** „Uudiskiri“: the welcome discount (the footer) and the welcome code, autosaved on api/admin/seaded/newsletter. */
+/**
+ * „Uudiskiri“: the welcome code, autosaved on api/admin/seaded/newsletter. The welcome discount is Hüpikaken's „Soodustus (%)“ since piece 4b (S4-Q2 A),
+ * published with the popup.
+ */
 function NewsletterCard({ version, value, onStatus }: { version: string; value: NewsletterDraft; onStatus: StatusReport }) {
   const t = adminEt.settings;
   const uid = useId();
-  const labels: Record<keyof NewsletterDraft, string> = { discountLabel: t.discount, welcomeCode: t.welcomeCode };
+  const labels: Record<keyof NewsletterDraft, string> = { welcomeCode: t.welcomeCode };
   const fields = useMemo(() => ({ ...value }), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
   const part = useSeadedPart({ part: "newsletter", version, fields, label: (f) => labels[f as keyof NewsletterDraft] ?? f, focusField: focusOf("newsletter"), onStatus });
   const field = (name: keyof NewsletterDraft) => ({
@@ -116,7 +119,6 @@ function NewsletterCard({ version, value, onStatus }: { version: string; value: 
         {t.newsletter}
       </h2>
       <div className={ed.grid}>
-        <TextField {...field("discountLabel")} maxLength={SITE_LIMITS.discount} hint={t.discountHint} />
         <TextField {...field("welcomeCode")} maxLength={WELCOME_CODE_MAX} hint={t.welcomeCodeHint} />
       </div>
       <Restore conflict={part.conflict !== null} onRestore={() => void part.restore()} />

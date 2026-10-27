@@ -273,3 +273,18 @@ describe("siteChangeLabels: a post (piece 4b, S4-24)", () => {
     expect(siteChangeLabels("post", [{ part: "post", live, draft: { ...live } }])).toEqual([]);
   });
 });
+
+describe("Hüpikaken's offer (piece 4b, S4-30, S4-26)", () => {
+  const live = { kicker: { et: "Kirjad" }, title: { et: "Liitu", ru: "Подпишись" }, text: { et: "Tekst." }, imageKey: "img/a.jpg", discountPercent: "10", codeDays: "" };
+  test("S4-30's labels in the card's order — Silt, Pealkiri, Tekst, Pilt, Soodustus, Kood kehtib — a Russian side alone with „(RU)“", () => {
+    const draft = { ...live, codeDays: "30", discountPercent: "15", imageKey: "img/b.jpg", text: { et: "Uus." }, title: { et: "Liitu", ru: "Подпишитесь" }, kicker: { et: "Uus silt" } };
+    expect(siteChangeLabels("popup", [{ part: "offer", live, draft }])).toEqual(["Silt", "Pealkiri (RU)", "Tekst", "Pilt", "Soodustus", "Kood kehtib"]);
+    expect(siteChangeLabels("popup", [{ part: "offer", live, draft: { ...live } }])).toEqual([]);
+  });
+
+  test("„Puudub: …“ in lower case (`Puudub: pilt`); a path the offer does not know is named by its card, „Pakkumine“", () => {
+    expect(["kicker", "title", "text", "imageKey", "discountPercent", "codeDays"].map((f) => missingCase(siteFieldLabel("popup", "offer", f)))).toEqual(["silt", "pealkiri", "tekst", "pilt", "soodustus", "kood kehtib"]);
+    expect(siteFieldLabel("popup", "offer", "title.ru")).toBe("Pealkiri (RU)");
+    expect(siteFieldLabel("popup", "offer", "imagePos")).toBe("Pakkumine");
+  });
+});

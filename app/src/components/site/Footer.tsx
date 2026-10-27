@@ -11,7 +11,7 @@ import styles from "./Footer.module.css";
  * B footer, half its old height (phase 2c, Maria 06.10): one block of two columns — the logo and slogan, "Õpi", the organisation's
  * links and "Kohtume" at the left (about 2/3), the lilac newsletter card at the right (about 1/3) — and the bottom line. The card
  * comes first in the page, so below 900 px, where the two stack, it is on top (as before). Contact details and the newsletter's
- * discount come from the settings table. The account's pages hide the card (globals.css): the links then take the whole width.
+ * discount (Hüpikaken's published `{discountPercent}%`, piece 4b R-c) come from the settings table. The account's pages hide the card (globals.css): the links then take the whole width.
  */
 export function Footer({
   locale,
@@ -34,7 +34,7 @@ export function Footer({
           locale={locale}
           t={{
             ...d.newsletter,
-            body: fill(d.newsletter.body, { discount: newsletter.discountLabel }),
+            body: fill(d.newsletter.body, { discount: `${newsletter.discountPercent}%` }),
             privacy: d.footer.privacy,
             errorEmail: d.forms.errorEmail,
             errorTooMany: d.forms.errorTooMany,

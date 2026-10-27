@@ -1776,6 +1776,30 @@
       "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
+      "id": "haldus-seaded-uudiskiri",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: tervituskood",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja vali jaotiste loendist „Uudiskiri“.",
+        "Kirjuta selle kontrolli märkusesse praegune „Tervituskood“.",
+        "Kirjuta „Tervituskood“: proov-1 ja liigu väljalt edasi.",
+        "Pane „Tervituskood“ tagasi endiseks ja liigu väljalt edasi."
+      ],
+      "expect": [
+        "Kaardil „Uudiskiri“ on ainult väli „Tervituskood“: soodustuse protsent on nüüd lehel „Hüpikaken“.",
+        "Välja all on vihje „Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; …“.",
+        "Kood salvestub ise suurtähtedega, PROOV-1, ja päis ütleb „Salvestatud …“; nuppu „Salvesta“ pole."
+      ],
+      "why": "Tervituskood läheb igale uuele tellijale tervituskirjas.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-seaded-ettemaks",
       "area": "haldus",
       "who": "maria",
@@ -5912,14 +5936,15 @@
         "Saatja on MS LAB.",
         "Kirjas on „Aitäh, et liitusid MS LABi uudiskirjaga.“.",
         "Kui Seadetes on tervituskood, on kood kirjas.",
+        "Kui Hüpikaknas on täidetud „Kood kehtib (päeva)“, on koodi all rida „Kood kehtib … päeva.“.",
         "Link avab lehe „Uudiskirjast loobumine“.",
         "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“ ja halduses pole Proov 1 aadressi."
       ],
       "why": "Igal uudiskirjal peab olema lihtne loobumine.",
       "risk": "med",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-parool",

@@ -361,6 +361,7 @@ export const ru: Dict = {
       codeIntro: "Ваш приветственный код:",
       use: "Укажите код при регистрации в поле «Сообщение».",
       invoice: "Мария вычтет скидку из вашего счёта.",
+      days: { one: "Код действует {n} день.", few: "Код действует {n} дня.", many: "Код действует {n} дней." },
       unsubscribe: "Если вы не подписывались сами или больше не хотите получать письма MS LAB, отпишитесь здесь: {link}",
     },
     // The footer of a newsletter campaign (server/campaign-mail.ts campaignMail; newsletter campaigns, spec D5): Draft for Dim's wording sheet, both

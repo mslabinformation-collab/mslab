@@ -1,14 +1,14 @@
 import { isHttpsUrl, portraitFraming } from "@/domain/site-editor";
+import { discountPercentOf } from "@/domain/welcome-code";
 import { pick, type I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
 
 // The parts of the settings table the site shell needs, with safe defaults (keys: see db/schema.ts settings).
 
 export type FooterContact = { email: string; phone: string; instagram: string; facebook: string };
-export type NewsletterSettings = { discountLabel: string };
+/** The footer's sign-up block: Hüpikaken's published discount, a whole percentage (admin UX pass piece 4b, R-c; the footer says `{discountPercent}%`). */
+export type NewsletterSettings = { discountPercent: number };
 export type ShellSettings = { newsletter: NewsletterSettings; contact: FooterContact; trainerName: string };
-
-const DEFAULT_DISCOUNT = "10%";
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -17,7 +17,8 @@ const https = (v: unknown): string => (isHttpsUrl(str(v)) ? str(v) : "");
 export function shellSettings(settings: Record<string, unknown>, locale: Locale = "et"): ShellSettings {
   const contact = obj(settings.contact);
   return {
-    newsletter: { discountLabel: str(obj(settings.newsletter).discountLabel) || DEFAULT_DISCOUNT },
+    // (the label Seaded stored before piece 4b is read as its number until Hüpikaken's publish writes one: domain/welcome-code.ts)
+    newsletter: { discountPercent: discountPercentOf(settings.newsletter) },
     // social links open in a new tab: https addresses only (the admin stores nothing else; anything older is dropped)
     contact: { email: str(contact.email), phone: str(contact.phone), instagram: https(contact.instagram), facebook: https(contact.facebook) },
     trainerName: pick(trainerNameOf(obj(settings.trainer).name), locale),

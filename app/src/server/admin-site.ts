@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
 import { replaceGallery, setSetting, upsertCampaign, upsertPage } from "@/db/queries/admin";
-import type { Campaign, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "@/db/schema";
+import { POPUP_ID, type Campaign, type FaqItem, type GalleryItem, type HeroSlide, type Page, type Post, type PracticePackage } from "@/db/schema";
 import {
   freePostSlug,
   insertPost,
@@ -60,9 +60,9 @@ import {
   type TrainerDraft,
   type WorkDraft,
 } from "@/domain/site-editor";
-import { isPostDay, looseBody, looseFaq, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
-import { POST_PART, type PostPartValue } from "@/domain/site-entities";
-import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
+import { isPostDay, looseBody, looseFaq, looseOffer, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
+import { POPUP_PART, POST_PART, type PopupOfferValue, type PostPartValue } from "@/domain/site-entities";
+import { CODE_DAYS_MAX, CODE_DAYS_MIN, codeDaysOf, DISCOUNT_MAX, DISCOUNT_MIN, discountPercentOf, isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 import type { SaveAnswer } from "@/domain/autosave";
@@ -72,9 +72,10 @@ import { Check, field, invalid, type EditResult, type FieldError, type SavedPart
 
 // The site content editors' parts and form handling (Task 13B; admin UX pass piece 4a). Avaleht, Koolitaja and Praktika are made of PARTS (the hero
 // slides, the statement, the FAQ; MINI and MAXI; …) which their editors save into drafts (server/site-drafts.ts: a loose check at a draft save,
-// the part's strict `check` and the Write it answers at „Avalda muudatused“): the Write is the one place that says what a part stores. The form
-// path below (`saveParts`, one `data` field of parts with the versions they were loaded at) is still Hüpikaken's (`saveCampaignForm`) and the
-// legal texts' publish (`saveLegalParts`), and posts have their own. Callers have already checked the admin session (server/actions/admin-site.ts
+// the part's strict `check` and the Write it answers at „Avalda muudatused“): the Write is the one place that says what a part stores; so do the
+// posts (piece 4b, Task 1) and Hüpikaken's offer (piece 4b, Task 3: popupParts). The form path below (`saveParts`, one `data` field of parts with
+// the versions they were loaded at) is still the old Hüpikaken editor's (`saveCampaignForm`, until its screen is rebuilt) and the legal texts'
+// publish (`saveLegalParts`), and the old post editor has its own. Callers have already checked the admin session (server/actions/admin-site.ts
 // wraps each in adminAction); these take a Db and run without Next.js (tests/db/admin-site.test.ts).
 //
 // A form load gives every part with its version (a hash of the stored value, lib/version.ts); a save sends back only the parts the admin changed,
@@ -468,7 +469,86 @@ const campaignParts: Parts = {
 export const loadCampaign = async (q: Q) => (await loadParts(q, campaignParts)) as SavedParts & { values: { campaign: CampaignDraft; newsletter: NewsletterPopupDraft } };
 export const saveCampaignForm = (db: Db, formData: FormData) => saveParts(db, campaignParts, formData);
 
-// ---------- Seaded: contact details, newsletter discount and welcome code, prepayment instructions (autosaved), legal pages, the e-course terms ----------
+// ---------- Hüpikaken on the draft layer (admin UX pass piece 4b, Task 3; rulings R-c, R-d; S4-Q2 A, S4-Q3 A) ----------
+
+// The popup is the entity "popup" (entity_id 0) with the one part `offer` (PopupOfferValue): the newsletter popup's row (R-d: the old campaign offer's
+// row 1 is no part of it, and the form path above goes with its editor) and Hüpikaken's two numbers in `settings.newsletter` — the discount the footer
+// shows and the days the welcome mail says the code is valid (R-c). A save goes to the draft; „Avalda muudatused“ writes both rows in one
+// transaction. Its version is the hash of the part's own fields (server/site-drafts.ts), so Seaded's „Tervituskood“ in the same settings row never
+// blocks it. „Lehel näidatakse“ is no part: the instant switch acts on the live row (server/site-drafts.ts switchPopup), which the write leaves as it is.
+
+/**
+ * The offer's stored value (its `read`; Write.shown answers it too, for the admin's preview: server/site-preview.ts withSiteDrafts): the newsletter
+ * popup's row (null: none yet) and the newsletter setting as stored.
+ */
+export type PopupStored = { popup: Campaign | null; newsletter: unknown };
+
+/** A newsletter popup row that is not stored yet, as the write makes it (POPUP_ID: row 2; its code, button text and link stay empty). */
+const NEW_POPUP: Campaign = { id: POPUP_ID.newsletter, kind: "newsletter", active: false, kicker: { et: "" }, title: { et: "" }, text: { et: "" }, code: "", ctaLabel: { et: "" }, ctaHref: "", imageKey: "" };
+
+/** The stored offer as its editor holds it (PopupOfferValue): the row's texts and picture (empty with no row), the two numbers as text (R-c's old-data read). */
+function popupOfferValue(stored: unknown): PopupOfferValue {
+  const { popup, newsletter } = stored as PopupStored;
+  const days = codeDaysOf(newsletter);
+  return {
+    kicker: copyI18n(popup?.kicker),
+    title: copyI18n(popup?.title),
+    text: copyI18n(popup?.text),
+    imageKey: popup?.imageKey ?? "",
+    discountPercent: String(discountPercentOf(newsletter)),
+    codeDays: days === null ? "" : String(days),
+  };
+}
+
+/**
+ * The offer part. `shown`: whether the popup is shown now (its live row's `active`), so that the strict check is the old „Salvesta“'s (as on every
+ * part of the draft layer): a shown popup needs its title and its picture (S4-26 `Puudub: pilt`), one that is off may stay unfinished, and its switch
+ * asks for them when it goes on (popupParts with `shown` true). The discount is always needed: the footer shows it. The days may be empty.
+ */
+function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
+  return part<PopupOfferValue>({
+    tables: ["campaign", "settings"],
+    schema: z.object({ kicker: i18n, title: i18n, text: i18n, imageKey: text(400), discountPercent: text(20), codeDays: text(20) }),
+    read: async (q): Promise<PopupStored> => ({ popup: await readNewsletterPopup(q), newsletter: await readSetting(q, "newsletter") }),
+    draft: popupOfferValue,
+    loose: looseOffer,
+    check: (c, v, name) => {
+      const p = `${name}.`;
+      const kicker = c.text(`${p}kicker`, v.kicker, L.campaignKicker);
+      const title = c.text(`${p}title`, v.title, L.campaignTitle, { required: shown });
+      const body = c.text(`${p}text`, v.text, L.campaignText);
+      const imageKey = c.image(`${p}imageKey`, v.imageKey, { required: shown });
+      const discountPercent = c.whole(`${p}discountPercent`, v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX);
+      if (discountPercent === null) c.fail(`${p}discountPercent`, "required");
+      const codeDays = c.whole(`${p}codeDays`, v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX);
+      if (!c.ok || discountPercent === null) return null;
+      const fields = { kicker: orEmpty(kicker), title: orEmpty(title), text: orEmpty(body), imageKey };
+      // the row keeps its `active` (the switch's) and its other columns; the setting keeps its other keys (Seaded's code, the old label)
+      const after = (stored: unknown): PopupStored => {
+        const s = stored as PopupStored;
+        return { popup: { ...(s.popup ?? NEW_POPUP), ...fields }, newsletter: { ...obj(s.newsletter), discountPercent, codeDays } };
+      };
+      return writing(async (tx, stored) => {
+        const { popup, newsletter } = after(stored);
+        const { id: _id, kind: _kind, ...row } = popup as Campaign;
+        void _id;
+        void _kind;
+        await upsertCampaign(tx, row, "newsletter");
+        await setSetting(tx, "newsletter", newsletter);
+      }, after);
+    },
+  });
+}
+
+/**
+ * Hüpikaken's parts (the draft layer's entity "popup", server/site-drafts.ts): its one part `offer`, checked as the popup is shown now — or, with
+ * `shown` true, as a shown popup's (switchPopup on: the live row must have what a shown popup needs).
+ */
+export async function popupParts(q: Q, shown?: true): Promise<Parts> {
+  return { [POPUP_PART]: popupOfferPart(shown ?? (await readNewsletterPopup(q))?.active ?? false) };
+}
+
+// ---------- Seaded: contact details, the newsletter's welcome code, prepayment instructions (autosaved), legal pages, the e-course terms ----------
 
 export type SettingsValues = {
   contact: ContactDraft;
@@ -479,7 +559,8 @@ export type SettingsValues = {
 /**
  * Seaded's autosaved settings parts (admin UX pass piece 3b, Task 4; README B4): the contact details, „Uudiskiri“ and the prepayment instructions
  * („Ettemaksu juhised“, the bank fields of the „Maksmine“ card: ruling R-f, one source — the invoice reads them too), saved field by field on
- * api/admin/seaded/<part> (server/seaded.ts). Each is one `settings` row; its version is the hash of the stored value, as every site part's.
+ * api/admin/seaded/<part> (server/seaded.ts). Each is one `settings` row; its version is the hash of the card's fields as stored (settingsVersion,
+ * piece 4b): `newsletter` also holds Hüpikaken's discount and code days (R-c), which its publish writes, and those never make a card's save a conflict.
  */
 export const SETTINGS_PARTS = ["contact", "newsletter", "prepayment"] as const;
 export type SettingsPart = (typeof SETTINGS_PARTS)[number];
@@ -493,7 +574,7 @@ const sent = (max: number) => z.string({ error: "invalid" }).max(max, "tooLong")
 /** Each part's autosave patch (the route's schema): some of its fields, no other. */
 const PATCHES: Record<SettingsPart, z.ZodType<Record<string, string | undefined>>> = {
   contact: z.strictObject({ email: sent(400), phone: sent(400), address: sent(1000), instagram: sent(1000), facebook: sent(1000) }, { error: "invalid" }).partial(),
-  newsletter: z.strictObject({ discountLabel: sent(400), welcomeCode: sent(400) }, { error: "invalid" }).partial(),
+  newsletter: z.strictObject({ welcomeCode: sent(400) }, { error: "invalid" }).partial(),
   prepayment: z.strictObject({ receiver: sent(400), iban: sent(400), bank: sent(400), referencePrefix: sent(400) }, { error: "invalid" }).partial(),
 };
 
@@ -505,7 +586,8 @@ type FieldRule = (c: Check, name: string, value: string) => unknown;
 /**
  * The fields' rules, one by one (a save checks only the fields it sends):
  * - contact: an e-mail and a phone as people write them; the social links https only (the site opens them in a new tab: never javascript: or the like);
- * - newsletter: the discount label is required; "Tervituskood" (phase 2c) is A–Z, 0–9 and "-", at most 30, stored in capitals; empty = no welcome code;
+ * - newsletter: "Tervituskood" (phase 2c) is A–Z, 0–9 and "-", at most 30, stored in capitals; empty = no welcome code (the discount is Hüpikaken's
+ *   since piece 4b, S4-Q2 A);
  * - prepayment: every field may be empty; all empty means no instructions (the cards say Maria sends an invoice), and so does one without the
  *   receiver or the IBAN (domain/account-cards.ts hasPrepayment). The IBAN is stored without spaces, in capitals.
  */
@@ -518,7 +600,6 @@ const FIELD_RULES: Record<SettingsPart, Record<string, FieldRule>> = {
     facebook: (c, n, v) => c.httpsUrl(n, v),
   },
   newsletter: {
-    discountLabel: (c, n, v) => c.plain(n, v, L.discount, { required: true }),
     welcomeCode: (c, n, v) => {
       const code = normalizeWelcomeCode(v);
       if (code.length > WELCOME_CODE_MAX) return c.fail(n, "tooLong");
@@ -537,15 +618,19 @@ const FIELD_RULES: Record<SettingsPart, Record<string, FieldRule>> = {
   },
 };
 
-/** An autosaved part as the page reads it: the stored setting's hash and its draft. */
-const settingsRead = (part: SettingsPart): Pick<Part<unknown>, "read" | "draft"> => ({ read: (q) => readSetting(q, SETTING_KEYS[part]), draft: DRAFTS[part] });
+/**
+ * An autosaved part's version: the hash of its card's fields as stored (DRAFTS), not of the whole row, as the draft layer's parts hash their own
+ * fields (piece 4a R-b): a key the card does not show — Hüpikaken's discount and code days in `newsletter`, written by its publish (piece 4b R-c), or
+ * any other key kept — never makes the card's next save a conflict.
+ */
+const settingsVersion = (part: SettingsPart, stored: unknown): Promise<string> => contentVersion(DRAFTS[part](stored));
 
 /**
  * One autosaved settings part (the route's `write`; server/autosave-route.ts' contract): `patch` (some of its fields) over the stored setting at
- * `version`. The fields sent are checked first, each by its rule (FIELD_RULES: refused by field, nothing written); then, with the settings table
- * locked as every site save locks it, a version that is not the stored one's is a conflict with the part as stored; else the fields are written
- * over the stored value, its other keys kept (the prepayment's four always written). The same text again writes nothing and keeps the version.
- * `changed`: whether anything was written (the caller revalidates the pages that show the part).
+ * `version` (settingsVersion). The fields sent are checked first, each by its rule (FIELD_RULES: refused by field, nothing written); then, with the
+ * settings table locked as every site save locks it, a version that is not the stored card's is a conflict with the card as stored; else the fields
+ * are written over the stored value, its other keys kept (the prepayment's four always written). The same text again writes nothing and keeps the
+ * version. `changed`: whether anything was written (the caller revalidates the pages that show the part).
  */
 export async function writeSettingsPart(db: Db, part: SettingsPart, patch: unknown, version: string, now: Date): Promise<SaveAnswer & { changed?: boolean }> {
   const parsed = PATCHES[part].safeParse(patch);
@@ -559,15 +644,14 @@ export async function writeSettingsPart(db: Db, part: SettingsPart, patch: unkno
   return db.transaction(async (tx) => {
     await lockTables(tx, ["settings"]);
     const stored = await readSetting(tx, key);
-    const current = await contentVersion(stored);
+    const current = await settingsVersion(part, stored);
     if (current !== version) return { ok: false, error: "conflict", version: current, value: DRAFTS[part](stored) };
     const next = { ...(part === "prepayment" ? prepaymentDraft(stored) : obj(stored)), ...values };
     // nothing the card shows would change (the same text again, or a space typed into a field that is empty on a part with no row yet, which is the
     // defaults): no write, no new version, nothing revalidated (C4)
-    const sameCard = JSON.stringify(DRAFTS[part](next)) === JSON.stringify(DRAFTS[part](stored));
-    if (sameCard || (await contentVersion(next)) === current) return { ok: true, version: current, savedAt };
+    if (JSON.stringify(DRAFTS[part](next)) === JSON.stringify(DRAFTS[part](stored))) return { ok: true, version: current, savedAt };
     await setSetting(tx, key, next);
-    return { ok: true, version: await contentVersion(await readSetting(tx, key)), savedAt, changed: true };
+    return { ok: true, version: await settingsVersion(part, await readSetting(tx, key)), savedAt, changed: true };
   });
 }
 
@@ -604,8 +688,18 @@ const legalParts: Parts = {
   }),
 };
 
-/** The page's read: Seaded's autosaved parts with their versions (their routes' versions). The legal texts are read with their drafts (legal-drafts.ts). */
-export const loadSettings = async (q: Q) => (await loadParts(q, Object.fromEntries(SETTINGS_PARTS.map((p) => [p, settingsRead(p)])))) as SavedParts & { values: SettingsValues };
+/**
+ * The page's read: Seaded's autosaved parts with their versions (their routes' versions: settingsVersion). The legal texts are read with their drafts
+ * (legal-drafts.ts).
+ */
+export async function loadSettings(q: Q): Promise<SavedParts & { values: SettingsValues }> {
+  const stored = await Promise.all(SETTINGS_PARTS.map((part) => readSetting(q, SETTING_KEYS[part])));
+  const versions = await Promise.all(SETTINGS_PARTS.map((part, i) => settingsVersion(part, stored[i])));
+  return {
+    values: Object.fromEntries(SETTINGS_PARTS.map((part, i) => [part, DRAFTS[part](stored[i])])) as SettingsValues,
+    versions: Object.fromEntries(SETTINGS_PARTS.map((part, i) => [part, versions[i]])),
+  };
+}
 
 /** The legal parts' names: Privaatsus, Õppetingimused and E-koolituse leping (the contact contract has its own writer, contracts.ts saveContractTexts). */
 export type LegalPart = "privacy" | "terms" | "course_terms";

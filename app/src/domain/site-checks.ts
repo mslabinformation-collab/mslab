@@ -1,7 +1,8 @@
 import { tallinnInstant } from "./calendar";
 import { Check, type FieldError } from "./field-check";
 import { isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
-import type { PostPartValue } from "./site-entities";
+import type { PopupOfferValue, PostPartValue } from "./site-entities";
+import { CODE_DAYS_MAX, CODE_DAYS_MIN, DISCOUNT_MAX, DISCOUNT_MIN } from "./welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 
@@ -18,6 +19,7 @@ import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 // The names are the fields' paths in the part's value as its editor holds it (domain/site-entities.ts): a package's `price`, the trainer card's
 // `stats.0.label`, a list part's `slides.2.title`, and the list's own name (`slides`) for the list as a whole. Pure: the browser runs them too.
 // A post (piece 4b, loosePost below) is the one part with two fields held at every save: no post is stored without its Estonian title and its day.
+// Hüpikaken's offer (piece 4b, looseOffer at the end) holds nothing at a save either.
 
 export type LooseProblems = Record<string, FieldError>;
 
@@ -186,4 +188,21 @@ export function loosePost(v: PostPartValue): LooseProblems {
   else if (!isPostDay(day)) c.fail("publishedAt", "date");
   const held = new Set(["title", "publishedAt"]);
   return Object.fromEntries(Object.entries(c.errors).filter(([name, code]) => held.has(name) || !MISSING_CODES.includes(code)));
+}
+
+// ---------- Hüpikaken: the offer (piece 4b, ruling R-c) ----------
+
+/**
+ * Hüpikaken's offer (PopupOfferValue): the texts' lengths, the picture's key, the discount a whole 1–99 and the code's days a whole 1–365, each as
+ * typed. Nothing is required here: the title and the picture of a shown popup, and the discount, wait for „Avalda muudatused“ (`Puudub: pilt`).
+ */
+export function looseOffer(v: PopupOfferValue): LooseProblems {
+  const c = new Check();
+  c.text("kicker", v.kicker, L.campaignKicker);
+  c.text("title", v.title, L.campaignTitle);
+  c.text("text", v.text, L.campaignText);
+  c.image("imageKey", v.imageKey);
+  c.whole("discountPercent", v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX);
+  c.whole("codeDays", v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX);
+  return looseOf(c);
 }

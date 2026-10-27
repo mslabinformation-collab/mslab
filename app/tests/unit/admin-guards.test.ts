@@ -150,6 +150,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/sisu/[entity]/[id]/osa/[part]/route.ts", "app/api/admin/sisu/[entity]/[id]/avalda/route.ts", "app/api/admin/sisu/[entity]/[id]/loobu/route.ts",
         // piece 4b, Task 1: „Lisa postitus +“ (a post made at once), a post's instant „Avaldatud“ and „Kustuta postitus“ (its drafts with it)
         "app/api/admin/uudised/uus/route.ts", "app/api/admin/uudised/[id]/avaldatud/route.ts", "app/api/admin/uudised/[id]/kustuta/route.ts",
+        // piece 4b, Task 3: Hüpikaken's instant „Lehel näidatakse“ (the live row, from the version the screen read)
+        "app/api/admin/hupikaken/naita/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);

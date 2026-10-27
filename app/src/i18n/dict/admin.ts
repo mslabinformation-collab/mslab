@@ -294,6 +294,17 @@ export const adminEt = {
       // a path the post's labels do not know is named by the part itself, as S4-1 names any part's (the word of ADM:2259, news.col.post)
       post: "Postitus",
     },
+    // Hüpikaken's offer (S4-30: a field's label without the unit in brackets, „Soodustus (%)“ → „Soodustus“); `Puudub: pilt` (S4-26) in lower case
+    popup: {
+      kicker: "Silt",
+      title: "Pealkiri",
+      text: "Tekst",
+      imageKey: "Pilt",
+      discountPercent: "Soodustus",
+      codeDays: "Kood kehtib",
+      // a path the offer's labels do not know is named by its card (S4-27 „Pakkumine“)
+      offer: "Pakkumine",
+    },
     // S4-1: a label whose only change is the Russian text ({label}: any of the above, e.g. „Slaid 2 pealkiri (RU)“)
     ru: "{label} (RU)",
   },
@@ -2440,10 +2451,9 @@ export const adminEt = {
     facebook: "Facebook",
     socialHint: "Täielik aadress, nt https://www.instagram.com/mslab",
     newsletter: "Uudiskiri",
-    discount: "Tervitussoodustus",
-    discountHint: "Jaluse uudiskirja plokis: „… {discount} tervitussoodustus sinu esimesele koolitusele.“ Näiteks 10%.",
+    // the welcome discount moved to Hüpikaken (piece 4b S4-Q2 A: „Soodustus (%)“); the code's hint drops „pärast … kinnitamist“ (S4-29 ruling)
     welcomeCode: "Tervituskood",
-    welcomeCodeHint: "Saadetakse tervituskirjas pärast uudiskirja kinnitamist ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
+    welcomeCodeHint: "Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
     // where students pay the prepayment: on the unpaid contact-course cards of their account (never on a public page); the „Maksmine“ card's bank fields
     prepaymentHint: "Juhised on õpilasele näha ainult siis, kui saaja ja IBAN on täidetud. Muidu ütleb kaart: „Maria saadab sulle arve“.",
     receiver: "Saaja",

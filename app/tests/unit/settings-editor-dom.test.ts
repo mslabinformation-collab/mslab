@@ -31,7 +31,7 @@ const PROPS: Parameters<typeof SettingsEditor>[0] = {
   initial: {
     values: {
       contact: { email: "info@example.test", phone: "", address: "Pärnu", instagram: "", facebook: "" },
-      newsletter: { discountLabel: "10%", welcomeCode: "" },
+      newsletter: { welcomeCode: "" },
       prepayment: { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" },
     },
     versions: { contact: "k1", newsletter: "n1", prepayment: "p1" },
@@ -182,6 +182,16 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect(titles("ligipaas")).toEqual(["Halduse ligipääs"]);
     expect(Array.from(document.querySelectorAll("#ligipaas li")).map(text)).toEqual(["maria@example.test"]);
     expect(document.querySelector("#ligipaas input")).toBeNull();
+  });
+
+  test("„Uudiskiri“ holds „Tervituskood“ only: the discount moved to Hüpikaken (piece 4b S4-Q2 A); its hint no longer waits for a confirmation (S4-29)", async () => {
+    await show();
+    const card = $("[data-newsletter-card]")!;
+    expect(Array.from(card.querySelectorAll("label")).map(text)).toEqual(["Tervituskood"]);
+    expect(Array.from(card.querySelectorAll("input")).map((i) => i.getAttribute("data-field"))).toEqual(["newsletter.welcomeCode"]);
+    expect(text(card)).not.toContain("Tervitussoodustus");
+    expect(text(card)).not.toContain("kinnitamist");
+    expect(text(card)).toContain("Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta.");
   });
 
   test("no „Salvesta“ anywhere and no save bar: the legal texts too type into their drafts and have their „Avalda …“ (Task 5)", async () => {

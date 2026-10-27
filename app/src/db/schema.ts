@@ -858,7 +858,8 @@ export const kvEntries = pgTable(
   (t) => [index("kv_entries_expires_at").on(t.expiresAt).where(sql`${t.expiresAt} is not null`)],
 );
 export const settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value").notNull() });
-// keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
+// keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {welcomeCode (Seaded), discountPercent, codeDays (Hüpikaken, piece 4b R-c;
+// before it Seaded's discountLabel, still read: domain/welcome-code.ts)}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 // "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
 // "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { pick, pickList } from "@/i18n/field";
 import { href, publicPath, switchLocaleHref } from "@/i18n/href";
-import { fill, formatSize } from "@/i18n/format";
+import { fill, formatSize, pluralForm } from "@/i18n/format";
 import { LOCALES, getDict } from "@/i18n/locales";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
@@ -72,6 +72,15 @@ describe("fill", () => {
     expect(fill("© {year} MS LAB", { year: 2026 })).toBe("© 2026 MS LAB");
     expect(fill("{a}-{b}", { a: "x" })).toBe("x-{b}");
     expect(fill("no placeholders", {})).toBe("no placeholders");
+  });
+});
+
+describe("pluralForm", () => {
+  test("Estonian: the singular for 1 alone (1 päev, 21 päeva); Russian: 1, 21, 31 … „one“, 2–4, 22–24 … „few“, the rest (0, 5–20, 11–14, 25 …) „many“", () => {
+    expect([1, 2, 5, 11, 21, 30, 101].map((n) => pluralForm(n, "et"))).toEqual(["one", "many", "many", "many", "many", "many", "many"]);
+    expect([1, 21, 31, 101, 121].map((n) => pluralForm(n, "ru"))).toEqual(["one", "one", "one", "one", "one"]);
+    expect([2, 3, 4, 22, 24, 102, 334].map((n) => pluralForm(n, "ru"))).toEqual(["few", "few", "few", "few", "few", "few", "few"]);
+    expect([0, 5, 9, 10, 11, 12, 13, 14, 19, 20, 25, 30, 111, 112, 114, 365].map((n) => pluralForm(n, "ru"))).toEqual(Array(16).fill("many"));
   });
 });
 

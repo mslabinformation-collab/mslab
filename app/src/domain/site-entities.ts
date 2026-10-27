@@ -6,28 +6,29 @@ import type { FaqDraft, PackageDraft, PageDraft, SlideDraft, TrainerDraft, WorkD
 // ("practice"). Each is one row of `content_drafts` (server/drafts.ts) with the entity's name and entity_id 0, and its parts are the ones
 // server/admin-site.ts has: home slides, statement, teaser, faq; trainer trainer, bio, works, center_story, trainer_journey; practice one part per
 // package code (read from `practice_packages`). The design's cards are views over these parts; no part is split (R-a).
-// Piece 4b (ruling R-a) adds the posts ("post"): one row per post, entity_id the post's id, with the one part `post` (PostPartValue).
+// Piece 4b (ruling R-a) adds the posts ("post"): one row per post, entity_id the post's id, with the one part `post` (PostPartValue); and (R-c) Hüpikaken
+// ("popup"), entity_id 0 as the three above, with the one part `offer` (PopupOfferValue). Its switch „Lehel näidatakse“ is no part: it acts on the live row.
 //
 // A part's value as its editor holds it (`SitePartState.value`, `.live`) is a record of fields, as the autosave sends them (components/admin/
 // autosave/engine.ts: a patch is some of the fields). Most parts' drafts are records already (a package, the trainer card, a page's title and
 // text, a post); a list part (the slides, the FAQ, the trainer's gallery) is held as one field of the part's own name: `{ slides: SlideDraft[] }`.
 // Pure: no database, no React; the browser imports it too (tests/unit/old-safari.test.ts).
 
-/** The entities that are one record each, in the one `content_drafts` row SITE_ENTITY_ID: Avaleht, Koolitaja, Praktika. */
-export type SiteEntity = "home" | "trainer" | "practice";
-export const SITE_ENTITIES: readonly SiteEntity[] = ["home", "trainer", "practice"];
+/** The entities that are one record each, in the one `content_drafts` row SITE_ENTITY_ID: Avaleht, Koolitaja, Praktika, Hüpikaken (piece 4b). */
+export type SiteEntity = "home" | "trainer" | "practice" | "popup";
+export const SITE_ENTITIES: readonly SiteEntity[] = ["home", "trainer", "practice", "popup"];
 
-/** Every entity of the site content's draft layer (its `content_drafts.entity`): the three above and the posts (piece 4b R-a), one row per post. */
+/** Every entity of the site content's draft layer (its `content_drafts.entity`): the four above and the posts (piece 4b R-a), one row per post. */
 export type SiteDraftEntity = SiteEntity | "post";
 
-/** The `content_drafts` row id of Avaleht, Koolitaja and Praktika (R-a). */
+/** The `content_drafts` row id of Avaleht, Koolitaja, Praktika and Hüpikaken (R-a). */
 export const SITE_ENTITY_ID = 0;
 
 export const isSiteEntity = (s: string): s is SiteEntity => (SITE_ENTITIES as readonly string[]).includes(s);
 
 /**
- * What a site editor edits: Avaleht, Koolitaja or Praktika by name (their row 0), or a post by its id (piece 4b R-a: entity_id = posts.id). The
- * server's draft functions (server/site-drafts.ts) take it.
+ * What a site editor edits: Avaleht, Koolitaja, Praktika or Hüpikaken by name (their row 0), or a post by its id (piece 4b R-a: entity_id = posts.id).
+ * The server's draft functions (server/site-drafts.ts) take it.
  */
 export type SiteTarget = SiteEntity | { entity: "post"; id: number };
 
@@ -35,8 +36,8 @@ export type SiteTarget = SiteEntity | { entity: "post"; id: number };
 export const siteRowOf = (t: SiteTarget): { entity: SiteDraftEntity; id: number } => (typeof t === "string" ? { entity: t, id: SITE_ENTITY_ID } : { entity: t.entity, id: t.id });
 
 /**
- * The target an address names (api/admin/sisu/<entity>/<id>/…): Avaleht, Koolitaja or Praktika with id "0", a post with its id written as a row id
- * (lib/row-id.ts: digits, no leading zero); null for anything else (the routes' 404).
+ * The target an address names (api/admin/sisu/<entity>/<id>/…): Avaleht, Koolitaja, Praktika or Hüpikaken with id "0", a post with its id written as
+ * a row id (lib/row-id.ts: digits, no leading zero); null for anything else (the routes' 404).
  */
 export function parseSiteTarget(entity: string, id: string): SiteTarget | null {
   if (entity === "post") {
@@ -60,6 +61,17 @@ export const POST_PART = "post";
  * version) and without its id; `publishedAt` is the Estonian calendar day, YYYY-MM-DD.
  */
 export type PostPartValue = { title: I18n; slug: string; category: I18n; excerpt: I18n; body: I18n; coverKey: string; publishedAt: string };
+
+/** Hüpikaken's one part (piece 4b R-c): the card „Pakkumine“ (S4-27). */
+export const POPUP_PART = "offer";
+
+/**
+ * Hüpikaken's offer as its editor holds it (piece 4b R-c): the newsletter popup's texts and picture (the `campaign` row of kind "newsletter") and the
+ * two numbers of `settings.newsletter` — „Soodustus (%)“ and „Kood kehtib (päeva)“ — as typed, the way a package's price and models are held (a whole
+ * number checked at the field; "" for days: none, the welcome mail then says nothing of them). No `active`: „Lehel näidatakse“ is the instant switch,
+ * so it never moves the part's version; and no welcome code (Seaded's „Tervituskood“, in the same settings row), so a code's save never blocks it.
+ */
+export type PopupOfferValue = { kicker: I18n; title: I18n; text: I18n; imageKey: string; discountPercent: string; codeDays: string };
 
 /**
  * A part as its editor starts (server/site-drafts.ts readSiteEditor): `version` (R-b) "l:<hash>" while the part has no draft (the hash of `live`),

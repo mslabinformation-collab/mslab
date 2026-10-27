@@ -1042,9 +1042,9 @@ test.describe("settings", () => {
     expect(await noOverflow(page)).toBe(true);
   });
 
-  test("contact links (https only) and the newsletter discount autosave (no „Salvesta“) and reach the footer and the contact page", async ({ page, context, visitorIp }, info) => {
+  test("contact links (https only) autosave (no „Salvesta“) and reach the footer and the contact page; „Uudiskiri“ has no discount field (piece 4b)", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the contact settings; the phone project the privacy page");
-    await changing(["settings", { column: "key", value: "contact" }], ["settings", { column: "key", value: "newsletter" }]);
+    await changing(["settings", { column: "key", value: "contact" }]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
@@ -1063,22 +1063,23 @@ test.describe("settings", () => {
     expect((await stored()).value.instagram).toBe(before.instagram); // (nothing of it stored)
     await instagram.fill("https://www.instagram.com/mslab.e2e");
     const phoneField = page.getByRole("textbox", { name: "Telefon", exact: true });
-    await phoneField.fill("+372 5555 0199");
-    await phoneField.press("Tab");
-    const discount = page.getByRole("textbox", { name: "Tervitussoodustus", exact: true });
-    const saved = await seadedAutosave(page, "newsletter", async () => {
-      await discount.fill("15%");
-      await discount.press("Tab");
+    const saved = await seadedAutosave(page, "contact", async () => {
+      await phoneField.fill("+372 5555 0199");
+      await phoneField.press("Tab");
     });
     expect(saved.status()).toBe(200);
     await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
     await expect.poll(async () => (await stored()).value).toMatchObject({ instagram: "https://www.instagram.com/mslab.e2e", phone: "+372 5555 0199" });
+    // „Uudiskiri“ is the welcome code alone: the discount is Hüpikaken's „Soodustus (%)“ (piece 4b S4-Q2 A)
+    await expect(page.locator("[data-newsletter-card]").getByRole("textbox")).toHaveCount(1);
+    await expect(page.getByRole("textbox", { name: "Tervitussoodustus", exact: true })).toHaveCount(0);
 
     await page.goto("/");
     const footer = page.locator("footer");
     await expect(footer.getByRole("link", { name: /Instagram/ })).toHaveAttribute("href", "https://www.instagram.com/mslab.e2e");
     await expect(footer.getByRole("link", { name: "+372 5555 0199" })).toHaveAttribute("href", "tel:+37255550199");
-    await expect(footer.getByText(/15% tervitussoodustus/)).toBeVisible();
+    // (the footer's discount is Hüpikaken's published one, read as its number: `{discountPercent}%`, piece 4b R-c)
+    await expect(footer.getByText(/\d{1,2}% tervitussoodustus/)).toBeVisible();
     await page.goto("/kontakt");
     await expect(page.locator("[data-contact-details]").getByRole("link", { name: /instagram\.com\/mslab\.e2e/ })).toBeVisible();
   });

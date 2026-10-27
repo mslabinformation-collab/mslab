@@ -31,9 +31,11 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "reviews", course: "" })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE} (page)`]);
   });
 
-  test("home, campaign, practice, posts", () => {
+  test("home, campaign, popup, practice, posts", () => {
     expect(paths({ kind: "home" })).toEqual([`${SITE} (page)`]);
     expect(paths({ kind: "campaign" })).toEqual([`${SITE} (page)`]);
+    // Hüpikaken's „Avalda muudatused“ (piece 4b R-c): the popup on the home page and its discount in the footer of every page
+    expect(paths({ kind: "popup" })).toEqual([`${SITE} (layout)`]);
     expect(paths({ kind: "practice" })).toEqual([`${SITE} (page)`, `${SITE}/praktika (page)`]);
     expect(paths({ kind: "posts" })).toEqual([`${SITE}/uudised (layout)`, `${SITE} (page)`]);
   });
@@ -98,6 +100,7 @@ describe("the revalidation map", () => {
       { kind: "reviews", course: "../x" },
       { kind: "home" },
       { kind: "campaign" },
+      { kind: "popup" },
       { kind: "practice" },
       { kind: "posts" },
       { kind: "trainer", parts: ["bio", "works"] },
@@ -169,6 +172,7 @@ describe("revalidatePublic", () => {
       { kind: "reviews", course: "../x" },
       { kind: "home" },
       { kind: "campaign" },
+      { kind: "popup" },
       { kind: "practice" },
       { kind: "posts" },
       { kind: "trainer", parts: ["trainer"] },

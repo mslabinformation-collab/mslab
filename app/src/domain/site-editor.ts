@@ -48,7 +48,6 @@ export const SITE_LIMITS = {
   phone: 40,
   address: 200,
   url: 300,
-  discount: 20,
   legalTitle: 120,
   legal: 30_000,
   receiver: 120,
@@ -312,9 +311,12 @@ export function contactDraft(value: unknown): ContactDraft {
   return { email: str(c.email), phone: str(c.phone), address: str(c.address), instagram: str(c.instagram), facebook: str(c.facebook) };
 }
 
-/** Seaded "Uudiskiri" (settings key "newsletter"): the discount label and the welcome code ("Tervituskood", phase 2c; "" = none). */
-export type NewsletterDraft = { discountLabel: string; welcomeCode: string };
-export const newsletterDraft = (value: unknown): NewsletterDraft => ({ discountLabel: str(obj(value).discountLabel), welcomeCode: str(obj(value).welcomeCode) });
+/**
+ * Seaded "Uudiskiri" (settings key "newsletter"): the welcome code ("Tervituskood", phase 2c; "" = none). The same row holds Hüpikaken's discount and
+ * code days (admin UX pass piece 4b, R-c: discountPercent, codeDays), which the card does not show; before piece 4b it also had the discount label.
+ */
+export type NewsletterDraft = { welcomeCode: string };
+export const newsletterDraft = (value: unknown): NewsletterDraft => ({ welcomeCode: str(obj(value).welcomeCode) });
 
 /** Seaded → „Maksmine“'s bank fields (settings key "prepayment"): where students pay, shown on their unpaid contact-course cards. */
 export type PrepaymentDraft = { receiver: string; iban: string; bank: string; referencePrefix: string };

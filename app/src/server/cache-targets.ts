@@ -21,8 +21,10 @@ export type PublicChange =
   | { kind: "trainer"; parts: string[] }
   /** a post saved or deleted */
   | { kind: "posts" }
-  /** Hüpikaken (the home page's popup: the campaign or the newsletter sign-up) */
+  /** Hüpikaken (the home page's popup: the campaign or the newsletter sign-up); its „Lehel näidatakse“ switched (piece 4b) */
   | { kind: "campaign" }
+  /** Hüpikaken's offer published (piece 4b, R-c): the popup on the home page and its discount in the footer's sign-up block */
+  | { kind: "popup" }
   /** Seaded: contact and newsletter (footer, every page), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
   | { kind: "settings"; parts: string[] };
 
@@ -63,6 +65,9 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
     case "home":
     case "campaign":
       return [HOME];
+    case "popup":
+      // the discount is in the footer of every page (the layout covers the home page's popup too)
+      return [EVERY_PAGE];
     case "practice":
       return [HOME, page("/praktika")];
     case "posts":

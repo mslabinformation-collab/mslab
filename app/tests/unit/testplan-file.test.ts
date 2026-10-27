@@ -681,7 +681,9 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     const welcome = item("kirjad-tervituskiri");
     expect(welcome.steps[0]).toContain("Proov 1");
     expect(welcome.expect.join("\n")).toContain("pole Proov 1 aadressi");
-    expect(welcome.mark).toBe("reworded");
+    // admin UX pass piece 4b (S4-Q3 A): the mail says how long the code is valid, when Hüpikaken has the days — to be checked again
+    expect(welcome.expect.join("\n")).toContain("„Kood kehtib … päeva.“");
+    expect(welcome.mark).toBe("redo");
     expect(markedSince(welcome.markedAt)).toBe(true);
     // Proov 3 unsubscribes in the campaign check, before the welcome mail's; Proov 1 subscribes in konto-andmed, between the two
     expect(at("avalik-uudiskiri-kampaania-loobu")).toBeLessThan(at("konto-andmed"));

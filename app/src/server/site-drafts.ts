@@ -1,15 +1,17 @@
 import { sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
-import { deletePostRow, insertPost, lockTables, readPost, updatePost, type SiteTable } from "@/db/queries/admin-site";
+import { upsertCampaign } from "@/db/queries/admin";
+import { deletePostRow, insertPost, lockTables, readNewsletterPopup, readPost, updatePost, type SiteTable } from "@/db/queries/admin-site";
+import type { Campaign } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import { missingCase, sameSiteValue, siteChangeLabels, siteFieldLabel } from "@/domain/site-changes";
 import { MISSING_CODES } from "@/domain/site-checks";
-import { fromEditorValue, isListPart, POST_PART, siteDraftLockKey, siteRowOf, toEditorValue, type SiteDraftEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
+import { fromEditorValue, isListPart, POPUP_PART, POST_PART, siteDraftLockKey, siteRowOf, toEditorValue, type SiteDraftEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import { slugify } from "@/lib/slug";
 import { contentVersion } from "@/lib/version";
-import { homeParts, postParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
+import { homeParts, popupParts, postParts, practiceParts, trainerParts, type Part, type Parts, type Write } from "./admin-site";
 import { discardDrafts, draftVersion, finishDraftSave, publishDrafts, publishDraftsIn, readDrafts, SwitchRefused, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { logFailure } from "./log";
@@ -43,16 +45,23 @@ import { readStamp, stampOrNull } from "./read-stamp";
 // - A published post saves into its draft as the other parts do; „Avalda muudatused“ runs S4-Q1 A's strict check (Part.check), then the address
 //   against the other posts: a taken one is held back as "invalid" with its code (`errors: { slug: "slugTaken" }`, ADM:2281).
 // - „Avaldatud“ (switchPostPublished, R-b), „Lisa postitus +“ (createPost, S4-19) and „Kustuta postitus“ (deletePost, R-h): at the end of this file.
+// Piece 4b (Task 3; rulings R-c, R-d) adds Hüpikaken: the entity "popup" (row 0, as the three above) with the one part `offer` (server/admin-site.ts
+// popupParts), drafted as theirs; its publish revalidates the footer of every page too (the discount). „Lehel näidatakse“ (switchPopup) is instant,
+// on the live row: at the very end of this file.
 // No Next.js here but the revalidation (server/public-cache.ts, mocked in the tests): tests/db/site-drafts.test.ts and post-drafts.test.ts run it on
 // PGlite.
 
 export { isSiteEntity, parseSiteTarget, SITE_ENTITY_ID, siteRowOf, type SiteDraftEntity, type SiteEntity, type SitePartState, type SiteTarget } from "@/domain/site-entities";
 
-/** A target's parts by name, in its screen's order: Praktika's are read from the packages; a post's is its one part, none when the post is gone. */
+/**
+ * A target's parts by name, in its screen's order: Praktika's are read from the packages; Hüpikaken's one part is checked as the popup is shown now;
+ * a post's is its one part, none when the post is gone.
+ */
 export async function partsOf(q: Q, target: SiteTarget): Promise<Parts> {
   if (target === "home") return homeParts;
   if (target === "trainer") return trainerParts;
   if (target === "practice") return practiceParts(q);
+  if (target === "popup") return popupParts(q);
   return postParts(q, target.id);
 }
 
@@ -61,7 +70,7 @@ export async function hasSitePart(q: Q, target: SiteTarget, part: string): Promi
   return Object.hasOwn(await partsOf(q, target), part);
 }
 
-/** Is the target there (the publish and discard routes' 404): Avaleht, Koolitaja and Praktika always, a post while its row is. */
+/** Is the target there (the publish and discard routes' 404): Avaleht, Koolitaja, Praktika and Hüpikaken always, a post while its row is. */
 export async function siteTargetExists(q: Q, target: SiteTarget): Promise<boolean> {
   return typeof target === "string" || (await readPost(q, target.id)) !== null;
 }
@@ -299,19 +308,23 @@ function invalidOf(entity: SiteDraftEntity, part: string, errors: Record<string,
   return { reason: "invalid", fields, errors };
 }
 
-/** The public pages an entity's publish revalidates (server/cache-targets.ts): Koolitaja's by the parts written; a post's, the post pages. */
+/**
+ * The public pages an entity's publish revalidates (server/cache-targets.ts): Koolitaja's by the parts written; a post's, the post pages; Hüpikaken's,
+ * the popup and the footer's discount (every page).
+ */
 function revalidateEntity(entity: SiteDraftEntity, written: string[]): void {
   if (entity === "home") revalidatePublic({ kind: "home" });
   else if (entity === "trainer") revalidatePublic({ kind: "trainer", parts: written });
   else if (entity === "post") revalidatePublic({ kind: "posts" });
+  else if (entity === "popup") revalidatePublic({ kind: "popup" });
   else revalidatePublic({ kind: "practice" });
 }
 
 /**
- * S4-Q1 A's one decision on a part's value as it goes public, which the bar's „Avalda muudatused“ and a post's „Avaldatud“ switched on (R-b) both
- * run: `raw` (a draft's value; null: the stored value itself) over the stored value, through the part's strict check (strictDraft: Part.check), then
- * the rules against the stored rows (Part.rowCheck). The Write, or why the part is held: "missing" with the refused fields' labels as „Puudub: …“
- * lists them, or "invalid" with the codes (`slugTaken`).
+ * S4-Q1 A's one decision on a part's value as it goes public, which the bar's „Avalda muudatused“, a post's „Avaldatud“ switched on (R-b) and
+ * Hüpikaken's „Lehel näidatakse“ switched on (S4-26) all run: `raw` (a draft's value; null: the stored value itself) over the stored value, through
+ * the part's strict check (strictDraft: Part.check), then the rules against the stored rows (Part.rowCheck). The Write, or why the part is held:
+ * "missing" with the refused fields' labels as „Puudub: …“ lists them, or "invalid" with the codes (`slugTaken`).
  */
 async function strictDecision(tx: Tx, entity: SiteDraftEntity, part: string, def: Part<unknown>, stored: unknown, raw: unknown): Promise<Write | Omit<SiteBlockedPart, "part">> {
   const { value: shown, check: c, write } = strictDraft(entity, part, def, stored, raw);
@@ -577,4 +590,75 @@ export async function deletePost(db: Db, id: number): Promise<boolean> {
   });
   if (row?.published) revalidatePosts(`post ${id} deleted`);
   return row !== null;
+}
+
+// ---------- Hüpikaken: „Lehel näidatakse“ (piece 4b, Task 3; S4-26; rulings R-c, R-d; Review Focus 3) ----------
+
+/**
+ * The switch's version: the hash of the newsletter popup's live row (`active` with its texts and picture; contentVersion of null when there is none).
+ * The switch and the offer's publish change it; a draft, Seaded's code and the two numbers in the settings row do not. A press from a version that
+ * is not the row's (another tab switched it or published the offer meanwhile; an undo after either) is refused as `changed`.
+ */
+const popupSwitchVersion = (row: Campaign | null): Promise<string> => contentVersion(row);
+
+/** „Lehel näidatakse“ as the screen reads it: shown or not, and the version its press sends. */
+export async function readPopupSwitch(q: Q): Promise<{ on: boolean; version: string }> {
+  const row = await readNewsletterPopup(q);
+  return { on: row?.active ?? false, version: await popupSwitchVersion(row) };
+}
+
+/**
+ * „Lehel näidatakse“'s answer (S4-26): done, with the row's new version (an undo sends it) and the database's clock after the commit (the read that
+ * shows it; null when it cannot be read); refused on, with the fields a shown popup needs that the live row lacks, as „Puudub: …“ lists them
+ * (`["pilt"]`); refused as `changed` (another tab changed the row: „Hüpikakent muudeti vahepeal. Vaata see üle.“), with the clock for the read that
+ * shows what it is now.
+ */
+export type PopupSwitchResult =
+  | { ok: true; version: string; stamp: number | null }
+  | { ok: false; missing: string[] }
+  | { ok: false; error: "changed"; stamp: number | null };
+
+/**
+ * Hüpikaken's „Lehel näidatakse“, instant (S4-26), on the live row only — the offer's drafts are neither read nor published (Review Focus 3: a pending
+ * draft without its picture does not block it) — under the popup's advisory lock, then the campaign table (the lock order of its saves and its
+ * publish), from the version the screen read (popupSwitchVersion):
+ * - a version that is not the row's: `changed`, nothing written;
+ * - the state asked already: done, nothing written;
+ * - ON: the bar's own decision (strictDecision, with the part a shown popup has: its title, its picture, the discount) on the live value; refused,
+ *   `missing` with its labels; else the row is shown, and the old campaign offer's row switched off first in the same transaction (upsertCampaign,
+ *   R-d: campaign_one_active holds);
+ * - OFF: the row is hidden, no check.
+ * The home page is revalidated once after a change (the footer's discount does not move). `now`: the request's time, as the post's switch takes it.
+ */
+export async function switchPopup(db: Db, on: boolean, version: string, now: Date): Promise<PopupSwitchResult> {
+  void now;
+  const done = await db.transaction(async (tx): Promise<{ ok: false; missing: string[] } | "changed" | { version: string; wrote: boolean }> => {
+    await lockEntity(tx, "popup");
+    await lockTables(tx, ["campaign"]);
+    const row = await readNewsletterPopup(tx);
+    if ((await popupSwitchVersion(row)) !== version) return "changed";
+    if ((row?.active ?? false) === on) return { version, wrote: false };
+    if (on) {
+      const def: Part<unknown> = (await popupParts(tx, true))[POPUP_PART];
+      const decided = await strictDecision(tx, "popup", POPUP_PART, def, await def.read(tx), null);
+      if (typeof decided !== "function") return { ok: false, missing: decided.fields };
+    }
+    // (a row that is not there cannot be switched on: its title and picture are missing; off, it has nothing to hide)
+    if (!row) return { version, wrote: false };
+    const { id: _id, kind: _kind, ...fields } = row;
+    void _id;
+    void _kind;
+    await upsertCampaign(tx, { ...fields, active: on }, "newsletter");
+    return { version: await popupSwitchVersion(await readNewsletterPopup(tx)), wrote: true };
+  });
+  if (done === "changed") return { ok: false, error: "changed", stamp: await stampOrNull(db) };
+  if ("missing" in done) return done;
+  if (done.wrote) {
+    try {
+      revalidatePublic({ kind: "campaign" });
+    } catch (e) {
+      logFailure(`[site-drafts] the popup switched ${on ? "on" : "off"}: revalidating the home page failed`, e);
+    }
+  }
+  return { ok: true, version: done.version, stamp: await stampOrNull(db) };
 }

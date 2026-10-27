@@ -5,6 +5,19 @@ export function fill(template: string, vars: Record<string, string | number>): s
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
+/**
+ * The form a counted line takes for a whole number n ≥ 0 (a dictionary's `{ one, few, many }`, e.g. the welcome mail's days): Estonian has the singular
+ * for 1 alone („1 päev“, „21 päeva“); Russian „one“ for 1, 21, 31 … but not 11 („день“), „few“ for 2–4, 22–24 … but not 12–14 („дня“), „many“ for
+ * the rest, 0, 5–20, 11–14, 25 … („дней“).
+ */
+export function pluralForm(n: number, l: Locale): "one" | "few" | "many" {
+  if (l === "et") return n === 1 ? "one" : "many";
+  const last = n % 10;
+  const tens = n % 100;
+  if (last === 1 && tens !== 11) return "one";
+  return last >= 2 && last <= 4 && (tens < 12 || tens > 14) ? "few" : "many";
+}
+
 /** Course dates are Estonian local times, wherever the server runs. */
 const TIME_ZONE = "Europe/Tallinn";
 const INTL_LOCALE: Record<Locale, string> = { et: "et-EE", ru: "ru-RU" };

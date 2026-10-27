@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX, WELCOME_FRAGMENT, welcomeCodeOf, welcomeFragment } from "@/domain/welcome-code";
+import { codeDaysOf, discountPercentOf, isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX, WELCOME_FRAGMENT, welcomeCodeOf, welcomeFragment } from "@/domain/welcome-code";
 
 describe("the welcome code (Seaded 'Tervituskood', phase 2c)", () => {
   test("as typed → as stored: trimmed, in capitals", () => {
@@ -25,5 +25,23 @@ describe("the welcome code (Seaded 'Tervituskood', phase 2c)", () => {
     expect(WELCOME_FRAGMENT.exec("kood=TERE-10")?.[1]).toBe("TERE-10");
     expect(WELCOME_FRAGMENT.exec("kood=<script>")).toBeNull();
     expect(WELCOME_FRAGMENT.exec("kood=")).toBeNull();
+  });
+});
+
+describe("the popup's two numbers in the same setting (Hüpikaken, piece 4b R-c)", () => {
+  test("Hüpikaken's discount (piece 4b R-c): a whole 1–99; before its first publish the stored label's number („10%“, „-15%“); else 10", () => {
+    expect(discountPercentOf({ discountPercent: 15, discountLabel: "20%" })).toBe(15);
+    expect(discountPercentOf({ discountPercent: 99 })).toBe(99);
+    expect(discountPercentOf({ discountLabel: "10%" })).toBe(10);
+    expect(discountPercentOf({ discountLabel: " -15 % " })).toBe(15);
+    for (const bad of [null, {}, "15%", { discountPercent: 0 }, { discountPercent: 100 }, { discountPercent: 12.5 }, { discountPercent: "15" }, { discountLabel: "150%" }, { discountLabel: "kümme" }, { discountLabel: "0%" }])
+      expect(discountPercentOf(bad), JSON.stringify(bad)).toBe(10);
+  });
+
+  test("Hüpikaken's „Kood kehtib (päeva)“ (piece 4b R-c, S4-Q3 A): a whole 1–365, else none (null)", () => {
+    expect(codeDaysOf({ codeDays: 30 })).toBe(30);
+    expect(codeDaysOf({ codeDays: 1 })).toBe(1);
+    expect(codeDaysOf({ codeDays: 365 })).toBe(365);
+    for (const bad of [null, {}, { codeDays: null }, { codeDays: 0 }, { codeDays: 366 }, { codeDays: 2.5 }, { codeDays: "30" }]) expect(codeDaysOf(bad), JSON.stringify(bad)).toBeNull();
   });
 });

@@ -402,6 +402,8 @@ export const et = {
       codeIntro: "Sinu tervituskood:",
       use: "Lisa kood registreerimisel lahtrisse „Sõnum“.",
       invoice: "Maria arvestab soodustuse sinu arvelt maha.",
+      // after those three, when Hüpikaken has „Kood kehtib (päeva)“ (piece 4b S4-Q3 A); {n} the days, the form by i18n/format.ts pluralForm
+      days: { one: "Kood kehtib {n} päev.", few: "Kood kehtib {n} päeva.", many: "Kood kehtib {n} päeva." },
       // the last line before the signature; {link} is the unsubscribe URL (/api/newsletter/loobu?t=<the subscriber's token>)
       unsubscribe: "Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: {link}",
     },
