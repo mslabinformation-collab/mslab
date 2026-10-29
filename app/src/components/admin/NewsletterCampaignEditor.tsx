@@ -688,7 +688,9 @@ function Sends({
       // the letter as the screen shows it is stored first; one that cannot be saved is S3-P3-l (the buttons give way)
       if (!(await flush()) || now.current !== pressed) return setTestLine(IDLE);
       if (!sendable()) return setTestLine({ tone: "error", text: adminEt.editor.invalid });
-      const r = await sendTestAction({ id, to: target.key, locale }).catch(() => LOST);
+      // the version of the text on the screen, now that the flush confirmed it (as the panel's read sends it): a letter another tab or device saved since is
+      // `changed` — nothing is sent, the action has refreshed the page, and the line says the existing sentence (ruling R-j)
+      const r = await sendTestAction({ id, to: target.key, locale, version: versionNow() }).catch(() => LOST);
       if (r.ok) setTestLine({ tone: "done", text: fill(t.test.sent, { email: target.address }) });
       else if ("fields" in r) {
         mark(r.fields);

@@ -36,7 +36,8 @@ const prepareInput = z.object({ id: rowId, version: z.string().min(1).max(100) }
 const confirmedCount = z.number().int().min(0).max(1_000_000);
 /** The campaign's last change as the confirmation read it (prepareSend's `updatedAt`): an ISO instant. */
 const sendInput = z.object({ id: rowId, et: confirmedCount, ru: confirmedCount, updatedAt: z.iso.datetime() });
-const testInput = z.object({ id: rowId, to: z.enum(["maria", "me"]), locale: z.enum(["et", "ru"]) });
+/** „Saada proov“: the letter, the address and language chosen, and the letter's version on the screen (ruling R-j; the same as `prepareInput`'s). */
+const testInput = z.object({ id: rowId, to: z.enum(["maria", "me"]), locale: z.enum(["et", "ru"]), version: z.string().min(1).max(100) });
 
 type Server = { ok: false; error: "server" };
 const SERVER: Server = { ok: false, error: "server" };
@@ -151,21 +152,25 @@ export const stopSendAction = adminAction(async (_admin, input: { id: number }):
 });
 
 /**
- * „Saada proov“: `{ id, to, locale }`, `to` "maria" (MARIA_EMAIL) or "me" (the signed-in admin's own address). One ordinary mail of the stored campaign
- * (newsletter-campaigns.ts sendTest): `{ ok: true }`, or a code: `limited` (ten this hour), `mail` (it did not go), `notFound`, `address` (no such
- * address: MARIA_EMAIL empty, or an address or a language the page never sends), `invalid` with the fields the sends' rules refuse (ruling R-g).
- * Nothing on the page changes, so nothing is refreshed.
+ * „Saada proov“: `{ id, to, locale, version }`, `to` "maria" (MARIA_EMAIL) or "me" (the signed-in admin's own address), `version` the letter's autosave
+ * version on the screen after its flush (ruling R-j, as `prepareSendAction`'s). One ordinary mail of the stored campaign (newsletter-campaigns.ts
+ * sendTest): `{ ok: true }`, or a code: `changed` (another tab or device saved the letter since: nothing sent, and the page is refreshed, as the panel's
+ * read does), `limited` (ten this hour), `mail` (it did not go), `notFound`, `address` (no such address: MARIA_EMAIL empty, or an address, a language or
+ * a version the page never sends), `invalid` with the fields the sends' rules refuse (ruling R-g). A sent test changes nothing on the page, so only
+ * `changed` refreshes it.
  */
-export const sendTestAction = adminAction(async (admin, input: { id: number; to: "maria" | "me"; locale: "et" | "ru" }) => {
+export const sendTestAction = adminAction(async (admin, input: { id: number; to: "maria" | "me"; locale: "et" | "ru"; version: string }) => {
   if (!rowId.safeParse((input as { id?: unknown } | null)?.id).success) return { ok: false as const, error: "notFound" as const };
   const parsed = testInput.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: "address" as const };
-  const { id, to, locale } = parsed.data;
+  const { id, to, locale, version } = parsed.data;
   try {
     const deps = campaignSendDeps(PRESS_BUDGET_MS);
     const address = normalizeEmail(to === "maria" ? deps.env.MARIA_EMAIL : admin.email);
     if (address === "") return { ok: false as const, error: "address" as const };
-    return await sendTest(deps, id, address, locale);
+    const result = await sendTest(deps, id, address, locale, version);
+    if (!result.ok && result.error === "changed") refresh();
+    return result;
   } catch (e) {
     logFailure(`[newsletter] campaign ${id}: the test failed`, e);
     return SERVER;

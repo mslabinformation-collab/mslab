@@ -463,12 +463,13 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     await show(DRAFT);
     actions.sendTestAction.mockResolvedValue({ ok: true });
     await click($("[data-test-send]"));
-    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "maria", locale: "et" });
+    // the screen's version goes with the test (ruling R-j), as it does with the panel's read
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "maria", locale: "et", version: "k:v1" });
     expect(text("[data-test-status]")).toBe("Proov läks aadressile maria@example.test. Kiri jõuab mõne minuti jooksul.");
     await choose($("[data-test-target]"), "me:ru");
     expect(words($("[data-test-send] [data-label-phone]"))).toBe("Saada proov · admin@… · RU");
     await click($("[data-test-send]"));
-    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "me", locale: "ru" });
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "me", locale: "ru", version: "k:v1" });
     expect(text("[data-test-status]")).toBe("Proov läks aadressile admin@example.test. Kiri jõuab mõne minuti jooksul.");
     expect(actions.prepareSendAction).not.toHaveBeenCalled();
     expect($("[data-send-confirm]")).toBeNull();
@@ -497,16 +498,18 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     await show(DRAFT, { testTargets: [{ key: "me", address: "admin@example.test" }] });
     expect([...$<HTMLSelectElement>("[data-test-target]")!.options].map((o) => o.value)).toEqual(["me:et", "me:ru"]);
     await click($("[data-test-send]"));
-    expect(actions.sendTestAction).toHaveBeenCalledWith({ id: 7, to: "me", locale: "et" });
+    expect(actions.sendTestAction).toHaveBeenCalledWith({ id: 7, to: "me", locale: "et", version: "k:v1" });
   });
 
-  test("„Saada proov“ refused is said in words: ten an hour, it did not go, no such address, a lost connection", async () => {
+  test("„Saada proov“ refused is said in words: ten an hour, it did not go, no such address, a letter saved elsewhere since (the existing `changed` sentence), a lost connection", async () => {
     await show(DRAFT);
     const said: [unknown, string][] = [
       [{ ok: false, error: "limited" }, "Selle tunni 10 proovi on saadetud. Proovi tunni pärast uuesti."],
       [{ ok: false, error: "mail" }, "Proovi ei saanud saata. Proovi uuesti."],
       [{ ok: false, error: "address" }, "Sellele aadressile ei saa proovi saata."],
       [{ ok: false, error: "notFound" }, "Seda kirja enam pole."],
+      // ruling R-j: the version the screen held was not the stored one (the action has refreshed the page, as the panel's read does)
+      [{ ok: false, error: "changed" }, "Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“."],
     ];
     for (const [answer, line] of said) {
       actions.sendTestAction.mockResolvedValueOnce(answer);
@@ -597,9 +600,12 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     await type($('[data-i18n="preheader"]'), "Veel üks rida");
     await click($("[data-test-send]"));
     expect(order).toEqual(["save", "prepareSendAction", "save", "sendTestAction"]);
+    // the test carries the version the second flush's save answered (ruling R-j): the very text on the screen
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "maria", locale: "et", version: "k:v3" });
     // nothing typed: nothing to save, the action at once
     await click($("[data-test-send]"));
     expect(order.at(-1)).toBe("sendTestAction");
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "maria", locale: "et", version: "k:v3" });
     expect(saves).toHaveLength(2);
   });
 

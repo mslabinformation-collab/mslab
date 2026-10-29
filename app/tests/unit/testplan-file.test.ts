@@ -589,6 +589,10 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain(`„Proov 3 kiri${t.copySuffix}“`);
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„… · ${t.test.optionLang.et}“`);
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„… · ${t.test.optionLang.ru}“`);
+    // ruling R-j (piece 4c Task 6): the test of a letter another tab saved since is refused with the `changed` sentence's gist, and the check says so, marked for a new run
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain("kirja muudeti vahepeal mujal ja midagi ei saadetud");
+    expect(markedSince(item("avalik-uudiskiri-kampaania-proov").markedAt)).toBe(true);
+    expect(item("avalik-uudiskiri-kampaania-proov").mark).toBe("redo");
   });
 
   test("„Kustuta mustand“ (B17): Maria's, after „Kopeeri“, in the words of S3-P3-f; a sent letter has no such button", () => {

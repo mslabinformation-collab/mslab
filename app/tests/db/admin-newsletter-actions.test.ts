@@ -147,6 +147,8 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
   const versionOf = async (id: number) => (await readCampaign(db, id))?.version ?? "k:none";
   /** „Saada kõigile“'s first step as the editor sends it: the letter and the version on its screen. */
   const prepare = async (id: number) => actions.prepareSendAction({ id, version: await versionOf(id) });
+  /** „Saada proov“ as the editor sends it: the letter, the address and language chosen, and the version on its screen (ruling R-j). */
+  const sendTest = async (id: number, to: "maria" | "me", locale: "et" | "ru") => actions.sendTestAction({ id, to, locale, version: await versionOf(id) });
 
   test("prepareSendAction: the confirmation's counts and the campaign's version; nothing sent, nothing refreshed; `empty`, `busy`, and an id the page never sends `notFound`", async () => {
     configured();
@@ -178,6 +180,25 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     expect(adminEt.newsletter.campaigns.errorsOf.changed).toBe("Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“.");
     expect(await actions.prepareSendAction({ id } as unknown as { id: number; version: string })).toEqual({ ok: false, error: "notFound" });
     expect(await prepare(id)).toMatchObject({ ok: true, et: 1, ru: 0 });
+  });
+
+  test("sendTestAction carries the screen's version too (ruling R-j): a letter saved elsewhere since is `changed` — nothing sent, the page refreshed (it is behind); the current version sends", async () => {
+    configured();
+    const r = resend();
+    const id = await saved();
+    const shown = await versionOf(id);
+    // another tab or device autosaves the letter; this screen typed nothing
+    expect(await writeCampaign(db, id, { subject: { et: "Teise vahekaardi teema", ru: "" } }, shown, new Date())).toMatchObject({ ok: true });
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et", version: shown })).toEqual({ ok: false, error: "changed" });
+    expect(r.mails()).toHaveLength(0);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    // the refreshed screen holds the stored version, and its test goes with the stored text; nothing more is refreshed
+    expect(await sendTest(id, "maria", "et")).toEqual({ ok: true });
+    expect(r.mails().map((m) => m.subject)).toEqual(["[Proov] Teise vahekaardi teema"]);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    // a letter that is gone is `notFound` whatever the version says, and nothing is refreshed for it (as before)
+    expect(await actions.sendTestAction({ id: id + 100, to: "maria", locale: "et", version: shown })).toEqual({ ok: false, error: "notFound" });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
   });
 
   test("startSendAction: the press with what the confirmation showed — the first batch goes at once on SITE_URL's links, the page is refreshed; `changed` refreshes nothing", async () => {
@@ -243,18 +264,20 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     configured();
     const r = resend();
     const id = await saved();
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: true });
-    expect(await actions.sendTestAction({ id, to: "me", locale: "ru" })).toEqual({ ok: true });
+    expect(await sendTest(id, "maria", "et")).toEqual({ ok: true });
+    expect(await sendTest(id, "me", "ru")).toEqual({ ok: true });
     expect(r.mails().map((m) => [m.to, m.subject])).toEqual([
       ["maria@example.com", "[Proov] Sügispakkumine"],
       ["admin@example.test", "[Proov] Sügispakkumine"],
     ]);
     expect(r.mails()[0].html).toContain(`${SITE}/api/newsletter/loobu?proov=1`);
-    for (const bad of [{ id, to: "kati@example.com", locale: "et" }, { id, to: "maria", locale: "en" }] as unknown as { id: number; to: "maria"; locale: "et" }[])
+    const version = await versionOf(id);
+    // (an address, a language or a version the page never sends)
+    for (const bad of [{ id, to: "kati@example.com", locale: "et", version }, { id, to: "maria", locale: "en", version }, { id, to: "maria", locale: "et" }, { id, to: "maria", locale: "et", version: "" }] as unknown as { id: number; to: "maria"; locale: "et"; version: string }[])
       expect(await actions.sendTestAction(bad), JSON.stringify(bad)).toEqual({ ok: false, error: "address" });
-    expect(await actions.sendTestAction({ id: 0, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notFound" });
+    expect(await actions.sendTestAction({ id: 0, to: "maria", locale: "et", version })).toEqual({ ok: false, error: "notFound" });
     vi.stubEnv("MARIA_EMAIL", "");
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "address" });
+    expect(await sendTest(id, "maria", "et")).toEqual({ ok: false, error: "address" });
     expect(r.mails()).toHaveLength(2);
     expect(cache.refresh).not.toHaveBeenCalled();
   });
@@ -266,7 +289,7 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     cache.refresh.mockReset();
     await subscriber("kati@example.com");
     const refused = { ok: false, error: "invalid", fields: { "subject.et": "required", "body.et": "required" } };
-    expect(await actions.sendTestAction({ id: id.id, to: "maria", locale: "et" })).toEqual(refused);
+    expect(await sendTest(id.id, "maria", "et")).toEqual(refused);
     expect(await prepare(id.id)).toEqual(refused);
     expect(r.mails()).toHaveLength(0);
     expect(cache.refresh).not.toHaveBeenCalled();
@@ -276,10 +299,10 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     configured();
     const id = await saved();
     resend(() => Response.json({ name: "invalid_api_key", message: "no", statusCode: 403 }, { status: 403 }));
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "mail" });
+    expect(await sendTest(id, "maria", "et")).toEqual({ ok: false, error: "mail" });
     const r = resend();
-    for (let i = 0; i < 10; i++) expect(await actions.sendTestAction({ id, to: "maria", locale: "et" }), String(i)).toEqual({ ok: true });
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "limited" });
+    for (let i = 0; i < 10; i++) expect(await sendTest(id, "maria", "et"), String(i)).toEqual({ ok: true });
+    expect(await sendTest(id, "maria", "et")).toEqual({ ok: false, error: "limited" });
     expect(r.mails()).toHaveLength(10);
     for (const code of ["limited", "mail", "address", "changed", "empty", "notSending"] as const) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
   });
@@ -331,7 +354,7 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
       expect(await actions.prepareSendAction({ id: 1, version: "k:x" })).toEqual({ ok: false, error: "server" });
       expect(await actions.startSendAction({ id: 1, et: 1, ru: 0, updatedAt: new Date().toISOString() })).toEqual({ ok: false, error: "server" });
       expect(await actions.stopSendAction({ id: 1 })).toEqual({ ok: false, error: "server" });
-      expect(await actions.sendTestAction({ id: 1, to: "maria", locale: "et" })).toEqual({ ok: false, error: "server" });
+      expect(await actions.sendTestAction({ id: 1, to: "maria", locale: "et", version: "k:x" })).toEqual({ ok: false, error: "server" });
     } finally {
       state.db = db;
     }

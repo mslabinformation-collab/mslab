@@ -905,6 +905,37 @@ describe("sendTest: „Saada proov“", () => {
     expect(logged()).not.toContain("maria@example.com");
   });
 
+  test("the screen's version (R-j): a letter saved elsewhere since is `changed` — nothing sent, no place of the hour taken; the current version sends; no version given, no check", async () => {
+    const id = await campaign();
+    const shown = (await readCampaign(db, id))!.version;
+    const resend = fakeSend();
+    // another tab or device autosaves the letter; this screen typed nothing
+    expect(await writeCampaign(db, id, { subject: { et: "Teise vahekaardi teema", ru: "" } }, shown, new Date())).toMatchObject({ ok: true });
+    expect(await sendTest(deps(resend.send), id, "maria@example.com", "et", shown)).toEqual({ ok: false, error: "changed" });
+    expect(resend.mails).toHaveLength(0);
+    expect(await mailsSentToday(db)).toBe(0);
+    // the stale press took nothing of the hour: all TEST_SEND_LIMIT tests of the current text still go, and the next is `limited`
+    const current = (await readCampaign(db, id))!.version;
+    expect(current).not.toBe(shown);
+    for (let i = 0; i < TEST_SEND_LIMIT; i++) expect(await sendTest(deps(resend.send), id, "maria@example.com", "et", current), String(i)).toEqual({ ok: true });
+    expect(await sendTest(deps(resend.send), id, "maria@example.com", "et", current)).toEqual({ ok: false, error: "limited" });
+    expect(resend.mails).toHaveLength(TEST_SEND_LIMIT);
+    expect(resend.mails[0].subject).toBe("[Proov] Teise vahekaardi teema");
+    // (a caller that names no version is not checked)
+    vi.setSystemTime(NOW.getTime() + HOUR);
+    expect(await sendTest(deps(resend.send), id, "maria@example.com", "et")).toEqual({ ok: true });
+  });
+
+  test("the status is part of the version: a letter sent in another tab since is `changed` for a test of the draft the screen showed; an unknown letter is `notFound` before any version is read", async () => {
+    const id = await campaign();
+    const shown = (await readCampaign(db, id))!.version;
+    const resend = fakeSend();
+    await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, id));
+    expect(await sendTest(deps(resend.send), id, "maria@example.com", "et", shown)).toEqual({ ok: false, error: "changed" });
+    expect(await sendTest(deps(resend.send), 999_999, "maria@example.com", "et", shown)).toEqual({ ok: false, error: "notFound" });
+    expect(resend.mails).toHaveLength(0);
+  });
+
   test(`at most TEST_SEND_LIMIT (${TEST_SEND_LIMIT}) an hour (\`limited\`, nothing sent); one that did not go is not counted; the next hour again; \`notFound\`; \`mail\` when it did not go`, async () => {
     const id = await campaign();
     const refused = fakeSend(() => ({ ok: false, kind: "refused" }));

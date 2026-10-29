@@ -902,11 +902,21 @@ const TEST_KEY = "newsletter:proov";
  * the very mail of a send but for „[Proov] “ before the subject and the test page behind its link and its List-Unsubscribe headers
  * (api/newsletter/loobu?proov=1: it changes nothing). Counted like every mail. At most TEST_SEND_LIMIT an hour (`limited`, nothing sent); one that
  * did not go (`mail`) is not counted against the hour. Any campaign, sent or not: Maria can still write and test; a letter the sends' rules refuse
- * (`invalid`, ruling R-g: no subject, no text, half a button) is not sent and takes no place of the hour.
+ * (`invalid`, ruling R-g: no subject, no text, half a button) is not sent and takes no place of the hour. `shown` (ruling R-j): the letter's autosave
+ * version on the screen the press came from (the editor's, after its flush, campaignVersion), compared with the stored letter's by a plain read (the press
+ * compares under its lock; a test writes no campaign row, so there is nothing to lock for); a letter saved elsewhere since is `changed` (nothing sent, no
+ * place of the hour taken): the mail would be a text she is not looking at. Without it (a caller of the engine's own) the stored letter is sent unchecked.
  */
-export async function sendTest(deps: SendDeps, id: number, to: string, locale: Locale): Promise<{ ok: true } | { ok: false; error: "notFound" | "mail" | "limited" } | SendInvalid> {
+export async function sendTest(
+  deps: SendDeps,
+  id: number,
+  to: string,
+  locale: Locale,
+  shown?: string,
+): Promise<{ ok: true } | { ok: false; error: "notFound" | "changed" | "mail" | "limited" } | SendInvalid> {
   const row = await getCampaign(deps.db, id);
   if (!row) return { ok: false, error: "notFound" };
+  if (shown !== undefined && (await campaignVersion(row)) !== shown) return { ok: false, error: "changed" };
   const invalid = sendRefusal(row);
   if (invalid) return invalid;
   const now = deps.now();
