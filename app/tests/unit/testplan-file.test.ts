@@ -416,7 +416,7 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
       expect(markedSince(item(id).markedAt), id).toBe(true);
     }
     for (const id of ["kontakt-arvustus-tagasi", "kontakt-arvustus-avalda", "kontakt-arvustus-avalehel", "kontakt-arvustus-peida", "kontakt-arvustus-lisa", "kontakt-tagasiside-haldus", "kontakt-arvustus-naita-koiki"]) {
-      expect(item(id).markedAt, id).toBe("deploy");
+      expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
     }
   });
 
@@ -1194,7 +1194,7 @@ describe("C7 Testimine (admin UX pass piece 4c, Task 4)", () => {
   test("the swept checks are reworded from the deploy, and a redo stays the redo it was (a weaker mark would let an older answer stand)", () => {
     for (const id of ["haldus-menuu-margid", "koristamine-aadressid", "registreerimine-ootenimekiri", "kontakt-protokollid-tana-otse", "kirjad-ootenimekiri", "kirjad-maria-ootenimekiri"]) {
       expect(find(id).mark, id).toBe("reworded");
-      expect(find(id).markedAt, id).toBe("deploy");
+      expect(markedSince(find(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
     }
     for (const id of ["registreerimine-arveta-makse-paneelis", "registreerimine-arveta-maksed", "registreerimine-arve-tagastatud", "registreerimine-jarelmaks-hiline", "kontakt-tana"]) {
       expect(find(id).mark, id).toBe("redo");
@@ -1341,7 +1341,8 @@ describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
 
   test("kirjad-halduse-link is reworded from the deploy: the sent state's words, and the private window of piece 3b stays", () => {
     const check = find("kirjad-halduse-link");
-    expect(check).toMatchObject({ area: "kirjad", mark: "reworded", markedAt: "deploy", href: "/admin/login" });
+    expect(check).toMatchObject({ area: "kirjad", mark: "reworded", href: "/admin/login" });
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     const text = whole("kirjad-halduse-link");
     for (const words of [`„${l.sentTitle}“`, sentWords, "„See kehtib 15 minutit.“", `„${l.sentHint}“`, `„${l.submit}“`]) expect(text, words).toContain(words);
     expect(check.steps.at(-1)).toContain("privaatses aknas");
@@ -1350,7 +1351,8 @@ describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
 
   test("a new check in Haldus, Dim's: the remembered address and „Muu aadress“, the way back to the page she opened, the 4th request's message", () => {
     const check = find("haldus-sisselogimine-tagasi");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", mark: "new", markedAt: "deploy", writes: true, href: "/admin/kalender" });
+    expect(check).toMatchObject({ area: "haldus", who: "dim", mark: "new", writes: true, href: "/admin/kalender" });
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     const text = whole("haldus-sisselogimine-tagasi");
     for (const words of [`„${l.other}“`, `„${l.emailLabel}“`, `„${l.submit}“`, `„${l.sentTitle}“`, sentWords, `„${l.errorAddress}“`, "sama toimumise paneel", "Logi menüüst välja"])
       expect(text, words).toContain(words);

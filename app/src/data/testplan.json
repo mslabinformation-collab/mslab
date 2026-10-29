@@ -570,7 +570,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -1793,7 +1793,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -2259,7 +2259,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "testimine-automaattest",
@@ -2286,7 +2286,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "testimine-filtrid-valjalogitud",
@@ -2319,7 +2319,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "haldus-sisselogimine-tagasi",
@@ -2347,7 +2347,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "haldus-lahkumine-salvestamata",
@@ -3518,7 +3518,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "registreerimine-paringud",
@@ -5400,7 +5400,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-toend",
@@ -5452,7 +5452,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-avalda",
@@ -5478,7 +5478,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-avalehel",
@@ -5504,7 +5504,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-plokk",
@@ -5561,7 +5561,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-avaleht",
@@ -5637,7 +5637,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-arvustus-tyhi",
@@ -5696,7 +5696,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kontakt-tana",
@@ -5776,7 +5776,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kirjad-sisselogimiskood",
@@ -5895,7 +5895,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kirjad-koht-kinnitatud",
@@ -6305,7 +6305,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kirjad-maria-registreerimine",
@@ -6432,7 +6432,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "kirjad-maria-muutmine",
@@ -6587,7 +6587,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     },
     {
       "id": "koristamine-aadressid",
@@ -6610,7 +6610,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-29T16:31:21.085Z"
     }
   ]
 }
