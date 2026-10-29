@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import { ListRows } from "@/components/admin/ListRows";
-import { ListToolbar } from "@/components/admin/ListToolbar";
+import { ListEmpty } from "@/components/admin/ListStates";
+import { ListToolbar, type ListScope } from "@/components/admin/ListToolbar";
 import listTable from "@/components/admin/list-table.module.css";
 import { EditReviewForm, NewReviewForm } from "@/components/admin/ManualReviewForm";
 import { Pager } from "@/components/admin/Pager";
@@ -17,7 +18,7 @@ import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { feedbackById, feedbackStats, pageFeedback, type CourseFeedbackStats, type FeedbackRow } from "@/db/queries/protocols";
 import { tallinnToday } from "@/domain/client-access";
-import { parsePage } from "@/domain/paging";
+import { parsePage, parseSearch } from "@/domain/paging";
 import { FEEDBACK_CHOICES, feedbackQuestions, type ChoiceKey } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
@@ -25,7 +26,7 @@ import { pick } from "@/i18n/field";
 import { fill, formatDate } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
-import { adminReviews, pendingReviewCount, readManualReview, reviewCounts, reviewCourses } from "@/server/reviews";
+import { adminReviews, pendingReviewCount, readManualReview, reviewCounts, reviewCourses, reviewsOfFeedback } from "@/server/reviews";
 import styles from "./feedback.module.css";
 
 export const dynamic = "force-dynamic";
@@ -34,12 +35,13 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.feedback) };
 type Search = Record<string, string | string[] | undefined>;
 type Props = { searchParams: Promise<Search> };
 
-// Addresses: ?koolitus=<course id> (the filter), ?leht=<n> (50 a page), ?id=<answer> (the drawer). A new filter starts at page 1; the drawer
-// keeps the page it was opened from. ?vaade=arvustused is the page's second view, the student reviews (student reviews, Task 4; a view of its own
+// Addresses: ?otsi=<text> (the search across the name and the e-mail address, S4-40), ?koolitus=<course id> (the course select), ?leht=<n> (50 a page),
+// ?id=<answer> (the drawer). A new search or filter starts at page 1; the drawer keeps both, and the page it was opened from.
+// ?vaade=arvustused is the page's second view, the student reviews (student reviews, Task 4; a view of its own
 // because the answers' list, its numbers and its drawer already fill the page), with ?olek=ootel|avaldatud|peidetud narrowing it to one status
 // (components/admin/review-view.ts reviewsHref) and ?id= its drawers (admin UX pass piece 4c): `uus` „Lisa arvustus +“, a review's id its „Muuda“.
 // ?vaade=vastused (or none) is the answers' view; its own filters and pager keep no ?vaade.
-type View = { koolitus: number | null; leht: number };
+type View = { otsi: string; koolitus: number | null; leht: number };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
@@ -47,6 +49,7 @@ type Parsed = View & { id: number | null; adding: boolean; reviews: boolean; ole
 
 function parse(sp: Search): Parsed {
   return {
+    otsi: parseSearch(sp.otsi),
     koolitus: parseRowId(one(sp.koolitus)),
     leht: parsePage(sp.leht),
     id: parseRowId(one(sp.id)),
@@ -61,6 +64,7 @@ const ADD_ID = "review-add";
 
 function href(view: View, id?: number): string {
   const q = new URLSearchParams();
+  if (view.otsi) q.set("otsi", view.otsi);
   if (view.koolitus) q.set("koolitus", String(view.koolitus));
   if (view.leht > 1) q.set("leht", String(view.leht));
   if (id) q.set("id", String(id));
@@ -73,9 +77,11 @@ const QUESTIONS = feedbackQuestions(et.account.feedback.questions);
 const CHOICE_KEYS = Object.keys(FEEDBACK_CHOICES) as ChoiceKey[];
 
 /**
- * Tagasiside (phase protocols, spec §7): the students' answers to the course feedback form, newest first, 50 a page, with the course filter.
- * Without a filter, every course that has answers with its count and average (a link to the filter); with one, its numbers: the average
- * score and every option of the seven choice questions with its count. A row's name opens its answers (the drawer, ?id=). Read-only. An e-course's
+ * Tagasiside (phase protocols, spec §7): the students' answers to the course feedback form, newest first, 50 a page, with the search (the name or the
+ * e-mail address, S4-40) and the course select side by side in the list's toolbar. Without a course, every course that has answers with its count and
+ * average (a link to the filter); with one, its numbers: the average score and every option of the seven choice questions with its count (the search
+ * narrows the list, not these numbers). A row's name opens its answers (the drawer, ?id=), which links to the answer's review in Arvustused when it has
+ * one (S4-41). Read-only. An e-course's
  * answer has no course day: "Lõpetatud {date}", the day her access was completed, stands in its place.
  *
  * The second view, "Arvustused" (?vaade=arvustused; admin UX pass piece 4c, README C6, the Part 4 frame „C6 Tagasiside“): the header's ink „Lisa arvustus +“,
@@ -170,33 +176,42 @@ async function reviewsPage(view: Parsed) {
 /** "Vastused": the answers (see FeedbackPage). */
 async function answersPage(view: Parsed) {
   const db = getDb();
-  const [list, stats, open, waiting] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db)]);
+  const [list, stats, open, waiting, reviewOf] = await Promise.all([
+    pageFeedback(db, { courseId: view.koolitus, search: view.otsi, page: view.leht }),
+    feedbackStats(db),
+    view.id ? feedbackById(db, view.id) : null,
+    pendingReviewCount(db),
+    // (the review the open answer gave rise to, if it is still there: the reader leaves a removed one out. The answer's id is the address's)
+    view.id ? reviewsOfFeedback(db, [view.id]) : null,
+  ]);
   const t = adminEt.feedback;
   const chosen = view.koolitus === null ? null : (stats.find((s) => s.course.id === view.koolitus) ?? null);
-  const filters: { key: number | null; label: string }[] = [{ key: null, label: t.all }, ...stats.map((s) => ({ key: s.course.id, label: pick(s.course.title, "et") }))];
+  const filtered = view.koolitus !== null || view.otsi !== "";
+  // the course select, beside the search; each option goes to the list with that course (or all) and the rest as it is, from page 1
+  const scope: ListScope = {
+    label: t.filterLabel,
+    value: chosen ? String(chosen.course.id) : "",
+    options: [
+      { value: "", label: t.all, href: href({ ...view, koolitus: null, leht: 1 }) },
+      ...stats.map((s) => ({ value: String(s.course.id), label: pick(s.course.title, "et"), href: href({ ...view, koolitus: s.course.id, leht: 1 }) })),
+    ],
+  };
 
   return (
     <>
       <div className={ui.page}>
         <Top active="answers" waiting={waiting} />
 
-        {stats.length > 0 && (
-          <nav className={ui.filters} aria-label={t.filterLabel} data-feedback-filter="">
-            {filters.map((f) => (
-              <Link key={f.key ?? 0} className={ui.pill} href={href({ koolitus: f.key, leht: 1 })} aria-current={view.koolitus === f.key ? "true" : undefined}>
-                {f.label}
-              </Link>
-            ))}
-          </nav>
-        )}
+        <ListToolbar placeholder={t.searchPlaceholder} scope={stats.length > 0 ? scope : undefined} />
 
-        {view.koolitus === null && stats.length > 0 && <CourseTable stats={stats} />}
+        {view.koolitus === null && stats.length > 0 && <CourseTable stats={stats} courseHref={(id) => href({ ...view, koolitus: id, leht: 1 })} />}
         {chosen && <CourseNumbers stats={chosen} />}
 
         <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
           <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
           {list.rows.length === 0 ? (
-            <p className={ui.empty}>{view.koolitus ? t.emptyFiltered : t.empty}</p>
+            // (a selection with no answer is the list frame, S4-40; with no answer at all there is nothing to clear)
+            filtered ? <ListEmpty things={t.things} filtered search={view.otsi} clearHref="/admin/tagasiside" /> : <p className={ui.empty}>{t.empty}</p>
           ) : (
             <ListRows>
               <table className={`${ui.table} ${listTable.table}`}>
@@ -241,7 +256,7 @@ async function answersPage(view: Parsed) {
 
       {view.id !== null && (
         <Drawer label={open ? fill(t.drawer.label, { name: open.name }) : t.drawer.notFound} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus={open ? `feedback-${open.id}` : undefined}>
-          {open ? <FeedbackDetail f={open} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
+          {open ? <FeedbackDetail f={open} reviewId={reviewOf?.get(open.id)?.id ?? null} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}
     </>
@@ -250,8 +265,8 @@ async function answersPage(view: Parsed) {
 
 const averageText = (average: number | null) => (average === null ? adminEt.feedback.noScore : `${formatScore(average)} / 10`);
 
-/** Every course with answers: how many, and the average score; the course's name filters the page to it. */
-function CourseTable({ stats }: { stats: CourseFeedbackStats[] }) {
+/** Every course with answers: how many, and the average score; the course's name filters the page to it (`courseHref`: with the search kept). */
+function CourseTable({ stats, courseHref }: { stats: CourseFeedbackStats[]; courseHref: (courseId: number) => string }) {
   const t = adminEt.feedback;
   return (
     <section className={`${ui.card} ${listTable.card} ${styles.block}`} aria-labelledby="feedback-courses" data-feedback-courses="">
@@ -270,7 +285,7 @@ function CourseTable({ stats }: { stats: CourseFeedbackStats[] }) {
           {stats.map((s) => (
             <tr key={s.course.id} data-feedback-course={s.course.id}>
               <td data-label={t.col.course}>
-                <Link className={ui.link} href={href({ koolitus: s.course.id, leht: 1 })}>
+                <Link className={ui.link} href={courseHref(s.course.id)}>
                   {pick(s.course.title, "et")}
                 </Link>
               </td>
@@ -322,8 +337,12 @@ function CourseNumbers({ stats }: { stats: CourseFeedbackStats }) {
   );
 }
 
-/** The drawer: who, the course and its day, the ways to the student and the registration, and the answers. */
-function FeedbackDetail({ f }: { f: FeedbackRow }) {
+/**
+ * The drawer: who, the course and its day, the ways on — the answer's review (S4-41: only when it has one, `reviewId`; Arvustused at its card, R-d), the
+ * student and the registration — and the answers. The review's address names no ?olek=: the card is in the list of every status, so the pill that was
+ * pressed in Arvustused cannot hide it.
+ */
+function FeedbackDetail({ f, reviewId }: { f: FeedbackRow; reviewId: number | null }) {
   const t = adminEt.feedback;
   return (
     <div className={styles.detail} data-feedback-detail={f.id}>
@@ -340,6 +359,11 @@ function FeedbackDetail({ f }: { f: FeedbackRow }) {
               : pick(f.course.title, "et")}
         </p>
         <p className={styles.links}>
+          {reviewId !== null && (
+            <Link className={ui.link} href={`${REVIEWS_HREF}#${reviewCardId(reviewId)}`}>
+              {t.toReview}
+            </Link>
+          )}
           {f.clientId !== null && (
             <Link className={ui.link} href={`/admin/opilased?id=${f.clientId}`}>
               {t.toStudent}

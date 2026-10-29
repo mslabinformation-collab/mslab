@@ -214,7 +214,7 @@ describe("the admin's reads cover the e-course answers (Tagasiside, the drawers)
 
   test("pageFeedback lists both, newest first; the e-course row has the access, the completion, the student's name and address, no registration or day", async () => {
     const { mari, kati, contactFeedback, ecourseFeedback } = await both();
-    const page = await pageFeedback(db, null, 1);
+    const page = await pageFeedback(db, { page: 1 });
     expect([page.total, page.rows.map((r) => r.id)]).toEqual([2, [ecourseFeedback.id, contactFeedback.id]]);
     expect(page.rows[0]).toEqual({
       id: ecourseFeedback.id,
@@ -236,23 +236,36 @@ describe("the admin's reads cover the e-course answers (Tagasiside, the drawers)
 
   test("the course filter, the count and the paging are right for both kinds", async () => {
     const { mari, kati, contactFeedback, ecourseFeedback } = await both();
-    const eOnly = await pageFeedback(db, kati.course.id, 1);
+    const eOnly = await pageFeedback(db, { courseId: kati.course.id, page: 1 });
     expect([eOnly.total, eOnly.rows.map((r) => r.id)]).toEqual([1, [ecourseFeedback.id]]);
-    const cOnly = await pageFeedback(db, mari.course.id, 1);
+    const cOnly = await pageFeedback(db, { courseId: mari.course.id, page: 1 });
     expect([cOnly.total, cOnly.rows.map((r) => r.id)]).toEqual([1, [contactFeedback.id]]);
-    expect((await pageFeedback(db, 9999, 1)).total).toBe(0);
-    const first = await pageFeedback(db, null, 1, 1);
-    const second = await pageFeedback(db, null, 2, 1);
+    expect((await pageFeedback(db, { courseId: 9999, page: 1 })).total).toBe(0);
+    const first = await pageFeedback(db, { page: 1, size: 1 });
+    const second = await pageFeedback(db, { page: 2, size: 1 });
     expect([first.total, first.pages, first.rows.map((r) => r.id), second.rows.map((r) => r.id)]).toEqual([2, 2, [ecourseFeedback.id], [contactFeedback.id]]);
+  });
+
+  test("the search (piece 4c, S4-40) finds an e-course answer by the account's name or address and a contact one by the registration's, and counts both", async () => {
+    const { contactFeedback, ecourseFeedback } = await both();
+    const ids = async (search: string) => (await pageFeedback(db, { search, page: 1 })).rows.map((r) => r.id);
+    expect(await ids("kask")).toEqual([ecourseFeedback.id]); // her name
+    expect(await ids("kati@")).toEqual([ecourseFeedback.id]); // her address
+    expect(await ids("maasikas")).toEqual([contactFeedback.id]); // the registration's name
+    expect(await ids("marimaasikas@example")).toEqual([contactFeedback.id]); // and its address
+    expect(await ids("example.test")).toEqual([ecourseFeedback.id, contactFeedback.id]);
+    expect(await ids("nobody")).toEqual([]);
+    const found = await pageFeedback(db, { search: "kask", page: 1 });
+    expect([found.total, found.pages]).toEqual([1, 1]);
   });
 
   test("an e-course answer whose account has no name is listed under her address; an 'Ei soovi' of an e-course is no answer", async () => {
     const kati = await graduate(db, { name: "" });
     await submit(db, kati.client.id, SLUG, null);
-    expect((await pageFeedback(db, null, 1)).rows.map((r) => r.name)).toEqual(["kati@example.test"]);
+    expect((await pageFeedback(db, { page: 1 })).rows.map((r) => r.name)).toEqual(["kati@example.test"]);
     const other = await graduate(db, { slug: "ripsmed-e", email: "liis@example.test", name: "Liis Lepp" });
     await hideFeedback(db, { clientId: other.client.id, target: { courseSlug: "ripsmed-e" } }, NOW);
-    expect((await pageFeedback(db, null, 1)).total).toBe(1);
+    expect((await pageFeedback(db, { page: 1 })).total).toBe(1);
     expect(await feedbackStats(db)).toHaveLength(1);
   });
 

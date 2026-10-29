@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, courseFeedback, registrations, type Course, type CourseFeedback, type Registration } from "@/db/schema";
+import { clients, courseFeedback, registrations, reviews, type Course, type CourseFeedback, type Registration } from "@/db/schema";
 import { makeTestDb } from "./helpers";
 import { protocolCourse, student } from "./protocols-fixtures";
 
@@ -22,7 +22,11 @@ vi.mock("next/navigation", async (original) => ({
 }));
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
-  return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useDrawerClose: () => null };
+  // (the stand-in shows where the real drawer's close goes: the list as it was, with its search and course)
+  return {
+    Drawer: ({ children, closeHref }: { children: React.ReactNode; closeHref: string }) => createElement("div", { "data-drawer-stand-in": "", "data-close-href": closeHref }, children),
+    useDrawerClose: () => null,
+  };
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
@@ -48,9 +52,16 @@ const part = (html: string, attribute: string, value: string | number) => {
   return html.slice(from, next === -1 ? undefined : next);
 };
 const at = (day: number) => new Date(Date.UTC(2026, 9, day, 12));
+/** The course select's options as the toolbar draws them: [value, label, chosen]. */
+const courseOptions = (html: string) => {
+  const select = html.match(/<select[^>]*aria-label="Koolitus"[^>]*>[\s\S]*?<\/select>/);
+  expect(select, "the course select").not.toBeNull();
+  return [...select![0].matchAll(/<option value="([^"]*)"( selected="")?>([^<]*)<\/option>/g)].map((m) => [m[1], m[3], m[2] !== undefined] as const);
+};
 
 let db: Db;
 let course: Course;
+let other: Course;
 let mari: Registration, anu: Registration, liis: Registration;
 let a: CourseFeedback, b: CourseFeedback, c: CourseFeedback;
 let kati: number;
@@ -61,6 +72,7 @@ beforeAll(async () => {
   const first = await protocolCourse(db);
   course = first.course;
   const second = await protocolCourse(db, { slug: "ripsmete-tostmine", title: { et: "Ripsmete tõstmine", ru: "Лифтинг ресниц" } });
+  other = second.course;
   const [client] = await db.insert(clients).values({ email: "marimaasikas@example.com", name: "Mari Maasikas" }).returning();
   kati = client.id;
   mari = await student(db, course, first.session, "Mari Maasikas", { clientId: kati });
@@ -95,11 +107,62 @@ test("a course: its average and scores, every option counted in Maria's wording;
   expect(expectations).toContain("Kas koolitus vastas sinu ootustele?");
   for (const [label, n] of [["Ületas ootusi", 1], ["Vastas ootustele", 1], ["Ei vastanud ootustele", 0]] as const) expect(expectations).toMatch(new RegExp(`${label}</span><strong>${n}</strong>`));
   expect(rowIds(html)).toEqual([b.id, a.id]);
-  // (the attributes' order is the Link's, so the tag is found by its href and then asked for aria-current)
-  const pill = (href: string) => html.match(new RegExp(`<a [^>]*href="${href}"[^>]*>`))![0];
-  expect(pill(`/admin/tagasiside\\?koolitus=${course.id}`)).toContain('aria-current="true"');
-  expect(pill("/admin/tagasiside")).not.toContain("aria-current");
-  expect(await render(FeedbackPage, { koolitus: "999" })).toContain("Selle koolituse kohta pole tagasisidet.");
+  // the course is chosen in the toolbar's select (S4-40: it stays beside the search); the pills of before are gone
+  expect(courseOptions(html)).toEqual([
+    ["", "Kõik koolitused", false],
+    [String(course.id), "Kulmude lamineerimine", true],
+    [String(other.id), "Ripsmete tõstmine", false],
+  ]);
+  expect(html).not.toContain("data-feedback-filter");
+  expect(courseOptions(await render(FeedbackPage))).toEqual([
+    ["", "Kõik koolitused", true],
+    [String(course.id), "Kulmude lamineerimine", false],
+    [String(other.id), "Ripsmete tõstmine", false],
+  ]);
+  const none = await render(FeedbackPage, { koolitus: "999" });
+  expect(none).toContain("Selle valikuga vastuseid pole.");
+  expect(none).not.toContain("Selle koolituse kohta pole tagasisidet.");
+  expect(none).toMatch(/<a [^>]*href="\/admin\/tagasiside"[^>]*>Tühjenda otsing ja filtrid<\/a>/);
+});
+
+test("the search (S4-40): the answers of whoever's name or e-mail holds the text, beside the course select; a row and the drawer keep it", async () => {
+  const html = await render(FeedbackPage, { otsi: "maasikas" });
+  expect(html).toContain('placeholder="Otsi nime või e-posti järgi"');
+  expect(courseOptions(html).map((o) => o[1])).toEqual(["Kõik koolitused", "Kulmude lamineerimine", "Ripsmete tõstmine"]);
+  expect(rowIds(html)).toEqual([a.id]);
+  expect(html).toContain("Vastuseid: 1");
+  expect(rowIds(await render(FeedbackPage, { otsi: "ANUAAS@example" }))).toEqual([b.id]);
+  // the course and the search narrow it together
+  expect(rowIds(await render(FeedbackPage, { otsi: "tiina", koolitus: String(other.id) }))).toEqual([c.id]);
+  expect(rowIds(await render(FeedbackPage, { otsi: "tiina", koolitus: String(course.id) }))).toEqual([]);
+  // the row's link and the course table's links carry the search, so the drawer closes to the searched list
+  expect(part(html, "data-feedback-row", a.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;id=${a.id}"`);
+  expect(part(html, "data-feedback-course", course.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;koolitus=${course.id}"`);
+  const open = await render(FeedbackPage, { otsi: "maasikas", koolitus: String(course.id), id: String(a.id) });
+  expect(open).toContain(`data-close-href="/admin/tagasiside?otsi=maasikas&amp;koolitus=${course.id}"`);
+});
+
+test("the search finds nothing: „{q}“ järgi vastuseid ei leitud. and the way back; with no answers at all, only that there are none", async () => {
+  const none = await render(FeedbackPage, { otsi: "xyz" });
+  expect(none).toContain("„xyz“ järgi vastuseid ei leitud.");
+  expect(none).toMatch(/<a [^>]*href="\/admin\/tagasiside"[^>]*>Tühjenda otsing ja filtrid<\/a>/);
+  expect(rowIds(none)).toEqual([]);
+  // what was typed is shown as text, never as markup
+  const markup = await render(FeedbackPage, { otsi: "<b>x</b>" });
+  expect(markup).toContain("„&lt;b&gt;x&lt;/b&gt;“ järgi vastuseid ei leitud.");
+  expect(markup).not.toContain("<b>x</b>");
+  // a search that finds something shows no empty line
+  expect(await render(FeedbackPage, { otsi: "maasikas" })).not.toContain("ei leitud");
+  // nothing answered yet: the plain line, and nothing to clear
+  const filled = state.db;
+  state.db = await makeTestDb();
+  try {
+    const empty = await render(FeedbackPage);
+    expect(empty).toContain("Tagasisidet pole veel antud.");
+    expect(empty).not.toContain("Tühjenda otsing ja filtrid");
+  } finally {
+    state.db = filled;
+  }
 });
 
 test("?id=: a Russian answer in Maria's wording with its language said, the free text as written; the way to the registration", async () => {
@@ -111,6 +174,34 @@ test("?id=: a Russian answer in Maria's wording with its language said, the free
   expect(detail).not.toContain("/admin/opilased"); // Anu has no account
   expect(part(await render(FeedbackPage, { id: String(a.id) }), "data-feedback-detail", a.id)).toContain(`href="/admin/opilased?id=${kati}"`);
   expect(await render(FeedbackPage, { id: "999" })).toContain("Seda tagasisidet ei leitud.");
+});
+
+test("?id=: „Vaata arvustust →“ opens Arvustused at the card of the answer's live review — whatever its status — and is not there without one", async () => {
+  const detailOf = async (f: CourseFeedback) => part(await render(FeedbackPage, { id: String(f.id) }), "data-feedback-detail", f.id);
+  const [review] = await db.insert(reviews).values({ courseId: course.id, feedbackId: a.id, kind: "student", text: "Aitäh!", name: "Mari M.", locale: "et", writtenAt: at(13), status: "pending" }).returning();
+  try {
+    // (Mari's answer has the review; Anu's has none)
+    const card = `/admin/tagasiside?vaade=arvustused#arvustus-${review.id}`;
+    for (const status of ["pending", "published", "hidden"] as const) {
+      await db.update(reviews).set({ status }).where(eq(reviews.id, review.id));
+      const withLink = await detailOf(a);
+      // the address names no ?olek=: the card is in the list of every status, so a pill pressed before cannot hide it
+      expect(withLink, status).toContain(`href="${card}">Vaata arvustust →</a>`);
+      expect(withLink, status).not.toContain("olek");
+      // beside the other two links, the review first (S4-41)
+      expect(withLink.indexOf("Vaata arvustust →"), status).toBeLessThan(withLink.indexOf("Ava õpilane →"));
+      expect(withLink.indexOf("Ava õpilane →"), status).toBeLessThan(withLink.indexOf("Ava registreering →"));
+    }
+    expect(await detailOf(b)).not.toContain("Vaata arvustust");
+    expect(await detailOf(b)).toContain("Ava registreering →");
+    // a removed review is no review for the link
+    await db.update(reviews).set({ removedAt: at(14) }).where(eq(reviews.id, review.id));
+    expect(await detailOf(a)).not.toContain("Vaata arvustust");
+    // and the words that S4-41 replaced are gone
+    expect(await detailOf(a)).not.toContain("Õpilase juurde");
+  } finally {
+    await db.delete(reviews).where(eq(reviews.id, review.id));
+  }
 });
 
 test("the drawers: the registration's answers (none for 'Ei soovi'); the student's, with the course", async () => {

@@ -5285,17 +5285,21 @@
       "href": "/admin/tagasiside",
       "steps": [
         "Ava „Tagasiside“.",
-        "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
-        "Vajuta loendis nimele Proov 1.",
+        "Vali valikust „Koolitus“ Proov 1 koolitus.",
+        "Kirjuta otsinguväljale osa Proov 1 nimest, seejärel osa tema e-posti aadressist.",
+        "Kirjuta otsinguväljale tekst, mida ühelgi vastajal pole.",
+        "Vajuta „Tühjenda otsing ja filtrid“, siis loendis nimele Proov 1.",
+        "Vajuta paneelis linki „Vaata arvustust →“.",
         "Ava „Registreerimised“, Proov 1 paneel ja voldirida „Tagasiside“.",
         "Ava „Õpilased“, Proov 1 paneel ja voldirida „Tagasiside“."
       ],
       "expect": [
         "Loendis on Proov 1 vastus koos hindega.",
         "Lehe üleval on nupud „Vastused“ ja „Arvustused“; arvustuste arvuga nuppu seal enam ei ole.",
-        "Nuppude reas on ka „Kõik koolitused“.",
-        "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
+        "Valikus „Koolitus“ on ka „Kõik koolitused“; koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
+        "Osa nimest või e-postist leiab Proov 1 vastuse; tundmatu tekst annab rea „… järgi vastuseid ei leitud“.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
+        "Paneelis on lingid „Vaata arvustust →“, „Ava õpilane →“ ja „Ava registreering →“; esimene viib arvustuse kaardile.",
         "Registreeringu paneelis on voldirida „Tagasiside“; suletuna näitab see kokkuvõtet „Saadetud …“.",
         "Õpilase paneeli voldireas „Tagasiside“ on rida „Lubab avaldada: Ootab kinnitust“."
       ],

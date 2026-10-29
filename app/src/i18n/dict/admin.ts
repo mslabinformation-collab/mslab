@@ -1141,13 +1141,18 @@ export const adminEt = {
     average: "Keskmine hinne: {score} / 10",
     noScore: "Hinnet pole antud",
     empty: "Tagasisidet pole veel antud.",
-    emptyFiltered: "Selle koolituse kohta pole tagasisidet.",
+    // the answers' search (admin UX pass piece 4c, S4-40): it stays beside the course select. A selection with no answer is the list frame
+    // (lists.emptyFiltered „Selle valikuga vastuseid pole.“, lists.emptySearch „„{q}“ järgi vastuseid ei leitud.“) with „Tühjenda otsing ja filtrid“; `things` is its word
+    searchPlaceholder: "Otsi nime või e-posti järgi",
+    things: "vastuseid",
     col: { date: "Kuupäev", student: "Õpilane", course: "Koolitus", score: "Hinne", answers: "Vastuseid", average: "Keskmine hinne" },
     drawer: { label: "Tagasiside: {name}", notFound: "Seda tagasisidet ei leitud." },
     submitted: "Saadetud {date}",
     inRussian: "Vastas vene keeles",
-    toStudent: "Õpilase juurde",
-    toRegistration: "Registreeringu juurde",
+    // the drawer's ways on (S4-41): the review of this answer (only when it has one; Arvustused, at its card) beside the student and the registration
+    toReview: "Vaata arvustust →",
+    toStudent: "Ava õpilane →",
+    toRegistration: "Ava registreering →",
     // an e-course's answer has no course day: the day her access was completed stands in its place (student reviews, Task 4; the spec's words)
     completed: "Lõpetatud {date}",
     // the page's two views (Draft): the answers, and the reviews (below, `reviews`); ?vaade=arvustused. The phone's reviews tab carries the count of

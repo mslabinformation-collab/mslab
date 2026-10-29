@@ -40,10 +40,10 @@ async function setup() {
 describe("the Tagasiside page's reads", () => {
   test("the answers newest first, a page at a time (here 2); 'Ei soovi' is no answer; the course filter", async () => {
     const { course, a, b, c } = await setup();
-    const all = await pageFeedback(db, null, 1, 2);
+    const all = await pageFeedback(db, { page: 1, size: 2 });
     expect([all.total, all.pages, all.rows.map((r) => r.id)]).toEqual([3, 2, [c.id, b.id]]);
-    expect((await pageFeedback(db, null, 2, 2)).rows.map((r) => r.id)).toEqual([a.id]);
-    const one = await pageFeedback(db, course.id, 1);
+    expect((await pageFeedback(db, { page: 2, size: 2 })).rows.map((r) => r.id)).toEqual([a.id]);
+    const one = await pageFeedback(db, { courseId: course.id, page: 1 });
     expect(one.rows.map((r) => [r.name, r.answers.score, r.locale])).toEqual([
       ["Anu Aas", 6, "ru"],
       ["Mari Maasikas", 9, "et"],
@@ -62,6 +62,45 @@ describe("the Tagasiside page's reads", () => {
       locale: "et",
       submittedAt: at(13),
     });
+  });
+
+  test("the search (piece 4c, S4-40): a part of a name or of an e-mail address finds the answer, in any case, with the order, the count and the course filter", async () => {
+    const { course, other, a, b, c } = await setup();
+    const ids = async (search: string, courseId?: number) => (await pageFeedback(db, { search, courseId, page: 1 })).rows.map((r) => r.id);
+    expect(await ids("maas")).toEqual([a.id]);
+    expect(await ids("MAASIKAS")).toEqual([a.id]);
+    expect(await ids("anuaas@example")).toEqual([b.id]);
+    expect(await ids("tiina")).toEqual([c.id]);
+    // (all three are at example.com: newest first, as the unsearched list)
+    expect(await ids("example.com")).toEqual([c.id, b.id, a.id]);
+    // the course filter and the search narrow it together
+    expect(await ids("tiina", course.id)).toEqual([]);
+    expect(await ids("tiina", other.id)).toEqual([c.id]);
+    expect(await ids("a", course.id)).toEqual([b.id, a.id]);
+    // the count and the pages are those of the search
+    const second = await pageFeedback(db, { search: "example.com", page: 2, size: 2 });
+    expect([second.total, second.pages, second.rows.map((r) => r.id)]).toEqual([3, 2, [a.id]]);
+    // nothing typed, or only spaces: every answer; a text nobody has: none; "Ei soovi" (Liis) is no answer, so she is not found
+    expect(await ids("")).toEqual([c.id, b.id, a.id]);
+    expect(await ids("   ")).toEqual([c.id, b.id, a.id]);
+    expect((await pageFeedback(db, { search: "zzz", page: 1 })).total).toBe(0);
+    expect(await ids("liis")).toEqual([]);
+  });
+
+  test("the search takes % _ and a backslash for themselves, in a name and in an e-mail address, never as wildcards", async () => {
+    const { course, session } = await protocolCourse(db);
+    const answerOf = async (name: string, email: string, day: number) => (await answered((await student(db, course, session, name, { email })).id, { score: 8 }, day)).id;
+    const percent = await answerOf("Mari 50% Maasikas", "mari@example.test", 13);
+    const underscore = await answerOf("Anu_Aas", "anu@example.test", 14);
+    const backslash = await answerOf("Liis\\Lepp", "liis@example.test", 15);
+    const plain = await answerOf("Tiina Tamm", "tiina_tamm@example.test", 16);
+    const ids = async (search: string) => (await pageFeedback(db, { search, page: 1 })).rows.map((r) => r.id);
+    expect(await ids("%")).toEqual([percent]); // as a wildcard it would find all four
+    expect(await ids("50%")).toEqual([percent]);
+    expect(await ids("_")).toEqual([plain, underscore]); // the name "Anu_Aas" and the address "tiina_tamm@…"
+    expect(await ids("i_a")).toEqual([]); // as a wildcard it would find "Tiina"
+    expect(await ids("tiina_t")).toEqual([plain]);
+    expect(await ids("\\")).toEqual([backslash]);
   });
 
   test("per course, by its title: the answers, the scores, the average to one decimal, every option of every choice question counted", async () => {

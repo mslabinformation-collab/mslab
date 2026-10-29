@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import {
   clients, courseAccess, courseFeedback, courses, courseSessions, practicalPhotos, protocols, registrations,
@@ -6,7 +6,7 @@ import {
 } from "../schema";
 import { tallinnFormParts } from "@/domain/calendar";
 import { practicalStatus, type PracticalStatus } from "@/domain/completion";
-import { PAGE_SIZE } from "@/domain/paging";
+import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import {
   protocolStatus, readStages, stagesFrom, summarizeFeedback,
   type AssessmentView, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus, type ScreenStudentView,
@@ -438,9 +438,34 @@ const toFeedbackRow = (r: FeedbackSelect): FeedbackRow => ({
 
 const NEWEST = [desc(courseFeedback.submittedAt), desc(courseFeedback.id)] as const;
 
-/** Tagasiside's list: the answers of contact courses and e-courses, newest first, `size` a page; `courseId` keeps one course's. */
-export async function pageFeedback(db: Db, courseId: number | null, page: number, size: number = PAGE_SIZE): Promise<Paged<FeedbackRow>> {
-  const where = courseId === null ? ANSWERED : and(ANSWERED, eq(COURSE_ID, courseId));
+/** What Tagasiside's list is asked for (admin UX pass piece 4c, C6 Vastused). */
+export type FeedbackListQuery = {
+  /** One course's answers; none (or null): every course's. */
+  courseId?: number | null;
+  /** The search (S4-40): the name or the e-mail address of whoever answered holds the text. Read with parseSearch, so a caller may pass what was typed. */
+  search?: string;
+  page: number;
+  size?: number;
+};
+
+/**
+ * The search of Tagasiside's list: the name or the e-mail address holds the text (ILIKE, `%` `_` `\` escaped: containsPattern, so "50%" finds "50%" and
+ * "_" an underscore, never "anything"). An answer's name and address are its registration's, or its account's for an e-course's (`toFeedbackRow`): the
+ * four columns are searched, and only the owner's two are ever filled (the other join is empty).
+ */
+function feedbackSearch(search: string | undefined) {
+  const q = parseSearch(search);
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  return or(ilike(registrations.name, text), ilike(registrations.email, text), ilike(clients.name, text), ilike(clients.email, text));
+}
+
+/**
+ * Tagasiside's list: the answers of contact courses and e-courses, newest first, `size` a page; `courseId` keeps one course's and `search` the
+ * answers of whoever's name or e-mail address holds the text.
+ */
+export async function pageFeedback(db: Db, { courseId = null, search, page, size = PAGE_SIZE }: FeedbackListQuery): Promise<Paged<FeedbackRow>> {
+  const where = and(ANSWERED, courseId === null ? undefined : eq(COURSE_ID, courseId), feedbackSearch(search));
   return paged(
     page,
     size,
@@ -452,6 +477,7 @@ export async function pageFeedback(db: Db, courseId: number | null, page: number
             .from(courseFeedback)
             .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
             .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
+            .leftJoin(clients, eq(courseAccess.clientId, clients.id))
             .where(where)
         )[0].n,
       ),

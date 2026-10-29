@@ -14,6 +14,8 @@ import { expect as plainExpect, submitsForms } from "./test";
 //   2. Maria's „Arvustused“ lists it pending („Ootab kinnitust“) on a card with the stars of her score and its proof (the registration's status and
 //      the protocol sent), the words are not hers to edit, and „Avalda“ publishes it at once (admin UX pass piece 4c: the UndoBar „Arvustus
 //      avaldatud.“, whose „Võta tagasi“ puts it back to waiting; pressed again, it stays): the course page shows it, as written, with the name and the notice;
+//   2b. on „Vastused“ (piece 4c, C6) a part of her address finds her answer; its drawer's „Vaata arvustust →“ opens „Arvustused“ at that card, the
+//      pill Maria had pressed before (one that hides the card) notwithstanding;
 //   3. „Avalehel“ (a switch, no bar) puts it on the home page, with its course as a link;
 //   4. the student's course card says „Lubasid oma soovitust avaldada“; „Võta luba tagasi“ deletes the review at once: the course page and the home page no
 //      longer show it, and her answers stay with Maria;
@@ -224,6 +226,33 @@ test("a review from the student's tick to her withdrawal: answered with her perm
     await expect(block.locator("[data-reviews-notice]")).toHaveText("Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.");
     // not on the home page yet: „Avalehel“ is Maria's second press
     expect(await shows(visitor, "/", WORDS)).toBe(false);
+  });
+
+  // ---------- 2b. from her answer to the card ----------
+  await test.step("2b. „Vastused“: a part of her address finds the answer; „Vaata arvustust →“ opens Arvustused at its card, whichever pill was pressed before", async () => {
+    const feedbackId = (await storedFeedback(kati.registrationId))!.id;
+    // Maria had been looking at „Peidetud“: that pill hides this published card, and the link must not carry it
+    await page.goto("/admin/tagasiside?vaade=arvustused&olek=peidetud");
+    await adminReady(page);
+    await expect(row).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Vaade" }).getByRole("link", { name: "Vastused" }).click();
+    const search = page.getByRole("searchbox", { name: "Otsi nime või e-posti järgi" });
+    await expect(search).toBeVisible();
+    // (the part of the address that is hers alone: the run's name, so no other answer of the local database is found with it)
+    await search.fill(clientEmail("reviews-contact", runName(info)).split("@")[0]);
+    await expect(page).toHaveURL(/[?&]otsi=/);
+    const answer = page.locator("[data-feedback-row]");
+    await expect(answer).toHaveCount(1);
+    await expect(answer).toHaveAttribute("data-feedback-row", String(feedbackId));
+    await answer.getByRole("link", { name: "Kati Kask" }).click();
+    const detail = page.locator(`[data-feedback-detail="${feedbackId}"]`);
+    await expect(detail).toBeVisible();
+    await detail.getByRole("link", { name: "Vaata arvustust →" }).click();
+    // the address is Arvustused of every status, at the card: no ?olek=, and the card is on the screen
+    await expect(page).toHaveURL(new RegExp(`/admin/tagasiside\\?vaade=arvustused#arvustus-${reviewId}$`));
+    await adminReady(page);
+    await expect(row).toHaveAttribute("data-review-status", "published");
+    await expect(row).toBeInViewport();
   });
 
   // ---------- 3. „Avalehel“ ----------

@@ -436,6 +436,15 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     const all = plan.items.map((i) => [...i.steps, ...i.expect].join("\n")).join("\n");
     for (const gone of ["Arvustusi ootab kinnitust", "Selles vaates arvustusi pole.", "Arvustus on kustutatud."]) expect(all, gone).not.toContain(gone);
   });
+
+  test("piece 4c Task 3: the answers' check quotes the course select, the search's empty line and the drawer's three links, and no text that left", () => {
+    const t = adminEt.feedback;
+    const check = text("kontakt-tagasiside-haldus");
+    for (const word of [t.filterLabel, t.all, t.toReview, t.toStudent, t.toRegistration, adminEt.lists.clearAll]) expect(check, word).toContain(`„${word}“`);
+    expect(check).toContain("järgi vastuseid ei leitud");
+    // (the course buttons of before, and the two links' old words)
+    for (const gone of ["Nuppude reas", "Õpilase juurde", "Registreeringu juurde", "Selle koolituse kohta pole tagasisidet."]) expect(plan.items.map((i) => [...i.steps, ...i.expect].join("\n")).join("\n"), gone).not.toContain(gone);
+  });
 });
 
 // The newsletter's checks (newsletter campaigns, Task 4, then the 20.10 simplification: docs/superpowers/specs/2026-10-20-newsletter-simple-design.md §6):
