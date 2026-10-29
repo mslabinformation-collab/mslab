@@ -117,21 +117,28 @@ async function subscribersPage(search: Search) {
     current: view.state === p.key,
   }));
 
+  // the tabs at the right of the H1, where the letters' view has them (the Part 3 frame „B5“; admin polish F12: they were under the lead here), with
+  // „Laadi alla (CSV)“ before them; on a phone, under the lead, the CSV first (newsletter.module.css)
   return (
     <div className={ui.page}>
-      <div className={ui.heading}>
-        <div>
+      <div className={`${ui.heading} ${styles.subsHeading}`}>
+        <div className={styles.subsTitle}>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <div className={styles.downloads}>
-          <a className={`${ui.btn} ${ui.secondary}`} href={subscribersCsvHref(view)} download data-csv="">
-            {t.csvDownload}
-          </a>
+        <div className={`${ui.headAside} ${styles.subsAside}`}>
+          {/* (as tall as the tabs beside it: 44 px) */}
+          <div className={styles.downloads}>
+            <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={subscribersCsvHref(view)} download data-csv="">
+              {t.csvDownload}
+            </a>
+          </div>
+          <div className={styles.lettersTabs}>
+            <Views view="subscribers" />
+          </div>
         </div>
       </div>
-      <Views view="subscribers" />
 
       <ListToolbar placeholder={t.searchPlaceholder} pillRows={[{ label: t.statusLabel, pills }]} />
 
@@ -215,11 +222,12 @@ async function campaignsPage(email: string, kampaania: string) {
           <p className={ui.eyebrow}>{t.eyebrow}</p>
           <h1 className={ui.h1}>{t.campaigns.title}</h1>
         </div>
+        {/* (ET | RU before the tabs: the tabs stay at the row's right end, in the same place in both views, F12) */}
         <div className={`${ui.headAside} ${styles.lettersAside}`}>
+          {chosen && <LangSwitch />}
           <div className={styles.lettersTabs}>
             <Views view="campaigns" />
           </div>
-          {chosen && <LangSwitch />}
         </div>
       </div>
       <CampaignsPanel

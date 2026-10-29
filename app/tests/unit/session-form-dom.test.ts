@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import saveStatus from "@/components/admin/SaveStatus.module.css";
 import { DEBOUNCE_MS, SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import type { SessionFields } from "@/domain/session-fields";
 import { stubFetch } from "../fakes";
@@ -598,6 +599,8 @@ describe("a new session (?id=uus; S3-P3-g): one explicit „Lisa toimumine“", 
   it("the header says „Täida kohustuslikud väljad“ instead of a save status, then „Vajuta „Lisa toimumine“.“ once Koolitus, Kuupäev and Linn are filled; no status, no delete", async () => {
     await showNew();
     expect(text(line())).toBe("Täida kohustuslikud väljad");
+    // (admin polish F22) the line is the chip every other drawer has in that place, SaveStatus's neutral one
+    expect(line()!.className.split(" ")).toEqual(expect.arrayContaining([saveStatus.chip, saveStatus.neutral]));
     expect(line()!.getAttribute("role")).toBe("status");
     expect($("[data-save-status]")).toBeNull();
     expect(text($("[data-new-session] h2"))).toBe("Uus toimumine");

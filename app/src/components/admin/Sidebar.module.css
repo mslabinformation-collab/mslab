@@ -1,5 +1,7 @@
 /* Prototype B .admin-sidebar, as the admin UX pass draws it (AdminSidebar.dc.html): 235px, #242124, padding 22/14/16, the menu in groups,
-   the footer pinned to the bottom. Below 900px the sidebar is the phone top bar (64px) with the menu as a panel under it. */
+   the footer pinned to the bottom. Below 900px the sidebar is the phone top bar (64px) with the menu as a panel under it.
+   A screen shorter than the menu (admin polish F6: the menu is 746 px, 976 px with „Koduleht ja uudiskiri“ open, the window 900 or 800 px): only
+   the menu scrolls, between the logo and the footer, so „Sisse logitud“, the e-mail and „Logi välja“ stay whole at the foot of the screen. */
 
 .sidebar {
   position: sticky;
@@ -8,10 +10,9 @@
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  /* the aside scrolls on its own when the menu is taller than the screen */
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* (the menu scrolls inside, .navWrap; the aside itself never does) */
+  overflow: hidden;
   padding: 22px 14px 16px;
   background: #242124;
   color: #ccc0c8;
@@ -33,6 +34,7 @@
 }
 
 .label {
+  flex: none;
   margin: 0 0 8px 10px;
   color: #a99ba4;
   font: 400 11px/1.4 var(--font-body);
@@ -40,8 +42,43 @@
 
 .navWrap {
   display: grid;
+  align-content: start;
   gap: 2px;
   margin-bottom: 16px;
+}
+
+/* The sidebar's menu (not the phone panel's: that panel scrolls as a whole) takes what the logo and the footer leave and scrolls inside it. Its
+   12 px foot is inside the scroll, so the last row clears the footer's line at the end; a scrolled-off part shows as a soft light edge at the top or
+   the foot of the menu (the covers in the menu's own colour scroll with its rows and hide the edge at either end; an old Safari without `local`
+   shows no edge). The scrollbar is thin and dark where the browser draws one. (12 px inside + 4 px under it: the 16 px over the footer as before.) */
+.sidebar .navWrap {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-bottom: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 12px;
+  background-color: #242124;
+  background-image:
+    linear-gradient(#242124 30%, rgba(36, 33, 36, 0)),
+    linear-gradient(rgba(36, 33, 36, 0), #242124 70%),
+    radial-gradient(farthest-side at 50% 0, rgba(204, 192, 200, 0.22), rgba(204, 192, 200, 0)),
+    radial-gradient(farthest-side at 50% 100%, rgba(204, 192, 200, 0.22), rgba(204, 192, 200, 0));
+  background-position:
+    top,
+    bottom,
+    top,
+    bottom;
+  background-size:
+    100% 28px,
+    100% 28px,
+    100% 12px,
+    100% 12px;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+  scrollbar-width: thin;
+  scrollbar-color: #51434c transparent;
 }
 
 /* A group: its heading, then its rows. The first group (the overview) has no heading. */
@@ -228,6 +265,25 @@
   outline-offset: 2px;
 }
 
+/* „Logi välja“ and, while the review tools are on, the comment bubble's place at its right (admin polish F18): public/feedback.js puts its bubble
+   over a [data-fb-dock] it finds on the screen, so on an admin page it stands in the admin's own frame and covers none of the page's controls. */
+.footRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footRow > form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fbDock {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+
 /* ---------- phone: top bar + menu panel ---------- */
 
 .bar {
@@ -247,6 +303,11 @@
   display: block;
   flex: none;
   width: 112px;
+}
+
+/* the bubble's place in the phone bar, left of ≡ (see .fbDock); the title before it shortens with its ellipsis */
+.bar .fbDock {
+  margin-left: auto;
 }
 
 .barLogo img {

@@ -72,9 +72,45 @@
   }
 }
 
+/* „Tellijad“ (admin polish F12): „Tellijad | Kirjad“ where the letters' view has them, at the right end of the H1's line, „Laadi alla (CSV)“ before
+   them; the lead under the H1 across the left. From 901 px the heading is a grid of its own for that (the title's box gives its eyebrow, H1 and lead
+   to it), the tabs and the button level with the H1's foot as the letters' tabs are; below, ui.heading's wrapping row as before: the H1, the lead, the
+   button (full width on a phone), the tabs. (div. outweighs ui.heading's display, whichever sheet comes later.) */
+@media (min-width: 901px) {
+  div.subsHeading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0 24px;
+  }
+
+  .subsTitle {
+    display: contents;
+  }
+
+  .subsTitle > * {
+    grid-column: 1;
+  }
+
+  /* (in the letters' block the eyebrow's 18 px and the H1's 10 px collapse into 18; grid items keep both) */
+  .subsTitle > h1 {
+    margin-top: 0;
+  }
+
+  /* the H1's row ends with its own 10 px margin, as the letters' heading does: the tabs' foot there (two classes: ui.headAside's align-items and wrap
+     have one, and either sheet may come later in the bundle) */
+  .subsHeading > .subsAside {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: end;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+  }
+}
+
 /* „Kirjad“ (piece 3b Task 6; the Part 3 frame): the eyebrow and „Kirjad“ on the left, the tabs at the right of the heading (and the ET | RU switch while a
-   letter is open). Below 900 px an open letter is a screen of its own (Part 4 „B5 Kirjad“): the H1 and the tabs give way to its „← Kirjad“; the switch
-   stays, for the letter's Russian. */
+   letter is open, before them). Below 900 px an open letter is a screen of its own (Part 4 „B5 Kirjad“): the H1 and the tabs give way to its „← Kirjad“;
+   the switch stays, for the letter's Russian. */
 .lettersHeading {
   flex-wrap: wrap;
   margin-bottom: 24px;

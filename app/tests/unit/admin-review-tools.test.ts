@@ -55,7 +55,7 @@ describe("the signed-in admin layout and the comment bubble", () => {
     const tree = await panelLayoutWith("1");
     const found = scripts(tree);
     expect(found).toHaveLength(1);
-    expect(found[0].props.src).toBe("/feedback.js?v=6");
+    expect(found[0].props.src).toBe("/feedback.js?v=7");
     expect(found[0].props.strategy).toBe("afterInteractive");
     // after the page and its shell (the page is there before the bubble)
     expect([tree.props.children].flat().at(-1)).toBe(found[0]);

@@ -238,11 +238,29 @@ test("1440 px wide: the sidebar with its groups; the folding group opens on a ta
   await fold.click({ force: true }); // (it says aria-disabled while the page holds it open, which Playwright's click waits out)
   await expect(fold).toHaveAttribute("aria-expanded", "true");
 
-  // the footer is the aside's own: it holds the e-mail and the way out, and the aside scrolls by itself
+  // the footer is the aside's own: it holds the e-mail and the way out; on a screen shorter than the menu only the menu scrolls, so the footer stays
+  // whole at the foot of the window (admin polish F6: the aside scrolled as a whole, its footer cut at 900 and 800 px)
   const foot = aside.locator("[data-nav-foot]");
   await expect(foot).toContainText("Sisse logitud");
   await expect(foot.getByRole("button", { name: "Logi välja" })).toBeVisible();
-  expect(await aside.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+  expect(await aside.evaluate((el) => getComputedStyle(el).overflowY)).toBe("hidden");
+  expect(await aside.locator("nav").evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+  // Review Focus 3: at 1440 × 900 and 1280 × 800 with „Koduleht ja uudiskiri“ open, the footer is whole on the screen and every entry can be reached
+  // in the menu (scrolled to it), each then wholly inside the menu's box
+  for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(size);
+    const box = (await foot.boundingBox())!;
+    expect(box.y, `${size.width}: the footer's top on the screen`).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height, `${size.width}: the footer's foot on the screen`).toBeLessThanOrEqual(size.height);
+    const nav = (await aside.locator("nav").boundingBox())!;
+    for (const entry of await aside.locator("nav a[data-nav]").all()) {
+      await entry.scrollIntoViewIfNeeded();
+      const r = (await entry.boundingBox())!;
+      expect(r.y >= nav.y - 0.5 && r.y + r.height <= nav.y + nav.height + 0.5, `${size.width}: ${await entry.textContent()} reachable`).toBe(true);
+      expect(r.height).toBe(44);
+    }
+    expect(await page.evaluate(() => window.scrollY), `${size.width}: only the menu scrolled, not the page`).toBe(0);
+  }
   expect(await noSideScroll(page)).toBe(true);
 });
 

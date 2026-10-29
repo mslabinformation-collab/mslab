@@ -324,7 +324,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
 
   return (
     <div className={ui.page} data-site-editor="">
-      <div className={ui.heading}>
+      <div className={`${ui.heading} ${styles.heading}`} data-site-heading="">
         <div className={styles.headText}>
           {back}
           {eyebrow && (
@@ -341,9 +341,9 @@ function SiteForm(props: Form & { apis: SiteApis }) {
             </p>
           )}
         </div>
-        <div className={ui.headAside}>
+        <div className={`${ui.headAside} ${styles.aside}`}>
           <LangSwitch />
-          <span ref={chipSlot} className={styles.statusSlot}>
+          <span ref={chipSlot} className={styles.statusSlot} data-site-chip="">
             <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} />
           </span>
           {viewHref !== null && (

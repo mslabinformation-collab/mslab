@@ -6,4 +6,4 @@
 export const REVIEW_TOOLS = process.env.NEXT_PUBLIC_REVIEW_TOOLS === "1";
 
 /** The comment bubble's script, with the version that is bumped whenever public/feedback.js changes. */
-export const FEEDBACK_SCRIPT = "/feedback.js?v=6";
+export const FEEDBACK_SCRIPT = "/feedback.js?v=7";

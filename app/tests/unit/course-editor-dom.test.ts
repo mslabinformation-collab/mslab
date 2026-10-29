@@ -770,6 +770,10 @@ describe("a published course: the cards save to its draft, the PublishBar names 
       ["switch", "checkbox", "Näidissisu"],
     ]);
     expect(card.textContent).toBe("AvaldamineAvalikul lehelNäidissisu"); // (the title and the two labels: no hints)
+    // (admin polish F8) in its own box, the side column's first: the box sticks from 1180 px, the märgis card after it scrolls with the page
+    expect(card.parentElement!.hasAttribute("data-side-publish")).toBe(true);
+    expect(card.parentElement!.parentElement!.tagName).toBe("ASIDE");
+    expect(card.parentElement!.nextElementSibling!.querySelector("[data-publish-card]")).toBeNull();
     expect(published().checked).toBe(true);
     // a price emptied in the draft: switched off, R-d publishes first, and the server holds it
     await type(field("price"), "");

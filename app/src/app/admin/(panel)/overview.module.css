@@ -62,12 +62,13 @@
   background: var(--first);
 }
 
-/* the two cards */
+/* the two cards, side by side as tall as the taller one (admin polish F20: each at its own height, their feet were 25 px apart at 1280); their
+   contents stay at their tops */
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 22px;
-  align-items: start;
+  align-items: stretch;
   margin-bottom: 25px; /* the space before the Testimine card under them (that card keeps its own 25 px under it) */
 }
 
@@ -162,9 +163,10 @@
   color: color-mix(in srgb, var(--rose) 50%, var(--warn));
 }
 
-/* the empty queue: a white card of its own, as drawn */
+/* the empty queue: a white card of its own, as drawn (its two lines at its top when the row is taller) */
 .empty {
   display: grid;
+  align-content: start;
   gap: 8px;
   padding: 20px;
 }

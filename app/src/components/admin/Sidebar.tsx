@@ -86,13 +86,39 @@ function useFoldChoice(): [FoldChoice | null, (choice: FoldChoice) => void] {
   return [unsaved ?? stored, (choice) => setUnsaved(writeFold(choice) ? null : choice)];
 }
 
+/**
+ * Scrolls the sidebar's menu (only the menu: it scrolls on its own on a short screen, Sidebar.module.css) by the least that shows `first` to `last`,
+ * the top of `first` when both do not fit; 12 px clear of the edges (the menu's own foot). Nothing when the menu is not scrolling (it fits, or it is
+ * the hidden sidebar of a phone).
+ */
+function reveal(nav: HTMLElement | null, first: Element | null | undefined, last: Element | null | undefined = first) {
+  if (!nav || !first || !last || nav.scrollHeight <= nav.clientHeight) return;
+  const box = nav.getBoundingClientRect();
+  const top = first.getBoundingClientRect().top - box.top - 12;
+  const bottom = last.getBoundingClientRect().bottom - box.bottom + 12;
+  if (top < 0) nav.scrollTop += top;
+  else if (bottom > 0) nav.scrollTop += Math.min(bottom, top);
+}
+
 function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Section; t: SidebarTexts; fold: boolean }) {
   const ids = useId();
   const [choice, choose] = useFoldChoice();
   const byKey = new Map(items.map((item) => [item.key, item]));
+  const nav = useRef<HTMLElement>(null);
+  // the sidebar's menu on a short screen (admin polish F6): the page's own entry is brought into the menu's view when the page changes (a page opened
+  // from a link or reloaded starts with the menu at its top), and the rows of the folding group when a press opens it
+  const [opened, setOpened] = useState(0);
+  useEffect(() => {
+    if (fold) reveal(nav.current, nav.current?.querySelector('[aria-current="page"]'));
+  }, [active, fold]);
+  useEffect(() => {
+    if (opened === 0) return;
+    const button = nav.current?.querySelector("[data-nav-fold]");
+    reveal(nav.current, button, button?.parentElement?.querySelector("li:last-child"));
+  }, [opened]);
 
   return (
-    <nav aria-label={t.nav} className={styles.navWrap}>
+    <nav ref={nav} aria-label={t.nav} className={styles.navWrap}>
       {GROUPS.map((group) => {
         const rows = group.items.map((key) => byKey.get(key)).filter((item): item is NavItem => item !== undefined);
         const label = group.id ? t.groups[group.id] : null;
@@ -115,7 +141,9 @@ function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Sect
                   aria-disabled={inside || undefined}
                   data-nav-fold=""
                   onClick={() => {
-                    if (!inside) choose(open ? "closed" : "open");
+                    if (inside) return;
+                    choose(open ? "closed" : "open");
+                    if (!open) setOpened((n) => n + 1);
                   }}
                 >
                   <span id={labelId} data-nav-group={group.id}>
@@ -153,8 +181,23 @@ function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Sect
   );
 }
 
-/** „Sisse logitud“, the e-mail, „Logi välja“ (README §1.1); the phone menu adds „Vaata kodulehte ↗“ above „Logi välja“. */
-function NavFoot({ email, t, withSite }: { email: string; t: SidebarTexts; withSite: boolean }) {
+/**
+ * The comment bubble's place (admin polish F18): while the review tools are on, public/feedback.js stands its bubble over the [data-fb-dock] on the
+ * screen — at the foot of the sidebar beside „Logi välja“, or in the phone bar left of ≡ — so it covers none of the page's own controls.
+ */
+function FbDock() {
+  return <span className={styles.fbDock} data-fb-dock="" aria-hidden="true" />;
+}
+
+/** „Sisse logitud“, the e-mail, „Logi välja“ (README §1.1); the phone menu adds „Vaata kodulehte ↗“ above „Logi välja“. `dock`: the bubble's place beside it. */
+function NavFoot({ email, t, withSite, dock = false }: { email: string; t: SidebarTexts; withSite: boolean; dock?: boolean }) {
+  const logout = (
+    <form method="post" action="/api/auth/logout">
+      <button type="submit" className={styles.footLink}>
+        {t.logout}
+      </button>
+    </form>
+  );
   return (
     <div className={styles.foot} data-nav-foot="">
       <span className={styles.footLabel}>{t.signedIn}</span>
@@ -169,11 +212,14 @@ function NavFoot({ email, t, withSite }: { email: string; t: SidebarTexts; withS
           </span>
         </a>
       )}
-      <form method="post" action="/api/auth/logout">
-        <button type="submit" className={styles.footLink}>
-          {t.logout}
-        </button>
-      </form>
+      {dock ? (
+        <div className={styles.footRow}>
+          {logout}
+          <FbDock />
+        </div>
+      ) : (
+        logout
+      )}
     </div>
   );
 }
@@ -246,7 +292,15 @@ function useLiveMenu(items: NavItem[], page: string): MenuState | null {
   return live !== null && live.items === items ? live.menu : null;
 }
 
-type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number; email: string; today: TodayCard | null };
+type SidebarProps = {
+  items: NavItem[];
+  t: SidebarTexts;
+  total: number;
+  email: string;
+  today: TodayCard | null;
+  /** The review tools are on (lib/review-tools.ts): the comment bubble's places, at the foot of the sidebar and in the phone bar (FbDock). */
+  fbDock?: boolean;
+};
 
 /**
  * Prototype B's dark admin sidebar (logo, "Koolituskeskuse haldus", the grouped menu with count badges, then who is signed in and
@@ -258,7 +312,7 @@ type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number; email: s
  * useSearchParams is answered while the page is rendered on the server and needs no <Suspense> boundary: the menu is in the first HTML with its
  * entry marked, its fold and its phone bar title right, and no second copy of it follows.
  */
-export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday }: SidebarProps) {
+export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday, fbDock = false }: SidebarProps) {
   const pathname = usePathname();
   const search = useSearchParams();
   const active = activeSection(pathname, search);
@@ -307,11 +361,12 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
         <Logo href="/admin" label={t.home} className={styles.logo} eager />
         <p className={styles.label}>{t.label}</p>
         <NavContent items={items} active={active} t={t} fold />
-        <NavFoot email={email} t={t} withSite={false} />
+        <NavFoot email={email} t={t} withSite={false} dock={fbDock} />
       </aside>
 
       <header className={styles.bar}>
         <BarTitle title={title} t={t} />
+        {fbDock && <FbDock />}
         <button
           type="button"
           className={styles.menuButton}

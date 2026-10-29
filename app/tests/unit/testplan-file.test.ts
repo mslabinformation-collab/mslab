@@ -1100,10 +1100,15 @@ describe("the review tools' checks (22.10)", () => {
     const check = find("haldus-kommentaar-nupp");
     // (reworded in admin UX pass piece 3b: Seaded has no save bar since Task 5 — its legal texts are drafts with their own „Avalda …“ —, so the check
     // looked at the save bar of Avaleht; reworded again in piece 4a, Task 6: Avaleht is on the draft layer, so a word typed into „MS LABi lause“ brings
-    // its publish bar, whose „Avalda muudatused“ the bubble must leave clear, and the word taken out again takes the bar away: nothing is published)
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "reworded" });
-    expect(markedSince(check.markedAt)).toBe(true);
-    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
+    // its publish bar, whose „Avalda muudatused“ the bubble must leave clear, and the word taken out again takes the bar away: nothing is published;
+    // redone in the admin polish, F18: on an admin page the bubble stands in the admin's own frame — a ring at the foot of the menu beside „Logi välja“,
+    // on a phone in the top bar beside ≡ — so an answer given for the corner's pill no longer stands)
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "redo" });
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
+    const deployAt = "2026-10-30T00:00:00.000Z";
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, deployAt)).toBe(check.markedAt === "deploy" ? deployAt : check.markedAt);
+    expect(check.steps[0]).toBe("Ava halduses leht „Seaded“ ja vaata menüü alaosas „Logi välja“ kõrvale (telefonis ülaribal nupu ≡ kõrvale).");
+    expect(check.steps.join(" ")).not.toContain("alanurka");
     expect(check.steps.join(" ")).toContain("Ava halduses „Avaleht“, lisa „MS LABi lause“ lõppu sõna Proov ja vaata ribal nuppu „Avalda muudatused“.");
     expect(check.steps.at(-1)).toBe("Kustuta sõna Proov ja oota, kuni riba kaob.");
     expect(check.steps.join(" ")).not.toContain("„Lepingud ja tingimused“");
@@ -1116,7 +1121,7 @@ describe("the review tools' checks (22.10)", () => {
     // fix round 1: the wording, and the claim about covered buttons is about the page the check opens; the login page has no bubble (signed out)
     expect(text).toContain("kirjuta kommentaariks: Proov 1.");
     expect(text).not.toContain("kirjuta kommentaari:");
-    expect(text).toContain("ei kata sellel lehel ühtegi nuppu");
+    expect(text).toContain("ei kata ühtegi lehe nuppu ka siis, kui lehte kerid");
     expect(text).not.toContain("sisselogimise lehel");
   });
 });

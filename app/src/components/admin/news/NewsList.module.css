@@ -36,6 +36,22 @@
   .screen[data-open] > .list {
     display: grid;
   }
+
+  /* The post's editor beside the list is 758 px at 1440 (598 at 1280): its heading (SiteEditorPage) is two lines, the H1, then the one line of ET | RU
+     at the left and the chip with „Vaata lehel ↗“ at the right, as the C3 frame draws that line over the editor's cards (admin polish F7: the H1 and
+     the buttons squeezed each other into three lines) */
+  .editor [data-site-heading] {
+    row-gap: 14px;
+  }
+
+  .editor [data-site-heading] > :last-child {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .editor [data-site-heading] [data-site-chip] {
+    margin-left: auto;
+  }
 }
 
 /* beside an editor: the frame's „Uudised“ (Jost 300, 36 px) with „Lisa postitus +“ at its right */
@@ -60,17 +76,31 @@
   gap: 6px;
 }
 
+/* The list as the page (no post open; admin polish F17): its heading is every list page's (ui.heading: „Lisa postitus +“ at the right, level with
+   the lead's foot), and the rows are in a white card as every other list's rows are. On a phone the button takes the line under the lead (ui's
+   `.heading .btn` makes it the full width below 640 px), as „Lisa õpilane +“ does. */
+.card {
+  min-width: 0;
+}
+
+/* (the rows' own 10 px reach into the card's padding: the thumbnails start at the card's content edge, as a table's first cell does) */
+.card .rows {
+  margin: 0 -10px;
+}
+
+@media (max-width: 900px) {
+  .pageHead .add {
+    flex: 1 1 100%;
+    justify-items: start;
+  }
+}
+
 .rows {
   display: grid;
   gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-/* with no post open, the rows keep a reading width */
-.screen:not([data-open]) .rows {
-  max-width: 760px;
 }
 
 .row {

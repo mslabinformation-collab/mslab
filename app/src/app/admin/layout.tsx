@@ -18,7 +18,9 @@ export const dynamic = "force-dynamic";
 // switch as the site's (NEXT_PUBLIC_REVIEW_TOOLS, switched off at the mslab.ee launch). It is loaded by the (panel) layout, not here: /admin/login
 // and the other signed-out pages have none, because while the gate is on a signed-out visitor has no preview cookie and a comment could not be sent.
 // data-fb-dir (here, on the html element) tells the script, when it runs, that the page's comments are the admin's (dir "admin"; the site's stay "site").
-// The admin's bottom-fixed bars carry data-fab-avoid, so the bubble lifts above them.
+// On an admin page the bubble stands in the admin's own frame, over the sidebar's or the phone bar's [data-fb-dock] (Sidebar.tsx; admin polish F18), out
+// of every page's way; the admin's bottom-fixed bars carry data-fab-avoid, so it steps aside while one lies over that place (and lifts above them in
+// the corner, where a page has no such place).
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="et" className={fontVariables} data-admin="" data-fb-dir={REVIEW_TOOLS ? "admin" : undefined}>

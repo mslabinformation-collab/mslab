@@ -68,7 +68,8 @@ export function NewsList({ rows, open }: { rows: NewsRow[]; open: string | null 
   const Heading = alone ? "h1" : "h2";
   return (
     <section className={styles.list} aria-labelledby="uudised-list" data-news-list="">
-      <div className={alone ? `${ui.heading} ${styles.head}` : styles.head}>
+      {/* (alone: the page's own heading, as every list page has it; beside an editor: the frame's smaller one) */}
+      <div className={alone ? `${ui.heading} ${styles.pageHead}` : styles.head}>
         <div>
           {alone && <p className={ui.eyebrow}>{t.eyebrow}</p>}
           <Heading id="uudised-list" className={alone ? ui.h1 : styles.title}>
@@ -84,27 +85,42 @@ export function NewsList({ rows, open }: { rows: NewsRow[]; open: string | null 
           {t.deleted}
         </p>
       )}
-      {shown.length === 0 ? (
-        <ListEmpty things={t.things} filtered={q !== ""} search={q || undefined} clearHref={listHref(pathname, sp, { otsi: null })} />
-      ) : (
-        <ul className={styles.rows}>
-          {shown.map((r) => (
-            <li key={r.id}>
-              <Link className={styles.row} href={newsHref(`/admin/uudised/${r.id}`, q)} aria-current={String(r.id) === open ? "page" : undefined} data-post-row={r.id}>
-                {r.coverKey ? <Image className={styles.thumb} src={mediaUrl(r.coverKey)} alt="" width={64} height={52} unoptimized /> : <span className={styles.thumb} aria-hidden="true" />}
-                <span className={styles.text}>
-                  <span className={styles.name}>{r.title}</span>{" "}
-                  {/* (the space: the link's name reads „{title} {staatus} · {dd.mm}“; a flex column draws none) */}
-                  <span className={styles.line} data-status={r.status} data-post-state="">
-                    {fill(t.rowLine, { status: STATUS[r.status], date: dayMonth(r.day) })}
+      {/* alone, the rows (or the empty state) are in a white card, as every other list's are (admin polish F17); beside an editor they stand on the
+          page, as the C3 frame draws them */}
+      <ListBox alone={alone}>
+        {shown.length === 0 ? (
+          <ListEmpty things={t.things} filtered={q !== ""} search={q || undefined} clearHref={listHref(pathname, sp, { otsi: null })} />
+        ) : (
+          <ul className={styles.rows}>
+            {shown.map((r) => (
+              <li key={r.id}>
+                <Link className={styles.row} href={newsHref(`/admin/uudised/${r.id}`, q)} aria-current={String(r.id) === open ? "page" : undefined} data-post-row={r.id}>
+                  {r.coverKey ? <Image className={styles.thumb} src={mediaUrl(r.coverKey)} alt="" width={64} height={52} unoptimized /> : <span className={styles.thumb} aria-hidden="true" />}
+                  <span className={styles.text}>
+                    <span className={styles.name}>{r.title}</span>{" "}
+                    {/* (the space: the link's name reads „{title} {staatus} · {dd.mm}“; a flex column draws none) */}
+                    <span className={styles.line} data-status={r.status} data-post-state="">
+                      {fill(t.rowLine, { status: STATUS[r.status], date: dayMonth(r.day) })}
+                    </span>
                   </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListBox>
     </section>
+  );
+}
+
+/** The rows' white card while the list is the page; beside an editor, none. */
+function ListBox({ alone, children }: { alone: boolean; children: ReactNode }) {
+  return alone ? (
+    <div className={`${ui.card} ${styles.card}`} data-news-card="">
+      {children}
+    </div>
+  ) : (
+    <>{children}</>
   );
 }
 

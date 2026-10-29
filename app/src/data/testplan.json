@@ -2536,26 +2536,26 @@
       "title": "Kommentaari nupp halduse lehtedel",
       "href": "/admin/seaded",
       "steps": [
-        "Ava halduses leht „Seaded“ ja vaata paremat alanurka.",
-        "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaariks: Proov 1.",
+        "Ava halduses leht „Seaded“ ja vaata menüü alaosas „Logi välja“ kõrvale (telefonis ülaribal nupu ≡ kõrvale).",
+        "Vajuta seal ümmargust kommentaari nuppu ja kirjuta kommentaariks: Proov 1.",
         "Vajuta „Saada“ ja ava Telegram.",
         "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
         "Ava halduses „Avaleht“, lisa „MS LABi lause“ lõppu sõna Proov ja vaata ribal nuppu „Avalda muudatused“.",
         "Kustuta sõna Proov ja oota, kuni riba kaob."
       ],
       "expect": [
-        "Nupp „Kommentaar“ on igal halduse lehel, millele oled sisse logitud.",
+        "Ümmargune kommentaari nupp on igal halduse lehel: arvutis menüü all „Logi välja“ kõrval, telefonis ülaribal nupu ≡ kõrval.",
         "Pärast „Saada“ ütleb paneel „Aitäh! Kommentaar on saadetud ✓“.",
         "Telegramis on uus kommentaar, kus on „Haldus“ ja tekst Proov 1.",
         "Kommentaaride lehel on see kommentaar sildiga „Haldus“ ja lingiga „Näita kohta“, mis avab sama halduse lehe.",
-        "Nupp „Kommentaar“ ei kata sellel lehel ühtegi nuppu ja „Avalda muudatused“ (telefonis „Avalda“) on täielikult näha.",
+        "Kommentaari nupp ei kata ühtegi lehe nuppu ka siis, kui lehte kerid, ja „Avalda muudatused“ (telefonis „Avalda“) on täielikult näha.",
         "Pärast sõna kustutamist riba kaob ja avalehel jääb lause endiseks."
       ],
       "why": "Kommentaar halduse lehe kohta peab jõudma Dimini samamoodi nagu kommentaar kodulehe kohta.",
       "risk": "low",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-vorm-vead",

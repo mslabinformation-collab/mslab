@@ -86,7 +86,7 @@ test.describe("comment API", () => {
 test.describe("comment widget on the main site", () => {
   test("is on the public pages, and not on the admin's login page (signed out: no preview cookie, a comment could not be sent)", async ({ page }) => {
     await page.goto("/koolitused");
-    await expect(page.locator('script[src="/feedback.js?v=6"]')).toHaveCount(1);
+    await expect(page.locator('script[src="/feedback.js?v=7"]')).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Jäta kommentaar" })).toBeVisible();
     await expect(page.locator("html")).not.toHaveAttribute("data-fb-dir", /.*/); // (the site's comments stay "site")
     await page.goto("/admin/login");
@@ -276,7 +276,7 @@ test.describe("comment widget in the admin", () => {
     submitsForms();
     await signInAsAdmin(page, context, visitorIp, created);
     await adminReady(page);
-    await expect(page.locator('script[src="/feedback.js?v=6"]')).toHaveCount(1);
+    await expect(page.locator('script[src="/feedback.js?v=7"]')).toHaveCount(1);
     await expect(page.locator("html")).toHaveAttribute("data-fb-dir", "admin");
     await expect(bubble(page)).toBeVisible();
     // (a phone shows the bubble without its word)

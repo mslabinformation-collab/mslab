@@ -102,6 +102,12 @@ test("the drawer: before she confirms, a line says so; after, the number and day
   expect(row).toContain("Paranda nimi");
   expect(row).not.toContain("ligipääs tühistatud");
   expect(row).not.toContain("pole veel nime kinnitanud");
+  // (admin polish F15) the download and „Paranda nimi“ side by side in one row, two small outline buttons (was a text link over a button)
+  const actions = row.match(/<div class="[^"]*"><a[^>]*data-certificate-admin-download=""[^>]*>[^<]*<\/a><button[^>]*data-reissue=""/);
+  expect(actions, "the download and „Paranda nimi“ in one row").not.toBeNull();
+  const download = row.match(/<a([^>]*)data-certificate-admin-download=""/)![1];
+  const reissueButton = row.match(/<button([^>]*)data-reissue=""/)![1];
+  expect(download.match(/class="([^"]*)"/)![1]).toBe(reissueButton.match(/class="([^"]*)"/)![1]);
 
   await db.update(certificates).set({ name: "Kätlin Kask", reissuedAt: new Date("2026-10-21T10:00:00Z") }).where(eq(certificates.id, c.id));
   row = part(await drawer(kati.client.id), "data-access", course.id);

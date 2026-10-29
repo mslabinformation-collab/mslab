@@ -19,6 +19,11 @@
     "#mslab-fb .fb-fab:hover{transform:translateY(-2px)}",
     "#mslab-fb .fb-fab svg{width:20px;height:20px}",
     "@media (max-width:600px){#mslab-fb .fb-fab{width:48px;padding:0;justify-content:center}#mslab-fb .fb-fab span{display:none}}",
+    // an admin page's place for the button (dockFab): a 44 px ring in the admin's dark frame, as the phone bar's ≡
+    "#mslab-fb .fb-fab.fb-docked{width:44px;height:44px;padding:0;justify-content:center;border:1px solid #51434c;background:#242124;box-shadow:none;transition:none}",
+    "#mslab-fb .fb-fab.fb-docked span{display:none}",
+    "#mslab-fb .fb-fab.fb-docked:hover{transform:none;background:#3a3338}",
+    "#mslab-fb .fb-fab.fb-docked:focus-visible{outline:2px solid #e6dce2;outline-offset:2px}",
     "#mslab-fb .fb-pn{position:fixed;right:16px;bottom:76px;z-index:2147483001;width:min(360px,calc(100vw - 32px));max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#222;border-radius:22px;padding:20px;box-shadow:0 30px 70px -20px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.05)}",
     "#mslab-fb .fb-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}",
     "#mslab-fb .fb-hd b{display:block;font-size:17px;font-weight:600}",
@@ -108,6 +113,7 @@
     // the campaign sheet, the works gallery's arrows). It moves up above the highest of them that shares its corner;
     // re-checked whenever the page changes or scrolls (once per frame).
     function liftFab() {
+      if (DIR === "admin" && dockFab()) return;
       var sb = document.querySelector(".sticky-buy");
       var lift = sb && sb.offsetHeight && getComputedStyle(sb).display !== "none" ? sb.offsetHeight + 12 : 16;
       var vh = window.innerHeight, fr = fab.getBoundingClientRect(), right = window.innerWidth - 16, left = right - Math.max(fr.width, 48);
@@ -120,6 +126,39 @@
       lift = Math.min(lift, Math.max(16, vh - 48 - 8)); // the button itself stays on screen
       fab.style.bottom = lift + "px";
       if (panel) panel.style.bottom = lift + 60 + "px";
+    }
+    // An admin page keeps a place for the button in its own frame (admin polish F18): a [data-fb-dock] at the foot of the sidebar beside „Logi välja“,
+    // or in the phone bar left of ≡. The button stands over the one on the screen, so it covers none of the page's controls however far the page is
+    // scrolled; it steps aside (hidden) while a marked bar lies over that place (the UndoBar, bottom left, for its few seconds), and its panel opens
+    // beside it. False when the screen shows no place: the corner, as on every other page. (Called for the admin only.)
+    function dockFab() {
+      var docks = document.querySelectorAll("[data-fb-dock]"), r = null;
+      for (var i = 0; i < docks.length && !r; i++) {
+        var d = docks[i].getBoundingClientRect();
+        if (d.width && d.height) r = d;
+      }
+      fab.classList.toggle("fb-docked", !!r);
+      if (!r) {
+        fab.style.left = fab.style.top = fab.style.right = fab.style.visibility = "";
+        if (panel) panel.style.left = panel.style.top = panel.style.right = "";
+        return false;
+      }
+      var covered = [].some.call(document.querySelectorAll("[data-fab-avoid]"), function (el) {
+        var b = el.getBoundingClientRect();
+        return b.width > 0 && b.height > 0 && b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
+      });
+      fab.style.visibility = covered ? "hidden" : "";
+      fab.style.left = Math.round(r.left) + "px";
+      fab.style.top = Math.round(r.top) + "px";
+      fab.style.right = fab.style.bottom = "auto";
+      if (panel) {
+        var under = r.top < window.innerHeight / 2, left = r.left + r.width / 2 < window.innerWidth / 2;
+        panel.style.top = under ? Math.round(r.bottom + 12) + "px" : "auto";
+        panel.style.bottom = under ? "auto" : Math.round(window.innerHeight - r.top + 12) + "px";
+        panel.style.left = left ? "16px" : "auto";
+        panel.style.right = left ? "auto" : "16px";
+      }
+      return true;
     }
     var liftQueued = false;
     function queueLift() {
@@ -135,6 +174,7 @@
       new MutationObserver(function (list) {
         for (var i = 0; i < list.length; i++) if (!root.contains(list[i].target)) return queueLift();
       }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "open", "hidden", "data-on", "data-fab-avoid"] });
+    if (DIR === "admin") liftFab(); // (into the admin's place at once: no blink in the corner first)
     setTimeout(liftFab, 600);
 
     function clearMark() { if (hl) { hl.remove(); hl = null; } pickedEl = null; }

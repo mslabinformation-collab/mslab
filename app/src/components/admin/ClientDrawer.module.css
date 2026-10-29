@@ -204,12 +204,35 @@
   margin-top: 6px;
 }
 
-/* an e-course's certificate (phase 3d): its line, the name printed, the download and "Paranda nimi", one under another */
+/* an e-course's certificate (phase 3d): its line, the name printed, then the download and "Paranda nimi" */
 .certificate {
   display: grid;
   justify-items: start;
   gap: 4px;
   margin-top: 6px;
+}
+
+/* the download and „Paranda nimi“: one wrapping row of small outline buttons, as the card's own row under it (admin polish F15); „Paranda nimi“'s
+   form and its done line (ReissueCertificate) take the full width under them */
+.certActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+/* (their own 6 and 4 px over them: the row's gap is there) */
+.certActions > .confirm,
+.certActions > .done {
+  flex: 1 1 100%;
+  margin-top: 0;
+}
+
+/* the done line is a status region from the start (never display: none); empty, it stands out of the row's flow, so the row's gap is not added for it */
+.certActions > .done:empty {
+  position: absolute;
 }
 
 /* ---------- A5 (admin UX pass, README A5; the Part 2 prototype's Õpilased frames) ---------- */
@@ -231,6 +254,21 @@
   .addBox {
     flex-basis: 100%;
     justify-items: start;
+  }
+}
+
+/* From 901 px the form opens as a line of its own under the heading, at its right under the button (admin polish F11): inside the heading's right
+   side it made that side taller, and the heading (bottom-aligned) moved the H1 and the lead down by the form's height. The box gives the button and
+   the form to the heading's wrapping row (opilased/clients.module.css .heading): the button stays beside the H1, the form takes the next line. */
+@media (min-width: 901px) {
+  .addBox {
+    display: contents;
+  }
+
+  /* a line of its own whatever the width (the full line), its 460 px at the right */
+  .addBox .add {
+    flex: 0 0 100%;
+    padding-left: max(0px, calc(100% - 460px));
   }
 }
 

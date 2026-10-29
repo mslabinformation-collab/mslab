@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -49,9 +51,9 @@ const BADGES = { registrations: badge(3, "3 ootab ettemaksu"), assessment: badge
 let container: HTMLDivElement;
 let root: Root;
 
-type Over = { today?: TodayCard | null; badges?: Partial<Record<string, NavItem["badge"]>>; total?: number };
-const element = ({ today = null, badges = {}, total = 0 }: Over = {}) =>
-  createElement(Sidebar, { items: items(badges), t: sidebarTexts, total, email: EMAIL, today });
+type Over = { today?: TodayCard | null; badges?: Partial<Record<string, NavItem["badge"]>>; total?: number; fbDock?: boolean };
+const element = ({ today = null, badges = {}, total = 0, fbDock }: Over = {}) =>
+  createElement(Sidebar, { items: items(badges), t: sidebarTexts, total, email: EMAIL, today, fbDock });
 const show = (over?: Over) => act(async () => root.render(element(over)));
 const at = async (path: string, search = "", over?: Over) => {
   mockPath = path;
@@ -231,6 +233,124 @@ describe("the sidebar: the footer", () => {
     expect(text(aside())).not.toContain("Vaata kodulehte");
     expect(aside().querySelector("a[href='/api/admin/preview']")).toBeNull();
     expect(aside().querySelector("[data-admin-view-site]")).toBeNull();
+  });
+});
+
+// Admin polish F6: a screen shorter than the menu (746 px, 976 with „Koduleht ja uudiskiri“ open; the window 900 or 800 px) scrolls the menu only,
+// so the footer stays whole; the page's own entry is brought into the menu's view, and so are the rows of the folding group when a press opens it.
+describe("the sidebar on a short screen (admin polish F6)", () => {
+  const css = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.module.css"), "utf8").replace(/\r\n/g, "\n");
+  const rule = (selector: string) => {
+    const at = css.indexOf(`\n${selector} {`);
+    expect(at, selector).toBeGreaterThan(-1);
+    return css.slice(at, css.indexOf("}", at));
+  };
+
+  it("only the menu scrolls: the aside does not, the logo, its line and the footer keep their size, the menu takes the rest", () => {
+    expect(rule(".sidebar")).toMatch(/overflow: hidden;/);
+    expect(rule(".sidebar")).not.toMatch(/overflow-y: auto/);
+    expect(rule(".sidebar .navWrap")).toMatch(/flex: 0 1 auto;\s*min-height: 0;/);
+    expect(rule(".sidebar .navWrap")).toMatch(/overflow-y: auto;/);
+    for (const part of [".logo", ".label", ".foot"]) expect(rule(part), part).toMatch(/flex: none;/);
+    expect(rule(".foot")).toMatch(/margin-top: auto;/);
+    // (the phone menu's panel scrolls as a whole, as before: its menu is not a box of its own)
+    expect(rule(".drawerPanel")).toMatch(/overflow-y: auto;/);
+    expect(css).not.toMatch(/\.drawerPanel \.navWrap \{[^}]*overflow/);
+  });
+
+  /** The menu as a box of 500 px on the screen (100–600) that holds 1 000 px of rows, a row at `top(row)` (happy-dom lays nothing out). */
+  const geometry = (top: (el: Element) => number | null) => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.tagName === "NAV" ? 1000 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.tagName === "NAV" ? 500 : 0;
+    });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.tagName === "NAV") return { top: 100, bottom: 600, left: 0, right: 207, width: 207, height: 500, x: 0, y: 100 } as DOMRect;
+      const y = top(this) ?? 0;
+      return { top: y, bottom: y + 44, left: 0, right: 207, width: 207, height: 44, x: 0, y } as DOMRect;
+    });
+  };
+
+  it("the page's own entry is brought into the menu's view, 12 px clear of its foot; an entry in view moves nothing", async () => {
+    // Testimine, the last row, at 900–944: under the menu's foot (600)
+    geometry((el) => (el.getAttribute("aria-current") === "page" ? 900 : null));
+    mockPath = "/admin/testimine";
+    await show();
+    const nav = aside().querySelector("nav")!;
+    expect(current(aside())).toBe("testing");
+    expect(nav.scrollTop).toBe(944 - 600 + 12);
+    // a page whose entry is in view (200–244): the menu stays where it is
+    nav.scrollTop = 0;
+    geometry(() => 200);
+    await at("/admin/registreerimised");
+    expect(nav.scrollTop).toBe(0);
+  });
+
+  it("a press that opens the folding group brings its rows into the menu's view (its heading kept in view when they do not all fit)", async () => {
+    // the group's heading at 520, its last row (Uudiskiri) at 740–784 once open
+    geometry((el) => (el.hasAttribute("data-nav-fold") ? 520 : el.getAttribute("data-nav-item") === "newsletter" ? 740 : null));
+    await at("/admin/kalender");
+    const nav = aside().querySelector("nav")!;
+    nav.scrollTop = 0;
+    await click(foldButton());
+    expect(foldButton().getAttribute("aria-expanded")).toBe("true");
+    // the last row's foot 12 px over the menu's foot: 784 − 600 + 12 = 196 (the heading, 520 − 100 − 12 = 408 from the top, stays in view)
+    expect(nav.scrollTop).toBe(196);
+    // closing it scrolls nothing
+    await click(foldButton());
+    expect(nav.scrollTop).toBe(196);
+  });
+
+  it("a press whose rows cannot all be shown keeps the group's heading at the menu's top", async () => {
+    // the heading at 560, its last row at 1 100–1 144: all of it would need 1 144 − 560 + 24 = 608 px of a 500 px menu
+    geometry((el) => (el.hasAttribute("data-nav-fold") ? 560 : el.getAttribute("data-nav-item") === "newsletter" ? 1100 : null));
+    await at("/admin/kalender");
+    const nav = aside().querySelector("nav")!;
+    nav.scrollTop = 0;
+    await click(foldButton());
+    expect(nav.scrollTop).toBe(560 - 100 - 12);
+  });
+
+  it("a menu that fits scrolls nothing", async () => {
+    mockPath = "/admin/testimine";
+    await show();
+    expect(aside().querySelector("nav")!.scrollTop).toBe(0);
+  });
+});
+
+// Admin polish F18: while the review tools are on (Shell passes `fbDock`), the comment bubble's places: at the foot of the sidebar beside „Logi välja“
+// (which keeps the rest of the row), and in the phone bar left of ≡ (public/feedback.js stands its bubble over the one on the screen).
+describe("the comment bubble's places (admin polish F18)", () => {
+  it("with the review tools on: one beside „Logi välja“, one in the phone bar between the page's name and ≡; hidden from a screen reader", async () => {
+    await at("/admin/seaded", "", { fbDock: true });
+    const foot = aside().querySelector("[data-nav-foot]")!;
+    const row = foot.querySelector("form")!.parentElement!;
+    expect(Array.from(row.children).map((el) => el.tagName)).toEqual(["FORM", "SPAN"]);
+    expect(row.lastElementChild!.hasAttribute("data-fb-dock")).toBe(true);
+    const bar = container.querySelector("header")!;
+    expect(Array.from(bar.children).map((el) => (el.hasAttribute("data-fb-dock") ? "dock" : el.tagName))).toEqual(["SPAN", "dock", "BUTTON"]);
+    for (const dock of container.querySelectorAll("[data-fb-dock]")) expect(dock.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelectorAll("[data-fb-dock]")).toHaveLength(2);
+    // the footer still reads as before
+    expect(Array.from(foot.children).map(text)).toEqual(["Sisse logitud", EMAIL, "Logi välja"]);
+    // the phone menu's own footer has none (the menu covers the page while it is open)
+    await openMenu();
+    expect(dialog().querySelector("[data-fb-dock]")).toBeNull();
+  });
+
+  it("without them: no place, the footer and the bar as before", async () => {
+    await at("/admin/seaded");
+    expect(container.querySelectorAll("[data-fb-dock]")).toHaveLength(0);
+    expect(aside().querySelector("[data-nav-foot] > form")).not.toBeNull();
+  });
+
+  it("the places are 44 px; the logout row gives the bubble its room", () => {
+    const css = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.module.css"), "utf8");
+    expect(css).toMatch(/\.fbDock \{\s*flex: none;\s*width: 44px;\s*height: 44px;/);
+    expect(css).toMatch(/\.footRow > form \{\s*flex: 1 1 auto;/);
+    expect(css).toMatch(/\.bar \.fbDock \{\s*margin-left: auto;/);
   });
 });
 

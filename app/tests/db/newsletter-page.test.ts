@@ -297,6 +297,30 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
     expect(old).not.toContain("data-campaign-not-found");
   });
 
+  test("admin polish F12: the tabs stand in one place in both views — the right end of the H1's row (the B5 frame's place), after „Laadi alla (CSV)“ in Tellijad, after ET | RU while a letter is open", async () => {
+    const draft = await campaign("Proov");
+    /** The heading's right side, what it holds in order (the tabs as „tabs“), and whether the H1 is the left side's. */
+    const aside = async (search: Record<string, string>) => {
+      const document = new Window().document;
+      document.body.innerHTML = await render(search);
+      const tabsNav = document.querySelector("nav[data-tab-pills]")!;
+      const h1 = document.querySelector("h1")!;
+      const heading = h1.parentElement!.parentElement!;
+      const side = heading.lastElementChild!;
+      return {
+        tabsInSide: side.contains(tabsNav),
+        last: side.lastElementChild!.contains(tabsNav),
+        before: [...side.children].slice(0, -1).map((el) => (el.querySelector("a[data-csv]") ? "csv" : el.matches("[data-edit-lang-bar]") ? "langs" : el.tagName)),
+      };
+    };
+    expect(await aside({})).toEqual({ tabsInSide: true, last: true, before: ["csv"] });
+    expect(await aside({ vaade: "kampaaniad" })).toEqual({ tabsInSide: true, last: true, before: [] });
+    expect(await aside({ vaade: "kampaaniad", kampaania: String(draft.id) })).toEqual({ tabsInSide: true, last: true, before: ["langs"] });
+    // (no tab row of its own under the lead any more)
+    const subscribersView = await render();
+    expect(subscribersView.match(/data-tab-pills=""/g)).toHaveLength(1);
+  });
+
   test("the list: drafts first, then the sent ones the newest first, each row a link of its name over its state line (P-13)", async () => {
     const sent = await campaign("Saadetud", { status: "sent", sentAt: at(-60), recipients: { et: 3, ru: 2 } });
     const draft = await campaign("Mustand", { updatedAt: at(-10) });

@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import chip from "@/components/admin/SaveStatus.module.css";
 import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
 import type { ManualReviewFields } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
@@ -600,6 +601,9 @@ describe("„Lisa arvustus +“: the create drawer (S4-39; R-c)", () => {
     expect(text($("h2", form))).toBe("Uus arvustus");
     expect(line()).toBe("Täida kohustuslikud väljad");
     expect($("[data-new-review-line]")!.getAttribute("role")).toBe("status");
+    // (admin polish F22) the line is the chip every other drawer has in that place, SaveStatus's neutral one, on the row of ✕
+    expect($("[data-new-review-line]")!.className.split(" ")).toEqual(expect.arrayContaining([chip.chip, chip.neutral]));
+    expect($("[data-new-review-line]")!.parentElement!.parentElement!.tagName).toBe("HEADER");
     const warning = $("[data-review-warning]", form)!;
     expect(text(warning)).toBe("Lisa ainult päris õpilase sõnad tema loal.");
     for (const el of all("input, select, textarea", form)) expect(warning.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

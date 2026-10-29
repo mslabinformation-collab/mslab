@@ -166,7 +166,7 @@ export function CertificateSettings({ initial, onStatus }: { initial: Certificat
         {text("place", "place", CERT_LIMITS.place, t.placeHint)}
         {text("registryCode", "registry", CERT_LIMITS.registryCode)}
         {text("practicalLine", "practical", CERT_LIMITS.practicalLine, t.practicalLineHint, ed.wide)}
-        {text("trainerName", "trainer", CERT_LIMITS.trainerName, t.trainerNameHint)}
+        {text("trainerName", "trainer", CERT_LIMITS.trainerName, t.trainerNameHint, styles.trainer)}
         <fieldset className={ed.fieldset} aria-describedby={[preview ? `${uid}-preview` : "", `${uid}-next-hint`, `${uid}-last`].filter(Boolean).join(" ")}>
           <legend className={ui.legend}>{t.nextNumber}</legend>
           <div className={styles.number}>

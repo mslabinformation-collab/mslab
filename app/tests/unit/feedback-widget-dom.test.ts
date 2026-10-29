@@ -142,3 +142,81 @@ describe("the comment list page (/guide/tagasiside/)", () => {
     expect(listed.admin).toBe(DIRS.admin);
   });
 });
+
+// Admin polish F18: on an admin page the bubble stands in the admin's own frame — over the [data-fb-dock] the page shows (the sidebar's foot beside
+// „Logi välja“, the phone bar left of ≡) — so it covers none of the page's controls; while a marked bar lies over that place it steps aside. A page with
+// no place on the screen, and every main-site page, keeps the corner, as before.
+describe("the bubble's place on an admin page (admin polish F18)", () => {
+  type Box = { left: number; top: number; width: number; height: number };
+  const rect = (b: Box) => ({ ...b, x: b.left, y: b.top, right: b.left + b.width, bottom: b.top + b.height, toJSON: () => b }) as DOMRect;
+  /** An element on the page at `box` (happy-dom lays nothing out: the box is the element's getBoundingClientRect). */
+  const placed = (attributes: Record<string, string>, box: Box) => {
+    const el = document.createElement("span");
+    for (const [name, value] of Object.entries(attributes)) el.setAttribute(name, value);
+    el.getBoundingClientRect = () => rect(box);
+    document.body.append(el);
+    return el;
+  };
+  const fab = () => document.querySelector<HTMLButtonElement>("#mslab-fb .fb-fab")!;
+  const flush = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  afterEach(() => {
+    for (const el of [...document.querySelectorAll("[data-fb-dock], [data-fab-avoid]")]) el.remove();
+  });
+
+  test("over the place on the screen, at once: left and top of it, a 44 px ring without the word (the word stays its text)", () => {
+    placed({ "data-fb-dock": "" }, { left: 167, top: 840, width: 44, height: 44 });
+    openPage("/admin/seaded", { "data-admin": "", "data-fb-dir": "admin" });
+    expect(fab().classList.contains("fb-docked")).toBe(true);
+    expect([fab().style.left, fab().style.top, fab().style.right, fab().style.bottom]).toEqual(["167px", "840px", "auto", "auto"]);
+    expect(fab().textContent).toBe("Kommentaar");
+    expect(fab().getAttribute("aria-label")).toBe("Jäta kommentaar");
+    const css = [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+    expect(css).toMatch(/\.fb-fab\.fb-docked\{width:44px;height:44px;[^}]*border:1px solid #51434c;/);
+    expect(css).toMatch(/\.fb-fab\.fb-docked span\{display:none\}/);
+  });
+
+  test("the place that is shown: a hidden one (the other width's) is passed over", () => {
+    placed({ "data-fb-dock": "" }, { left: 0, top: 0, width: 0, height: 0 });
+    placed({ "data-fb-dock": "" }, { left: 278, top: 10, width: 44, height: 44 });
+    openPage("/admin/seaded", { "data-admin": "", "data-fb-dir": "admin" });
+    expect([fab().style.left, fab().style.top]).toEqual(["278px", "10px"]);
+  });
+
+  test("its panel opens beside it: over a place at the foot, from the left edge; under a place at the top, from the right edge", async () => {
+    placed({ "data-fb-dock": "" }, { left: 167, top: 740, width: 44, height: 44 });
+    openPage("/admin/seaded", { "data-admin": "", "data-fb-dir": "admin" });
+    fab().click();
+    const panel = document.querySelector<HTMLElement>("#mslab-fb .fb-pn")!;
+    expect([panel.style.left, panel.style.right, panel.style.top, panel.style.bottom]).toEqual(["16px", "auto", "auto", `${window.innerHeight - 740 + 12}px`]);
+    document.querySelector<HTMLButtonElement>("#mslab-fb .fb-x")!.click();
+    document.querySelector("[data-fb-dock]")!.getBoundingClientRect = () => rect({ left: window.innerWidth - 112, top: 10, width: 44, height: 44 });
+    fab().click();
+    const top = document.querySelector<HTMLElement>("#mslab-fb .fb-pn")!;
+    expect([top.style.left, top.style.right, top.style.top, top.style.bottom]).toEqual(["auto", "16px", "66px", "auto"]);
+  });
+
+  test("a marked bar over the place (the UndoBar, bottom left): the bubble steps aside while it is there, and comes back", async () => {
+    placed({ "data-fb-dock": "" }, { left: 167, top: 840, width: 44, height: 44 });
+    openPage("/admin/seaded", { "data-admin": "", "data-fb-dir": "admin" });
+    expect(fab().style.visibility).toBe("");
+    const bar = placed({ "data-fab-avoid": "" }, { left: 16, top: 832, width: 300, height: 52 });
+    await flush();
+    expect(fab().style.visibility).toBe("hidden");
+    bar.remove();
+    await flush();
+    expect(fab().style.visibility).toBe("");
+  });
+
+  test("no place on the screen: the corner, as before (no docked look, no position of its own)", () => {
+    openPage("/admin/seaded", { "data-admin": "", "data-fb-dir": "admin" });
+    expect(fab().classList.contains("fb-docked")).toBe(false);
+    expect([fab().style.left, fab().style.top]).toEqual(["", ""]);
+  });
+
+  test("a main-site page never docks, even with such an element on it: the corner, as before", () => {
+    placed({ "data-fb-dock": "" }, { left: 167, top: 840, width: 44, height: 44 });
+    openPage("/koolitused");
+    expect(fab().classList.contains("fb-docked")).toBe(false);
+    expect([fab().style.left, fab().style.top, fab().style.right]).toEqual(["", "", ""]);
+  });
+});

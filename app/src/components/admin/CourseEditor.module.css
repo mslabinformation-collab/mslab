@@ -1,8 +1,8 @@
 /* The course editor (admin UX pass piece 3a, Task 7; README B2; the Part 3 desktop frame "B2 Course editor", the Part 4 phone frame): the header with
    „← Koolitused“ over the H1, then under it the PublishBar, then from 1180 px three columns — the 190 px section map (SectionMap, sticky), the cards,
-   the 300 px sticky side column — 22 px apart; below 1180 px one column: the map's „Jaotised ▾“ select under the header, the side column („Avaldamine“,
-   „Koolituse märgis“) straight after it, then the cards (README: "the side column comes straight after the header"). The cards are 16 px apart, as
-   drawn. No save bar: every card autosaves. */
+   the 300 px side column („Avaldamine“ sticky in it) — 22 px apart; below 1180 px one column: the map's „Jaotised ▾“ select under the header, the
+   side column („Avaldamine“, „Koolituse märgis“) straight after it, then the cards (README: "the side column comes straight after the header"). The
+   cards are 16 px apart, as drawn. No save bar: every card autosaves. */
 
 .headText {
   min-width: 0;
@@ -46,19 +46,37 @@
   color: var(--ink);
 }
 
-/* The chip's place in the H1 row: as wide as its usual words („Mustand salvestatud 14:02“, „Salvestamata muudatused“, „Salvestan…“), so that a
-   change of them — a field left, its save on the way — moves nothing beside it: a tap on ET | RU or „Järgmine →“ that leaves a field would
-   otherwise land beside the button it pressed (the press goes down on it, the row shifts, the release comes up elsewhere). Up to 900 px the row
-   starts at the left (ui.module.css), the switch stands before the chip and nothing moves it: the chip keeps its own width there. */
+/* The chip's place in the H1 row: as wide as its usual words („Mustand salvestatud 14:02“ 194 px, „Kontrollin salvestatud teksti…“ 197 px,
+   „Salvestamata muudatused“ 182 px, „Salvestan…“ 93 px), so that a change of them — a field left, its save on the way — moves nothing beside it: a
+   tap on ET | RU or „Järgmine →“ that leaves a field would otherwise land beside the button it pressed (the press goes down on it, the row shifts,
+   the release comes up elsewhere). The chip stands at the place's right end, beside „Vaata lehel ↗“, and a longer one grows to the left into it
+   (admin polish F7: it was 15 rem, the chip at its left and 131 px empty after it). Up to 900 px the row starts at the left (ui.module.css), the
+   switch stands before the chip and nothing moves it: the chip keeps its own width there. (The site editors' statusSlot, SiteEditorPage.module.css.) */
 .statusSlot {
   display: inline-flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   max-width: 100%;
 }
 
 @media (min-width: 901px) {
   .statusSlot {
-    min-width: 15rem;
+    min-width: 12.5rem;
+  }
+
+  /* ET | RU, the chip's place and „Vaata lehel ↗“ are one line, beside the title while that keeps 22 rem, else as a whole on the next line at the
+     right — never „Vaata lehel ↗“ alone on a line of its own (SiteEditorPage.module.css too) */
+  .heading {
+    flex-wrap: wrap;
+  }
+
+  .headText {
+    flex: 1 1 22rem;
+  }
+
+  .aside {
+    flex: none;
+    max-width: 100%;
+    margin-left: auto;
   }
 }
 
@@ -152,18 +170,33 @@ fieldset.typeSwitch {
   .layout {
     grid-template-columns: 190px minmax(0, 1fr) 300px;
     gap: 22px;
+    padding-top: 2px;
   }
 
+  /* The side column scrolls with the page, and „Avaldamine“ stays in view the whole way down (admin polish F8). The frame draws the whole column
+     sticky, with a short „Koolituse märgis“; the build's märgis card with its card preview is some 1 340 px, so the column (≈ 1 550 px) is taller
+     than any window: sticky, it was a second scrolling box inside the page with its foot cut off at the window's edge. So the column is as tall as the
+     cards beside it (its own cards at their own heights, at its top), and only „Avaldamine“ sticks, 24 px from the top as the section map does; the
+     märgis card passes under it. Its box (.publish) is the page's colour from the window's top down to the card's foot (24 px over the card): the
+     märgis card shows neither over it nor through its round corners. At the top of the page those 24 px stand over the columns, in the PublishBar's
+     22 px gap and the columns' own 2 px (.layout's padding), so they cover nothing of the bar. The märgis card is a stacking context of its own: its
+     card preview's tag (z-index 2, the site's CourseCard) stays under the box too. */
   .side {
     order: 0;
+    align-self: stretch;
+    align-content: start;
+  }
+
+  .publish {
     position: sticky;
-    top: 24px;
-    /* taller than the window (the badge's card preview): it scrolls inside, so its foot can be reached */
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    /* the cards' focus rings stay inside the scrolling box */
-    padding: 3px;
-    margin: -3px;
+    top: 0;
+    z-index: 1;
+    margin-top: -24px;
+    padding-top: 24px;
+    background: var(--canvas);
+  }
+
+  .publish + * {
+    isolation: isolate;
   }
 }

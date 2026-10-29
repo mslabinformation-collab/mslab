@@ -31,7 +31,7 @@ export function CourseHeader({
 }) {
   const t = adminEt.courseEditor;
   return (
-    <div className={ui.heading}>
+    <div className={`${ui.heading} ${styles.heading}`}>
       <div className={styles.headText}>
         <p className={styles.back}>
           <Link className={ui.link} href="/admin/koolitused">
@@ -53,7 +53,7 @@ export function CourseHeader({
           )}
         </div>
       </div>
-      <div className={ui.headAside}>
+      <div className={`${ui.headAside} ${styles.aside}`}>
         <LangSwitch />
         {status}
         {publicHref && (

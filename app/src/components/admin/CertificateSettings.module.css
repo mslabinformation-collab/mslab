@@ -11,6 +11,26 @@
   gap: 12px;
 }
 
+/* „Koolitaja nimi“ beside „Järgmine number“ (admin polish F14): that fieldset has its legend's line over the two fields' own labels, so the name's
+   label and field stand one such line lower (the legend's 12 px × 1.3 and its 8 px under it, ui.legend and editor.module.css .fieldset legend): the
+   labels „Koolitaja nimi“, „Aasta“ and „Number“ on one line, the three fields on the next. Not when the grid is one column (as editor.module.css .grid
+   folds: a course-cards column under 560 px, a screen under 640 px). */
+.trainer {
+  margin-top: calc(12px * 1.3 + 8px);
+}
+
+@container course-cards (max-width: 560px) {
+  .trainer {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .trainer {
+    margin-top: 0;
+  }
+}
+
 /* after a conflict: „Taasta minu tekst“ */
 .restore {
   margin: 18px 0 0;

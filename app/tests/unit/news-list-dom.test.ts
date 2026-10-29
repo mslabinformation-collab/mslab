@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NewsList, NewsScreen, type NewsRow } from "@/components/admin/news/NewsList";
 import { dayMonth, fullDay, newsHref } from "@/components/admin/news/news-view";
+import ui from "@/components/admin/ui.module.css";
 import { stubFetch } from "../fakes";
 
 // C3 Uudised, the list (admin UX pass piece 4b, Task 2; README §4 C3; the Part 4 C3 frame; piece4-texts S4-18, S4-19, S4-23; ruling R-f): the rows the
@@ -124,6 +125,24 @@ describe("the rows (S4-18, the P4 C3 frame)", () => {
     expect(text(container)).toContain("Blogi");
     expect(text(container)).toContain("Kõik postitused, ka mustandid, uuemad eespool.");
     expect(text($("[data-add-post]"))).toBe("Lisa postitus +");
+  });
+
+  it("no post open: the rows are in a white card, as every other list's (admin polish F17); beside an editor they stand on the page, as the C3 frame draws them", async () => {
+    await showList();
+    const card = $("[data-news-card]")!;
+    expect(card).not.toBeNull();
+    expect(card.className.split(" ")).toContain(ui.card);
+    expect(rows().every((row) => card.contains(row))).toBe(true);
+    // its heading is every list page's (ui.heading), not the beside-the-editor one
+    expect($("h1")!.parentElement!.parentElement!.className.split(" ")).toContain(ui.heading);
+    // an empty search's state is in the card too
+    nav.search = "otsi=xyz";
+    await showList();
+    expect($("[data-news-card]")!.textContent).toContain("xyz");
+    nav.search = "";
+    await showList("3");
+    expect($("[data-news-card]")).toBeNull();
+    expect($("h2")!.parentElement!.parentElement!.className.split(" ")).not.toContain(ui.heading);
   });
 });
 

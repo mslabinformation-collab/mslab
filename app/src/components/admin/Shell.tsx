@@ -1,5 +1,6 @@
 import { emptyCounts, type AdminCounts } from "@/db/queries/admin";
 import { adminEt } from "@/i18n/dict/admin";
+import { REVIEW_TOOLS } from "@/lib/review-tools";
 import { adminName } from "@/server/auth";
 import { logFailure } from "@/server/log";
 import { getAdminCounts } from "./data";
@@ -52,6 +53,8 @@ export async function Shell({ email, children }: { email: string; children: Reac
     email,
     // the first session on today's date, for the phone menu's card
     today: menu.today,
+    // the review tools until launch: the comment bubble stands in the sidebar's foot / the phone bar (admin polish F18; public/feedback.js)
+    fbDock: REVIEW_TOOLS,
   };
 
   return (

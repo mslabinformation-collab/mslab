@@ -322,15 +322,18 @@ function AccessCard({ clientId, student, a, now, extendMax }: { clientId: number
             )}
           </p>
           <p className={styles.meta}>{fill(ct.name, { name: a.certificate.name })}</p>
-          <a
-            className={ui.link}
-            href={`/api/admin/tunnistus/${a.certificate.id}`}
-            aria-label={fill(ct.downloadLabel, { number: a.certificate.number })}
-            data-certificate-admin-download=""
-          >
-            {ct.download}
-          </a>
-          {live && <ReissueCertificate certificateId={a.certificate.id} name={a.certificate.name} t={reissue} />}
+          {/* the download and „Paranda nimi“ side by side, two small outline buttons (admin polish F15: a text link and a button on two lines) */}
+          <div className={styles.certActions}>
+            <a
+              className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
+              href={`/api/admin/tunnistus/${a.certificate.id}`}
+              aria-label={fill(ct.downloadLabel, { number: a.certificate.number })}
+              data-certificate-admin-download=""
+            >
+              {ct.download}
+            </a>
+            {live && <ReissueCertificate certificateId={a.certificate.id} name={a.certificate.name} t={reissue} />}
+          </div>
         </div>
       ) : (
         live &&
