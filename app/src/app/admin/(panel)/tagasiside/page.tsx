@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { after } from "next/server";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import { ListRows } from "@/components/admin/ListRows";
@@ -27,6 +28,7 @@ import { pick } from "@/i18n/field";
 import { fill, formatDate } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
+import { purgeRemovedReviews } from "@/server/review-purge";
 import { adminReviews, pendingReviewCount, readManualReview, reviewCounts, reviewCourses, reviewsOfFeedback } from "@/server/reviews";
 import styles from "./feedback.module.css";
 
@@ -131,10 +133,13 @@ function Top({ active, waiting, addHref }: { active: "answers" | "reviews"; wait
 /**
  * "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status pill
  * pressed (R-e: no „Kõik“, a pressed pill toggles off; the menu badge lands on ?olek=ootel), and the drawers: ?id=uus „Lisa arvustus +“ (an explicit
- * create), ?id=<id> „Muuda“ on a review Maria added (autosaved, R-c). (A function of the page, not a component: it reads.)
+ * create), ?id=<id> „Muuda“ on a review Maria added (autosaved, R-c). Each read also purges the reviews she removed with „Kustuta“ 10 s ago and more
+ * (R-b; server/review-purge.ts, final review N-1), after the answer, as the course editor does for the lesson files. (A function of the page, not a
+ * component: it reads.)
  */
 async function reviewsPage(view: Parsed) {
   const db = getDb();
+  after(() => purgeRemovedReviews(db, new Date()));
   const t = adminEt.reviews;
   const { olek } = view;
   const editing = view.adding ? null : view.id;
@@ -306,7 +311,6 @@ function CourseTable({ stats, courseHref }: { stats: CourseFeedbackStats[]; cour
   );
 }
 
-/** One course's numbers (spec §7): the answers, the scores and their average, and every option of every choice question with its count. */
 /**
  * A course's numbers (its average, its scores, every option's count), the whole course's, whatever the search. While a search narrows the list, the
  * course's own „Vastuseid: {n}“ is left out: the list's card says the search's count in the same words, and two different „Vastuseid“ on one screen

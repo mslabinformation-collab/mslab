@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseFeedback, reviews } from "@/db/schema";
 import type { ManualReviewInput } from "@/domain/review";
+import { PURGE_AFTER_MS } from "@/domain/undo";
 import { adminEt } from "@/i18n/dict/admin";
 import { withdrawReview } from "@/server/reviews";
 import { makeTestDb } from "./helpers";
@@ -458,6 +459,32 @@ describe("piece 4c, R-b: removeReviewAction and undoRemoveReviewAction, „Kustu
     expect(await all()).toHaveLength(2);
     await runAfter();
     expect((await all()).map((r) => r.id)).toEqual([id]);
+  });
+
+  test("final review N-1: „Võta tagasi“ purges what is due too, after its answer: a mark PURGE_AFTER_MS old goes, a younger one stays, and the review it brings back is never taken", async () => {
+    const { id, course } = await added();
+    await actions.removeReviewAction({ id });
+    const marked = async (text: string, ago: number) =>
+      (
+        await db
+          .insert(reviews)
+          .values({ courseId: course.id, kind: "manual", text, name: "Vana V.", locale: "et", writtenAt: new Date("2026-09-01T09:00:00Z"), status: "published", note: "kiri", removedAt: new Date(Date.now() - ago) })
+          .returning()
+      )[0].id;
+    const due = await marked("Vana.", PURGE_AFTER_MS + 1_000);
+    const young = await marked("Noor.", PURGE_AFTER_MS - 4_000);
+    state.after = []; // (the purge the „Kustuta“ above queued is not the one under test)
+    expect(await actions.undoRemoveReviewAction({ id })).toEqual({ ok: true });
+    expect(state.after).toHaveLength(1);
+    expect((await all()).map((r) => r.id)).toEqual([id, due, young]); // (after the answer, not before it)
+    await runAfter();
+    expect((await all()).map((r) => r.id)).toEqual([id, young]);
+    expect(await reviewOf(id)).toMatchObject({ removedAt: null, status: "published" });
+    expect((await reviewOf(young)).removedAt).toBeInstanceOf(Date);
+    // an undo that is refused (the row is gone: the due one) purges all the same
+    state.after = [];
+    expect(await actions.undoRemoveReviewAction({ id: due })).toEqual({ ok: false, error: "manualGone", text: E.manualGone });
+    expect(state.after).toHaveLength(1);
   });
 
   test("review M-5: a purge after the answer that fails (here the database's setup) is logged by its class, never thrown", async () => {

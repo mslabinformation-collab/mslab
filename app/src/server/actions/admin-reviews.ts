@@ -157,16 +157,17 @@ function afterwards(what: string, work: () => Promise<void>): void {
 }
 
 /**
- * The purge of the reviews removed 10 s ago and more (server/review-purge.ts, R-b), once the answer has gone: „Kustuta“ never waits for it. It never
- * takes the review just removed: its mark is younger than 10 s.
+ * The purge of the reviews removed 10 s ago and more (server/review-purge.ts, R-b), once the answer has gone: neither „Kustuta“ nor its „Võta tagasi“
+ * waits for it. It never takes the review just removed: its mark is younger than 10 s.
  */
 const purgeAfter = () => afterwards("the removed reviews' purge", async () => void (await purgeRemovedReviews(getDb(), new Date())));
 
 /**
  * „Kustuta“ on a review Maria added (piece 4c, R-b): `{ id }`. The review is only marked (server/reviews.ts removeManualReview), so the page puts up
  * S4-38's „Arvustus kustutatud.“ with „Võta tagasi“ (undoRemoveReviewAction); the row goes once the mark is 10 s old, and each „Kustuta“ purges what
- * is due by then, after its answer. Done: `{ ok: true }`. `notManual`: a student's words are not Maria's to delete; `manualGone`: no such review, or
- * removed already (another tab), with the page refreshed. An id the page never sends is `manualGone` without a read.
+ * is due by then, after its answer (as does each „Võta tagasi“ and each read of Arvustused: tagasiside/page.tsx, final review N-1). Done:
+ * `{ ok: true }`. `notManual`: a student's words are not Maria's to delete; `manualGone`: no such review, or removed already (another tab), with the
+ * page refreshed. An id the page never sends is `manualGone` without a read.
  */
 export const removeReviewAction = adminAction(async (_admin, input: { id: number }) => {
   const parsed = idOnly.safeParse(input);
@@ -193,7 +194,8 @@ export const removeReviewAction = adminAction(async (_admin, input: { id: number
 /**
  * „Võta tagasi“ of „Kustuta“ (piece 4c, R-b): `{ id }`. The review comes back as it was while its row is there (server/reviews.ts
  * restoreManualReview). Done: `{ ok: true }`. Purged already (the 10 s are over): `manualGone`, with the page refreshed. An id the page never sends is
- * `manualGone` without a read.
+ * `manualGone` without a read. The purge of what is due runs after it, never before (final review N-1, as the lesson files' undo): it cannot take the
+ * review it brings back, and the last „Kustuta“ of a session does not stay a marked row until the nightly sweep.
  */
 export const undoRemoveReviewAction = adminAction(async (_admin, input: { id: number }) => {
   const parsed = idOnly.safeParse(input);
@@ -205,6 +207,8 @@ export const undoRemoveReviewAction = adminAction(async (_admin, input: { id: nu
   } catch (e) {
     logFailure(`[reviews] review ${id}: the removal's undo failed`, e);
     return fail("server");
+  } finally {
+    purgeAfter();
   }
   if (!result.ok) {
     refresh();

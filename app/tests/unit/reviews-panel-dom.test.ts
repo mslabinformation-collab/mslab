@@ -175,6 +175,9 @@ describe("what each card shows (the Part 4 frame; S4-37)", () => {
     const line = $("[data-review-score]", rowOf(1))!;
     // the column word of the Vastused list, so the two say a score alike
     expect(line.textContent).toBe(`${adminEt.feedback.col.score} 10/10`);
+    // one dictionary text (final review m-2), filled with the score
+    expect(adminEt.reviews.spokenScore).toBe("Hinne {n}/10");
+    expect(adminEt.reviews.spokenScore.startsWith(`${adminEt.feedback.col.score} `)).toBe(true);
     // heard: not inside the stars' aria-hidden, and drawn visually hidden
     expect(line.closest("[aria-hidden]")).toBeNull();
     expect(line.className).toContain("srOnly");

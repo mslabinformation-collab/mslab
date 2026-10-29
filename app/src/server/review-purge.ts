@@ -7,11 +7,12 @@ import { logFailure } from "./log";
 // The purge of the reviews Maria removed (admin UX pass piece 4c, R-b), on the model of the lesson files' (lesson-file-purge.ts). „Kustuta“ on a
 // review she added only sets reviews.removed_at (server/reviews.ts removeManualReview), so that the UndoBar (8 s) can bring it back by clearing
 // it; every reader leaves a marked review out. Once the mark is at least PURGE_AFTER_MS old (domain/undo.ts: the UndoBar's 8 s and a margin, as for
-// the lesson files) the row goes: after each „Kustuta“ (server/actions/admin-reviews.ts, in `after()`, so the answer never waits for it) and by the daily
-// sweep (app/api/cron/sweep) as the backstop for the last removal of a session. A review is a row only, so one run is one DELETE; a late purge
-// costs nothing, as nobody sees a marked review. Nothing to revalidate either: the public pages left it out from the moment it was marked. Only a
-// review Maria added is ever purged (`kind = 'manual'`, in the candidates and again in the DELETE): a student's review goes only by her own
-// withdrawal, so a mark set on one by mistake can never delete her words behind her back (review M-3).
+// the lesson files) the row goes: after each „Kustuta“ and each „Võta tagasi“ of one (server/actions/admin-reviews.ts) and on each read of Arvustused
+// (app/admin/(panel)/tagasiside/page.tsx), both in `after()` so no answer waits for it (final review N-1: the lesson files' pattern, so the last
+// removal of a session does not stay marked until the night), and by the daily sweep (app/api/cron/sweep) as the backstop. A review is a row only, so
+// one run is one DELETE; a late purge costs nothing, as nobody sees a marked review. Nothing to revalidate either: the public pages left it out from
+// the moment it was marked. Only a review Maria added is ever purged (`kind = 'manual'`, in the candidates and again in the DELETE): a student's
+// review goes only by her own withdrawal, so a mark set on one by mistake can never delete her words behind her back (review M-3).
 
 /** The most reviews one run takes, the oldest marks first; what is left goes with the next run. Maria adds reviews by hand: a run rarely has one. */
 export const REVIEW_PURGE_BATCH = 100;

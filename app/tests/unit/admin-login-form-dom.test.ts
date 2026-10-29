@@ -107,6 +107,23 @@ describe("the remembered address (R-h)", () => {
     expect(localStorage.getItem(ADMIN_EMAIL_KEY)).toBe("admin@example.test"); // the next sent answer replaces it
   });
 
+  test("final review N-2: „Muu aadress“ follows the remembered address: once the field holds anything else it is gone, and typing the kept address back does not bring it back", async () => {
+    stubFetch(() => Response.json({ ok: true }));
+    localStorage.setItem(ADMIN_EMAIL_KEY, "admin@example.test");
+    await render();
+    expect(button("Muu aadress")).not.toBeNull();
+    expect($("[data-remembered]")).not.toBeNull();
+    await type("admin@example.tes"); // (one letter over the kept address)
+    expect(field().value).toBe("admin@example.tes"); // (what she typed stays)
+    expect(button("Muu aadress")).toBeNull();
+    expect($("[data-remembered]")).toBeNull();
+    await type("admin@example.test");
+    expect(button("Muu aadress")).toBeNull();
+    // the sent state keeps its own „Muu aadress“ (R-h: it returns to the form)
+    await submit();
+    expect(button("Muu aadress")?.closest("[data-login-status]")).toBe($("[data-login-status]"));
+  });
+
   test("nothing remembered, or storage blocked: an empty field and no „Muu aadress“", async () => {
     await render();
     expect(field().value).toBe("");

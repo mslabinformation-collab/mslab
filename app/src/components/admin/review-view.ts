@@ -1,6 +1,7 @@
 import type { ReviewKind, ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
+import { fill } from "@/i18n/format";
 import type { AdminReviewRow } from "@/server/reviews";
 import type { ListPill } from "./ListToolbar";
 
@@ -83,9 +84,10 @@ export function reviewPills(olek: ReviewStatusWord | null, counts: Record<Review
 export const scoreOutOfTen = (score: number): string => `${score}/10`;
 /**
  * A review card's score for a screen reader (Dim 29.10: the stars are aria-hidden, so the card says the score in a visually hidden line): the
- * Vastused list's column word and cell, „Hinne 9/10“. None on a card without stars (a review Maria added, an answer without a score).
+ * Vastused list's column word and cell, „Hinne 9/10“ (one dictionary text, adminEt.reviews.spokenScore; final review m-2). None on a card without
+ * stars (a review Maria added, an answer without a score).
  */
-export const spokenScore = (score: number): string => `${adminEt.feedback.col.score} ${scoreOutOfTen(score)}`;
+export const spokenScore = (score: number): string => fill(adminEt.reviews.spokenScore, { n: score });
 
 /** A review card's element id (piece 4c, R-d): the anchor of `/admin/tagasiside?vaade=arvustused#arvustus-<id>`, and the card the focus stays on (D5). */
 export const reviewCardId = (id: number): string => `arvustus-${id}`;

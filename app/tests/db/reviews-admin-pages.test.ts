@@ -4,6 +4,7 @@ import type { Db } from "@/db/client";
 import { courseFeedback, protocols, registrations, reviews } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
+import { PURGE_AFTER_MS } from "@/domain/undo";
 import { contactStudent, graduate, RECOMMEND, studentOf, submit } from "./reviews-fixtures";
 
 // Maria's „Tagasiside“ with the reviews and the student's drawer, rendered from a real (PGlite) database to HTML (student reviews, Task 4; spec D2, §4;
@@ -14,8 +15,10 @@ import { contactStudent, graduate, RECOMMEND, studentOf, submit } from "./review
 // whether she allowed publishing and what became of it. The drawer's dialog and the server actions are stand-ins (they need a browser or a request), as
 // on feedback-admin-pages.test.ts, and so is the router the toolbar and the drawers read.
 
-const state = vi.hoisted(() => ({ db: null as unknown }));
+const state = vi.hoisted(() => ({ db: null as unknown, after: [] as (() => unknown)[] }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
+// (`after` needs a request: here it keeps the job, so that a test runs it as the server would once the page has gone)
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: (job: () => unknown) => void state.after.push(job) }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 // (the toolbar and the drawers are client components that read the router and the address, which a page rendered to HTML here has not got)
 vi.mock("next/navigation", async (original) => ({
@@ -87,6 +90,7 @@ let db: Db;
 beforeEach(async () => {
   db = await makeTestDb();
   state.db = db;
+  state.after = [];
   vi.spyOn(console, "info").mockImplementation(() => {});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -277,6 +281,31 @@ describe("„Arvustused“", () => {
       [mari.course.title.et, true],
       ["Kulmude e-kursus", false],
     ]);
+  });
+});
+
+describe("a read of Arvustused purges the removed reviews that are due (final review N-1; the lesson files' pattern)", () => {
+  test("after the page has gone: a review removed PURGE_AFTER_MS ago or more is deleted, a younger mark stays; the page never shows either", async () => {
+    const { mari } = await world();
+    const marked = async (text: string, ago: number) =>
+      (
+        await db
+          .insert(reviews)
+          .values({ courseId: mari.course.id, kind: "manual", text, name: "Vana V.", locale: "et", writtenAt: new Date("2026-09-19T21:00:00Z"), status: "published", note: "kiri", removedAt: new Date(Date.now() - ago) })
+          .returning()
+      )[0].id;
+    const due = await marked("Vana.", PURGE_AFTER_MS + 1_000);
+    const young = await marked("Noor.", PURGE_AFTER_MS - 4_000);
+    const html = await render({ vaade: "arvustused" });
+    expect(reviewIds(html)).not.toContain(due);
+    expect(reviewIds(html)).not.toContain(young);
+    // (the purge is queued with the read and runs after it: the page itself waited for no delete)
+    expect(state.after).toHaveLength(1);
+    expect((await db.select().from(reviews).where(eq(reviews.kind, "manual"))).map((r) => r.id)).toEqual([due, young]);
+    for (const job of state.after.splice(0)) await job();
+    expect((await db.select().from(reviews).where(eq(reviews.kind, "manual"))).map((r) => r.id)).toEqual([young]);
+    // the students' reviews are never touched
+    expect(await db.select().from(reviews).where(eq(reviews.kind, "student"))).toHaveLength(2);
   });
 });
 

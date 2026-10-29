@@ -1200,6 +1200,8 @@ export const adminEt = {
     proof: { registration: "Registreering: {status} · {protocol}", protocolSent: "Protokoll saadetud", protocolNotSent: "Protokolli pole saadetud" },
     manual: "Lisatud käsitsi",
     source: "Allikas: {note}",
+    // a student's review card: her „Hinne“ for a screen reader, in the Vastused list's words (feedback.col.score and the cell „9/10“); the stars are aria-hidden
+    spokenScore: "Hinne {n}/10",
     publish: "Avalda",
     hide: "Peida",
     featured: "Avalehel",

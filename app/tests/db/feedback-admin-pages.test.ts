@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, courseFeedback, registrations, reviews, type Course, type CourseFeedback, type Registration } from "@/db/schema";
+import { clients, courseFeedback, courses, courseSessions, registrations, reviews, type Course, type CourseFeedback, type Registration } from "@/db/schema";
 import { makeTestDb } from "./helpers";
 import { protocolCourse, student } from "./protocols-fixtures";
 
@@ -122,22 +122,32 @@ test("a course: its average and scores, every option counted in Maria's wording;
   expect(html).not.toContain("Selle koolituse kohta pole tagasisidet.");
 });
 
-test("a ?koolitus= the select does not offer (none, or a course without answers) is no course: every answer, „Kõik koolitused“ chosen (Task 3 review M-3)", async () => {
-  for (const koolitus of ["999", String(course.id + other.id + 100)]) {
-    const html = await render(FeedbackPage, { koolitus });
-    // the list and the select agree, as Registreerimised resets a scope it does not know
-    expect(rowIds(html), koolitus).toEqual([c.id, b.id, a.id]);
-    expect(courseOptions(html).filter((o) => o[2]).map((o) => o[1]), koolitus).toEqual(["Kõik koolitused"]);
-    expect(html).toContain("data-feedback-courses");
-    expect(html).not.toContain("data-feedback-summary");
-    expect(html).not.toContain("Selle valikuga vastuseid pole.");
-    // the addresses on the page do not carry it on
-    expect(html).not.toContain(`koolitus=${koolitus}`);
+test("a ?koolitus= the select does not offer (an id that is no course, or a real course without answers) is no course: every answer, „Kõik koolitused“ chosen (Task 3 review M-3, m-5)", async () => {
+  // (a real course that exists and has no answer, the case a stale link is about; removed again below, as the other tests share this database)
+  const empty = await protocolCourse(db, { slug: "ilma-vastusteta", title: { et: "Ilma vastusteta", ru: "Без ответов" } });
+  try {
+    for (const koolitus of ["999", String(course.id + other.id + 100), String(empty.course.id)]) {
+      const html = await render(FeedbackPage, { koolitus });
+      // the list and the select agree, as Registreerimised resets a scope it does not know
+      expect(rowIds(html), koolitus).toEqual([c.id, b.id, a.id]);
+      expect(courseOptions(html).filter((o) => o[2]).map((o) => o[1]), koolitus).toEqual(["Kõik koolitused"]);
+      expect(courseOptions(html).map((o) => o[0]), koolitus).not.toContain(String(empty.course.id)); // (a course without answers is not offered)
+      expect(html).toContain("data-feedback-courses");
+      expect(html).not.toContain("data-feedback-summary");
+      expect(html).not.toContain("Selle valikuga vastuseid pole.");
+      // the addresses on the page do not carry it on
+      expect(html).not.toContain(`koolitus=${koolitus}`);
+    }
+    // with a search, it is the search alone
+    for (const koolitus of ["999", String(empty.course.id)]) {
+      const searched = await render(FeedbackPage, { koolitus, otsi: "maasikas" });
+      expect(rowIds(searched), koolitus).toEqual([a.id]);
+      expect(part(searched, "data-feedback-row", a.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;id=${a.id}"`);
+    }
+  } finally {
+    await db.delete(courseSessions).where(eq(courseSessions.courseId, empty.course.id));
+    await db.delete(courses).where(eq(courses.id, empty.course.id));
   }
-  // with a search, it is the search alone
-  const searched = await render(FeedbackPage, { koolitus: "999", otsi: "maasikas" });
-  expect(rowIds(searched)).toEqual([a.id]);
-  expect(part(searched, "data-feedback-row", a.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;id=${a.id}"`);
 });
 
 test("a course and a search together say one „Vastuseid“, the list's: the course's numbers leave their own count out while a search is on (Task 3 review M-1)", async () => {

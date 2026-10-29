@@ -72,8 +72,9 @@ async function refusal(res: Response): Promise<"address" | "rate"> {
 export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: string; tagasi?: string }) {
   const id = useId();
   const [email, setEmail] = useState("");
-  // the field holds the remembered address: „Muu aadress“ beside it empties it
-  const [remembered, setRemembered] = useState(false);
+  // the remembered address while the field still holds exactly it ("" otherwise): „Muu aadress“ beside it empties the field. Edited, the field no
+  // longer holds the remembered address and the button goes; typing the address back does not bring it back (final review N-2)
+  const [remembered, setRemembered] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
   const [pending, setPending] = useState(false);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -85,7 +86,7 @@ export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: strin
     const kept = rememberedAddress();
     if (!kept || emailRef.current?.value) return;
     setEmail(kept);
-    setRemembered(true);
+    setRemembered(kept);
   }, []);
 
   useEffect(() => {
@@ -96,7 +97,7 @@ export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: strin
   /** „Muu aadress“: an empty field with the cursor in it (from the sent state, back to the form first). */
   function otherAddress() {
     setEmail("");
-    setRemembered(false);
+    setRemembered("");
     setState({ status: "idle" });
     requestAnimationFrame(() => emailRef.current?.focus());
   }
@@ -165,7 +166,7 @@ export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: strin
         <label className={styles.label} htmlFor={`${id}-email`}>
           {t.emailLabel}
         </label>
-        <div className={styles.field} data-remembered={(remembered && email !== "") || undefined}>
+        <div className={styles.field} data-remembered={remembered !== "" || undefined}>
           <input
             ref={emailRef}
             id={`${id}-email`}
@@ -178,10 +179,13 @@ export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: strin
             spellCheck={false}
             maxLength={200}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (e.target.value !== remembered) setRemembered("");
+            }}
             {...(error?.field === "email" ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {})}
           />
-          {remembered && email !== "" && (
+          {remembered !== "" && (
             <button type="button" className={styles.other} onClick={otherAddress}>
               {t.other}
             </button>
