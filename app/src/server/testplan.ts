@@ -136,7 +136,8 @@ export async function saveAnswers(
 
 /**
  * The Telegram text of a ping (spec D6): `tg.bad` for a new failure, `tg.note` for the first note of an answer (Dim 22.10: of any answer, with the
- * answer shown in the button's words: Viga, OK or Jäta vahele). The check's title, the answerer's first name (from ADMIN_NAMES, else "admin";
+ * answer shown in the button's words: Viga or Läbitud since admin UX pass piece 4c, R-i; an answer stored as Jäta vahele before that button went
+ * keeps its word). The check's title, the answerer's first name (from ADMIN_NAMES, else "admin";
  * never the address), the note's first PING_NOTE_MAX characters (or `tg.noNote`, also for a failure whose note is the answer before it's:
  * `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`. A ping marked `auto` is of Automaattest's answer, read from the doc's
  * `auto` (Dim 25.10): its name in ADMIN_NAMES, „Automaattest“, is the name in the text.

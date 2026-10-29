@@ -225,11 +225,11 @@ describe("a send that fails", () => {
     expect(put).toHaveBeenCalledTimes(before + 1);
   });
 
-  test("an answer that is not ok JSON is a failure too (a 500 page, a 401, a 200 that is not our answer)", async () => {
+  test("an answer that is not ok JSON is a failure too (a 500 page, a 403, a 200 that is not our answer)", async () => {
     const put = vi
       .fn()
       .mockResolvedValueOnce(new Response("<html>500</html>", { status: 500 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: "forbidden" }), { status: 403 }))
       .mockResolvedValueOnce(new Response("<html>fine</html>", { status: 200 }))
       .mockImplementation(async () => okResponse());
     const storage = memoryStorage();
@@ -282,6 +282,89 @@ describe("a send that fails", () => {
     window.dispatchEvent(new Event("online"));
     await vi.advanceTimersByTimeAsync(60_000);
     expect(put).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Admin UX pass piece 4c, R-i (Review Focus 5): a press after the session ended. The route answers 401 (withAdmin); the outbox says „signedOut“ and
+// sets no retry timer (a timer would ask again every 30 s, for nothing, until she signs in); the press stays on the device and goes with the next try
+// she makes (a press, a note, the tab shown again, the browser back online) or the next visit, after she signed in again.
+describe("a 401: the session ended", () => {
+  const unauthorized = () => new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json" } });
+
+  test("is signedOut, with no retry timer: nothing is sent again by itself, the press stays in the storage and on the page", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn(async () => unauthorized());
+    const { outbox, onAnswers } = outboxOver(storage, put);
+    outbox.answer("a", "bad", "Nupp ei tööta");
+    await settle();
+    expect(outbox.status()).toBe("signedOut");
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(put).toHaveBeenCalledTimes(1); // (no request storm: not one retry in ten minutes)
+    expect(outbox.status()).toBe("signedOut");
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "bad", note: "Nupp ei tööta" });
+    expect(outbox.unsent().get("a")).toEqual({ status: "bad", note: "Nupp ei tööta" });
+    expect(onAnswers).not.toHaveBeenCalled();
+  });
+
+  test("a new press tries once more (one request per press), and stays signedOut while the answer is 401", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn(async () => unauthorized());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "ok", "");
+    await settle();
+    outbox.answer("b", "bad", "");
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "ok", note: "" }, b: { status: "bad", note: "" } } });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(outbox.status()).toBe("signedOut");
+    expect(Object.keys(JSON.parse(storage.dump()!))).toEqual(["a", "b"]);
+  });
+
+  test("signed in again in another tab: the tab shown again sends the kept presses once, and they leave the storage", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn().mockResolvedValueOnce(unauthorized()).mockImplementation(async () => okResponse());
+    const { outbox, onAnswers } = outboxOver(storage, put);
+    outbox.answer("a", "ok", "");
+    await settle();
+    expect(outbox.status()).toBe("signedOut");
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(outbox.status()).toBe("saved");
+    expect(storage.dump()).toBeNull();
+    expect(onAnswers).toHaveBeenCalledWith(ANSWERS);
+  });
+
+  test("the next visit after signing in again sends what the signed-out one kept, at once", async () => {
+    const storage = memoryStorage();
+    const signedOut = outboxOver(storage, vi.fn(async () => unauthorized()));
+    signedOut.outbox.answer("a", "bad", "Jäi saatmata");
+    await settle();
+    signedOut.outbox.stop(); // (she goes to the sign-in page)
+
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "bad", note: "Jäi saatmata" } } });
+    await settle();
+    expect(outbox.status()).toBe("saved");
+    expect(storage.dump()).toBeNull();
+  });
+
+  test("a failure after a 401 is a failure again (retrying, on its timer), not signedOut", async () => {
+    const put = vi.fn().mockResolvedValueOnce(unauthorized()).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "ok", "");
+    await settle();
+    expect(outbox.status()).toBe("signedOut");
+    window.dispatchEvent(new Event("online"));
+    await settle();
+    expect(outbox.status()).toBe("retrying");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(outbox.status()).toBe("saved");
+    expect(put).toHaveBeenCalledTimes(3);
   });
 });
 

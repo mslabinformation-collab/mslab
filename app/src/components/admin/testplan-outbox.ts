@@ -8,6 +8,9 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 //   press of a check wins), and a reload or a new tab sends what it finds there at once. A browser that cannot keep it (storage full, blocked or
 //   absent) still sends it, with the ordinary status (the answer is then in this page's memory only, which `keeps()` tells);
 // - a save that fails is tried again after 2, 5, 10, 20, then every 30 s, and at once when the browser is back online or the tab is shown again;
+// - a save the route refuses with 401 (the session ended; admin UX pass piece 4c, R-i) is "signedOut": no timer asks again (every try would be
+//   refused until she signs in), the presses stay here, and they go with her next press or note, when the tab is shown again or the browser is
+//   back online (she signed in in another tab), or on the next visit (she signed in, and came back);
 // - one save at a time: a press made while a save is on its way waits for it, and is sent right after it. An answer leaves the outbox only when
 //   the save that carried THAT press came back ok, never one made after it was sent.
 // - and a stale press is never sent again over a newer answer: the server stamps every save as the newest (spec §5), so a press it has
@@ -24,8 +27,8 @@ export const RETRY_MS = [2000, 5000, 10_000, 20_000, 30_000] as const;
 /** A note is sent this long (ms) after the last keystroke. */
 export const NOTE_WAIT_MS = 1000;
 
-/** (The page's "offline" text is not one of these: it is the page's own, for answers it cannot read, spec §7.) */
-export type OutboxStatus = "idle" | "saving" | "saved" | "retrying";
+/** `signedOut`: the last save was answered 401 and nothing has been saved since (R-i). The page shows these in SaveStatus (TestPlan.tsx). */
+export type OutboxStatus = "idle" | "saving" | "saved" | "retrying" | "signedOut";
 /** An unsent answer: what the tester pressed or typed, and the (strictly increasing) instant of that press on this device. */
 type Entry = { status: Status; note: string; clientAt: string };
 
@@ -86,8 +89,12 @@ function parseStored(text: string | null): Map<string, Entry> {
   return out;
 }
 
-/** The server's good answer: `{ ok: true, answers: {…} }` (200). Anything else is a failure to try again. */
-async function answersOf(res: Response): Promise<Record<string, PageAnswer> | null> {
+/**
+ * What a save came to: the server's answers (`{ ok: true, answers: {…} }`, 200), "signedOut" for a 401 (withAdmin: no live session), or null for
+ * anything else, a failure to try again (no answer, a 500 page, a 403, a 200 that is not ours).
+ */
+async function outcomeOf(res: Response): Promise<Record<string, PageAnswer> | "signedOut" | null> {
+  if (res.status === 401) return "signedOut";
   if (!res.ok) return null;
   try {
     const body: unknown = await res.json();
@@ -113,6 +120,8 @@ export function createOutbox(deps: OutboxDeps): Outbox {
   /** A send was asked for while one was on its way: it follows at once. */
   let again = false;
   let failing = false;
+  /** The last save was answered 401 (R-i): no timer; the next try is hers (a press, a note, the tab shown, back online) or the next visit's. */
+  let signedOut = false;
   let attempts = 0;
   /** Some save has come back ok (the status then reads "saved" once nothing is left). */
   let saved = false;
@@ -188,15 +197,26 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       if (queue.size === 0) return;
       const sent = new Map(queue);
       emit();
-      let answers: Record<string, PageAnswer> | null = null;
+      let answers: Record<string, PageAnswer> | "signedOut" | null = null;
       try {
         const body = { answers: Object.fromEntries([...sent].map(([id, e]) => [id, { status: e.status, note: e.note }])) };
-        answers = await answersOf(await deps.put(body));
+        answers = await outcomeOf(await deps.put(body));
       } catch {
         answers = null;
       }
+      if (answers === "signedOut") {
+        if (stopped) return; // (the press stays in the storage: the next visit sends it)
+        // the route answered (the connection works): no failure stands, and no timer is set
+        signedOut = true;
+        failing = false;
+        attempts = 0;
+        clearRetry();
+        emit();
+        return;
+      }
       if (answers === null) {
         if (stopped) return; // (the press stays in the storage: the next visit sends it)
+        signedOut = false;
         failing = true;
         clearRetry();
         retryTimer = deps.setTimer(() => void send(), RETRY_MS[Math.min(attempts, RETRY_MS.length - 1)]);
@@ -204,6 +224,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
         emit();
         return;
       }
+      signedOut = false;
       failing = false;
       attempts = 0;
       saved = true;
@@ -287,6 +308,8 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     },
     status() {
       if (queue.size === 0) return saved ? "saved" : "idle";
+      // (signed out, a press tries again at once: it stays "signedOut" while that try is on its way, so the chip does not flicker)
+      if (signedOut) return "signedOut";
       return failing ? "retrying" : "saving";
     },
     keeps() {

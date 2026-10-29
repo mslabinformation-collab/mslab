@@ -2503,35 +2503,41 @@ export const adminEt = {
     adminsLead: "Need aadressid saavad haldusesse sisse logida. Nimekirja muudab arendaja.",
   },
   // The test page (phase 4, piece 1): /admin/testimine, the checks Maria and Dim answer. `tg` is the Telegram text of a Viga and of its first note
-  // (server/testplan.ts pingText); since Dim 22.10 the first note of any answer (an OK's and a Jäta vahele's too) is a `tg.note`, which shows the answer
-  // ({status}, in the button's words). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
+  // (server/testplan.ts pingText); since Dim 22.10 the first note of any answer is a `tg.note`, which shows the answer ({status}, in the button's
+  // words). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
   // `who.auto` (Dim 25.10) is the automatic tester whose answers stay apart: the „Kes“ choice, and the name of the quiet line under a check,
   // "Automaattest: {status} · dd.mm HH:MM" (TestPlan.tsx puts it together from these words and `overtaken`; no other text of its own).
+  // Admin UX pass piece 4c (C7, piece4-texts S4-42…S4-46): the eyebrow, the line under the H1, the two labelled filter groups, „Sammud ▸“, the
+  // answers „Läbitud“ | „Viga“ (`ok` reworded: the last-answer line, Automaattest's line and Telegram say it too, R-i) and the empty selection.
+  // SaveStatus (`autosave.*`) replaced the page's own save words; the marks' chips, „Muudetud“ and „Sina: …“ went (§4).
   testplan: {
     title: "Testimine",
-    progress: "{done} / {total} tehtud · {bad} viga · {redo} uuesti testida",
-    filter: { all: "Kõik", open: "Avatud", bad: "Vead", changed: "Muudetud" },
-    who: { label: "Kes", all: "Kõik", maria: "Maria", dim: "Dim", koos: "Koos", auto: "Automaattest" },
-    you: "Sina: {name}",
+    eyebrow: "Haldus",
+    // S4-43: under the H1, over the checks of the „Kes“ choice
+    progress: { one: "1 kontroll · {done} läbitud · {bad} viga", many: "{n} kontrolli · {done} läbitud · {bad} viga" },
+    // S4-44 („Olek“, „Kes“ are capitals in CSS); {n} the checks of that state under the „Kes“ choice
+    filter: { label: "Olek", all: "Kõik", open: "Avatud {n}", bad: "Viga {n}", done: "Läbitud {n}" },
+    // the „Kes“ choices (`mina`, `all`, `auto`); `maria`, `dim`, `koos` are the who chip of a check
+    who: { label: "Kes", mina: "Mina", all: "Kõik", auto: "Automaattest", maria: "Maria", dim: "Dim", koos: "Koos" },
     refresh: "Värskenda",
     open: "Ava",
+    // S4-45 „Sammud ▸“ (the ▸ is the component's: it turns when the steps are open)
+    steps: "Sammud",
     expect: "Mida näed",
     why: "Miks",
     writes: "Loob andmeid",
     device: { telefon: "Telefon", tahvel: "Tahvel", arvuti: "Arvuti" },
-    mark: { redo: "Uuesti testida", reworded: "Sõnastus muutus", new: "Uus" },
-    ok: "OK",
+    ok: "Läbitud",
     bad: "Viga",
+    // no button any more (spec §10); the word of an answer stored before it went (the data stays): its last-answer line, Automaattest's line, Telegram
     skip: "Jäta vahele",
     note: "Märkus",
     notePrompt: "Mis läks valesti?",
     last: "{name} · {when} · {status}",
     overtaken: "Varasem vastus (enne muudatust): {status}",
-    saving: "Salvestan…",
-    saved: "Salvestatud",
-    retrying: "Salvestamata — proovin uuesti",
-    offline: "Vastuseid ei saa praegu salvestada; need on selles seadmes alles.",
     areaCount: "{done} / {total}",
+    // S4-46 „Selle valikuga kontrolle pole.“ (the shared empty line, lists.emptyFiltered)
+    things: "kontrolle",
     card: "Testimine: {open} avatud, {bad} viga",
     tg: {
       bad: "Testimine — Viga: {title} ({name})\n{note}\n{url}",

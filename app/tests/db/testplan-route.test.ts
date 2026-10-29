@@ -303,7 +303,7 @@ describe("PUT", () => {
       await runLater();
     }
     expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
-      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTahvlis korras\nhttps://site.example.test/admin/testimine#maria-1", // (the OK's own first note, Dim 22.10)
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Läbitud\nTahvlis korras\nhttps://site.example.test/admin/testimine#maria-1", // (the OK's own first note, Dim 22.10; „Läbitud“ since piece 4c, R-i)
       "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
       "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
     ]);
@@ -323,7 +323,7 @@ describe("PUT", () => {
       await runLater();
     }
     expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
-      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTelefonis korras\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Läbitud\nTelefonis korras\nhttps://site.example.test/admin/testimine#maria-1",
       "Testimine — Märkus: Kursuse leht (Maria) · Jäta vahele\nHiljem\nhttps://site.example.test/admin/testimine#maria-2",
     ]);
   });

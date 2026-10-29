@@ -7,11 +7,13 @@ import { LOCAL_URL, TARGET } from "./target";
 import { smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
-// The test page (phase 4, piece 1, Task 3), followed through in a browser against the local database: three checks answered (OK, Viga with a
-// note, Jäta vahele with a note: the note box is open under every answer, Dim 22.10), kept over a reload and counted on Avaleht; a second admin session answering one of them, which the first reads after
-// "Värskenda"; a press made offline, kept and sent when the connection is back; two saves at once of different checks, both of which land
-// (the row lock and the merge, on a real Postgres); a link to a check; and the layout at 390, 834, 1194 and 1440 px. Nothing is mocked on the
-// server: Telegram is not configured locally, so the Viga's message is logged and skipped.
+// The test page (phase 4, piece 1, Task 3; redrawn by admin UX pass piece 4c, C7), followed through in a browser against the local database: two
+// checks answered („Läbitud“, „Viga“ with a note: the note box is open under every answer, Dim 22.10) and a third left open, kept over a reload,
+// found again through „Olek“, an empty selection, and counted on Avaleht; a second admin session answering one of them, which the first reads after
+// „Värskenda“; a press made offline, kept and sent when the connection is back; a press made after the session ended, kept on the device with no
+// retries, and sent after signing in again (R-i, Review Focus 5); two saves at once of different checks, both of which land (the row lock and the
+// merge, on a real Postgres); a link to a check; and the layout at 390, 834, 1194 and 1440 px. Nothing is mocked on the server: Telegram is not
+// configured locally, so the Viga's message is logged and skipped.
 // The checks are the plan's own, picked when the test runs (the first three of the first area that has checks), never fixed ids: the plan is
 // replaced as a whole when it changes. The tests that write answers run in the desktop project only; the mobile project runs the layout and
 // the link. Every answer a test gives is removed afterwards by its id, from the one `testplan_answers` row (never the whole row).
@@ -22,10 +24,15 @@ const answered = new Set<string>();
 
 const desktop = (info: TestInfo) => !info.project.name.startsWith("mobile");
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-const status = (page: Page) => page.locator("[data-save-status]");
+/** The page's one SaveStatus (README §1.4): `data-save-kind` is its state, `[data-save-text]` the words it shows. */
+const chip = (page: Page) => page.locator("[data-testplan] [data-save-status]");
+const chipText = (page: Page) => chip(page).locator("[data-save-text]");
 const check = (page: Page, id: string) => page.locator(`[data-check="${id}"]`);
 const VIEW_KEY = "mslab-testplan-view";
+const OUTBOX_KEY = "mslab-testplan-outbox";
 const SAVING_FAILS = "Salvestamata — proovin uuesti";
+const SIGNED_OUT = "Salvestamata — logi uuesti sisse";
+const EMPTY = "Selle valikuga kontrolle pole.";
 
 test.beforeEach(() => submitsForms());
 
@@ -71,7 +78,7 @@ async function pickChecks(page: Page): Promise<{ area: string; ids: [string, str
   return { area: area!.id, ids: ids as [string, string, string] };
 }
 
-/** The tester's own view is the default (Dim's sees Maria's checks hidden); these tests look at everything. */
+/** The tester's own view („Mina“) is the default (Dim's hides Maria's checks); these tests look at everything. */
 const seeEverything = (context: BrowserContext) =>
   context.addInitScript(([key]) => {
     try {
@@ -140,67 +147,95 @@ test("guard: the page and its API need an admin session", async ({ request }) =>
   }
 });
 
-test("answers persist: OK, Viga and Jäta vahele are saved with their note boxes open, kept over a reload, and the Avaleht card counts what is left", async ({ page, context, visitorIp }, info) => {
+test("answers persist: „Läbitud“ and „Viga“ with their note boxes open, kept over a reload, found by „Olek“, an empty selection, and the Avaleht card", async ({ page, context, visitorIp }, info) => {
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await signInAsAdmin(page, context, visitorIp, created);
   const { area, ids } = await pickChecks(page);
 
   await openPage(page);
-  // the session's tester is the default (admin@example.test is Dim in .env.example); the choice is kept over a reload
-  await expect(page.locator('[data-who="dim"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("[data-you]")).toHaveText("Sina: Dim");
+  // the header: the eyebrow, the H1 and the line; „Mina“ is the default (admin@example.test is Dim in .env.example); no „Sina: …“
+  await expect(page.locator("[data-testplan] h1")).toHaveText("Testimine");
+  await expect(page.locator("[data-progress]")).toHaveText(/^(1 kontroll|\d+ kontrolli) · \d+ läbitud · \d+ viga$/);
+  await expect(page.locator('[data-who="mina"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-you]")).toHaveCount(0);
+  await expect(page.locator('[data-filter-group="olek"] button')).toHaveText([/^Kõik$/, /^Avatud \d+$/, /^Viga \d+$/, /^Läbitud \d+$/]);
+  await expect(page.locator('[data-filter-group="kes"] button')).toHaveText(["Mina", "Kõik", "Automaattest"]);
   await page.locator('[data-who="all"]').click();
   await page.locator('[data-filter="all"]').click();
   await openArea(page, area);
 
   const [first, second, third] = ids.map((id) => check(page, id));
+  await expect(first.locator('[data-answer="skip"]')).toHaveCount(0); // („Jäta vahele“ is gone, spec §10)
+  await expect(first.locator("[data-answer]")).toHaveText(["Läbitud", "Viga"]);
   await expect(first.locator("[data-check-note]")).toHaveCount(0); // (no answer, no box)
   await first.locator('[data-answer="ok"]').click();
-  // Dim 22.10: the note box is open under every answer (no tap on „Märkus“), asking „Märkus“ under an OK and a Jäta vahele, „Mis läks valesti?“ under a Viga
+  // Dim 22.10: the note box is open under every answer, asking „Märkus“ under a pass, „Mis läks valesti?“ under a Viga
   const firstNote = first.locator("[data-check-note]");
   await expect(firstNote).toBeVisible();
   await expect(firstNote).toHaveAttribute("placeholder", "Märkus");
   await expect(firstNote).not.toBeFocused();
-  await expect(first.locator("[data-note-toggle]")).toHaveCount(0);
   await second.locator('[data-answer="bad"]').click();
   const note = second.locator("[data-check-note]");
   await expect(note).toBeFocused();
   await expect(note).toHaveAttribute("placeholder", "Mis läks valesti?");
   await note.fill("E2E: nupp ei tööta");
-  await third.locator('[data-answer="skip"]').click();
-  const thirdNote = third.locator("[data-check-note]");
-  await expect(thirdNote).toBeVisible();
-  await expect(thirdNote).toHaveAttribute("placeholder", "Märkus");
-  await thirdNote.fill("E2E: hiljem");
-  await thirdNote.blur();
-  await expect(status(page)).toHaveText("Salvestatud");
+  await note.blur();
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+  await expect(chipText(page)).toHaveText(/^✓ Salvestatud \d\d:\d\d$/);
   await expect(first).toHaveAttribute("data-check-state", "done");
   await expect(second).toHaveAttribute("data-check-state", "failed");
-  await expect(third).toHaveAttribute("data-check-state", "done");
+  await expect(third).toHaveAttribute("data-check-state", "open");
+
+  // „Sammud ▸“ folds the steps, „Mida näed“ and „Miks“
+  const steps = third.locator("[data-steps]");
+  await expect(steps).toBeHidden();
+  await third.locator("[data-steps-toggle]").click();
+  await expect(steps).toBeVisible();
+  await expect(steps).toContainText("Mida näed");
+  await expect(steps).toContainText("Miks");
 
   // the server has them: who answered, and the note
   const api = await readApi(page);
-  expect(ids.map((id) => api.answers[id]?.status)).toEqual(["ok", "bad", "skip"]);
+  expect(ids.map((id) => api.answers[id]?.status)).toEqual(["ok", "bad", undefined]);
   expect(api.answers[ids[1]].note).toBe("E2E: nupp ei tööta");
-  expect(api.answers[ids[2]].note).toBe("E2E: hiljem");
   expect(api.answers[ids[0]].byName).toBe("Dim");
 
-  // a reload shows all three, each with its last answer; the note is in its field; the choice of "Kes" is still "Kõik"
+  // a reload shows both, each with its last answer; the note is in its field; the choice of „Kes“ is still „Kõik“
   await page.reload();
   await adminReady(page);
   await expect(page.locator('[data-who="all"]')).toHaveAttribute("aria-pressed", "true");
   await openArea(page, area);
-  const last = /^Dim · \d\d\.\d\d \d\d:\d\d · (OK|Viga|Jäta vahele)$/;
-  for (const [id, label] of [[ids[0], "OK"], [ids[1], "Viga"], [ids[2], "Jäta vahele"]] as const) {
-    await expect(check(page, id).locator("[data-check-last]")).toHaveText(last);
-    await expect(check(page, id).locator("[data-check-last]")).toContainText(`· ${label}`);
-  }
+  for (const [id, label] of [[ids[0], "Läbitud"], [ids[1], "Viga"]] as const)
+    await expect(check(page, id).locator("[data-check-last]")).toHaveText(new RegExp(`^Dim · \\d\\d\\.\\d\\d \\d\\d:\\d\\d · ${label}$`));
   await expect(pressed(page, ids[0])).toHaveAttribute("data-answer", "ok");
   await expect(pressed(page, ids[1])).toHaveAttribute("data-answer", "bad");
-  await expect(pressed(page, ids[2])).toHaveAttribute("data-answer", "skip");
+  await expect(pressed(page, ids[2])).toHaveCount(0);
   await expect(check(page, ids[1]).locator("[data-check-note]")).toHaveValue("E2E: nupp ei tööta");
-  await expect(check(page, ids[2]).locator("[data-check-note]")).toHaveValue("E2E: hiljem");
   await expect(check(page, ids[0]).locator("[data-check-note]")).toHaveValue(""); // (open over a reload too, empty)
+
+  // „Olek“ finds each again: „Viga“ the failed one, „Läbitud“ the passed one, „Avatud“ the open one
+  for (const [filter, shown] of [["bad", 1], ["done", 0], ["open", 2]] as const) {
+    await page.locator(`[data-filter="${filter}"]`).click();
+    await expect(page.locator(`[data-filter="${filter}"]`)).toHaveAttribute("aria-pressed", "true");
+    for (const [i, id] of ids.entries()) await expect(check(page, id), `${filter}: ${id}`).toHaveCount(i === shown ? 1 : 0);
+  }
+  // an empty selection (S4-46): „Automaattest“ with a state it has no check of (locally it has answered nothing at all)
+  await page.locator('[data-who="auto"]').click();
+  const zero = page.locator('[data-filter-group="olek"] button').filter({ hasText: / 0$/ }).first();
+  await expect(zero, "a state with no check under „Automaattest“").toHaveCount(1);
+  await zero.click();
+  await expect(page.locator("[data-list-empty]")).toHaveText(EMPTY);
+  await expect(page.locator("[data-check]")).toHaveCount(0);
+  await page.locator('[data-filter="all"]').click();
+  await page.locator('[data-who="all"]').click();
+  await expect(page.locator("[data-list-empty]")).toHaveCount(0);
+
+  // an area folds with its note
+  await openArea(page, area);
+  await page.locator(`[data-area="${area}"] [data-area-toggle]`).click();
+  await expect(page.locator(`[data-area="${area}"] [data-check]`)).toHaveCount(0);
+  await expect(page.locator(`[data-area="${area}"] [data-area-note]`)).toHaveCount(0);
+  await expect(page.locator(`[data-area="${area}"] [data-area-count]`)).toHaveText(/^\d+ \/ \d+$/);
 
   // with the answers and a note open, at a phone's width and a tablet's
   await openEveryArea(page);
@@ -211,15 +246,15 @@ test("answers persist: OK, Viga and Jäta vahele are saved with their note boxes
   await cardIsRight(page);
 });
 
-test("a second admin session answers the third check differently; the first sees it after 'Värskenda', without a reload", async ({ page, context, browser, visitorIp }, info) => {
+test("a second admin session answers the third check differently; the first sees it after „Värskenda“, without a reload", async ({ page, context, browser, visitorIp }, info) => {
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await seeEverything(context);
   await signInAsAdmin(page, context, visitorIp, created);
   const { area, ids } = await pickChecks(page);
   await openPage(page);
   await openArea(page, area);
-  await check(page, ids[2]).locator('[data-answer="skip"]').click();
-  await expect(status(page)).toHaveText("Salvestatud");
+  await check(page, ids[2]).locator('[data-answer="bad"]').click();
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
   await page.evaluate(() => ((window as unknown as { __sameDocument: boolean }).__sameDocument = true));
 
   // the other session, in a browser of its own
@@ -231,22 +266,22 @@ test("a second admin session answers the third check differently; the first sees
     await signInAsAdmin(page2, other, otherIp, created);
     await openPage(page2);
     await openArea(page2, area);
-    await expect(pressed(page2, ids[2])).toHaveAttribute("data-answer", "skip"); // (it reads what the first gave)
+    await expect(pressed(page2, ids[2])).toHaveAttribute("data-answer", "bad"); // (it reads what the first gave)
     await check(page2, ids[2]).locator('[data-answer="ok"]').click();
-    await expect(status(page2)).toHaveText("Salvestatud");
+    await expect(chip(page2)).toHaveAttribute("data-save-kind", "saved");
   } finally {
     await other.close();
   }
 
-  // the first does not know yet; "Värskenda" reads again
-  await expect(pressed(page, ids[2])).toHaveAttribute("data-answer", "skip");
+  // the first does not know yet; „Värskenda“ reads again
+  await expect(pressed(page, ids[2])).toHaveAttribute("data-answer", "bad");
   await page.locator("[data-refresh]").click();
   await expect(pressed(page, ids[2])).toHaveAttribute("data-answer", "ok");
-  await expect(check(page, ids[2]).locator("[data-check-last]")).toContainText("· OK");
+  await expect(check(page, ids[2]).locator("[data-check-last]")).toContainText("· Läbitud");
   expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
 });
 
-test("offline: a press is kept and shown as 'Salvestamata — proovin uuesti'; back online it is sent; a reload shows it", async ({ page, context, visitorIp }, info) => {
+test("offline: a press is kept and shown as „Salvestamata — proovin uuesti“; back online it is sent; a reload shows it", async ({ page, context, visitorIp }, info) => {
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await seeEverything(context);
   await signInAsAdmin(page, context, visitorIp, created);
@@ -256,19 +291,52 @@ test("offline: a press is kept and shown as 'Salvestamata — proovin uuesti'; b
 
   await context.setOffline(true);
   await check(page, ids[0]).locator('[data-answer="ok"]').click();
-  await expect(status(page)).toHaveText(SAVING_FAILS);
+  await expect(chipText(page)).toHaveText(SAVING_FAILS);
   await expect(check(page, ids[0])).toHaveAttribute("data-check-state", "done"); // (shown at once, though the server has not heard)
-  expect(await page.evaluate(() => localStorage.getItem("mslab-testplan-outbox"))).toContain('"ok"');
+  expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toContain('"ok"');
 
   await context.setOffline(false);
-  await expect(status(page)).toHaveText("Salvestatud", { timeout: 15_000 }); // (the browser's 'online', or the retry after 2 s)
-  expect(await page.evaluate(() => localStorage.getItem("mslab-testplan-outbox"))).toBeNull();
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved", { timeout: 15_000 }); // (the browser's 'online', or the retry after 2 s)
+  expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 
   await page.reload();
   await adminReady(page);
   await openArea(page, area);
   await expect(pressed(page, ids[0])).toHaveAttribute("data-answer", "ok");
   expect((await readApi(page)).answers[ids[0]].status).toBe("ok");
+});
+
+// R-i, Review Focus 5: the session ends while the page is open (here: its cookie is gone). A press is refused with 401: the chip says so, the press stays
+// on the device, nothing asks again by itself, and after signing in again the page sends it.
+test("signed out: a press shows „Salvestamata — logi uuesti sisse“, is kept on the device with no retries, and is sent after signing in again", async ({ page, context, visitorIp }, info) => {
+  test.skip(!desktop(info), "writes answers: the desktop project only");
+  await seeEverything(context);
+  await signInAsAdmin(page, context, visitorIp, created);
+  const { area, ids } = await pickChecks(page);
+  await openPage(page);
+  await openArea(page, area);
+
+  await context.clearCookies({ name: "__Host-mslab_admin" });
+  const puts: number[] = [];
+  page.on("response", (res) => {
+    if (res.request().method() === "PUT" && new URL(res.url()).pathname === "/api/admin/testplan") puts.push(res.status());
+  });
+  await check(page, ids[1]).locator('[data-answer="bad"]').click();
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "signedOut");
+  await expect(chipText(page)).toHaveText(SIGNED_OUT);
+  await expect(check(page, ids[1])).toHaveAttribute("data-check-state", "failed"); // (her press is shown all the same)
+  expect(JSON.parse((await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)) ?? "{}")[ids[1]]).toMatchObject({ status: "bad" });
+  // no request storm: the first retry of a failure would come after 2 s; a 401 sets none
+  await page.waitForTimeout(3000);
+  expect(puts).toEqual([401]);
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "signedOut");
+
+  // signed in again, the page sends the kept press at once
+  await signInAsAdmin(page, context, visitorIp, created);
+  await openPage(page);
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+  expect((await readApi(page)).answers[ids[1]]).toMatchObject({ status: "bad", byName: "Dim" });
+  expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 });
 
 test("a press left on the device by a visit that never got to send it is sent when the page is opened again", async ({ page, context, visitorIp }, info) => {
@@ -278,16 +346,16 @@ test("a press left on the device by a visit that never got to send it is sent wh
   const { area, ids } = await pickChecks(page);
   await openPage(page);
   await page.evaluate(
-    ([id]) => localStorage.setItem("mslab-testplan-outbox", JSON.stringify({ [id]: { status: "bad", note: "E2E: jäi saatmata", clientAt: new Date().toISOString() } })),
-    [ids[1]],
+    ([key, id]) => localStorage.setItem(key, JSON.stringify({ [id]: { status: "bad", note: "E2E: jäi saatmata", clientAt: new Date().toISOString() } })),
+    [OUTBOX_KEY, ids[1]],
   );
   await page.reload();
   await adminReady(page);
   await openArea(page, area);
-  await expect(status(page)).toHaveText("Salvestatud");
+  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
   await expect(check(page, ids[1])).toHaveAttribute("data-check-state", "failed");
   expect((await readApi(page)).answers[ids[1]]).toMatchObject({ status: "bad", note: "E2E: jäi saatmata" });
-  expect(await page.evaluate(() => localStorage.getItem("mslab-testplan-outbox"))).toBeNull();
+  expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 });
 
 test("Avaleht: a failed check of the admin's own tester brings the card, with the counts of the plan; its link opens the page", async ({ page, context, visitorIp }, info) => {
@@ -309,6 +377,7 @@ test("two saves at once of different checks both land: the row lock and the merg
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await signInAsAdmin(page, context, visitorIp, created);
   const { ids } = await pickChecks(page);
+  // (the API still takes a `skip`, the stored answers' third status: the data stays, piece 4c, though the page has no such button)
   const put = (id: string, answer: "ok" | "skip") => page.request.put("/api/admin/testplan", { data: { answers: { [id]: { status: answer, note: "" } } } });
   // several rounds, the answer of each different from the one before it: a save that overwrote the other's check would bring back the earlier answer
   for (const round of [0, 1, 2, 3, 4, 5]) {
@@ -337,5 +406,7 @@ test("layout: no sideways scrolling and every control at least 44 px tall, at 39
   await openPage(page);
   await openEveryArea(page);
   await expect(page.locator("[data-check]").first()).toBeVisible();
+  // one check's steps open, so the fold is measured too
+  await page.locator("[data-check] [data-steps-toggle]").first().click();
   await layoutHolds(page, [390, 834, 1194, 1440]);
 });

@@ -2211,8 +2211,8 @@
         "Ava halduse ülevaade arvutis ja vaata menüü märke.",
         "Vajuta märgiga rida „Registreerimised“ ja siis märgiga rida „Tagasiside“.",
         "Märgi lehel „Päringud“ üks päring tehtuks ja ava menüüst „Ülevaade“.",
-        "Märgi lehel „Testimine“ üks juba „OK“ kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
-        "Märgi sama kontroll uuesti tulemusega „OK“ ja ava menüüst „Ülevaade“.",
+        "Märgi lehel „Testimine“ üks juba „Läbitud“ kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
+        "Märgi sama kontroll uuesti tulemusega „Läbitud“ ja ava menüüst „Ülevaade“.",
         "Koolituspäeval vaata menüü rida „Protokollid“."
       ],
       "expect": [
@@ -2222,14 +2222,14 @@
         "„Maksed ja arved“ märk loeb arveta makstud maksed, „Ootel kontrollil“ maksed ja pärast maksmist pangas tühistatud maksed.",
         "„Päringud“ märk on pärast tehtuks märkimist ja menüüst lehe vahetamist ühe võrra väiksem.",
         "„Testimine“ märk on sinu enda tulemusega „Viga“ kontrollide arv; teise inimese vead seda ei tõsta.",
-        "„Testimine“ märk on pärast tulemuse „OK“ märkimist ja menüüst lehe vahetamist jälle ühe võrra väiksem.",
+        "„Testimine“ märk on pärast tulemuse „Läbitud“ märkimist ja menüüst lehe vahetamist jälle ühe võrra väiksem.",
         "„Protokollid“ juures on koolituspäeval sõna „Täna“ ilma arvuta."
       ],
       "why": "Märk peab näitama täpselt seda, mis ootab, ja viima otse õigele lehele.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "testimine-automaattest",
@@ -2240,23 +2240,56 @@
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vajuta rea „Kes“ juures „Automaattest“.",
-        "Kui ühtegi kontrolli pole näha, vali „Kes“ juures „Kõik“ ja vajuta selle kontrolli juures „Jäta vahele“.",
+        "Kui leht ütleb „Selle valikuga kontrolle pole.“, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
         "Muidu ava mõni ala ja vaata ühe kontrolli nuppude all olevaid ridu.",
         "Vajuta rea „Kes“ juures „Kõik“ ja vasta siis sellele kontrollile."
       ],
       "expect": [
         "Valik „Automaattest“ näitab ainult kontrolle, millele automaattest on vastanud.",
-        "Kontrolli all on rida „Automaattest: OK · …“ (või „Viga“, „Jäta vahele“) koos kuupäevaga.",
+        "Kontrolli all on rida „Automaattest: Läbitud · …“ (või „Viga“) koos kuupäevaga.",
         "Kui automaattest kirjutas märkuse, on see selle rea all.",
-        "Kui sa pole sellele kontrollile ise vastanud, ei ole ükski nupp vajutatud.",
+        "Kui sa pole sellele kontrollile ise vastanud, pole „Läbitud“ ega „Viga“ vajutatud.",
         "Kui oled vastanud, on sinu nupp vajutatud ja rida „Dim · … · …“ alles.",
-        "Kui kontroll märgiti pärast vastust „Uuesti testida“, algab rida „Automaattest: Varasem vastus (enne muudatust):“."
+        "Kui kontrolli muudeti pärast automaattesti vastust, algab rida „Automaattest: Varasem vastus (enne muudatust):“."
       ],
       "why": "Automaattesti vastused ei tohi kunagi lugeda Maria ega Dimi vastuseks.",
       "risk": "med",
       "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "testimine-filtrid-valjalogitud",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Testimise lehe filtrid, alade edenemine ja väljalogimine",
+      "href": "/admin/testimine",
+      "steps": [
+        "Ava halduses „Testimine“ ja vaata pealkirja all olevat rida ning ridu „Olek“ ja „Kes“.",
+        "Vajuta „Kes“ juures järgemööda „Mina“ ja „Kõik“ ning vaata, kuidas arvud muutuvad.",
+        "Vajuta „Olek“ juures „Viga“, siis „Läbitud“, siis „Avatud“ ja lõpuks „Kõik“.",
+        "Vali „Kes“ juures „Automaattest“ ja vajuta „Olek“ nuppu, mille arv on 0; kui sellist pole, jäta see samm vahele.",
+        "Vajuta „Olek“ juures „Kõik“ ja „Kes“ juures „Mina“, siis kaks korda mõne ala nimele.",
+        "Vajuta selle kontrolli juures „Sammud ▸“ ja siis uuesti.",
+        "Logi teises vahekaardis halduse menüüst välja, tule siia tagasi ja vajuta selle kontrolli juures „Läbitud“.",
+        "Logi uuesti sisse, ava „Testimine“ ja vaata selle kontrolli vastust."
+      ],
+      "expect": [
+        "Pealkirja kohal on „Haldus“ ja all rida „… kontrolli · … läbitud · … viga“.",
+        "„Olek“ nupud on „Kõik“, „Avatud …“, „Viga …“ ja „Läbitud …“ ning arvud käivad valitud „Kes“ kohta.",
+        "„Mina“ näitab sinu ja ühiseid kontrolle, „Kõik“ kõiki kontrolle.",
+        "Iga „Olek“ nupp näitab ainult selle olekuga kontrolle; nupp arvuga 0 näitab „Selle valikuga kontrolle pole.“.",
+        "Ala päises on „… / …“ ja riba; kokku pannes kaovad ka ala märkus ja kontrollid.",
+        "„Sammud ▸“ avab sammud, „Mida näed“ ja „Miks“; teine vajutus peidab need.",
+        "Väljalogituna on päises „Salvestamata — logi uuesti sisse“ ja „Läbitud“ jääb vajutatuks.",
+        "Pärast uuesti sisselogimist on vastus „Läbitud“ salvestatud ja päises on „Salvestatud …“."
+      ],
+      "why": "Testija peab nägema, mis on veel teha, ja väljalogituna ei tohi ükski vastus kaduda.",
+      "risk": "med",
+      "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-25T14:14:35.242Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-lahkumine-salvestamata",
@@ -2698,7 +2731,7 @@
       "title": "Arveta makse registreeringu juures",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed ja arved“, vajuta „Arved“ ja „Näita ▸“ ning vaata riba „Arveta maksed“; kui tühi, vajuta „Jäta vahele“.",
+        "Ava „Maksed ja arved“, vajuta „Arved“ ja „Näita ▸“ ning vaata riba „Arveta maksed“; kui tühi, jäta kontroll avatuks.",
         "Kirjuta selle kontrolli märkusesse ühe kontaktkoolituse makse maksja nimi.",
         "Ava „Registreerimised“, vajuta selle maksja nimele ja keri plokini „Arved“.",
         "Loe plokis üle kõik nupud „Koosta arve“, enne kui vajutad ühtegi.",
@@ -2728,7 +2761,7 @@
       "href": "/admin/arved",
       "steps": [
         "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
-        "Vaata lehe ülaosas riba „Arveta maksed“; kui seal pole kaht makset, tee Proov makse juurde või vajuta „Jäta vahele“.",
+        "Vaata lehe ülaosas riba „Arveta maksed“; kui seal pole kaht makset, tee Proov makse juurde või jäta kontroll avatuks.",
         "Vajuta „Näita ▸“ ja siis ühe makse real „Koosta arve“.",
         "Vajuta riba nuppu „Koosta … arvet“ (ühe makse korral „Koosta 1 arve“), loe küsimust ja vajuta „Katkesta“.",
         "Vajuta nuppu uuesti ja siis „Jah, koosta … arvet“."
@@ -2812,7 +2845,7 @@
       "steps": [
         "Kui Proov 0 maksel pole arvet, koosta see „Arved“ lehe ribal „Arveta maksed“.",
         "Tee Montonio testkeskkonna Partner Systemis Proov 0 maksele tagasimakse.",
-        "Kui tagasimakse nuppu pole, kirjuta see märkusesse ja vajuta „Jäta vahele“.",
+        "Kui tagasimakse nuppu pole, jäta kontroll avatuks.",
         "Halduses ava „Maksed ja arved“ ja vaata Proov 0 makset.",
         "Ava „Arved“, vaata Proov 0 arvet ja laadi alla selle kuu CSV.",
         "Vaata Proov 0 arve rea nuppe.",
@@ -3412,7 +3445,7 @@
       "title": "Ootenimekiri",
       "href": "/koolituskalender",
       "steps": [
-        "Leia koolituskalendrist kuupäev märkega „Kohad täis“; kui sellist pole, vajuta „Jäta vahele“.",
+        "Leia koolituskalendrist kuupäev märkega „Kohad täis“; kui sellist pole, jäta kontroll avatuks.",
         "Vajuta selle real „Liitu ootenimekirjaga“.",
         "Kirjuta „Nimi“: Proov 3 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
         "Vajuta „Liitu ootenimekirjaga“."
@@ -3425,7 +3458,9 @@
       ],
       "why": "Täis kuupäeval jääb huviline ootenimekirja.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-paringud",
@@ -3628,7 +3663,7 @@
         "Registreeri: Proov 14, +proov14, oma Eesti telefon, „Järelmaks (Inbank)“; Inbanki lehel isikukood 10101010005 ja SMS-kood 0000.",
         "Kui Inbank küsib sissetuleku tõendit, jäta taotlus pooleli ja mine tagasi MS LABi lehele.",
         "Vajuta „Maksa pangalingiga“ ja tee makse testpangas lõpuni.",
-        "Kinnita Montonio sandboxis Inbanki taotlus nüüd; kui see ei õnnestu, kirjuta märkusesse miks ja vajuta „Jäta vahele“.",
+        "Kinnita Montonio sandboxis Inbanki taotlus nüüd; kui see ei õnnestu, jäta kontroll avatuks.",
         "Oota mõni minut ja ava halduses „Maksed ja arved“ filter „Ootel kontrollil“.",
         "Vaata Proov 14 registreeringut ja Maria postkasti.",
         "Tühista halduses Proov 14 registreering ja kinnita „Jah, tühista“."
@@ -5613,7 +5648,7 @@
       "title": "Ülevaate kaart „Täna“",
       "href": "/admin",
       "steps": [
-        "Tee see kontroll mõnel päris koolituspäeval; muul päeval vajuta „Jäta vahele“.",
+        "Tee see kontroll mõnel päris koolituspäeval; muul päeval jäta see avatuks.",
         "Ava halduse „Ülevaade“.",
         "Vaata tumedat kaarti „Täna“ ja vajuta selle nuppu „Ava protokollid →“."
       ],
@@ -5668,7 +5703,7 @@
       "title": "Menüü „Protokollid“ koolituspäeval",
       "href": "/admin",
       "steps": [
-        "Tee see kontroll koolituspäeval; päeval ilma koolituseta vajuta „Jäta vahele“.",
+        "Tee see kontroll koolituspäeval; päeval ilma koolituseta jäta see avatuks.",
         "Ava halduse „Ülevaade“ ja vaata menüüs rida „Protokollid“.",
         "Vajuta seda rida ja vaata, mis leht avanes.",
         "Vajuta brauseri tagasi-nuppu."
@@ -5682,8 +5717,8 @@
       "why": "Koolituspäeval jõuab Maria menüüst protokollideni ühe vajutusega.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-sisselogimiskood",
@@ -5787,7 +5822,7 @@
       "device": "any",
       "title": "Kiri: ootenimekirjas",
       "steps": [
-        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
+        "Kui ootenimekirja kontroll jäi avatuks, jäta ka see avatuks.",
         "Ava Gmailis telefonis kiri „Oled ootenimekirjas — …“.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
@@ -5800,7 +5835,9 @@
       ],
       "why": "Õpilane teab, millise kuupäeva ootenimekirjas ta on.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-koht-kinnitatud",
@@ -6322,7 +6359,7 @@
       "device": "any",
       "title": "Maria teade: ootenimekiri",
       "steps": [
-        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
+        "Kui ootenimekirja kontroll jäi avatuks, jäta ka see avatuks.",
         "Ava Gmailis telefonis kiri „Ootenimekiri: … — Proov 3“.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
@@ -6334,7 +6371,9 @@
       ],
       "why": "Maria teab, kes ootab vaba kohta.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-maria-muutmine",
@@ -6473,7 +6512,7 @@
         "Ava Telegram.",
         "Kirjuta selle kontrolli märkusesse: Proov.",
         "Oota paar sekundit ja ava Telegram uuesti.",
-        "Vajuta selle kontrolli juures „OK“ ja ava Telegram uuesti.",
+        "Vajuta selle kontrolli juures „Läbitud“ ja ava Telegram uuesti.",
         "Kustuta märkus, kirjuta selle asemele: Teine proov.",
         "Oota paar sekundit ja ava Telegram uuesti."
       ],
@@ -6481,15 +6520,15 @@
         "Telegramis on „Testimine — Viga: Testimise lehe Telegrami teade (Dim)“ ja „(märkust veel pole)“.",
         "Pärast märkust tuleb teine teade „Testimine — Märkus: … · Viga“ tekstiga Proov.",
         "Teate link avab selle kontrolli testimise lehel.",
-        "Pärast „OK“ uut teadet ei tule, kuni märkust ei muuda.",
-        "Pärast uut märkust tuleb teade „Testimine — Märkus: … · OK“ tekstiga Teine proov.",
+        "Pärast „Läbitud“ uut teadet ei tule, kuni märkust ei muuda.",
+        "Pärast uut märkust tuleb teade „Testimine — Märkus: … · Läbitud“ tekstiga Teine proov.",
         "Sama vastuse järgmised märkuse muudatused teateid ei saada."
       ],
       "why": "Iga Viga ja iga vastuse esimene märkus peab Dimini jõudma samal päeval.",
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-22T17:47:15.802Z"
+      "markedAt": "deploy"
     },
     {
       "id": "koristamine-aadressid",
@@ -6501,7 +6540,7 @@
         "Kirjuta selle kontrolli märkusesse iga proovi-aadress, mida kasutasid.",
         "Kirjuta märkusesse iga „Proov“ nimega registreeringu nimi ja koolituspäev.",
         "Kontrolli, et ühtegi aadressi pole puudu.",
-        "Kui loend on täielik, vajuta „OK“."
+        "Kui loend on täielik, vajuta „Läbitud“."
       ],
       "expect": [
         "Märkuses on iga aadress täpselt nii, nagu see vormi kirjutati.",
@@ -6512,7 +6551,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "markedAt": "deploy"
     }
   ]
 }

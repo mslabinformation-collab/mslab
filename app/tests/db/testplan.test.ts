@@ -272,9 +272,11 @@ describe("pingText", () => {
 
   test("tg.note: the first note of an OK and of a Jäta vahele, in the same format, the answer in the button's words (Dim 22.10)", () => {
     const stored = (status: StoredAnswer["status"], note: string) => doc({ "maria-1": answer(status, { note }) });
+    // (admin UX pass piece 4c, R-i: an `ok` is the button „Läbitud“ now, S4-45, and its first note says so)
     expect(pingText({ id: "maria-1", kind: "note" }, PLAN, stored("ok", "Telefonis korras"), NAMES, BASE)).toBe(
-      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTelefonis korras\nhttps://mslab.ee/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Läbitud\nTelefonis korras\nhttps://mslab.ee/admin/testimine#maria-1",
     );
+    // (a `skip` stored before the button went, piece 4c: the data stays, and its first note still names it)
     expect(pingText({ id: "maria-1", kind: "note" }, PLAN, stored("skip", "Hiljem"), NAMES, BASE)).toBe(
       "Testimine — Märkus: Avaleht telefonis (Maria) · Jäta vahele\nHiljem\nhttps://mslab.ee/admin/testimine#maria-1",
     );

@@ -9,9 +9,11 @@ import { OUTBOX_KEY } from "@/components/admin/testplan-outbox";
 import { NOTE_MAX, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import type { PageAnswer } from "@/server/testplan";
 
-// The test page (phase 4, piece 1, Task 3) in a browser-like document (happy-dom), with the API answered here: the progress line, the areas
-// (the first with an open check starts open), "Viga" opening its note, a redo answered before its instant, the filters, a database that is down,
-// the note's limit, the answers kept on the device and sent again, "Värskenda". And the Avaleht card.
+// The test page in a browser-like document (happy-dom), with the API answered here. Phase 4, piece 1, Task 3 built it; admin UX pass piece 4c
+// (C7, README §4; P4 frame; S4-42…S4-46; R-i) redrew it: the header (eyebrow, H1, the line „{n} kontrolli · {k} läbitud · {v} viga“, one SaveStatus,
+// „Värskenda“), one filter row of two labelled groups („Olek“ with counts, „Kes“: Mina / Kõik / Automaattest), area cards with their progress that
+// fold together with their notes, check rows with „Sammud ▸“ and the two answers „Läbitud“ | „Viga“, the note box under every answer (Dim 22.10),
+// and the empty selection. And the Avaleht card.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -47,6 +49,7 @@ const SERVER: Record<string, PageAnswer> = {
   "a1-fail": answer("bad", "2026-10-16T11:05:00.000Z", "Dim", "Nupp ei tööta"),
 };
 const MARIA = { name: "Maria", tester: "maria" as const };
+const DIM = { name: "Dim", tester: "dim" as const };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -59,10 +62,12 @@ let putReply: (body: { answers: Record<string, { status: PageAnswer["status"]; n
 const calls: { method: string; body?: { answers: Record<string, { status: PageAnswer["status"]; note: string }> } }[] = [];
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const unauthorized = () => json({ ok: false, error: "unauthorized" }, 401);
 const $ = <E extends Element = HTMLElement>(selector: string) => container.querySelector<E>(selector);
 const $$ = <E extends Element = HTMLElement>(selector: string) => [...container.querySelectorAll<E>(selector)];
 const check = (id: string) => $(`[data-check="${id}"]`)!;
 const ids = () => $$("[data-check]").map((c) => c.getAttribute("data-check"));
+const areas = () => $$("[data-area]").map((a) => a.getAttribute("data-area"));
 const settle = () =>
   act(async () => {
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
@@ -78,16 +83,22 @@ const typeInto = async (el: HTMLTextAreaElement, value: string) =>
   });
 const state = (id: string) => check(id).getAttribute("data-check-state");
 const pressed = (id: string) => $$(`[data-check="${id}"] [data-answer][aria-pressed="true"]`).map((b) => b.getAttribute("data-answer"));
-const status = () => $("[data-save-status]")!.textContent;
+/** The SaveStatus chip: its kind (null: no chip) and the words it shows. */
+const chip = () => $("[data-save-status]")?.getAttribute("data-save-kind") ?? null;
+const chipText = () => $("[data-save-text]")?.textContent ?? "";
+const line = () => $("[data-progress]")!.textContent;
+const pills = (group: "olek" | "kes") => $$(`[data-filter-group="${group}"] button`).map((b) => b.textContent);
+const olek = (f: "all" | "open" | "bad" | "done") => $(`[data-filter="${f}"]`)!;
+const kes = (w: "mina" | "all" | "auto") => $(`[data-who="${w}"]`)!;
 
-type Props = { initial?: Record<string, PageAnswer> | null; auto?: Record<string, PageAnswer>; you?: { name: string; tester: "maria" | "dim" | "auto" | null } };
-const show = async ({ initial = SERVER, auto, you = MARIA }: Props = {}) => {
+type Props = { initial?: Record<string, PageAnswer> | null; auto?: Record<string, PageAnswer>; you?: { name: string; tester: "maria" | "dim" | "auto" | null }; plan?: Plan };
+const show = async ({ initial = SERVER, auto, you = MARIA, plan = PLAN }: Props = {}) => {
   server = initial === null ? null : { ...initial };
   autoServer = { ...(auto ?? {}) };
-  await act(async () => root.render(createElement(TestPlan, { plan: PLAN, initial, auto, you, buildAt: BUILD_AT })));
+  await act(async () => root.render(createElement(TestPlan, { plan, initial, auto, you, buildAt: BUILD_AT })));
   await settle();
 };
-/** The view the device remembers (`who` is what the "Kes" filter shows). */
+/** The view the device remembers (`who` is what the „Kes“ group shows). */
 const remember = (view: { filter: string; who: string }) => localStorage.setItem("mslab-testplan-view", JSON.stringify(view));
 const showAll = async (props: Props = {}) => {
   remember({ filter: "all", who: "all" });
@@ -95,6 +106,10 @@ const showAll = async (props: Props = {}) => {
 };
 const openAll = async () => {
   for (const toggle of $$("[data-area-toggle]")) if (toggle.getAttribute("aria-expanded") === "false") await click(toggle);
+};
+const remount = async () => {
+  await act(async () => root.unmount());
+  root = createRoot(container);
 };
 
 beforeEach(() => {
@@ -133,28 +148,140 @@ afterEach(async () => {
   window.location.hash = "";
 });
 
-describe("TestPlan", () => {
-  test("the progress line counts the checks of the 'Kes' choice: the session's tester by default (his own and the shared ones), everybody's for 'Kõik'", async () => {
+describe("the header (S4-42, S4-43)", () => {
+  test("the eyebrow „Haldus“, the H1 „Testimine“ and the line under it, counted over the „Kes“ choice: „Mina“ by default, Maria's checks and the shared ones", async () => {
     await show();
-    // Maria: a0-done (done), a1-fail (koos, bad), a1-plain, a2-fresh (open) — Dim's two are not hers
-    expect($("[data-progress]")!.textContent).toBe("1 / 4 tehtud · 1 viga · 0 uuesti testida");
-    expect($("[data-you]")!.textContent).toBe("Sina: Maria");
-    expect($('[data-who="maria"]')!.getAttribute("aria-pressed")).toBe("true");
-    await click($('[data-who="all"]')!);
-    // all six: one done, one failed, four open, one of them a redo
-    expect($("[data-progress]")!.textContent).toBe("1 / 6 tehtud · 1 viga · 1 uuesti testida");
-    await click($('[data-who="koos"]')!);
-    expect($("[data-progress]")!.textContent).toBe("0 / 1 tehtud · 1 viga · 0 uuesti testida");
+    expect($("h1")!.textContent).toBe("Testimine");
+    expect($("h1")!.previousElementSibling!.textContent).toBe("Haldus");
+    // Maria: a0-done (done), a1-fail (koos, Viga), a1-plain, a2-fresh (open); Dim's two are not hers
+    expect(line()).toBe("4 kontrolli · 1 läbitud · 1 viga");
+    expect(kes("mina").getAttribute("aria-pressed")).toBe("true");
+    await click(kes("all"));
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
   });
 
-  test("an admin who is neither Maria nor Dim sees every check, and no 'Sina' line", async () => {
+  test("one check is „1 kontroll“", async () => {
+    const plan: Plan = { ...PLAN, areas: [{ id: "a", name: "Osa" }], items: [item("only", "a", "maria")] };
+    server = {};
+    await show({ plan, initial: {} });
+    expect(line()).toBe("1 kontroll · 0 läbitud · 0 viga");
+  });
+
+  test("Dim's „Mina“ is his checks and the shared ones; an admin who is no tester (or Automaattest's own session) sees every check under „Mina“", async () => {
+    await show({ you: DIM });
+    expect(line()).toBe("3 kontrolli · 0 läbitud · 1 viga");
+    await remount();
     await show({ you: { name: "Kati", tester: null } });
-    expect($('[data-who="all"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect($("[data-progress]")!.textContent).toBe("1 / 6 tehtud · 1 viga · 1 uuesti testida");
-    expect($("[data-you]")).toBeNull();
+    expect(kes("mina").getAttribute("aria-pressed")).toBe("true");
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
   });
 
-  test("the first area with an open check starts open, the others closed; a notes-only area is a plain card with its note and no toggle; each area has its count", async () => {
+  test("no „Sina: …“ line (the sidebar names who is signed in), and „Värskenda“ is there", async () => {
+    await show();
+    expect($("[data-you]")).toBeNull();
+    expect(container.textContent).not.toContain("Sina:");
+    expect($("[data-refresh]")!.textContent).toBe("Värskenda");
+  });
+});
+
+describe("one filter row: „Olek“ and „Kes“ (S4-44)", () => {
+  test("two labelled groups; „Olek“ is Kõik / Avatud n / Viga n / Läbitud n, counted under „Mina“; „Kes“ is Mina / Kõik / Automaattest; no „Muudetud“", async () => {
+    await show();
+    const label = (group: string) => {
+      const el = $(`[data-filter-group="${group}"]`)!;
+      expect(el.getAttribute("role")).toBe("group");
+      return container.querySelector(`[id="${el.getAttribute("aria-labelledby")}"]`)!.textContent;
+    };
+    expect([label("olek"), label("kes")]).toEqual(["Olek", "Kes"]);
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 2", "Viga 1", "Läbitud 1"]);
+    expect(pills("kes")).toEqual(["Mina", "Kõik", "Automaattest"]);
+    expect($('[data-filter="changed"]')).toBeNull();
+    // the counts follow „Kes“
+    await click(kes("all"));
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 4", "Viga 1", "Läbitud 1"]);
+  });
+
+  test("„Viga“ keeps the failed checks, „Avatud“ the open ones, „Läbitud“ the passed ones, „Kõik“ every one; every area with a match is open", async () => {
+    await showAll();
+    await click(olek("bad"));
+    expect(olek("bad").getAttribute("aria-pressed")).toBe("true");
+    expect(ids()).toEqual(["a1-fail"]);
+    expect(areas()).toEqual(["a1"]); // (an area without a match, and the notes, are not shown)
+    await click(olek("open"));
+    expect(ids()).toEqual(["a1-redo", "a1-plain", "a2-fresh", "a2-dim"]);
+    await click(olek("done"));
+    expect(ids()).toEqual(["a0-done"]);
+    await click(olek("all"));
+    expect(areas()).toEqual(["enne", "a0", "a1", "a2"]);
+  });
+
+  test("„Mina“ hides a Dim check and keeps a Koos one; „Kõik“ shows them all", async () => {
+    await showAll();
+    await openAll();
+    expect(ids()).toContain("a1-redo");
+    await click(kes("mina"));
+    await openAll();
+    expect(ids()).not.toContain("a1-redo");
+    expect(ids()).not.toContain("a2-dim");
+    expect(ids()).toContain("a1-fail");
+    await click(kes("all"));
+    await openAll();
+    expect(ids()).toEqual(["a0-done", "a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
+  });
+
+  test("an empty selection says „Selle valikuga kontrolle pole.“ with no button, and shows no area; „Kõik“ brings them back", async () => {
+    await show({ you: DIM }); // (Dim's checks: none passed)
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 2", "Viga 1", "Läbitud 0"]);
+    await click(olek("done"));
+    const empty = $("[data-list-empty]")!;
+    expect(empty.textContent).toBe("Selle valikuga kontrolle pole.");
+    expect(empty.querySelector("a, button")).toBeNull();
+    expect(areas()).toEqual([]);
+    await click(olek("all"));
+    expect($("[data-list-empty]")).toBeNull();
+    expect(areas()).toEqual(["enne", "a1", "a2"]); // (a0 holds only Maria's check)
+  });
+
+  test("„Automaattest“ with nothing answered by it is an empty selection too", async () => {
+    await showAll();
+    await click(kes("auto"));
+    expect($("[data-list-empty]")!.textContent).toBe("Selle valikuga kontrolle pole.");
+    expect(line()).toBe("0 kontrolli · 0 läbitud · 0 viga");
+  });
+
+  test("the choice is kept on the device: written to storage, and read by the next visit; an old choice („Muudetud“, „Maria“) is the default", async () => {
+    await show();
+    await click(olek("open"));
+    await click(kes("all"));
+    expect(JSON.parse(localStorage.getItem("mslab-testplan-view")!)).toEqual({ filter: "open", who: "all" });
+    await remount();
+    await show();
+    expect(olek("open").getAttribute("aria-pressed")).toBe("true");
+    expect(kes("all").getAttribute("aria-pressed")).toBe("true");
+    remember({ filter: "changed", who: "maria" }); // (what the page before piece 4c kept)
+    await remount();
+    await show();
+    expect(olek("all").getAttribute("aria-pressed")).toBe("true");
+    expect(kes("mina").getAttribute("aria-pressed")).toBe("true");
+    localStorage.setItem("mslab-testplan-view", "{not json");
+    await remount();
+    await show();
+    expect(kes("mina").getAttribute("aria-pressed")).toBe("true"); // (rubbish: the defaults)
+  });
+
+  test("a storage that cannot be written still lets the filters work", async () => {
+    await show();
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    await click(olek("bad"));
+    expect(ids()).toEqual(["a1-fail"]);
+    set.mockRestore();
+  });
+});
+
+describe("the area cards", () => {
+  test("the first area with an open check starts open, the others closed; each has its progress „{done} / {total}“ with a bar; a notes-only area is a plain card", async () => {
     await showAll();
     expect($$("[data-area-toggle]").map((t) => [t.closest("[data-area]")!.getAttribute("data-area"), t.getAttribute("aria-expanded")])).toEqual([
       ["a0", "false"], // (all its checks are done)
@@ -162,43 +289,86 @@ describe("TestPlan", () => {
       ["a2", "false"],
     ]);
     expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain"]); // (a closed area shows no checks)
+    expect($$("[data-area-count]").map((c) => c.textContent)).toEqual(["1 / 1", "0 / 3", "0 / 2"]);
+    expect($$("[data-area-bar]").map((b) => (b as HTMLElement).style.width)).toEqual(["100%", "0%", "0%"]);
     const notes = $('[data-area="enne"]')!;
     expect(notes.querySelector("button")).toBeNull();
     expect(notes.textContent).toContain("Enne alustamist");
     expect(notes.textContent).toContain("Logi sisse samas seadmes.");
-    expect($('[data-area="a1"]')!.textContent).toContain("Siin on mõned avatud.");
-    expect($$("[data-area-toggle]").map((t) => t.textContent)).toEqual(["Tehtud1 / 1", "Pooleli0 / 3", "Uus osa0 / 2"]);
     await click($('[data-area="a2"] [data-area-toggle]')!);
     expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
-    await click($('[data-area="a1"] [data-area-toggle]')!);
-    expect(ids()).toEqual(["a2-fresh", "a2-dim"]);
   });
 
-  test("a check shows its title, who and device, 'Loob andmeid' when it writes, its mark, 'Ava' in a new tab, its steps as a list, 'Mida näed', and 'Miks' folded", async () => {
+  test("an area folds together with its note", async () => {
+    await showAll();
+    const a1 = $('[data-area="a1"]')!;
+    expect(a1.querySelector("[data-area-note]")!.textContent).toBe("Siin on mõned avatud.");
+    await click(a1.querySelector("[data-area-toggle]")!);
+    expect(a1.querySelector("[data-area-toggle]")!.getAttribute("aria-expanded")).toBe("false");
+    expect(a1.querySelector("[data-area-note]")).toBeNull();
+    expect(a1.textContent).not.toContain("Siin on mõned avatud.");
+    expect(ids()).toEqual([]);
+    await click(a1.querySelector("[data-area-toggle]")!);
+    expect(a1.querySelector("[data-area-note]")!.textContent).toBe("Siin on mõned avatud.");
+  });
+
+  test("the progress counts the area's checks of the „Kes“ choice and moves with an answer", async () => {
+    await show(); // (Maria's: a1-fail and a1-plain in a1)
+    expect($('[data-area="a1"] [data-area-count]')!.textContent).toBe("0 / 2");
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect($('[data-area="a1"] [data-area-count]')!.textContent).toBe("1 / 2");
+    expect(($('[data-area="a1"] [data-area-bar]') as HTMLElement).style.width).toBe("50%");
+  });
+});
+
+describe("a check row (S4-45)", () => {
+  test("the title, the who, device and „Loob andmeid“ chips, „Ava ↗“ in a new tab; no mark chips; the answers are „Läbitud“ | „Viga“, and no „Jäta vahele“", async () => {
     await showAll();
     await openAll();
     const fail = check("a1-fail");
     expect(fail.querySelector("h3")!.textContent).toBe("Kontroll a1-fail");
     expect([...fail.querySelectorAll("[data-chip]")].map((c) => c.textContent)).toEqual(["Koos", "Arvuti", "Loob andmeid"]);
-    expect(check("a2-dim").querySelector("[data-mark]")!.textContent).toBe("Sõnastus muutus");
-    expect(check("a2-fresh").querySelector("[data-mark]")!.textContent).toBe("Uus");
-    expect(check("a1-redo").querySelector("[data-mark]")!.textContent).toBe("Uuesti testida");
-    expect(check("a1-plain").querySelector("[data-mark]")).toBeNull();
-    expect(fail.querySelector("a[target]")).toBeNull(); // (no href: no "Ava")
-    const open = check("a0-done").querySelector<HTMLAnchorElement>("a[target]")!;
-    expect(open.textContent).toContain("Ava");
+    expect($$("[data-mark]")).toEqual([]);
+    for (const word of ["Uuesti testida", "Sõnastus muutus"]) expect(container.textContent).not.toContain(word);
+    expect(fail.querySelector("a[target]")).toBeNull(); // (no href: no „Ava“)
+    const open = check("a0-done").querySelector<HTMLAnchorElement>("a[data-open]")!;
+    expect(open.textContent).toContain("Ava ↗");
     expect([open.getAttribute("href"), open.getAttribute("target"), open.getAttribute("rel")]).toEqual(["/koolitused", "_blank", "noopener"]);
-    expect([...fail.querySelectorAll("ol > li")].map((l) => l.textContent)).toEqual(["Tee seda.", "Tee ka teist."]);
-    expect(fail.textContent).toContain("Mida näed");
-    expect([...fail.querySelectorAll("ul > li")].map((l) => l.textContent)).toEqual(["Näed seda.", "Näed ka teist."]);
-    const why = fail.querySelector("details")!;
-    expect(why.open).toBe(false);
-    expect(why.querySelector("summary")!.textContent).toBe("Miks");
-    expect(why.textContent).toContain("Sest nii on vaja.");
-    expect([...fail.querySelectorAll("[data-answer]")].map((b) => b.textContent)).toEqual(["OK", "Viga", "Jäta vahele"]);
+    expect([...fail.querySelectorAll("[data-answer]")].map((b) => [b.getAttribute("data-answer"), b.textContent])).toEqual([
+      ["ok", "Läbitud"],
+      ["bad", "Viga"],
+    ]);
+    expect($('[data-answer="skip"]')).toBeNull();
+    expect(container.textContent).not.toContain("Jäta vahele");
+    // the two answers are one group, named by the check's title
+    const group = fail.querySelector("[data-answer]")!.parentElement!;
+    expect(group.getAttribute("role")).toBe("group");
+    expect(container.querySelector(`[id="${group.getAttribute("aria-labelledby")}"]`)!.textContent).toBe("Kontroll a1-fail");
   });
 
-  test("the states: failed with its last answer and note, done, open; the last answer reads 'Dim · 16.10 14:05 · Viga' in Tallinn time", async () => {
+  test("„Sammud ▸“ folds the steps, „Mida näed“ and „Miks“ behind it", async () => {
+    await showAll();
+    const plain = check("a1-plain");
+    const toggle = plain.querySelector<HTMLButtonElement>("[data-steps-toggle]")!;
+    expect(toggle.textContent).toBe("Sammud ▸");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const fold = plain.querySelector<HTMLElement>("[data-steps]")!;
+    expect(toggle.getAttribute("aria-controls")).toBe(fold.id);
+    expect(fold.hidden).toBe(true);
+    await click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(fold.hidden).toBe(false);
+    expect([...fold.querySelectorAll("ol > li")].map((l) => l.textContent)).toEqual(["Tee seda.", "Tee ka teist."]);
+    expect(fold.textContent).toContain("Mida näed");
+    expect([...fold.querySelectorAll("ul > li")].map((l) => l.textContent)).toEqual(["Näed seda.", "Näed ka teist."]);
+    expect(fold.textContent).toContain("Miks");
+    expect(fold.textContent).toContain("Sest nii on vaja.");
+    await click(toggle);
+    expect(fold.hidden).toBe(true);
+    expect(check("a1-fail").querySelector<HTMLElement>("[data-steps]")!.hidden).toBe(true); // (one check's fold, not the others')
+  });
+
+  test("the states: failed with its last answer and note, done, open; the last answer reads „Dim · 16.10 14:05 · Viga“ in Tallinn time, a pass „Läbitud“", async () => {
     await showAll();
     await openAll();
     expect(state("a1-fail")).toBe("failed");
@@ -209,28 +379,42 @@ describe("TestPlan", () => {
     expect(pressed("a1-plain")).toEqual([]);
     expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
     expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull(); // (no answer, nothing to write a note on)
-    // the done one, in the closed area it sits in
     expect(state("a0-done")).toBe("done");
     expect(pressed("a0-done")).toEqual(["ok"]);
-    expect(check("a0-done").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 13:00 · OK");
+    expect(check("a0-done").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 13:00 · Läbitud");
   });
 
-  test("a redo answered before its instant is open, with the old answer under it as 'Varasem vastus', and no button pressed", async () => {
+  test("a „Jäta vahele“ stored before the button went stays as it was: done, counted „Läbitud“, neither answer pressed, its last line and note box", async () => {
+    await showAll({ initial: { ...SERVER, "a1-plain": answer("skip", "2026-10-16T09:30:00.000Z", "Maria", "Hiljem") } });
+    expect(state("a1-plain")).toBe("done");
+    expect(pressed("a1-plain")).toEqual([]);
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 12:30 · Jäta vahele");
+    const note = check("a1-plain").querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect([note.value, note.placeholder]).toEqual(["Hiljem", "Märkus"]);
+    expect(pills("olek")).toContain("Läbitud 2");
+    // a note typed on it keeps its answer
+    await act(async () => note.focus());
+    await typeInto(note, "Hiljem, tahvlis");
+    await act(async () => note.blur());
+    await settle();
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "skip", note: "Hiljem, tahvlis" } } }]);
+  });
+
+  test("a redo answered before its instant is open, with the old answer under it as „Varasem vastus“, and no answer pressed", async () => {
     await showAll();
     const redo = check("a1-redo");
     expect(state("a1-redo")).toBe("open");
-    expect(redo.querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): OK");
+    expect(redo.querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): Läbitud");
     expect(pressed("a1-redo")).toEqual([]);
     expect(redo.querySelector("[data-check-last]")).toBeNull();
     expect(check("a1-fail").querySelector("[data-overtaken]")).toBeNull();
-    // answering it again closes it: the old answer is gone from under it
     await click(redo.querySelector('[data-answer="ok"]')!);
     expect(state("a1-redo")).toBe("done");
     expect(redo.querySelector("[data-overtaken]")).toBeNull();
     expect(pressed("a1-redo")).toEqual(["ok"]);
   });
 
-  test("'Viga' opens the note field and focuses it, asking 'Mis läks valesti?', and sends the answer at once", async () => {
+  test("„Viga“ opens the note field and focuses it, asking „Mis läks valesti?“, and sends the answer at once", async () => {
     await showAll();
     const plain = check("a1-plain");
     expect(plain.querySelector("[data-check-note]")).toBeNull();
@@ -241,12 +425,28 @@ describe("TestPlan", () => {
     expect(document.activeElement).toBe(note);
     expect(state("a1-plain")).toBe("failed");
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "bad", note: "" } } }]);
-    expect(status()).toBe("Salvestatud");
-    // the server's answer is the one shown now: the answerer and the hour
+    expect(chip()).toBe("saved");
     expect(plain.querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 15:00 · Viga");
   });
 
-  test("a note typed is sent when the field loses the focus, with the status it was written on; pressing OK later keeps it", async () => {
+  // Dim 22.10 (as on Rempire's test page): every answer has its note box open under it at once.
+  test("„Läbitud“ opens the note box at once, asking „Märkus“, without taking the focus; one box whatever the answer", async () => {
+    await showAll();
+    const plain = check("a1-plain");
+    await click(plain.querySelector('[data-answer="ok"]')!);
+    const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect(note.placeholder).toBe("Märkus");
+    expect(note.getAttribute("aria-label")).toBe("Märkus");
+    expect(document.activeElement).not.toBe(note); // (a phone's keyboard does not jump up after a pass)
+    expect(note.maxLength).toBe(1000);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "ok", note: "" } } }]);
+    await click(plain.querySelector('[data-answer="bad"]')!);
+    expect(plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!.placeholder).toBe("Mis läks valesti?");
+    expect(document.activeElement).toBe(plain.querySelector("[data-check-note]"));
+    expect(plain.querySelectorAll("[data-check-note]")).toHaveLength(1);
+  });
+
+  test("a note typed is sent when the field loses the focus, with the answer it was written on; pressing „Läbitud“ later keeps it", async () => {
     await showAll();
     const plain = check("a1-plain");
     await click(plain.querySelector('[data-answer="bad"]')!);
@@ -259,15 +459,13 @@ describe("TestPlan", () => {
       { answers: { "a1-plain": { status: "bad", note: "" } } },
       { answers: { "a1-plain": { status: "bad", note: "Nupp ei tööta " } } },
     ]);
-    expect(note.value).toBe("Nupp ei tööta ");
-    await click(plain.querySelector('[data-answer="skip"]')!);
-    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "skip", note: "Nupp ei tööta " } } });
+    await click(plain.querySelector('[data-answer="ok"]')!);
+    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "ok", note: "Nupp ei tööta " } } });
   });
 
   test("a note of 1 001 characters is stopped at 1 000: by maxLength in the field, and in what is sent", async () => {
     await showAll();
-    const fail = check("a1-fail");
-    const note = fail.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    const note = check("a1-fail").querySelector<HTMLTextAreaElement>("[data-check-note]")!;
     expect(NOTE_MAX).toBe(1000);
     expect(note.maxLength).toBe(1000);
     await act(async () => note.focus());
@@ -278,199 +476,117 @@ describe("TestPlan", () => {
     expect(calls.at(-1)!.body!.answers["a1-fail"].note).toHaveLength(1000);
   });
 
-  // Dim 22.10 (as on Rempire's test page): every answer has its note box open under it at once; the extra tap on „Märkus“ is gone.
-  test("'OK' opens the note box at once, asking 'Märkus', without taking the focus; 'Viga' asks 'Mis läks valesti?'; 'Jäta vahele' opens it too", async () => {
-    await showAll();
-    const plain = check("a1-plain");
-    expect(plain.querySelector("[data-check-note]")).toBeNull(); // (no answer, no box)
-    await click(plain.querySelector('[data-answer="ok"]')!);
-    const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    expect(note).not.toBeNull();
-    expect(note.placeholder).toBe("Märkus");
-    expect(note.getAttribute("aria-label")).toBe("Märkus");
-    expect(document.activeElement).not.toBe(note); // (a phone's keyboard does not jump up after an OK)
-    expect(note.maxLength).toBe(1000);
-    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "ok", note: "" } } }]);
-
-    await click(plain.querySelector('[data-answer="bad"]')!);
-    expect(plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!.placeholder).toBe("Mis läks valesti?");
-    expect(document.activeElement).toBe(plain.querySelector("[data-check-note]"));
-
-    await click(plain.querySelector('[data-answer="skip"]')!);
-    const skipNote = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    expect(skipNote).not.toBeNull();
-    expect(skipNote.placeholder).toBe("Märkus");
-    expect(state("a1-plain")).toBe("done");
-    expect(plain.querySelectorAll("[data-check-note]")).toHaveLength(1); // one box, whatever the answer
+  test("a link to a check (#id) opens its area and shows the check, whatever the filters say", async () => {
+    window.location.hash = "#a2-fresh";
+    await show({ you: DIM }); // (Dim's „Mina“ hides Maria's checks)
+    expect(ids()).toContain("a2-fresh");
+    expect($('[data-area="a2"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("true");
   });
 
-  test("an answered check shows its note box with no tap on 'Märkus' (there is no such button any more), empty or not", async () => {
+  test("a check called „constructor“ or „valueOf“ is not answered because Object.prototype has such a member", async () => {
+    const plan: Plan = { ...PLAN, areas: [{ id: "a", name: "Osa" }], items: [item("constructor", "a", "maria"), item("valueOf", "a", "maria")] };
+    server = {};
+    await show({ plan, initial: {} });
+    expect($$("[data-check-state]").map((c) => c.getAttribute("data-check-state"))).toEqual(["open", "open"]);
+    expect(line()).toBe("2 kontrolli · 0 läbitud · 0 viga");
+  });
+});
+
+describe("SaveStatus in place of the outbox line (R-i)", () => {
+  test("no chip before anything is sent; „✓ Salvestatud HH:MM“ after a save; „Salvestamata — proovin uuesti“ while one fails", async () => {
     await showAll();
-    await openAll();
-    const done = check("a0-done"); // an OK with no note
-    const note = done.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    expect(note).not.toBeNull();
-    expect(note.value).toBe("");
-    expect(note.placeholder).toBe("Märkus");
-    expect(done.querySelector("[data-note-toggle]")).toBeNull();
-    expect(check("a1-fail").querySelector("[data-note-toggle]")).toBeNull();
-    expect($$("[data-note-toggle]")).toHaveLength(0);
-    expect(check("a1-fail").querySelector<HTMLTextAreaElement>("[data-check-note]")!.placeholder).toBe("Mis läks valesti?");
-    // a check with no answer, and a redo's overtaken answer, have no box (nothing to write a note on yet)
-    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull();
-    expect(check("a1-redo").querySelector("[data-check-note]")).toBeNull();
+    expect(chip()).toBeNull();
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(chip()).toBe("saved");
+    expect(chipText()).toMatch(/^✓ Salvestatud \d\d:\d\d$/);
+    putReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await click($('[data-area="a2"] [data-area-toggle]')!);
+    await click(check("a2-fresh").querySelector('[data-answer="bad"]')!);
+    expect(chip()).toBe("retry");
+    expect(chipText()).toBe("Salvestamata — proovin uuesti");
+    expect(pressed("a2-fresh")).toEqual(["bad"]); // (her press is shown all the same)
   });
 
-  test("a note typed under an OK is sent when the field loses the focus, with the status it was written on (and under a Jäta vahele too)", async () => {
+  test("a press after the session ended (401) shows „Salvestamata — logi uuesti sisse“; the press is kept on the device and on the page, and not sent again by itself", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      await showAll();
+      putReply = async () => unauthorized();
+      await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+      expect(chip()).toBe("signedOut");
+      expect(chipText()).toBe("Salvestamata — logi uuesti sisse");
+      expect(state("a1-plain")).toBe("failed");
+      expect(JSON.parse(localStorage.getItem(OUTBOX_KEY)!)["a1-plain"]).toMatchObject({ status: "bad", note: "" });
+      await act(async () => vi.advanceTimersByTime(5 * 60_000));
+      await settle();
+      expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+      expect(chip()).toBe("signedOut");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("„Värskenda“ shows „Kontrollin salvestatud teksti…“ while it reads; a read refused with 401 shows the signed-out state, a good one takes it away", async () => {
     await showAll();
-    const plain = check("a1-plain");
-    await click(plain.querySelector('[data-answer="ok"]')!);
-    const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    await act(async () => note.focus()); // (she taps into the box: an OK does not move the focus there)
-    await typeInto(note, "Telefonis korras");
-    await act(async () => note.blur());
+    let release: (r: Response) => void = () => {};
+    getReply = () => new Promise<Response>((r) => (release = r));
+    await click($("[data-refresh]")!);
+    expect(chip()).toBe("checking");
+    expect(chipText()).toBe("Kontrollin salvestatud teksti…");
+    expect($("[data-refresh]")!.getAttribute("aria-busy")).toBe("true");
+    await act(async () => release(unauthorized()));
     await settle();
-    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([
-      { answers: { "a1-plain": { status: "ok", note: "" } } },
-      { answers: { "a1-plain": { status: "ok", note: "Telefonis korras" } } },
-    ]);
-    expect(note.value).toBe("Telefonis korras");
-    await click(plain.querySelector('[data-answer="skip"]')!);
-    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "skip", note: "Telefonis korras" } } });
-    const again = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    await act(async () => again.focus());
-    await typeInto(again, "Telefonis korras, hiljem tahvlis");
-    await act(async () => again.blur());
-    await settle();
-    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "skip", note: "Telefonis korras, hiljem tahvlis" } } });
+    expect(chip()).toBe("signedOut");
+    getReply = () => json({ ok: true, plan: PLAN, answers: server, auto: {}, you: MARIA });
+    await click($("[data-refresh]")!);
+    expect(chip()).toBeNull();
   });
 
-  test("the 'Vead' filter hides the done and the open checks; 'Avatud' keeps the open ones; 'Muudetud' the marked ones; every area with a match is open", async () => {
-    await showAll();
-    await click($('[data-filter="bad"]')!);
-    expect($('[data-filter="bad"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect(ids()).toEqual(["a1-fail"]);
-    expect($$("[data-area]").map((a) => a.getAttribute("data-area"))).toEqual(["a1"]); // (an area without a match, and the notes, are not shown)
-    await click($('[data-filter="open"]')!);
-    expect(ids()).toEqual(["a1-redo", "a1-plain", "a2-fresh", "a2-dim"]);
-    await click($('[data-filter="changed"]')!);
-    expect(ids()).toEqual(["a1-redo", "a2-fresh", "a2-dim"]);
-    await click($('[data-filter="all"]')!);
-    expect($$("[data-area]").map((a) => a.getAttribute("data-area"))).toEqual(["enne", "a0", "a1", "a2"]);
-  });
-
-  test("the 'Kes' choice 'Maria' hides a Dim check and keeps a Koos one", async () => {
-    await showAll();
-    await openAll();
-    expect(ids()).toContain("a1-redo");
-    await click($('[data-who="maria"]')!);
-    expect(ids()).not.toContain("a1-redo");
-    expect(ids()).not.toContain("a2-dim");
-    expect(ids()).toContain("a1-fail");
-    await click($('[data-who="dim"]')!);
-    expect(ids()).toEqual(expect.arrayContaining(["a1-redo", "a1-fail", "a2-dim"]));
-    expect(ids()).not.toContain("a1-plain");
-    await click($('[data-who="koos"]')!);
-    expect(ids()).toEqual([]); // (nothing is open now, so no area starts open)
-    await click($('[data-area="a1"] [data-area-toggle]')!);
-    expect(ids()).toEqual(["a1-fail"]);
-  });
-
-  test("the choice is kept on the device: written to storage, and read by the next visit", async () => {
-    await show();
-    await click($('[data-filter="open"]')!);
-    await click($('[data-who="dim"]')!);
-    expect(JSON.parse(localStorage.getItem("mslab-testplan-view")!)).toEqual({ filter: "open", who: "dim" });
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await show();
-    expect($('[data-filter="open"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect($('[data-who="dim"]')!.getAttribute("aria-pressed")).toBe("true");
-    localStorage.setItem("mslab-testplan-view", "{not json");
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await show();
-    expect($('[data-who="maria"]')!.getAttribute("aria-pressed")).toBe("true"); // (rubbish: the defaults)
-  });
-
-  test("a storage that cannot be written still lets the filters work", async () => {
-    await show();
-    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("full", "QuotaExceededError");
-    });
-    await click($('[data-filter="bad"]')!);
-    expect(ids()).toEqual(["a1-fail"]);
-    set.mockRestore();
-  });
-
-  test("the database is down (initial: null): the page says offline, still shows every check, and answers can still be given", async () => {
+  test("the database is down (initial: null): no chip, every check shown open, and a press is kept and retried", async () => {
     await showAll({ initial: null });
-    expect(status()).toBe("Vastuseid ei saa praegu salvestada; need on selles seadmes alles.");
+    expect(chip()).toBeNull();
     await openAll();
     expect(ids()).toEqual(["a0-done", "a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
     expect($$("[data-check-state]").every((c) => c.getAttribute("data-check-state") === "open")).toBe(true);
-    expect($("[data-progress]")!.textContent).toBe("0 / 6 tehtud · 0 viga · 0 uuesti testida");
-    // the press is kept (the API says 503 again) and shown
+    expect(line()).toBe("6 kontrolli · 0 läbitud · 0 viga");
     putReply = async () => json({ ok: false, error: "unavailable" }, 503);
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(state("a1-plain")).toBe("done");
     expect(JSON.parse(localStorage.getItem(OUTBOX_KEY)!)["a1-plain"]).toMatchObject({ status: "ok" });
-    expect(status()).toBe("Salvestamata — proovin uuesti");
+    expect(chip()).toBe("retry");
   });
 
-  test("the database is down on a device that cannot keep answers (no storage): no 'offline' text, which would promise they are kept here; a press is retrying", async () => {
-    const blocked = vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-      throw new DOMException("blocked", "SecurityError");
-    });
-    try {
-      await show({ initial: null, you: { name: "Kati", tester: null } });
-      expect(status()).toBe("");
-      expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("idle");
-      putReply = async () => json({ ok: false, error: "unavailable" }, 503);
-      await openAll();
-      await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
-      expect(state("a1-plain")).toBe("done");
-      expect(status()).toBe("Salvestamata — proovin uuesti");
-    } finally {
-      blocked.mockRestore();
-    }
-  });
-
-  test("a GET that is not ok, or not JSON (a 500 page), is the same as the database being down: the plan and the answers stay, the page says offline", async () => {
+  test("a GET that is not ok, or not JSON (a 500 page), or no connection keeps what was read before; the database back, „Värskenda“ reads again", async () => {
     await showAll();
-    expect(status()).toBe("");
     getReply = () => new Response("<html>Internal Server Error</html>", { status: 500 });
     await click($("[data-refresh]")!);
-    expect(status()).toBe("Vastuseid ei saa praegu salvestada; need on selles seadmes alles.");
+    expect(chip()).toBeNull();
     await openAll();
     expect(ids()).toHaveLength(6);
     expect(state("a1-fail")).toBe("failed"); // (what was read before is still shown)
-    // the connection itself fails
     getReply = () => {
       throw new TypeError("Failed to fetch");
     };
     await click($("[data-refresh]")!);
-    expect(status()).toContain("Vastuseid ei saa");
-    // the database is back: 'Värskenda' reads again and the notice goes
+    expect(state("a1-fail")).toBe("failed");
     server = { ...SERVER, "a1-plain": answer("ok", "2026-10-16T11:30:00.000Z", "Dim") };
     getReply = () => json({ ok: true, plan: PLAN, answers: server, you: MARIA });
     await click($("[data-refresh]")!);
-    expect(status()).toBe("");
     expect(state("a1-plain")).toBe("done");
   });
 
   test("with the database down at the start, the first good read fills the answers in", async () => {
     await showAll({ initial: null });
-    expect(status()).toContain("Vastuseid ei saa");
     server = { ...SERVER };
     getReply = () => json({ ok: true, plan: PLAN, answers: server, you: MARIA });
     await click($("[data-refresh]")!);
-    expect(status()).toBe("");
     await openAll();
     expect(state("a1-fail")).toBe("failed");
   });
 
-  test("every load reads the answers again, and 'Värskenda' reads them again: what the other admin answered shows without a reload", async () => {
+  test("every load reads the answers again, and „Värskenda“ reads them again: what the other admin answered shows without a reload", async () => {
     await showAll();
     expect(calls.filter((c) => c.method === "GET")).toHaveLength(1);
     expect(state("a1-plain")).toBe("open");
@@ -489,7 +605,7 @@ describe("TestPlan", () => {
     expect(state("a1-fail")).toBe("done");
     await click($("[data-refresh]")!);
     expect(state("a1-fail")).toBe("done"); // (the server still says Viga)
-    expect(status()).toBe("Salvestamata — proovin uuesti");
+    expect(chip()).toBe("retry");
     expect(check("a1-fail").querySelector("[data-check-last]")).toBeNull();
   });
 
@@ -502,51 +618,20 @@ describe("TestPlan", () => {
     await settle(); // (the read on load is still on its way)
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(state("a1-plain")).toBe("done");
-    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 15:00 · OK"); // (the save's answer)
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 15:00 · Läbitud"); // (the save's answer)
     await act(async () => release(stale));
     await settle();
     expect(state("a1-plain")).toBe("done"); // (the read saw the answers before the save)
     expect(check("a1-plain").querySelector("[data-check-last]")).not.toBeNull();
   });
 
-  test("answers left on the device by an earlier visit are sent at once and shown", async () => {
+  test("answers left on the device by an earlier visit (one signed out, say) are sent at once and shown", async () => {
     localStorage.setItem(OUTBOX_KEY, JSON.stringify({ "a1-plain": { status: "bad", note: "Jäi saatmata", clientAt: "2026-10-16T09:00:00.000Z" } }));
     await showAll();
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "bad", note: "Jäi saatmata" } } }]);
     expect(state("a1-plain")).toBe("failed");
     expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
-  });
-
-  test("the save status: saved after a send, retrying while it fails", async () => {
-    await showAll();
-    expect(status()).toBe("");
-    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
-    expect(status()).toBe("Salvestatud");
-    expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("saved");
-    putReply = async () => {
-      throw new TypeError("Failed to fetch");
-    };
-    await click($('[data-area="a2"] [data-area-toggle]')!);
-    await click(check("a2-fresh").querySelector('[data-answer="skip"]')!);
-    expect(status()).toBe("Salvestamata — proovin uuesti");
-    expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("retrying");
-    expect(pressed("a2-fresh")).toEqual(["skip"]); // (her press is shown all the same)
-  });
-
-  test("a link to a check (#id) opens its area and shows the check, whatever the filters say", async () => {
-    window.location.hash = "#a2-fresh";
-    await show({ you: { name: "Dim", tester: "dim" } }); // (Dim's view hides Maria's checks)
-    expect(ids()).toContain("a2-fresh");
-    expect($('[data-area="a2"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("true");
-  });
-
-  test("a check called 'constructor' or 'valueOf' is not answered because Object.prototype has such a member", async () => {
-    const plan: Plan = { ...PLAN, areas: [{ id: "a", name: "Osa" }], items: [item("constructor", "a", "maria"), item("valueOf", "a", "maria")] };
-    server = {};
-    await act(async () => root.render(createElement(TestPlan, { plan, initial: {}, you: MARIA, buildAt: BUILD_AT })));
-    await settle();
-    expect($$("[data-check-state]").map((c) => c.getAttribute("data-check-state"))).toEqual(["open", "open"]);
-    expect($("[data-progress]")!.textContent).toBe("0 / 2 tehtud · 0 viga · 0 uuesti testida");
+    expect(chip()).toBe("saved");
   });
 });
 
@@ -557,7 +642,7 @@ describe("a tap while the page is still loading", () => {
   };
 
   test("a tap that hydration replays (the page's effects have not drawn yet) is sent; a Viga then, and the note typed after it, are saved as Viga with that note", async () => {
-    // a1-plain holds an OK with a note; an admin who sees every check, so the area a1 is open in the server's HTML as well
+    // a1-plain holds a pass with a note; an admin who sees every check, so the area a1 is open in the server's HTML as well
     const initial = { ...SERVER, "a1-plain": answer("ok", "2026-10-16T10:30:00.000Z", "Maria", "Tahvlis korras") };
     server = { ...initial };
     const props = { plan: PLAN, initial, you: { name: "Kati", tester: null }, buildAt: BUILD_AT };
@@ -601,23 +686,20 @@ describe("Automaattest (Dim 25.10)", () => {
   const autoLine = (id: string) => check(id).querySelector("[data-check-auto]")?.textContent ?? null;
   const autoNote = (id: string) => check(id).querySelector("[data-check-auto-note]")?.textContent ?? null;
 
-  test("for Maria: one quiet line „Automaattest: OK · 16.10 15:05“ under each check it answered, with its note; her own answers and counts are as without it", async () => {
-    // (the page's own numbers, states and last answers: what Automaattest's answers must leave as they are)
-    const seen = () => ({ progress: $("[data-progress]")!.textContent, states: ids().map((id) => state(id!)), last: $$("[data-check-last]").map((p) => p.textContent) });
+  test("for Maria: one quiet line „Automaattest: Läbitud · 16.10 15:05“ under each check it answered, with its note; her own answers and counts are as without it", async () => {
+    const seen = () => ({ line: line(), pills: pills("olek"), states: ids().map((id) => state(id!)), last: $$("[data-check-last]").map((p) => p.textContent) });
     await showAll();
     await openAll();
     const without = seen();
-    await act(async () => root.unmount());
-    root = createRoot(container);
+    await remount();
 
     await showAll({ auto: AUTO_ANSWERS });
     await openAll();
-    expect(autoLine("a1-plain")).toBe("Automaattest: OK · 16.10 15:05");
+    expect(autoLine("a1-plain")).toBe("Automaattest: Läbitud · 16.10 15:05");
     expect(autoNote("a1-plain")).toBe("Kõik sammud läbitud.");
-    expect(autoLine("a1-fail")).toBe("Automaattest: OK · 16.10 15:06");
+    expect(autoLine("a1-fail")).toBe("Automaattest: Läbitud · 16.10 15:06");
     expect(autoNote("a1-fail")).toBeNull();
     expect(autoLine("a0-done")).toBeNull();
-    // never her answer: a1-plain stays open with no button pressed, a1-fail stays her Viga
     expect(state("a1-plain")).toBe("open");
     expect(pressed("a1-plain")).toEqual([]);
     expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
@@ -636,41 +718,38 @@ describe("Automaattest (Dim 25.10)", () => {
   test("Maria's press on a check Automaattest answered saves her answer only, and its line stays", async () => {
     await showAll({ auto: AUTO_ANSWERS });
     await openAll();
-    await click(check("a1-plain").querySelector('[data-answer="skip"]')!);
-    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "skip", note: "" } } }]);
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "ok", note: "" } } }]);
     expect(state("a1-plain")).toBe("done");
-    expect(autoLine("a1-plain")).toBe("Automaattest: OK · 16.10 15:05");
+    expect(autoLine("a1-plain")).toBe("Automaattest: Läbitud · 16.10 15:05");
     expect((check("a1-plain").querySelector("[data-check-note]") as HTMLTextAreaElement).value).toBe(""); // (its note is not hers)
   });
 
-  test("the 'Kes' choice „Automaattest“ shows the checks Automaattest answered and nothing else, and is kept on the device", async () => {
+  test("the „Kes“ choice „Automaattest“ shows the checks Automaattest answered and nothing else, counted in „Olek“, and is kept on the device", async () => {
     await showAll({ auto: AUTO_ANSWERS });
-    const pill = $('[data-who="auto"]')!;
-    expect(pill.textContent).toBe("Automaattest");
-    expect($$("[data-who]").map((b) => b.textContent)).toEqual(["Kõik", "Maria", "Dim", "Koos", "Automaattest"]);
-    await click(pill);
-    expect(pill.getAttribute("aria-pressed")).toBe("true");
+    await click(kes("auto"));
+    expect(kes("auto").getAttribute("aria-pressed")).toBe("true");
     await openAll();
     expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain"]);
+    // (the counts are Maria's answers on those checks: a1-redo open again, a1-fail her Viga, a1-plain open)
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 2", "Viga 1", "Läbitud 0"]);
     expect(JSON.parse(localStorage.getItem("mslab-testplan-view")!)).toEqual({ filter: "all", who: "auto" });
   });
 
-  test("the Automaattest session sees every check (Kes: Kõik) as „Sina: Automaattest“, its own answers as the checks' answers and no quiet line; a press saves its answer", async () => {
+  test("the Automaattest session sees every check under „Mina“, its own answers as the checks' answers and no quiet line; a press saves its answer", async () => {
     await show({ initial: AUTO_ANSWERS, auto: AUTO_ANSWERS, you: AUTO_YOU });
-    expect($('[data-who="all"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect($("[data-you]")!.textContent).toBe("Sina: Automaattest");
+    expect(kes("mina").getAttribute("aria-pressed")).toBe("true");
     await openAll();
     expect(ids()).toEqual(["a0-done", "a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
-    // its own: a1-fail and a1-plain done, a1-redo open over its overtaken Viga, the rest open
-    expect($("[data-progress]")!.textContent).toBe("2 / 6 tehtud · 0 viga · 1 uuesti testida");
+    // its own: a1-fail and a1-plain passed, a1-redo open over its overtaken Viga, the rest open
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 0 viga");
     expect($$("[data-check-auto]")).toEqual([]);
     expect(pressed("a1-plain")).toEqual(["ok"]);
-    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Automaattest · 16.10 15:05 · OK");
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Automaattest · 16.10 15:05 · Läbitud");
     expect(check("a1-redo").querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): Viga");
     await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "bad", note: "Kõik sammud läbitud." } } }]);
-    // its „Kes: Automaattest“ is the checks it answered
-    await click($('[data-who="auto"]')!);
+    await click(kes("auto"));
     await openAll();
     expect(ids()).toEqual(["a1-redo", "a1-fail", "a1-plain"]);
   });

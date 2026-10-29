@@ -13,11 +13,13 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: adminTitle(adminEt.testplan.title) };
 
 /**
- * Testimine (phase 4, piece 1, spec §4): the plan's checks for Maria and Dim to answer, with both admins' answers together. Not in the menu:
- * it is a tool until the launch, reached from the card on Avaleht (the shell marks Avaleht). The plan is the bundle's own file, so the page has
- * it when the database does not; the answers are read here too, and when they cannot be (`initial: null`) the page says so and keeps the
- * tester's answers on the device until they can be sent (TestPlan.tsx). Whose session it is comes from ADMIN_NAMES (testplanYou). Dim 25.10:
- * Automaattest's answers come apart (`auto`); for Automaattest's own session they are its answers (server/testplan.ts pageView).
+ * Testimine (phase 4, piece 1, spec §4): the plan's checks for Maria and Dim to answer, with both admins' answers together. It is in the menu for
+ * every admin, under „Haldus“ (admin UX pass, Q5), with the admin's own „Viga“ checks as its number. The plan is the bundle's own file, so the page
+ * has it when the database does not; the answers are read here too, and when they cannot be (`initial: null`) the page shows every check open and
+ * keeps the tester's answers on the device until they can be sent (TestPlan.tsx). Whose session it is comes from ADMIN_NAMES (testplanYou). Dim
+ * 25.10: Automaattest's answers come apart (`auto`); for Automaattest's own session they are its answers (server/testplan.ts pageView).
+ * The header (the eyebrow, the H1, the line of counts, SaveStatus, „Värskenda“) is TestPlan's own since admin UX pass piece 4c: its numbers and
+ * its status are the browser's.
  */
 export default async function TestimiPage() {
   const email = await requireAdmin();
@@ -32,11 +34,6 @@ export default async function TestimiPage() {
 
   return (
     <div className={ui.page}>
-      <div className={ui.heading}>
-        <div>
-          <h1 className={ui.h1}>{adminEt.testplan.title}</h1>
-        </div>
-      </div>
       <TestPlan plan={testPlan} initial={view?.answers ?? null} auto={view?.auto} you={you} buildAt={testplanBuildAt()} />
     </div>
   );

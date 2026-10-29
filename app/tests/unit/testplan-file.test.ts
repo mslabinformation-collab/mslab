@@ -7,6 +7,7 @@ import { appliesAt, checkPlan, type TestItem, type TestPlan } from "@/domain/tes
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
+import { fill } from "@/i18n/format";
 import { paymentAlertSummary } from "@/server/messages";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
@@ -1075,14 +1076,17 @@ describe("the review tools' checks (22.10)", () => {
   };
   const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect].join("\n");
 
-  test("the test page's Telegram check is redo, and says the first note of an OK pings too, with the answer at the end", () => {
+  test("the test page's Telegram check is redo, and says the first note of a pass pings too, with the answer at the end", () => {
     const check = find("kirjad-testimine-telegram");
     expect(check.mark).toBe("redo");
     expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).not.toBeNull();
     const expectText = check.expect.join("\n");
     expect(expectText).toContain("„Testimine — Märkus: … · Viga“");
-    expect(expectText).toContain("„Testimine — Märkus: … · OK“");
+    // admin UX pass piece 4c (R-i): the pass is „Läbitud“ on the button and in the message; a redo from that deploy (what the message says changed)
+    expect(expectText).toContain(`„Testimine — Märkus: … · ${adminEt.testplan.ok}“`);
+    expect(check.steps.join("\n")).toContain(`juures „${adminEt.testplan.ok}“`);
+    expect(whole("kirjad-testimine-telegram")).not.toContain("„OK“");
     expect(expectText).toContain("Teine proov");
   });
 
@@ -1115,20 +1119,83 @@ describe("the review tools' checks (22.10)", () => {
 describe("the Automaattest check (Dim 25.10)", () => {
   const t = adminEt.testplan;
 
-  test("a new check of its own: Dim's, on a computer, writing nothing, marked new since the deploy, in Haldus", () => {
+  test("a check of its own: Dim's, on a computer, writing nothing, in Haldus; reworded in piece 4c (the answers' words), so it reopens nothing", () => {
     const check = plan.items.find((c) => c.id === "testimine-automaattest");
     expect(check, "testimine-automaattest").toBeDefined();
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "reworded", href: "/admin/testimine" });
     expect(markedSince(check!.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
-    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-26T00:00:00.000Z")).toBeNull(); // a new check reopens nothing
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-26T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
   });
 
-  test("it quotes the page's words: the „Kes“ choice, the quiet line with its status words, the overtaken answer and the own answer's line", () => {
+  test("it quotes the page's words: the „Kes“ choice, the quiet line with its status words, the empty selection, the overtaken answer and the own answer's line", () => {
     const check = plan.items.find((c) => c.id === "testimine-automaattest")!;
     const text = [...check.steps, ...check.expect].join("\n");
-    for (const word of [`„${t.who.label}“`, `„${t.who.auto}“`, `„${t.who.all}“`, `„${t.skip}“`, `„${t.who.auto}: ${t.ok} · …“`, `„${t.bad}“`, `„${t.mark.redo}“`, "„Dim · … · …“"])
+    const empty = fill(adminEt.lists.emptyFiltered, { asju: t.things });
+    for (const word of [`„${t.who.label}“`, `„${t.who.auto}“`, `„${t.who.all}“`, `„${t.who.auto}: ${t.ok} · …“`, `„${t.bad}“`, `„${empty}“`, "„Dim · … · …“"])
       expect(text, word).toContain(word);
     expect(text).toContain(`„${t.who.auto}: ${t.overtaken.replace(" {status}", "")}“`);
+  });
+});
+
+// Admin UX pass piece 4c, Task 4 (C7): the test page's filter row, the areas' progress, „Sammud ▸“ and the signed-out state get a check of their
+// own; the words that left the page („OK“, „Jäta vahele“, the marks' tags, „Muudetud“) leave the plan too.
+describe("C7 Testimine (admin UX pass piece 4c, Task 4)", () => {
+  const t = adminEt.testplan;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+
+  test("a new check in Haldus, Dim's, on a computer: the line under the H1, both filter groups, the empty selection, an area's progress, „Sammud ▸“, signed out and back", () => {
+    const check = find("testimine-filtrid-valjalogitud");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const text = whole("testimine-filtrid-valjalogitud");
+    const empty = fill(adminEt.lists.emptyFiltered, { asju: t.things });
+    for (const words of [
+      `„${t.eyebrow}“`,
+      `„… kontrolli · … läbitud · … viga“`,
+      `„${t.filter.label}“`,
+      `„${t.who.label}“`,
+      `„${t.who.mina}“`,
+      `„${t.who.all}“`,
+      `„${t.who.auto}“`,
+      `„${t.filter.open.replace("{n}", "…")}“`,
+      `„${t.filter.bad.replace("{n}", "…")}“`,
+      `„${t.filter.done.replace("{n}", "…")}“`,
+      `„${empty}“`,
+      `„${t.steps} ▸“`,
+      `„${t.expect}“`,
+      `„${t.why}“`,
+      `„${adminEt.autosave.signedOut}“`,
+      `„${adminEt.autosave.saved.replace("{time}", "…")}“`,
+    ])
+      expect(text, words).toContain(words);
+    // (it sits right after the Automaattest check, in Haldus)
+    const ids = plan.items.map((c) => c.id);
+    expect(ids.indexOf("testimine-filtrid-valjalogitud")).toBe(ids.indexOf("testimine-automaattest") + 1);
+  });
+
+  test("no check presses „OK“ or „Jäta vahele“ or names the marks' tags or „Muudetud“ on the test page any more; one that cannot be done now is left open", () => {
+    const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((l) => `${c.id}: ${l}`));
+    expect(lines.filter((l) => /„OK“|· OK“|Jäta vahele|„Uuesti testida“|„Sõnastus muutus“|Sina: /.test(l))).toEqual([]);
+    for (const id of ["kontakt-tana", "kontakt-protokollid-tana-otse", "registreerimine-ootenimekiri", "registreerimine-arveta-makse-paneelis", "registreerimine-arveta-maksed", "registreerimine-arve-tagastatud", "registreerimine-jarelmaks-hiline", "kirjad-ootenimekiri", "kirjad-maria-ootenimekiri"])
+      expect(whole(id), id).toMatch(/jäta (see|ka see|kontroll) avatuks/);
+  });
+
+  test("the swept checks are reworded from the deploy, and a redo stays the redo it was (a weaker mark would let an older answer stand)", () => {
+    for (const id of ["haldus-menuu-margid", "koristamine-aadressid", "registreerimine-ootenimekiri", "kontakt-protokollid-tana-otse", "kirjad-ootenimekiri", "kirjad-maria-ootenimekiri"]) {
+      expect(find(id).mark, id).toBe("reworded");
+      expect(find(id).markedAt, id).toBe("deploy");
+    }
+    for (const id of ["registreerimine-arveta-makse-paneelis", "registreerimine-arveta-maksed", "registreerimine-arve-tagastatud", "registreerimine-jarelmaks-hiline", "kontakt-tana"]) {
+      expect(find(id).mark, id).toBe("redo");
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+    expect(whole("haldus-menuu-margid")).toContain(`juba „${t.ok}“ kontroll tulemusega „${t.bad}“`);
+    expect(whole("koristamine-aadressid")).toContain(`vajuta „${t.ok}“.`);
   });
 });
 
