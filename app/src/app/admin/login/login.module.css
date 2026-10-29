@@ -1,4 +1,6 @@
-/* Admin login: a white card on the canvas colour, the public site's tokens and fonts. */
+/* Admin login (C8, piece 4c; P3 frames „C8 Login“): a white card on the canvas colour, the public site's tokens and fonts. The card is 460px wide
+   in the desktop frame (44px padding) and the phone's width less its gutter in the 390 frame (28px padding); radius 28, 14px between its parts.
+   The field is the admin's (radius 10, border #d9d2d5, as every admin input). */
 
 .page {
   display: grid;
@@ -11,8 +13,7 @@
 .card {
   width: 100%;
   max-width: 460px;
-  padding: clamp(28px, 6vw, 48px);
-  border: 1px solid var(--line);
+  padding: clamp(28px, 6vw, 44px);
   border-radius: var(--r-tile);
   background: var(--paper);
 }
@@ -22,7 +23,7 @@
   align-items: center;
   width: 140px;
   height: 55px;
-  margin: -8px 0 20px -2px;
+  margin: -8px 0 14px -2px;
 }
 
 .logo img {
@@ -34,33 +35,41 @@
 
 .title {
   margin: 0;
-  font: 400 clamp(28px, 6vw, 36px) / 1.1 var(--font-display);
+  font: 300 clamp(28px, 6vw, 34px) / 1.1 var(--font-display);
   letter-spacing: -0.01em;
 }
 
 .lead {
-  margin: 12px 0 28px;
+  margin: 14px 0;
   color: #3a3437;
-  font: 400 15px/1.55 var(--font-body);
+  font: 400 14px/1.5 var(--font-body);
 }
 
 .label {
   display: block;
-  margin-bottom: 8px;
-  font: 500 13px/1.4 var(--font-body);
-  letter-spacing: 0.01em;
+  margin-bottom: 6px;
+  font: 600 12px/1.3 var(--font-body);
+}
+
+/* the field, with „Muu aadress“ inside its right end while it holds the remembered address */
+.field {
+  position: relative;
 }
 
 .input {
   display: block;
   width: 100%;
-  min-height: 49px;
-  padding: 14px 20px;
-  border: 1px solid #c6b8c0;
-  border-radius: 99px;
-  background: #f9f6f8;
+  min-height: 48px;
+  padding: 12px 15px;
+  border: 1px solid #d9d2d5;
+  border-radius: 10px;
+  background: var(--paper);
   color: var(--ink);
-  font: 400 16px/1.2 var(--font-body); /* 16px: iOS does not zoom into the field */
+  font: 400 16px/1.4 var(--font-body); /* 16px, not the frame's 15: iOS does not zoom into the field */
+}
+
+.field[data-remembered] .input {
+  padding-right: 120px;
 }
 
 .input:focus {
@@ -71,13 +80,31 @@
   border-color: var(--bad);
 }
 
+/* „Muu aadress“ in the field: underlined, a 44px tap target within the field's 48px */
+.other {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 .submit {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   min-height: 49px;
-  margin-top: 16px;
+  margin-top: 14px;
   padding: 13px 24px;
   border: 1px solid var(--ink);
   border-radius: 99px;
@@ -113,7 +140,7 @@
 
 /* The "link did not work" notice above the form. */
 .notice {
-  margin: 0 0 22px;
+  margin: 0 0 14px;
   color: var(--bad);
   font: 500 14px/1.45 var(--font-body);
 }
@@ -132,31 +159,41 @@
   border-radius: 6px;
 }
 
+/* the sent state (the 390 frame): „Link on teel“, the address in bold, the hint, and „Muu aadress“ as an outlined pill */
 .sentTitle {
   margin: 0;
-  font: 400 24px/1.15 var(--font-display);
+  font: 300 26px/1.1 var(--font-display);
 }
 
 .sent {
   margin: 12px 0 0;
-  font: 400 16px/1.55 var(--font-body);
-}
-
-.hint {
-  margin: 8px 0 0;
-  color: #61555d;
+  color: #3a3437;
   font: 400 14px/1.5 var(--font-body);
 }
 
-.again {
+.sent b {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font: 400 13px/1.5 var(--font-body);
+}
+
+.sentOther {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   min-height: 44px;
-  margin-top: 16px;
-  padding: 0;
-  border: 0;
+  margin-top: 12px;
+  padding: 0 20px;
+  border: 1px solid #b9b1b5;
+  border-radius: 99px;
   background: none;
   color: var(--ink);
-  font: 500 14px/1.2 var(--font-body);
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  font: 600 13px/1.2 var(--font-body);
   cursor: pointer;
 }

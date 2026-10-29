@@ -145,6 +145,9 @@ const BROWSER_FILES = [
   "src/components/admin/news/news-view.ts",
   // piece 4c, Task 1 review M-2: the UndoBar's time and the purges' minimum as one fact (pure, imports nothing; the bar runs it in the browser)
   "src/domain/undo.ts",
+  // piece 4c, Task 5: the admin's way back after signing in (B19), which SaveStatus's „logi uuesti sisse“ link builds in the browser (pure; it pulls
+  // lib/site-gate.ts with lib/preview-cookie.ts and lib/root-files.ts)
+  "src/lib/admin-return.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

@@ -1,17 +1,23 @@
 import type { BrowserContext, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { ADMIN, lockLogin, unlockLogin } from "./admin-login";
-import { authTestEmail, expireAuthToken, removeAdminRows, sessionExists, storedAuthTokens } from "./fixtures";
+import { ADMIN, freeLoginAddress, lockLogin, unlockLogin } from "./admin-login";
+import { authTestEmail, expireAuthToken, onLocalDb, removeAdminRows, sessionExists, storedAuthTokens } from "./fixtures";
 import { PROD_BUILD } from "./target";
 
 // Task 11: admin sign-in by magic link. The tests that sign in or ask for a link run against the local dev server only.
 // The only allowed address they ask a link for is Dim's (never Maria's: tests/unit/test-addresses.test.ts); locally the
 // answer carries the link as devLink and nothing is e-mailed (server/login.ts). A link for Dim is asked for and used up
 // (or deleted) under the login lock that every worker shares (admin-login.ts), so the parallel workers never reach the
-// per-address cap. The tests delete the token and session rows they created. The GET-only tests also run against a
-// deployment.
+// per-address cap, and the address's request count (B20: 3 in 10 minutes) is cleared right before each request. The tests
+// delete the token and session rows they created. The GET-only tests also run against a deployment.
+// Piece 4c, Task 5 (C8): the remembered address and „Muu aadress“ (R-h), the deep link after signing in (B19, R-f), and the 4th request's own
+// message (B20, R-g), the same for an allowed and an unknown address.
 
-const SENT = "Kui see aadress on lubatud, saatsime sisselogimislingi.";
+const SENT_TITLE = "Link on teel";
+/** The sent state's sentence (S4-47c), the same for any address: the address typed is in it. */
+const sentTo = (address: string) => `Saatsime lingi aadressile ${address.trim()}. See kehtib 15 minutit.`;
+const SENT_HINT = "Kirja pole? Vaata rämpsposti või saada uuesti 1 minuti pärast.";
+const ADDRESS_LIMIT = "Saatsid juba 3 linki. Proovi 10 minuti pärast uuesti.";
 const BUTTON = "Saada sisselogimislink";
 const LINK_ERROR = "See sisselogimislink on aegunud või juba kasutatud. Telli uus link.";
 const DAY = 24 * 60 * 60;
@@ -65,7 +71,10 @@ async function submitLogin(page: Page, address: string): Promise<Answer> {
       )
       .catch(reject),
   );
-  if (isAdmin(address)) await lockLogin(); // given back once the link is used (sessionCookie) or deleted
+  if (isAdmin(address)) {
+    await lockLogin(); // given back once the link is used (sessionCookie) or deleted
+    await freeLoginAddress(); // B20: the test admin asks far more often than 3 times in 10 minutes
+  }
   await page.getByLabel("E-post").fill(address);
   await page.getByRole("button", { name: BUTTON }).click();
   const a = await answer;
@@ -118,6 +127,18 @@ test.describe("guard", () => {
       expect([302, 303, 307], value).toContain(res.status());
       expect(new URL(res.headers()["location"], "http://x").pathname).toBe("/admin/login");
     }
+  });
+
+  test("B19: an admin page opened signed out sends her to the login page with the page as ?tagasi= (its query too; the fragment stays in the address bar)", async ({ page, request }) => {
+    const res = await request.get("/admin/kalender?id=uus", { maxRedirects: 0 });
+    expect([302, 303, 307]).toContain(res.status());
+    const location = new URL(res.headers()["location"], "http://x");
+    expect(location.pathname + location.search).toBe("/admin/login?tagasi=%2Fadmin%2Fkalender%3Fid%3Duus");
+    await page.goto("/admin/testimine#kirjad-halduse-link");
+    await expect(page).toHaveURL(/\/admin\/login\?tagasi=%2Fadmin%2Ftestimine#kirjad-halduse-link$/);
+    // the panel's front page needs no way back: a sign-in lands there anyway
+    const front = await request.get("/admin", { maxRedirects: 0 });
+    expect(new URL(front.headers()["location"], "http://x").search).toBe("");
   });
 
   test("the admin login endpoints answer with Cache-Control: no-store", async ({ request }) => {
@@ -187,10 +208,11 @@ for (const [address, name] of [[` ${ADMIN.toUpperCase()} `, "Dim"]] as const) {
     opensDevLink();
     const { headers, body } = await requestLink(page, address);
     expect(headers["cache-control"]).toContain("no-store");
-    // the neutral confirmation, announced in the status region, replaces the form
+    // the neutral confirmation (S4-47c), announced in the status region, replaces the form
     const status = page.locator("[data-login-status]");
-    await expect(status).toContainText(SENT);
-    await expect(status).toContainText("15 minutit");
+    await expect(status.getByRole("heading", { level: 2 })).toHaveText(SENT_TITLE);
+    await expect(status.locator("[data-login-sent]")).toHaveText(sentTo(address));
+    await expect(status).toContainText(SENT_HINT);
     await expect(status).toBeFocused();
     await expect(page.locator("[data-login-form]")).toBeHidden();
 
@@ -226,6 +248,13 @@ for (const [address, name] of [[` ${ADMIN.toUpperCase()} `, "Dim"]] as const) {
     await expect(page).toHaveURL(/\/admin\/login$/);
     expect(await sessionCookie(context)).toBeUndefined();
     expect(await sessionExists(cookie.value)).toBe(false);
+    // R-h: the login page fills in the address the link went to, with „Muu aadress“ to empty the field
+    const field = page.getByLabel("E-post");
+    await expect(field).toHaveValue(address.trim());
+    await page.getByRole("button", { name: "Muu aadress" }).click();
+    await expect(field).toHaveValue("");
+    await expect(field).toBeFocused();
+    await expect(page.getByRole("button", { name: "Muu aadress" })).toHaveCount(0);
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/admin\/login$/);
     // the old cookie value is dead even when presented again
@@ -307,12 +336,12 @@ test.describe("who can sign in", () => {
     const { status, body } = await requestLink(page, stranger);
     expect(status).toBe(200);
     expect(body).toEqual({ ok: true });
-    await expect(page.locator("[data-login-status]")).toContainText(SENT); // word for word what an allowed address sees
+    await expect(page.locator("[data-login-sent]")).toHaveText(sentTo(stranger)); // word for word what an allowed address sees
     await expect(page.locator("[data-login-status]")).toBeFocused();
     expect(await storedAuthTokens(stranger)).toEqual([]);
   });
 
-  test("the allowed and the not allowed address see the same page text", async ({ page }, info) => {
+  test("the allowed and the not allowed address see the same page text (the address they typed aside)", async ({ page }, info) => {
     submitsForms();
     const text = async (address: string) => {
       const { body } = await requestLink(page, address);
@@ -321,44 +350,147 @@ test.describe("who can sign in", () => {
         await removeAdminRows({ tokens: [tokenOf(body.devLink)] }); // never opened: deleted at once, then the lock is free
         unlockLogin();
       }
-      return shown;
+      return shown.replace(address, "{email}");
     };
     const allowed = await text(ADMIN);
     const refused = await text(authTestEmail(info.project.name));
+    expect(allowed).toContain("{email}");
     expect(refused).toBe(allowed);
   });
 
-  test("'Sisesta aadress uuesti' brings the form back with the typed address", async ({ page }, info) => {
+  test("„Muu aadress“ under the sent state brings the form back, empty, with the cursor in the field", async ({ page }, info) => {
     submitsForms();
     const stranger = authTestEmail(info.project.name);
     await requestLink(page, stranger);
-    await page.getByRole("button", { name: "Sisesta aadress uuesti" }).click();
+    await page.locator("[data-login-status]").getByRole("button", { name: "Muu aadress" }).click();
     await expect(page.locator("[data-login-form]")).toBeVisible();
     await expect(page.getByLabel("E-post")).toBeFocused();
+    await expect(page.getByLabel("E-post")).toHaveValue("");
+    // the address the link went to is remembered for the next visit all the same
+    await page.reload();
     await expect(page.getByLabel("E-post")).toHaveValue(stranger);
   });
 });
 
+// B19 (ruling R-f, Review Focus 3): the page she opened signed out is where the link lands her, its fragment included; any other way back lands
+// on /admin. Each sign-in asks for a link for Dim under the login lock, the address's count cleared first.
+test.describe("the way back after signing in (B19)", () => {
+  /** A link for Dim asked for by hand with `tagasi`, from the connection `ip` (one per few requests: the per-IP limit is 5), under the login lock. */
+  async function linkFor(page: Page, tagasi: string, ip: string): Promise<string> {
+    await lockLogin();
+    await freeLoginAddress();
+    const res = await page.request.post("/api/auth/request", { data: { email: ADMIN, tagasi }, headers: { "x-forwarded-for": ip } });
+    expect(res.status()).toBe(200);
+    const { devLink } = (await res.json()) as { devLink?: string };
+    expect(devLink, "devLink in the local answer").toBeTruthy();
+    created.tokens.add(tokenOf(devLink!));
+    return devLink!;
+  }
+
+  test("a deep link opened signed out: the login page keeps it, the mailed link carries it, and the sign-in lands on it, fragment included", async ({ page, context }) => {
+    submitsForms();
+    opensDevLink();
+    const [{ id }] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from course_sessions order by id limit 1`, { marksPages: false });
+    await page.goto(`/admin/kalender?id=${id}#proov`);
+    await expect(page).toHaveURL(new RegExp(`/admin/login\\?tagasi=%2Fadmin%2Fkalender%3Fid%3D${id}#proov$`));
+    const { body } = await submitLogin(page, ADMIN);
+    // the link carries the way back as one encoded value, the fragment the form added included
+    expect(body.devLink).toContain(`&tagasi=%2Fadmin%2Fkalender%3Fid%3D${id}%23proov`);
+    expect(new URL(body.devLink!).searchParams.get("tagasi")).toBe(`/admin/kalender?id=${id}#proov`);
+    await page.goto(pathOf(body.devLink!));
+    await expect(page).toHaveURL(new RegExp(`/admin/kalender\\?id=${id}#proov$`));
+    await expect(page.locator("[data-drawer]").first()).toBeVisible(); // the session's drawer, as she asked for it
+    expect(await sessionCookie(context), "session cookie").toBeTruthy();
+  });
+
+  test("Review Focus 3: a way back that is not an admin page of this site lands on /admin: on the page, in the request and in a link it was forged into", async ({ page, context, visitorIp }) => {
+    submitsForms();
+    opensDevLink();
+    // on the login page: dropped there, so the form sends none
+    await page.goto(`/admin/login?tagasi=${encodeURIComponent("//evil.example/admin")}`);
+    const { body } = await submitLogin(page, ADMIN);
+    expect(new URL(body.devLink!).searchParams.has("tagasi")).toBe(false);
+    await page.goto(pathOf(body.devLink!));
+    await expect(page).toHaveURL(/\/admin$/);
+    await sessionCookie(context);
+    // sent by hand: the request drops it, so the link carries none
+    for (const tagasi of ["/\\evil.example", "%2F%2Fevil.example", "/admin/login", "/admin/kalen\tder", "/admin/kalender\n"]) {
+      const link = await linkFor(page, tagasi, `a-${visitorIp}`);
+      expect(new URL(link).searchParams.has("tagasi"), JSON.stringify(tagasi)).toBe(false);
+      await page.goto(pathOf(link));
+      await expect(page, JSON.stringify(tagasi)).toHaveURL(/\/admin$/);
+      await sessionCookie(context);
+    }
+    // forged into a good link: the link checks it again
+    for (const forged of ["//evil.example", "/\\evil.example", "/admin/%2F%2Fevil", `/admin/${"k".repeat(300)}`]) {
+      const link = await linkFor(page, "/admin/maksed", `f-${visitorIp}`);
+      await page.goto(`${pathOf(link).replace(/&tagasi=[^&]*/, "")}&tagasi=${encodeURIComponent(forged)}`);
+      await expect(page, forged).toHaveURL(/\/admin$/);
+      await sessionCookie(context);
+    }
+  });
+});
+
 test.describe("limits", () => {
-  test("5 requests per 10 minutes per visitor, then a polite message", async ({ page }, info) => {
+  // B20 (ruling R-g, Review Focus 4): 3 requests per typed address in 10 minutes, allowed or not; the 4th says so instead of claiming a link was sent.
+  test("B20: the 4th request for one address says „Saatsid juba 3 linki…“ (429 `address`), the same for an unknown and the allowed address", async ({ page, visitorIp }, info) => {
     submitsForms();
     await page.goto("/admin/login");
     const stranger = authTestEmail(info.project.name);
-    const statuses = await page.evaluate(async (address) => {
-      const out: number[] = [];
-      for (let i = 0; i < 5; i++) {
-        const r = await fetch("/api/auth/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: address }) });
-        out.push(r.status);
-      }
-      return out;
-    }, stranger);
-    expect(statuses).toEqual([200, 200, 200, 200, 200]);
+    /** One request by hand from the connection `ip` (the server keeps an address's first 64 characters: the prefix makes it another one). */
+    const ask = async (email: string, ip: string) => {
+      const res = await page.request.post("/api/auth/request", { data: { email }, headers: { "x-forwarded-for": ip } });
+      const body = (await res.json()) as { ok: boolean; error?: string; devLink?: string };
+      if (body.devLink) created.tokens.add(tokenOf(body.devLink));
+      return { status: res.status(), ok: body.ok, error: body.error };
+    };
+    // four for the unknown address
+    const unknown = [];
+    for (let i = 0; i < 4; i++) unknown.push(await ask(stranger, `u-${visitorIp}`));
+    // four for the allowed one, from another connection, under the login lock (its links are deleted before the lock is given back)
+    await lockLogin();
+    await freeLoginAddress();
+    const allowed = [];
+    for (let i = 0; i < 4; i++) allowed.push(await ask(ADMIN, `a-${visitorIp}`));
+    await removeAdminRows({ tokens: created.tokens });
+    await freeLoginAddress();
+    unlockLogin();
+    const ok = { status: 200, ok: true, error: undefined };
+    expect(unknown).toEqual([ok, ok, ok, { status: 429, ok: false, error: "address" }]);
+    expect(allowed).toEqual(unknown);
+    expect(await storedAuthTokens(stranger)).toEqual([]);
+
+    // the page: the 5th for the unknown address, from this visitor's own connection, says so instead of claiming a link was sent
     await page.getByLabel("E-post").fill(stranger);
     await page.getByRole("button", { name: BUTTON }).click();
     const alert = page.locator("main").getByRole("alert");
+    await expect(alert).toHaveText(ADDRESS_LIMIT);
+    await expect(alert).toBeFocused();
+    await expect(page.locator("[data-login-status]")).toBeEmpty();
+    await expect(page.getByLabel("E-post")).toHaveValue(stranger);
+  });
+
+  test("5 requests per 10 minutes per visitor (any addresses), then a polite message (429 `rate`)", async ({ page }, info) => {
+    submitsForms();
+    await page.goto("/admin/login");
+    const strangers = Array.from({ length: 6 }, () => authTestEmail(info.project.name));
+    const answers = await page.evaluate(async (addresses) => {
+      const out: { status: number; error?: string }[] = [];
+      for (const address of addresses.slice(0, 5)) {
+        const r = await fetch("/api/auth/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: address }) });
+        out.push({ status: r.status, error: ((await r.json()) as { error?: string }).error });
+      }
+      return out;
+    }, strangers);
+    expect(answers).toEqual(Array.from({ length: 5 }, () => ({ status: 200 })));
+    await page.getByLabel("E-post").fill(strangers[5]);
+    const refused = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/auth/request");
+    await page.getByRole("button", { name: BUTTON }).click();
+    expect((await refused).status()).toBe(429);
+    const alert = page.locator("main").getByRole("alert");
     await expect(alert).toHaveText("Liiga palju katseid. Proovi mõne minuti pärast.");
     await expect(alert).toBeFocused();
-    expect(await storedAuthTokens(stranger)).toEqual([]);
+    for (const s of strangers) expect(await storedAuthTokens(s)).toEqual([]);
   });
 
   test("only JSON is accepted, and logout is POST only", async ({ request }) => {

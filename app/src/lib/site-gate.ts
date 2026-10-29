@@ -70,9 +70,10 @@ const THROUGH = new RegExp(`^\\/(admin(\\/|$)|api\\/(auth|admin|cron|newsletter)
 /**
  * A path the router could read as another one: a dot segment ("/admin/../konto"), an encoded dot, slash or backslash, a
  * backslash, or two slashes in a row. A browser never sends one (the URL parser removes real dot segments before the
- * middleware sees the path); such a path never goes through, whatever its first segment.
+ * middleware sees the path); such a path never goes through, whatever its first segment. The admin's way back after signing in
+ * (lib/admin-return.ts, B19) refuses the same paths.
  */
-const UNCLEAN = /(^|\/)\.{1,2}(\/|$)|%2e|%2f|%5c|\\|\/\//i;
+export const UNCLEAN = /(^|\/)\.{1,2}(\/|$)|%2e|%2f|%5c|\\|\/\//i;
 
 /** Is `path` one of the addresses that always go through (see THROUGH)? */
 export function alwaysThrough(path: string): boolean {

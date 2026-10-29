@@ -2292,6 +2292,34 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-sisselogimine-tagasi",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Sisselogimine: meeldejäetud aadress, tagasi samale lehele ja neljas link",
+      "href": "/admin/kalender",
+      "steps": [
+        "Ava halduses „Kalender“ ja mõne toimumise paneel; kopeeri aadressiribalt selle lehe aadress.",
+        "Logi menüüst välja ja ava kopeeritud aadress samas brauseris.",
+        "Kui väljal „E-post“ pole sinu aadressi, kirjuta see; vajuta „Saada sisselogimislink“ ja ava kirjas olev link.",
+        "Tee ülejäänud sammud kohe järjest: logi uuesti välja ja vajuta välja „E-post“ sees „Muu aadress“.",
+        "Kirjuta oma aadress ja vajuta „Saada sisselogimislink“.",
+        "Laadi leht uuesti ja vajuta „Saada sisselogimislink“; tee seda kaks korda."
+      ],
+      "expect": [
+        "Kopeeritud aadress avab halduse sisselogimise; pärast kirja lingi avamist on lahti sama toimumise paneel.",
+        "Saatmise järel on lehel „Link on teel“ ja „Saatsime lingi aadressile …“ sinu aadressiga.",
+        "Väljalogimise järel on väljal „E-post“ sinu aadress; „Muu aadress“ tühjendab välja ja kursor jääb sinna.",
+        "Teine ja kolmas saatmine näitavad „Link on teel“.",
+        "Neljas saatmine ütleb „Saatsid juba 3 linki. Proovi 10 minuti pärast uuesti.“ ja uut kirja ei tule."
+      ],
+      "why": "Maria jõuab pärast sisselogimist sinna, kust alustas, ja leht ei ütle kunagi, et saatis lingi, mida ei saatnud.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-lahkumine-salvestamata",
       "area": "haldus",
       "who": "dim",
@@ -6231,13 +6259,14 @@
       "href": "/admin/login",
       "steps": [
         "Logi halduses välja.",
-        "Kirjuta halduse sisselogimisel oma aadress ja vajuta „Saada sisselogimislink“.",
+        "Halduse sisselogimisel kirjuta väljale „E-post“ oma aadress, kui seda seal pole, ja vajuta „Saada sisselogimislink“.",
         "Ava Gmailis kiri „MS LAB — sisselogimislink“.",
         "Vajuta kirjas linki.",
         "Ava sama link teist korda privaatses aknas; samas aknas oled juba sees ja see viib „Ülevaatesse“."
       ],
       "expect": [
-        "Lehel on „Kontrolli oma postkasti“ ja „Link kehtib 15 minutit ja töötab ainult ühe korra.“.",
+        "Lehel on „Link on teel“ ja „Saatsime lingi aadressile …“ sinu aadressiga ning „See kehtib 15 minutit.“.",
+        "Selle all on „Kirja pole? Vaata rämpsposti või saada uuesti 1 minuti pärast.“.",
         "Saatja on MS LAB.",
         "Link avab halduse „Ülevaade“.",
         "Privaatses aknas ütleb leht „See sisselogimislink on aegunud või juba kasutatud. Telli uus link.“."
@@ -6246,7 +6275,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-maria-registreerimine",

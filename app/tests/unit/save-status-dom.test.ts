@@ -226,3 +226,57 @@ describe("SaveStatus: „Näita“", () => {
     }
   });
 });
+
+// B19 (admin UX pass piece 4c, Task 5): signed out, the words „logi uuesti sisse“ are a link to the login page, which brings her back to this page after
+// signing in (?tagasi= with the path, the query and the fragment). No new words: the chip says what it said.
+describe("SaveStatus: signed out, „logi uuesti sisse“ is the way to sign in again", () => {
+  const link = () => $<HTMLAnchorElement>("[data-save-status] a")!;
+  afterEach(() => history.replaceState(null, "", "/"));
+
+  it("links to /admin/login?tagasi=<this page>, the same words as before", async () => {
+    history.replaceState(null, "", "/admin/testimine?kes=koik#kirjad-halduse-link");
+    await show({ status: { kind: "signedOut" } });
+    expect(link().textContent).toBe("logi uuesti sisse");
+    expect(link().getAttribute("href")).toBe("/admin/login?tagasi=%2Fadmin%2Ftestimine%3Fkes%3Dkoik%23kirjad-halduse-link");
+    expect(visible().textContent).toBe("Salvestamata — logi uuesti sisse");
+    expect(live().textContent).toBe("Salvestamata — logi uuesti sisse");
+  });
+
+  it("the link is reachable by a screen reader; the words before it are hidden (the status region says the whole sentence)", async () => {
+    history.replaceState(null, "", "/admin/opilased?id=4");
+    await show({ status: { kind: "signedOut" } });
+    expect(link().closest('[aria-hidden="true"]')).toBeNull();
+    const before = [...visible().childNodes].filter((n) => n !== link());
+    expect(before.map((n) => n.textContent).join("")).toBe("Salvestamata — ");
+    for (const n of before) expect((n as Element).getAttribute?.("aria-hidden"), n.textContent ?? "").toBe("true");
+  });
+
+  it("the compact chip has the link too, and the panel's front page gives the plain login page", async () => {
+    history.replaceState(null, "", "/admin");
+    await show({ status: { kind: "signedOut" }, compact: true });
+    expect(link().getAttribute("href")).toBe("/admin/login");
+  });
+
+  it("the page she is on when she reaches for it: a fragment or a drawer opened since is in the link", async () => {
+    history.replaceState(null, "", "/admin/testimine");
+    await show({ status: { kind: "signedOut" } });
+    expect(link().getAttribute("href")).toBe("/admin/login?tagasi=%2Fadmin%2Ftestimine");
+    await act(async () => {
+      history.replaceState(null, "", "/admin/testimine#x");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(link().getAttribute("href")).toBe("/admin/login?tagasi=%2Fadmin%2Ftestimine%23x");
+    // a move the router made without an event (pushState): read again as the link is focused or pressed
+    history.replaceState(null, "", "/admin/kalender?id=3");
+    await act(async () => link().focus());
+    expect(link().getAttribute("href")).toBe("/admin/login?tagasi=%2Fadmin%2Fkalender%3Fid%3D3");
+  });
+
+  it("only the signed-out state has a link", async () => {
+    for (const [status] of STATES.filter(([s]) => s.kind !== "signedOut")) {
+      await show({ status, onShowInvalid: () => {} });
+      expect($("[data-save-status] a"), status.kind).toBeNull();
+      expect(visible().getAttribute("aria-hidden"), status.kind).toBe("true");
+    }
+  });
+});

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
+import { hashedKey } from "../../src/server/ratelimit";
 import { LOCAL_ADMINS } from "../local-secrets";
 import { onLocalDb, sha256Hex } from "./fixtures";
 import { PROD_BUILD } from "./target";
@@ -16,6 +17,9 @@ import { expect } from "./test";
 // - One address may hold at most 3 unused links at a time (server/auth.ts LOGIN_TOKEN_CAP), and the workers sign in in
 //   parallel. So asking for a link and using it (or deleting it) happens under one lock shared by all worker processes:
 //   at most one test link is unused at any moment, and the cap is never reached by the tests themselves.
+// - One typed address may also ask only 3 times in 10 minutes (B20, server/login.ts), and a run signs in as the test admin far more often.
+//   So under the same lock, before each request, the address's count is cleared (freeLoginAddress), as each test's own visitor IP
+//   (test.ts visitorIp) keeps the per-IP limit from the run.
 
 export const ADMIN = LOCAL_ADMINS[0];
 
@@ -55,6 +59,16 @@ export function unlockLogin(): void {
   rmSync(LOCK, { recursive: true, force: true });
 }
 
+/**
+ * Clears the per-address count of login requests (B20: rl:login-addr:<SHA-256 of the address>, 3 in 10 minutes) for `address`, so the next
+ * request has its three. Test code only, on the LOCAL database only (fixtures.ts onLocalDb refuses any other, as for every test row): the app
+ * itself has no way to clear it. Call it under the login lock, right before asking for a link.
+ */
+export async function freeLoginAddress(address: string = ADMIN): Promise<void> {
+  const key = await hashedKey("login-addr", address.trim().toLowerCase());
+  await onLocalDb((sql) => sql`delete from kv_entries where key = ${key}`, { marksPages: false });
+}
+
 export type CreatedRows = { tokens: Set<string>; sessions: Set<string> };
 
 /**
@@ -65,6 +79,7 @@ export async function signInAsAdmin(page: Page, context: BrowserContext, ip: str
   if (PROD_BUILD) return signInWithLocalSession(page, context, created);
   await lockLogin();
   try {
+    await freeLoginAddress();
     const res = await page.request.post("/api/auth/request", { data: { email: ADMIN }, headers: { "x-forwarded-for": ip } });
     expect(res.status()).toBe(200);
     const { devLink } = (await res.json()) as { devLink?: string };

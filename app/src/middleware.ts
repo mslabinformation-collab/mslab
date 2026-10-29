@@ -1,6 +1,7 @@
 // ET lives at "/", RU at "/ru"; internally both render app/[locale]/… The decisions are in lib/site-routing.ts (plain
 // functions, tested without Next.js).
 import { NextResponse, type NextRequest } from "next/server";
+import { ADMIN_PATH_HEADER } from "@/lib/admin-return";
 import { PREVIEW_COOKIE } from "@/lib/preview-cookie";
 import { gateDecision, gateOn, type GateEnv } from "@/lib/site-gate";
 import { routeSitePath } from "@/lib/site-routing";
@@ -103,6 +104,19 @@ function shellRedirect(req: NextRequest, location: string): NextResponse {
   return res;
 }
 
+/**
+ * An /admin request goes on with its path and query in the request header x-mslab-path (B19): a server component does not know the address it
+ * renders, and requireAdmin() turns it into the login page's ?tagasi=. The header is set here on every /admin request, so one a client sent is
+ * replaced; requireAdmin checks the value all the same (lib/admin-return.ts).
+ */
+function adminNext(req: NextRequest): NextResponse {
+  const headers = new Headers(req.headers);
+  headers.set(ADMIN_PATH_HEADER, req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.next({ request: { headers } });
+}
+
+const ADMIN_PATH = /^\/admin(\/|$)/;
+
 function route(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
   const to = routeSitePath(pathname, req.nextUrl.searchParams);
@@ -120,7 +134,8 @@ function route(req: NextRequest): NextResponse {
       return NextResponse.rewrite(url);
     }
     default:
-      return NextResponse.next(); // API, admin, media and static files untouched
+      // API, admin, media and static files untouched (the admin with its path for the way back after signing in)
+      return ADMIN_PATH.test(pathname) ? adminNext(req) : NextResponse.next();
   }
 }
 

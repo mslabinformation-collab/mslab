@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useReducer, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatTime } from "@/i18n/format";
+import { adminLoginHref } from "@/lib/admin-return";
 import ui from "./ui.module.css";
 import styles from "./SaveStatus.module.css";
 
@@ -69,6 +70,39 @@ function shortWordsOf(status: AutosaveStatus, draft: boolean, thing: string | un
   return time ?? t.savedNoTime;
 }
 
+/** This page's path, query and fragment (for useSyncExternalStore); null on the server. */
+const here = () => window.location.pathname + window.location.search + window.location.hash;
+const nowhere = () => null;
+function onMove(change: () => void): () => void {
+  window.addEventListener("hashchange", change);
+  window.addEventListener("popstate", change);
+  return () => {
+    window.removeEventListener("hashchange", change);
+    window.removeEventListener("popstate", change);
+  };
+}
+
+/**
+ * The signed-out words with „logi uuesti sisse“ a link to the login page, which brings her back to this page after signing in (B19: ?tagasi= with the
+ * path, the query and the fragment). The words are the chip's own (no new text). The link stays reachable by a screen reader, so only the words
+ * before it are hidden (the status region says the whole sentence). The router moves without an event, so the page is read again when the link
+ * is focused or pressed.
+ */
+function SignInAgain() {
+  const t = adminEt.autosave;
+  const at = t.signedOut.lastIndexOf(t.signedOutLink);
+  const [, readAgain] = useReducer((n: number) => n + 1, 0);
+  const href = adminLoginHref(useSyncExternalStore(onMove, here, nowhere));
+  return (
+    <>
+      <span aria-hidden="true">{t.signedOut.slice(0, at)}</span>
+      <a className={styles.signIn} href={href} onFocus={readAgain} onPointerDown={readAgain}>
+        {t.signedOutLink}
+      </a>
+    </>
+  );
+}
+
 /**
  * The one status chip of a screen (admin UX pass, README §1.4): what the autosave is doing, in words and in colour. It replaced the editors' save bars and every
  * status line. Placement is the screen's: the right end of the page's H1 row, the drawer's header left of ✕, under the H1 on a phone.
@@ -77,6 +111,8 @@ function shortWordsOf(status: AutosaveStatus, draft: boolean, thing: string | un
  * - `compact`: the phone page's short form of the saved state (strings.md D1); drawers keep the full one.
  * - `thing`: the partitive of what the screen edits, for „gone“: „Seda registreerimist enam ei ole. Tekst on selles seadmes alles.“
  * - `onShowInvalid`: the link „Näita“ of the invalid state; it focuses the first invalid field. Without it there is no link.
+ *
+ * Signed out, the words „logi uuesti sisse“ are a link to the login page and back (SignInAgain, B19), on every screen.
  *
  * For a screen reader the visible chip is hidden and a separate status region speaks the whole sentence, and only when the KIND of status changes
  * (typing, the clock of a second save, a longer list of invalid fields are not news). The ✓ is decoration.
@@ -102,7 +138,8 @@ export function SaveStatus({
 
   return (
     <span className={`${styles.chip} ${styles[toneOf(status)]}`} data-save-status="" data-save-kind={status.kind}>
-      <span className={styles.text} aria-hidden="true" data-save-text="">
+      {/* (signed out, the text itself is not hidden: the link in it must be reachable, and SignInAgain hides the words before it) */}
+      <span className={styles.text} aria-hidden={status.kind === "signedOut" ? undefined : "true"} data-save-text="">
         {status.kind === "saved" && (
           <>
             <span aria-hidden="true" data-save-check="">
@@ -110,7 +147,7 @@ export function SaveStatus({
             </span>{" "}
           </>
         )}
-        {visible}
+        {status.kind === "signedOut" ? <SignInAgain /> : visible}
       </span>
       {status.kind === "invalid" && onShowInvalid && (
         <button type="button" className={styles.show} onClick={onShowInvalid}>

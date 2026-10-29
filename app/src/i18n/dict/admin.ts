@@ -44,17 +44,22 @@ export const adminEt = {
 
   login: {
     title: "Halduse sisselogimine",
-    lead: "Sisesta oma e-posti aadress, saadame sulle sisselogimislingi. Parooli pole vaja.",
+    lead: "Saadame sulle sisselogimislingi. Ava link selles seadmes, kus soovid sisse logida.",
     emailLabel: "E-post",
     submit: "Saada sisselogimislink",
     sending: "Saadan…",
-    // The same text for an allowed and a not allowed address: the page never tells which addresses exist.
-    sentTitle: "Kontrolli oma postkasti",
-    sent: "Kui see aadress on lubatud, saatsime sisselogimislingi.",
-    sentHint: "Link kehtib 15 minutit ja töötab ainult ühe korra.",
-    again: "Sisesta aadress uuesti",
+    // The sent state (piece 4c, S4-47c) names the address typed, and is the same for an allowed and a not allowed one: the server's answer is the same
+    // for both, so the page never tells which addresses exist. {email} is the address as typed.
+    sentTitle: "Link on teel",
+    sent: "Saatsime lingi aadressile {email}. See kehtib 15 minutit.",
+    sentHint: "Kirja pole? Vaata rämpsposti või saada uuesti 1 minuti pärast.",
+    // beside the remembered address (it empties the field) and under the sent state (back to the form): S4-47b, S4-47c
+    other: "Muu aadress",
     errorEmail: "Sisesta korrektne e-posti aadress.",
+    // the per-IP limit (5 requests in 10 minutes from one connection, any addresses)
     errorTooMany: "Liiga palju katseid. Proovi mõne minuti pärast.",
+    // B20, S4-47d: the 4th request for the same typed address within 10 minutes, allowed or not (server/login.ts)
+    errorAddress: "Saatsid juba 3 linki. Proovi 10 minuti pärast uuesti.",
     errorGeneric: "Midagi läks valesti. Proovi uuesti.",
     // /admin/login?viga=link / =server after a login link was opened.
     errorLink: "See sisselogimislink on aegunud või juba kasutatud. Telli uus link.",
@@ -190,6 +195,8 @@ export const adminEt = {
     invalid: "Salvestamata — kontrolli märgitud välja",
     show: "Näita",
     signedOut: "Salvestamata — logi uuesti sisse",
+    // the words of `signedOut` that link to the login page and back here (B19); never shown on their own
+    signedOutLink: "logi uuesti sisse",
     conflict: "Muudeti teises aknas — vaata üle",
     gone: "Seda {thing} enam ei ole. Tekst on selles seadmes alles.",
     // README's „{asja}“, for a screen that does not name its thing

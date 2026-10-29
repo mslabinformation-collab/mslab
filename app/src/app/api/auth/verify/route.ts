@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
+import { adminReturnPath } from "@/lib/admin-return";
 import { SESSION_COOKIE, SESSION_TTL_MS, redeemLoginToken, sessionCookieOptions } from "@/server/auth";
 import { serverEnv } from "@/server/env";
 import { logFailure } from "@/server/log";
@@ -9,7 +10,9 @@ import { setPreviewCookie } from "@/server/preview";
 /**
  * The link in the login e-mail (`?t=<token>`): uses the token (single use, 15 minutes), starts a session of 30 days in
  * the `__Host-mslab_admin` cookie (with the coming-soon gate's preview cookie `mslab_preview` next to it, server/preview.ts)
- * and sends the admin to /admin. Using the token and creating the session are one transaction, so a database failure in
+ * and sends the admin to /admin, or to the admin page of `&tagasi=` (B19: the page she opened signed out). The link's
+ * tagasi was checked when the link was made and is checked again here (lib/admin-return.ts): one that is not an admin page
+ * of this site lands on /admin without a word. Using the token and creating the session are one transaction, so a database failure in
  * between leaves the link usable. Anything else goes to /admin/login:
  * ?viga=link (unknown, expired or used token, or an address that is no longer allowed), =server (the database failed);
  * a prefetch goes there without a notice and without touching the token.
@@ -22,7 +25,7 @@ export async function GET(request: Request): Promise<Response> {
     try {
       // The allow-list is checked again inside: an address taken off the list since the link was sent does not get in.
       session = await redeemLoginToken(getDb(), url.searchParams.get("t") ?? "", serverEnv().ADMIN_EMAILS);
-      target = session ? "/admin" : "/admin/login?viga=link";
+      target = session ? (adminReturnPath(url.searchParams.get("tagasi"), url.origin) ?? "/admin") : "/admin/login?viga=link";
     } catch (e) {
       logFailure("[auth] verify failed", e); // never the message: it holds the token hash and the e-mail
       target = "/admin/login?viga=server";

@@ -35,6 +35,16 @@
   padding: 6px 0;
 }
 
+/* „logi uuesti sisse“ signed out (B19): underlined like „Näita“, a 44px-tall tap target that takes no height from the line */
+.signIn {
+  display: inline-block;
+  margin: -15px 0;
+  padding: 15px 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* „Näita“: a 44px tap target that takes no more height than the chip (the negative margin gives the chip's 32px back) */
 .show {
   flex: none;

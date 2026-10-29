@@ -1304,3 +1304,41 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     expect(check.expect.find((l) => l.includes("PROOV-1"))).toMatch(/^Pärast värskendamist/);
   });
 });
+
+// Admin UX pass piece 4c, Task 5 (C8): the login's sent state says where the link went (S4-47c), so the mail check is reworded; the remembered address,
+// the way back after signing in (B19) and the 4th request's own message (B20) get a check of their own. The old words leave the plan.
+describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
+  const l = adminEt.login;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+  const sentWords = `„${l.sent.split(" {email}")[0]} …“`;
+
+  test("kirjad-halduse-link is reworded from the deploy: the sent state's words, and the private window of piece 3b stays", () => {
+    const check = find("kirjad-halduse-link");
+    expect(check).toMatchObject({ area: "kirjad", mark: "reworded", markedAt: "deploy", href: "/admin/login" });
+    const text = whole("kirjad-halduse-link");
+    for (const words of [`„${l.sentTitle}“`, sentWords, "„See kehtib 15 minutit.“", `„${l.sentHint}“`, `„${l.submit}“`]) expect(text, words).toContain(words);
+    expect(check.steps.at(-1)).toContain("privaatses aknas");
+    expect(check.expect.at(-1)).toContain(`„${l.errorLink}“`);
+  });
+
+  test("a new check in Haldus, Dim's: the remembered address and „Muu aadress“, the way back to the page she opened, the 4th request's message", () => {
+    const check = find("haldus-sisselogimine-tagasi");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", mark: "new", markedAt: "deploy", writes: true, href: "/admin/kalender" });
+    const text = whole("haldus-sisselogimine-tagasi");
+    for (const words of [`„${l.other}“`, `„${l.emailLabel}“`, `„${l.submit}“`, `„${l.sentTitle}“`, sentWords, `„${l.errorAddress}“`, "sama toimumise paneel", "Logi menüüst välja"])
+      expect(text, words).toContain(words);
+    // four requests: one in step 3, one in step 5 and two in step 6; the expectations count them so
+    expect(check.steps.at(-1)).toContain("kaks korda");
+    expect(check.expect.join("\n")).toMatch(/Teine ja kolmas saatmine[^\n]*\nNeljas saatmine/);
+  });
+
+  test("the old login words are gone from the plan", () => {
+    const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((line) => `${c.id}: ${line}`));
+    expect(lines.filter((line) => /Kontrolli oma postkasti|Sisesta aadress uuesti|Kui see aadress on lubatud|Parooli pole vaja|töötab ainult ühe korra\.“/.test(line))).toEqual([]);
+  });
+});

@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, count, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -6,6 +6,7 @@ import { cache } from "react";
 import { getDb, type Db } from "@/db/client";
 import { adminSessions, authTokens } from "@/db/schema";
 import type * as schema from "@/db/schema";
+import { ADMIN_PATH_HEADER, adminLoginHref } from "@/lib/admin-return";
 import { serverEnv } from "./env";
 import { logFailure } from "./log";
 import { isTokenShape, newToken, sha256 } from "./token";
@@ -167,13 +168,14 @@ export const currentAdminEmail = cache(async (): Promise<string | null> => {
 });
 
 /**
- * For admin pages, layouts and server actions: the signed-in admin's e-mail, or a redirect to /admin/login.
+ * For admin pages, layouts and server actions: the signed-in admin's e-mail, or a redirect to /admin/login with the page asked for as ?tagasi=
+ * (B19: the middleware hands its path and query on in x-mslab-path; an action posts to its page's address), so the sign-in lands her back on it.
  * A layout is not re-rendered when the visitor navigates between its pages, so every admin page (and action) calls
  * this itself; the layout's call is the first line of defence, not the only one.
  */
 export async function requireAdmin(): Promise<string> {
   const email = await currentAdminEmail();
-  if (!email) redirect("/admin/login");
+  if (!email) redirect(adminLoginHref((await headers()).get(ADMIN_PATH_HEADER)));
   return email;
 }
 

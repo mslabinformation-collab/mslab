@@ -10,9 +10,10 @@ import { hostOrigin, linkBase } from "@/server/site";
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
 /**
- * Asks for a login link: `{ email }` as JSON. Answers `{ ok: true }` whether or not the address is allowed (the link is
- * e-mailed only to allowed ones), 400 `{ ok: false, error: "email" }` for something that is not an e-mail address,
- * 429 `{ ok: false, error: "rate" }` after 5 requests in 10 minutes from one IP, 500 when the database fails.
+ * Asks for a login link: `{ email, tagasi? }` as JSON (`tagasi`: the admin page to land on after signing in, B19). Answers
+ * `{ ok: true }` whether or not the address is allowed (the link is e-mailed only to allowed ones), 400 `{ ok: false, error: "email" }`
+ * for something that is not an e-mail address, 429 `{ ok: false, error: "rate" }` after 5 requests in 10 minutes from one IP,
+ * 429 `{ ok: false, error: "address" }` for the 4th request for one address in 10 minutes, allowed or not (B20), 500 when the database fails.
  * Outside production the answer also carries `devLink` (tests and local development have no mailbox).
  */
 export async function POST(request: Request): Promise<Response> {

@@ -4,8 +4,12 @@ import { makeTestDb } from "./helpers";
 
 // withAdmin, adminAction and requireAdmin(Email) with the cookie, the database and the environment faked.
 
-const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name === "__Host-mslab_admin" && state.cookie ? { name, value: state.cookie } : undefined) }) }));
+// `path`: the request header x-mslab-path, which the middleware sets on every /admin request (B19).
+const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, path: undefined as string | undefined }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (name: string) => (name === "__Host-mslab_admin" && state.cookie ? { name, value: state.cookie } : undefined) }),
+  headers: async () => new Headers(state.path === undefined ? {} : { "x-mslab-path": state.path }),
+}));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.stubEnv("ADMIN_EMAILS", "admin@example.test,second.admin@example.com"); // the sign-in allow-list: server/env.ts reads process.env
 
@@ -19,6 +23,7 @@ afterAll(() => vi.unstubAllEnvs());
 beforeEach(() => {
   state.db = db;
   state.cookie = undefined;
+  state.path = undefined;
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -121,5 +126,23 @@ describe("requireAdmin / requireAdminEmail", () => {
     await signIn("second.admin@example.com");
     expect(await requireAdmin()).toBe("second.admin@example.com");
     expect(await requireAdminEmail()).toBe("second.admin@example.com");
+  });
+
+  // B19 (admin UX pass piece 4c, ruling R-f): the page she opened signed out is kept as ?tagasi=, so the sign-in lands her back on it.
+  const redirectOf = async (run: Promise<unknown>) => String(((await run.catch((e) => e)) as { digest?: string }).digest).split(";")[2];
+
+  test("requireAdmin keeps the page asked for (the middleware's x-mslab-path) as ?tagasi=, encoded as one value", async () => {
+    state.path = "/admin/kalender?id=3";
+    expect(await redirectOf(requireAdmin())).toBe("/admin/login?tagasi=%2Fadmin%2Fkalender%3Fid%3D3");
+    // an action posts to its page's address: the same way back
+    state.path = "/admin/tagasiside?vaade=arvustused";
+    expect(await redirectOf(adminAction(async () => "done")())).toBe("/admin/login?tagasi=%2Fadmin%2Ftagasiside%3Fvaade%3Darvustused");
+  });
+
+  test("the panel's front page, no header and a path that is not an admin page give the plain login page", async () => {
+    for (const path of [undefined, "/admin", "//evil.example", "/admin/login?tagasi=%2Fadmin", "/\\evil", "/admin/%2F%2Fevil", "/adminx", "/admin/kalen\tder", `/admin/${"k".repeat(300)}`]) {
+      state.path = path;
+      expect(await redirectOf(requireAdmin()), String(path)).toBe("/admin/login");
+    }
   });
 });

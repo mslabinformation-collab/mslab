@@ -113,7 +113,8 @@ describe("admin dictionary (Estonian only)", () => {
   });
   test("the login e-mail and the neutral answer say what the brief says", () => {
     expect(adminEt.mail.subject).toBe("MS LAB — sisselogimislink");
-    expect(adminEt.login.sent).toBe("Kui see aadress on lubatud, saatsime sisselogimislingi.");
+    // piece 4c, S4-47c: the sent state names the address typed, the same for any address (SPEC S4); {email} is filled by LoginForm
+    expect(adminEt.login.sent).toBe("Saatsime lingi aadressile {email}. See kehtib 15 minutit.");
     expect(adminEt.login.submit).toBe("Saada sisselogimislink");
   });
 });

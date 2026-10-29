@@ -2,6 +2,8 @@
 // restarting with each accepted one. The count is read and then written, so a burst of simultaneous requests can pass
 // a little more than `limit`; that is fine for spam control of contact forms (storage stays the source of truth).
 
+import { sha256 } from "./token";
+
 /** The part of the KV store (text values) the forms use; server/kv.ts PgKv satisfies it. */
 export type TextKv = {
   get(key: string): Promise<string | null>;
@@ -67,6 +69,9 @@ export async function forgetKey(kv: TextKv, key: string): Promise<void> {
 
 /** KV key of one visitor and form: `rl:<form>:<ip>`. */
 export const rateKey = (form: string, ip: string) => `rl:${form}:${ip}`;
+
+/** KV key of one form and a value the table must not hold as it is (an e-mail address): `rl:<form>:<SHA-256 of the value>`. */
+export const hashedKey = async (form: string, value: string) => rateKey(form, await sha256(value));
 
 /**
  * `key` for the fixed window of `windowSec` seconds that `now` falls in: `<key>:<window number>`. rateLimit restarts a key's expiry with

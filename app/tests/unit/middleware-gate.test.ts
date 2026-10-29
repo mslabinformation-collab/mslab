@@ -146,6 +146,13 @@ describe("gate on, a visitor (no valid preview cookie)", () => {
     expect(await answer("/api/auth/logout", { method: "POST" })).toMatchObject({ status: 200, next: "1" });
   });
 
+  test("an admin address that goes through still hands its path on for the way back after signing in (B19, x-mslab-path)", async () => {
+    const middleware = await load();
+    const res: NextResponse = await middleware(request("/admin/kalender?id=3", { headers: { "x-mslab-path": "//evil.example" } }));
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(res.headers.get("x-middleware-request-x-mslab-path")).toBe("/admin/kalender?id=3");
+  });
+
   test("an expired, tampered or foreign cookie is no pass", async () => {
     const now = Date.now();
     const good = await signPreview(SECRET, now);

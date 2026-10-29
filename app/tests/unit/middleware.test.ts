@@ -303,3 +303,31 @@ describe("trailing slash (Next's own redirect is off for the hub: next.config sk
     expect(rewrittenTo("/?x=1")).toBe("/et?x=1");
   });
 });
+
+// B19 (admin UX pass piece 4c, ruling R-f): a server component does not know the address it renders, so the middleware hands the admin's path and query
+// on in a request header; requireAdmin() builds the login page's ?tagasi= of it. The header is the middleware's own: one a client sends is replaced.
+describe("the admin's way back after signing in (x-mslab-path)", () => {
+  const handedOn = (path: string, headers?: Record<string, string>) => {
+    const res = run(path, headers ? { headers } : undefined);
+    return { next: res.headers.get("x-middleware-next"), path: res.headers.get("x-middleware-request-x-mslab-path"), overrides: res.headers.get("x-middleware-override-headers") };
+  };
+
+  test("every /admin address passes on with its path and query in the request header", () => {
+    for (const p of ["/admin", "/admin/kalender?id=3", "/admin/testimine", "/admin/login?tagasi=%2Fadmin%2Fkalender", "/admin/tagasiside?vaade=arvustused&olek=ootel"]) {
+      const h = handedOn(p);
+      expect(h.next, p).toBe("1");
+      expect(h.path, p).toBe(p);
+      expect(h.overrides?.split(","), p).toContain("x-mslab-path");
+    }
+  });
+
+  test("a header the client sent is replaced on /admin, and the other request headers stay", () => {
+    const res = run("/admin/kalender", { headers: { "x-mslab-path": "//evil.example", cookie: "a=1" } });
+    expect(res.headers.get("x-middleware-request-x-mslab-path")).toBe("/admin/kalender");
+    expect(res.headers.get("x-middleware-request-cookie")).toBe("a=1");
+  });
+
+  test("nothing is added anywhere else (the site, the API, an address that only starts like the admin)", () => {
+    for (const p of ["/", "/koolitused", "/api/auth/verify?t=x", "/api/admin/margid", "/adminx", "/media/img/a.jpg"]) expect(handedOn(p).path, p).toBeNull();
+  });
+});
