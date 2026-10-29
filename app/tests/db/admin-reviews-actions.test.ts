@@ -461,7 +461,7 @@ describe("piece 4c, R-b: removeReviewAction and undoRemoveReviewAction, „Kustu
     expect((await all()).map((r) => r.id)).toEqual([id]);
   });
 
-  test("final review N-1: „Võta tagasi“ purges what is due too, after its answer: a mark PURGE_AFTER_MS old goes, a younger one stays, and the review it brings back is never taken", async () => {
+  test("final review N-1: „Võta tagasi“ purges what is due too, after its answer: a mark PURGE_AFTER_MS old goes, a younger one stays, and the restored review is not marked any more", async () => {
     const { id, course } = await added();
     await actions.removeReviewAction({ id });
     const marked = async (text: string, ago: number) =>
