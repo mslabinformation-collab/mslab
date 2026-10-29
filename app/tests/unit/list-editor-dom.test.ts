@@ -27,9 +27,9 @@ const updates = vi.fn();
 let mounts = 0;
 let restoreRect: () => void = () => {};
 
-type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string; enterAdds?: boolean; addLabel?: string; rowNames?: boolean };
+type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string; enterAdds?: boolean; addLabel?: string; rowNames?: boolean; multiline?: boolean };
 /** The page around the editor: the card's list, changed by the editor's typing (`onChange`) and by its row changes (`onUpdate`, the card's update). */
-function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, rowNames }: { initial: I18n[] } & Opts) {
+function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, rowNames, multiline }: { initial: I18n[] } & Opts) {
   const [items, setItems] = useState(initial);
   useEffect(() => {
     current = items; // (not during the render: react-hooks/globals; act() flushes the effect)
@@ -44,6 +44,7 @@ function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, 
     enterAdds,
     addLabel,
     rowNames,
+    multiline,
     onChange: setItems,
     // (Praktika's lists have no update of their own: the editor works the change out from the list it last saw)
     onUpdate: valueOnly
@@ -373,5 +374,56 @@ describe("ListEditor: the bar and the editor that offered it (review M-6)", () =
     await render(current); // (a new editor of the same list, in the same commit)
     await tick();
     expect(text(bar()!.querySelector("p"))).toBe("Rida eemaldatud.");
+  });
+});
+
+describe("ListEditor: a row's field lines up with its handle, number and buttons (admin polish F1, F2)", () => {
+  const TRANSLATED: I18n[] = [
+    { et: "Oskab mõõta", ru: "Умеет измерять" },
+    { et: "Oskab värvida", ru: "Умеет окрашивать" },
+  ];
+  /** What stands before a row's field in its box: the elements, by tag (a label for screen readers only takes no room). */
+  const before = (n: number) => {
+    const field = fieldOf(n)!;
+    const kids = [...field.closest("[data-i18n-box]")!.children];
+    return kids.slice(0, kids.indexOf(field));
+  };
+
+  it("with nothing to show over it, no empty head stands before a row's field: only its label for screen readers, which still names it", async () => {
+    await render(TRANSLATED);
+    for (const n of [0, 1]) {
+      expect(before(n).map((el) => el.tagName)).toEqual(["LABEL"]);
+      expect(before(n)[0].getAttribute("for")).toBe(fieldOf(n)!.id);
+    }
+    expect(container.querySelector(`label[for="${fieldOf(1)!.id}"]`)!.textContent).toBe("Õpiväljund 2 (eesti keeles)");
+  });
+
+  it("a row whose Russian text is missing keeps „tõlge tulekul“ over its field (the head has something to show then)", async () => {
+    await render([{ et: "Oskab mõõta" }, ...TRANSLATED.slice(1)]);
+    const head = before(0);
+    expect(head).toHaveLength(1);
+    expect(text(head[0].querySelector("[data-ru-pending]"))).toBe("tõlge tulekul");
+    expect(head[0].querySelector(`label[for="${fieldOf(0)!.id}"]`)).not.toBeNull();
+    expect(before(1).map((el) => el.tagName)).toEqual(["LABEL"]);
+  });
+
+  it("a multiline row's box grows with its text (GrowingText): its height is the text's, measured again as it is typed", async () => {
+    // no layout in happy-dom: a text box's content is 46 px for a short text, 130 px for a long one
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        return this.value.length > 40 ? 130 : 46;
+      },
+    });
+    try {
+      await render(TRANSLATED, { multiline: true });
+      const box = fieldOf(0) as HTMLTextAreaElement;
+      expect(box.tagName).toBe("TEXTAREA");
+      expect(box.style.height).toBe("48px");
+      await type(box, "Oskab mõõta kulme, valida vormi ja värvi ning selgitada kliendile järelhooldust.");
+      expect((fieldOf(0) as HTMLTextAreaElement).style.height).toBe("132px");
+    } finally {
+      delete (HTMLTextAreaElement.prototype as { scrollHeight?: number }).scrollHeight;
+    }
   });
 });

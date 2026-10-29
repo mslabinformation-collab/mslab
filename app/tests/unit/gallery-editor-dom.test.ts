@@ -122,6 +122,22 @@ describe("GalleryEditor: drag and arrows", () => {
   });
 });
 
+describe("GalleryEditor: a picture's row (admin polish F2, F9)", () => {
+  it("„Pilt {n}“ comes with ↑ ↓ × on its line, before the description: the focus goes handle, ↑, ↓, ×, then the description, as the row reads", async () => {
+    await render();
+    const row = $$("[data-gallery-item]")[1];
+    const name = [...row.querySelectorAll("span")].find((el) => text(el) === "Pilt 2")!;
+    const parts = [...row.querySelectorAll<HTMLElement>("button, input")].map((el) => el.getAttribute("data-drag-tool") ?? el.getAttribute("data-tool") ?? el.tagName);
+    expect(parts).toEqual(["handle", "up", "down", "remove", "INPUT"]);
+    // (the name and the buttons are the row's own parts, the description's box after them)
+    const tools = row.querySelector('[data-tool="remove"]')!.parentElement!;
+    expect(name.parentElement).toBe(row);
+    expect(tools.parentElement).toBe(row);
+    expect(name.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tools.compareDocumentPosition(row.querySelector("[data-i18n-box]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe("GalleryEditor: removal with the UndoBar („Pilt eemaldatud.“)", () => {
   it("× takes the picture out at once; „Võta tagasi“ puts it back at its place with its key and its description", async () => {
     await render();

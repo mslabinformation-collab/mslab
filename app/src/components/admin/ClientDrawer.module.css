@@ -168,6 +168,11 @@
   min-width: 0;
 }
 
+/* „Lisa“ beside the e-mail field: as tall as the field (48 px: admin polish F10) */
+.add .addInput + button {
+  min-height: 48px;
+}
+
 @media (max-width: 900px) {
   .add {
     flex-basis: 100%;

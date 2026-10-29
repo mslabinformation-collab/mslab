@@ -231,10 +231,14 @@
   background: var(--paper);
 }
 
+/* a row's number „01“: one style with the modules' (LessonsEditor.module.css .moduleNum, the Part 3 frame: 400 12px mono, muted), in the middle of the
+   field's first 48 px (a one-line field's height) */
 .num {
-  padding-top: 13px;
-  font: 400 15px/1.2 var(--font-display);
-  color: var(--rose);
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: var(--muted);
+  font: 400 12px/1.2 var(--font-mono);
 }
 
 .tools {
@@ -274,16 +278,83 @@
   justify-self: start;
 }
 
-/* A list editor's row with its order control (DragList, README B2): the handle „⋮⋮“ | the number | the field(s) | ↑ ↓ ×. On top of .item (its frame);
-   narrow (a phone, the course editor's narrow card column) the handle and the number stand above the field and the buttons under it, in the order
-   the focus goes. While the row is dragged it is lifted with the row highlight. */
+/* A list editor's row with its order control (DragList, README B2): the handle „⋮⋮“ | the number | the field(s) | ↑ ↓ ×, on the field's line. On top
+   of .item (its frame). Its parts stand in named areas, so that a field's own parts can join them (.i18nRow): „tõlge tulekul“ and, in RU, the
+   Estonian text over the field (head, ref), „Kopeeri eesti keelest“ under it (after), the handle, the number and the buttons on the field's line.
+   Narrow (a phone, the course editor's card column under 640 px: below) the handle, the number and the buttons are one line over the field, as the
+   modules' rows are (LessonsEditor.module.css); the focus still goes handle, field, buttons. While the row is dragged it is lifted with the row
+   highlight. */
 .dragRow {
   grid-template-columns: 44px 30px minmax(0, 1fr) auto;
+  grid-template-areas:
+    ".      .   head  .    "
+    ".      .   ref   .    "
+    "handle num field tools"
+    ".      .   after .    ";
+  gap: 0 12px;
   padding-left: 6px;
+}
+
+.dragRow > [data-drag-tool="handle"] {
+  grid-area: handle;
+}
+
+.dragRow > .num {
+  grid-area: num;
+}
+
+.dragRow > .rowMain {
+  grid-area: field;
+}
+
+.dragRow > .tools {
+  grid-area: tools;
 }
 
 .rowMain {
   min-width: 0;
+}
+
+/* a row whose main is one field: the 44 px handle and buttons in the middle of a 48 px input; with a list's text box (.textRow, from 72 px: two
+   lines), in the middle of those 72 px, where they stay as a longer text grows the box downwards */
+.fieldRow > [data-drag-tool="handle"],
+.fieldRow > .tools {
+  margin-top: 2px;
+}
+
+.textRow > [data-drag-tool="handle"],
+.textRow > .tools {
+  margin-top: 14px;
+}
+
+.textRow > .num {
+  min-height: 72px;
+}
+
+/* ListEditor's row: its I18nInput gives its parts to the row's grid (the row's main and the field's box have no box of their own) */
+.i18nRow > .rowMain,
+.i18nRow .i18n {
+  display: contents;
+}
+
+.i18nRow .i18nHead {
+  grid-area: head;
+  margin-bottom: 7px;
+}
+
+.i18nRow .etRef {
+  grid-area: ref;
+  margin-bottom: 7px;
+}
+
+.i18nRow [data-lang-field] {
+  grid-area: field;
+}
+
+.i18nRow .copy {
+  grid-area: after;
+  justify-self: start;
+  margin-top: 7px;
 }
 
 [data-dragging] > .dragRow,
@@ -313,14 +384,38 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-/* a picture's row with its handle: ⋮⋮ | the thumbnail | its name and description | ↑ ↓ × */
+/* a picture's row with its handle: ⋮⋮ | the thumbnail | „Pilt {n}“ with ↑ ↓ × on its line, the description under them over the width left
+   (admin polish F2); narrow (below) the thumbnail goes under the handle, beside the description */
 .dragShot {
   grid-template-columns: 44px 96px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "handle thumb name tools"
+    "handle thumb main main";
+  gap: 8px 16px;
   padding-left: 6px;
+}
+
+.dragShot > [data-drag-tool="handle"] {
+  grid-area: handle;
+}
+
+.dragShot > .thumb {
+  grid-area: thumb;
+}
+
+.dragShot > .shotName {
+  grid-area: name;
+  align-self: center;
+}
+
+.dragShot > .shotMain {
+  grid-area: main;
+  min-width: 0;
 }
 
 /* (DragList's two arrows come as one group, then ×) */
 .dragShot > .shotTools {
+  grid-area: tools;
   display: flex;
   gap: 4px;
 }
@@ -331,12 +426,6 @@
   border-radius: 10px;
   background: var(--first);
   object-fit: cover;
-}
-
-.shotBody {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
 }
 
 .shotName {
@@ -478,7 +567,7 @@
   margin-top: 14px;
 }
 
-/* list rows: two lines are enough for most outcomes; the field grows when dragged */
+/* list rows: two lines at least; the box grows with its text (I18nInput grow: GrowingText) */
 .item textarea {
   min-height: 72px;
 }
@@ -535,43 +624,41 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
+}
 
+/* The list rows and the gallery's rows in that column under 640 px (565 px at 1440): as on a phone (the media query below, which old iPads read). */
+@container course-cards (max-width: 640px) {
   .dragRow {
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-areas:
+      "handle num   .     tools"
+      "head   head  head  head"
+      "ref    ref   ref   ref"
+      "field  field field field"
+      "after  after after after";
+  }
+
+  .dragRow > [data-drag-tool="handle"],
+  .dragRow > .num,
+  .dragRow > .tools {
+    align-self: center;
+    margin: 0 0 8px;
   }
 
   .dragRow > .num {
-    align-self: center;
-    padding-top: 0;
-  }
-
-  .dragRow > .rowMain,
-  .dragRow > .tools {
-    grid-column: 1 / -1;
-  }
-
-  .dragRow > .tools {
-    justify-content: flex-end;
+    min-height: 0;
   }
 
   .dragShot {
-    grid-template-columns: 44px 72px minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: 44px 16px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "handle name  name tools"
+      "thumb  thumb main main";
+    gap: 8px 12px;
   }
 
   .dragShot > .thumb {
     width: 72px;
     height: 72px;
-  }
-
-  .dragShot > .shotBody,
-  .dragShot > .shotTools {
-    grid-column: 1 / -1;
-  }
-
-  .dragShot > .shotTools {
-    justify-content: end;
   }
 }
 
@@ -581,53 +668,59 @@
     gap: 18px;
   }
 
-  .item {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .num {
-    padding-top: 0;
-  }
-
   .tools {
     justify-content: flex-end;
   }
 
-  .shot {
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 12px;
+  /* one line: ⋮⋮, the number and ↑ ↓ ×; the field under it over the whole row (the modules' rows: LessonsEditor.module.css) */
+  .dragRow {
+    grid-template-areas:
+      "handle num   .     tools"
+      "head   head  head  head"
+      "ref    ref   ref   ref"
+      "field  field field field"
+      "after  after after after";
   }
 
-  .thumb {
+  .dragRow > [data-drag-tool="handle"],
+  .dragRow > .num,
+  .dragRow > .tools {
+    align-self: center;
+    margin: 0 0 8px;
+  }
+
+  .dragRow > .num {
+    min-height: 0;
+  }
+
+  /* ⋮⋮, „Pilt {n}“ and ↑ ↓ × on one line; the thumbnail under the handle, beside the description */
+  .dragShot {
+    grid-template-columns: 44px 16px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "handle name  name tools"
+      "thumb  thumb main main";
+    gap: 8px 12px;
+  }
+
+  .dragShot > .thumb {
     width: 72px;
     height: 72px;
   }
 
-  .shotTools {
-    grid-column: 1 / -1;
-    justify-content: end;
+  /* „Soovitused“: the tags under the course's name, so the name keeps the row's width (admin polish F19) */
+  .pick {
+    flex-wrap: wrap;
+    row-gap: 4px;
   }
 
-  .dragRow {
-    grid-template-columns: 44px minmax(0, 1fr);
+  .pickName {
+    flex-basis: calc(100% - 32px);
   }
 
-  .dragRow > .num {
-    align-self: center;
-  }
-
-  .dragRow > .rowMain,
-  .dragRow > .tools {
-    grid-column: 1 / -1;
-  }
-
-  .dragShot {
-    grid-template-columns: 44px 72px minmax(0, 1fr);
-  }
-
-  .dragShot > .shotBody {
-    grid-column: 1 / -1;
+  .pickTags {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding-left: 32px;
   }
 
   .preview {

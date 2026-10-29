@@ -105,7 +105,7 @@ export function GalleryEditor(props: GalleryProps) {
   return props.layout === "grid" ? <GalleryGrid {...props} /> : <GalleryList {...props} />;
 }
 
-/** The course's gallery: a list of rows, each the handle, the thumbnail, „Pilt {n}“ (and „Põhipilt“), its description, ↑ ↓ ×; „Lisa pilte“ under it. */
+/** The course's gallery: a list of rows, each the handle, the thumbnail, „Pilt {n}“ (and „Põhipilt“) with ↑ ↓ ×, its description; „Lisa pilte“ under it. */
 function GalleryList({ images, onChange, error, hint, showMain = true, errorOf }: GalleryProps) {
   const t = adminEt.courseEditor.fields;
   const { root, drag, remove, describe, added } = useGalleryRows(images, onChange);
@@ -125,19 +125,20 @@ function GalleryList({ images, onChange, error, hint, showMain = true, errorOf }
                 {handle}
                 {/* eslint-disable-next-line @next/next/no-img-element -- a small thumbnail of an upload, no optimisation needed */}
                 <img className={styles.thumb} src={mediaUrl(img.key)} alt="" draggable={false} />
-                <div className={styles.shotBody}>
-                  <span className={styles.shotName}>
-                    {fill(t.image, { n })}
-                    {showMain && i === 0 && <span className={`${ui.tag} ${ui.dark}`}>{t.main}</span>}
-                  </span>
-                  <I18nInput label={t.alt} value={img.alt} onChange={(alt) => describe(i, alt)} maxLength={LIMITS.alt} error={errorOf?.(i)} name={`image-${i}`} />
-                </div>
+                {/* „Pilt {n}“ and ↑ ↓ × on one line, the description under them (admin polish F2): the focus goes as the row reads */}
+                <span className={styles.shotName}>
+                  {fill(t.image, { n })}
+                  {showMain && i === 0 && <span className={`${ui.tag} ${ui.dark}`}>{t.main}</span>}
+                </span>
                 <span className={styles.shotTools}>
                   {arrows}
                   <button type="button" className={styles.iconBtn} data-tool="remove" aria-label={fill(t.imageRemove, { n })} onClick={() => remove(i)}>
                     ×
                   </button>
                 </span>
+                <div className={styles.shotMain}>
+                  <I18nInput label={t.alt} value={img.alt} onChange={(alt) => describe(i, alt)} maxLength={LIMITS.alt} error={errorOf?.(i)} name={`image-${i}`} />
+                </div>
               </div>
             );
           }}

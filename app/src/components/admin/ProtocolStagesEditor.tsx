@@ -168,7 +168,7 @@ export function ProtocolStagesEditor({
             const n = i + 1;
             const id = `${uid}-${i}`;
             return (
-              <div className={`${styles.item} ${styles.dragRow}`} data-row={i}>
+              <div className={`${styles.item} ${styles.dragRow} ${styles.fieldRow}`} data-row={i}>
                 {handle}
                 <span className={styles.num} aria-hidden="true">
                   {String(n).padStart(2, "0")}

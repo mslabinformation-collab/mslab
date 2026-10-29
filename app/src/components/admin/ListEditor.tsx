@@ -116,6 +116,8 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
   };
 
   const tagId = `${uid}-unpublished`;
+  // (the row's field lines up with its handle, number and buttons, its own parts in the row's grid: editor.module.css .dragRow; a text box grows with its text)
+  const rowClass = [styles.item, styles.dragRow, styles.fieldRow, styles.i18nRow, multiline ? styles.textRow : ""].filter(Boolean).join(" ");
   const described = [unpublished ? tagId : "", error ? `${uid}-error` : ""].filter(Boolean).join(" ") || undefined;
 
   return (
@@ -153,7 +155,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
           renderRow={({ item }, i, handle, arrows) => {
             const n = i + 1;
             return (
-              <div className={`${styles.item} ${styles.dragRow}`} data-row={i}>
+              <div className={rowClass} data-row={i}>
                 {handle}
                 <span className={styles.num} aria-hidden="true">
                   {String(n).padStart(2, "0")}
@@ -165,6 +167,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
                     value={item}
                     onChange={(v) => onChange(items.map((x, j) => (j === i ? v : x)))}
                     multiline={multiline}
+                    grow
                     rows={2}
                     maxLength={maxLength}
                     name={rowNames ? `${name}.${i}` : undefined}

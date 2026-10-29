@@ -109,6 +109,16 @@
   margin-left: 36px;
 }
 
+/* „Kustuta moodul“ (or why not, or its question): under an e-course module's lessons, with their indent (admin polish F16); a programme point's
+   (no lessons) at the box's edge */
+.moduleFoot {
+  min-width: 0;
+}
+
+.lessonPart ~ .moduleFoot {
+  margin-left: 36px;
+}
+
 .lessons {
   display: grid;
   margin: 0;
@@ -175,12 +185,16 @@
   outline-offset: 2px;
 }
 
-/* "Lisa õppetund", "Lisa moodul": one field and its button */
+/* "Lisa õppetund", "Lisa moodul": one field and its button, the button as tall as the field (48 px: admin polish F10) */
 .add {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
+}
+
+.add > button {
+  min-height: 48px;
 }
 
 .addField {
@@ -211,7 +225,8 @@
     gap: 8px;
   }
 
-  .lessonPart {
+  .lessonPart,
+  .lessonPart ~ .moduleFoot {
     margin-left: 0;
   }
 
@@ -234,7 +249,8 @@
     gap: 8px;
   }
 
-  .lessonPart {
+  .lessonPart,
+  .lessonPart ~ .moduleFoot {
     margin-left: 0;
   }
 

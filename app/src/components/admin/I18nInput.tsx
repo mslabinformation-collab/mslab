@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, us
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { useEditLang, type Lang } from "./EditLang";
+import { GrowingText } from "./GrowingText";
 import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
@@ -30,6 +31,8 @@ type Props = {
   onChange: (value: I18n) => void;
   multiline?: boolean;
   rows?: number;
+  /** A multiline field whose box grows with its text, so a long one is read without a scrollbar of its own (GrowingText; the list rows). */
+  grow?: boolean;
   maxLength?: number;
   hint?: string;
   error?: string;
@@ -57,7 +60,7 @@ type Props = {
  * input (it is also the placeholder: what the Russian page shows while the translation is missing), an empty RU field offers „Kopeeri eesti
  * keelest“, and „tõlge tulekul“ stays on the field. The field tells the page when its Russian text is missing, for „RU puudub {n} väljal“.
  */
-export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name, unpublished, describedBy: more, readOnly, ref }: Props) {
+export function I18nInput({ label, value, onChange, multiline, rows = 4, grow, maxLength, hint, error, placeholder, labelHidden, name, unpublished, describedBy: more, readOnly, ref }: Props) {
   const uid = useId();
   const { lang, register } = useEditLang();
   const t = adminEt.i18n;
@@ -131,20 +134,30 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
     "data-lang-field": lang,
   } as const;
 
+  const labelEl = (
+    <label id={`${uid}-label`} htmlFor={inputId} className={labelHidden ? ui.sr : styles.label}>
+      {label}
+      <span className={ui.sr}> ({t.langName[lang]})</span>
+    </label>
+  );
+
   return (
     <div ref={box} id={uid} className={styles.i18n} data-i18n-box="" data-unpublished={unpublished ? "" : undefined}>
-      <div className={styles.i18nHead}>
-        <label id={`${uid}-label`} htmlFor={inputId} className={labelHidden ? ui.sr : styles.label}>
-          {label}
-          <span className={ui.sr}> ({t.langName[lang]})</span>
-        </label>
-        {unpublished && <UnpublishedTag id={`${uid}-unpublished`} />}
-        {pending && (
-          <span className={styles.missing} data-ru-pending="">
-            {t.missing}
-          </span>
-        )}
-      </div>
+      {/* a label for screen readers only and nothing beside it (a list row's field): no head line, so the field starts at the box's top and lines up
+          with its row's handle, number and buttons (admin polish F1) */}
+      {labelHidden && !unpublished && !pending ? (
+        labelEl
+      ) : (
+        <div className={styles.i18nHead}>
+          {labelEl}
+          {unpublished && <UnpublishedTag id={`${uid}-unpublished`} />}
+          {pending && (
+            <span className={styles.missing} data-ru-pending="">
+              {t.missing}
+            </span>
+          )}
+        </div>
+      )}
       {ru && value.et.trim() && (
         <p className={styles.etRef} lang="et" data-et-ref="">
           <span className={styles.etTag} data-et-tag="">
@@ -153,7 +166,9 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
           {value.et}
         </p>
       )}
-      {multiline ? (
+      {multiline && grow ? (
+        <GrowingText {...common} className={ui.textarea} rows={rows} onChange={(e) => set(e.target.value)} />
+      ) : multiline ? (
         <textarea {...common} className={ui.textarea} rows={rows} onChange={(e) => set(e.target.value)} />
       ) : (
         <input {...common} className={ui.input} type="text" autoComplete="off" onChange={(e) => set(e.target.value)} />

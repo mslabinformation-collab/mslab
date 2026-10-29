@@ -364,29 +364,32 @@ function ModuleRow({ module: m, n, courseId, online, handle, arrows, onName, mov
 
       {children}
 
-      {!m.deletable ? (
-        <p className={`${ui.muted} ${ui.small} ${styles.blocked}`} data-delete-blocked="">
-          {t.deleteModuleBlocked}
-        </p>
-      ) : asking ? (
-        <ConfirmPanel
-          question={fill(online ? t.deleteModuleConfirm : t.deletePointConfirm, { title: name })}
-          yesLabel={t.deleteYes}
-          tone="danger"
-          busy={deleting}
-          onYes={onDelete}
-          onCancel={() => {
-            refocus.current = true;
-            setAsking(false);
-          }}
-        />
-      ) : (
-        <div className={forms.actions}>
-          <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-delete-module="">
-            {online ? t.deleteModule : t.deletePoint}
-          </button>
-        </div>
-      )}
+      {/* „Kustuta moodul“ (or why not, or its question) under the lessons, indented with them (admin polish F16) */}
+      <div className={styles.moduleFoot}>
+        {!m.deletable ? (
+          <p className={`${ui.muted} ${ui.small} ${styles.blocked}`} data-delete-blocked="">
+            {t.deleteModuleBlocked}
+          </p>
+        ) : asking ? (
+          <ConfirmPanel
+            question={fill(online ? t.deleteModuleConfirm : t.deletePointConfirm, { title: name })}
+            yesLabel={t.deleteYes}
+            tone="danger"
+            busy={deleting}
+            onYes={onDelete}
+            onCancel={() => {
+              refocus.current = true;
+              setAsking(false);
+            }}
+          />
+        ) : (
+          <div className={forms.actions}>
+            <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-delete-module="">
+              {online ? t.deleteModule : t.deletePoint}
+            </button>
+          </div>
+        )}
+      </div>
 
       {error && (
         <p role="alert" className={`${ui.error} ${styles.rowError}`} data-module-error="">
