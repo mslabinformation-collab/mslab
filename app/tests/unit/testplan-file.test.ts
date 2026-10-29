@@ -1126,25 +1126,81 @@ describe("the review tools' checks (22.10)", () => {
   });
 });
 
-// Dim 25.10: a third tester, „Automaattest“, whose answers stay apart from Maria's and Dim's: Dim sees each as a quiet line under the check.
-describe("the Automaattest check (Dim 25.10)", () => {
+// Dim 25.10: a third tester, „Automaattest“, whose answers stay apart from Maria's and Dim's. Admin polish Part A (Dim 29.10): its result is a chip
+// in the check's row, and the check's state where no person's answer stands; a person's answer taken back gives it back its state.
+describe("the Automaattest check (Dim 25.10, 29.10)", () => {
   const t = adminEt.testplan;
 
-  test("a check of its own: Dim's, on a computer, writing nothing, in Haldus; reworded in piece 4c (the answers' words), so it reopens nothing", () => {
+  test("a check of its own: Dim's, on a computer, writing nothing, in Haldus; a redo from the deploy of Part A (what it checks changed)", () => {
     const check = plan.items.find((c) => c.id === "testimine-automaattest");
     expect(check, "testimine-automaattest").toBeDefined();
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "reworded", href: "/admin/testimine" });
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "redo", href: "/admin/testimine" });
     expect(markedSince(check!.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
-    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-26T00:00:00.000Z")).toBeNull(); // reworded: it reopens nothing
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-30T00:00:00.000Z")).not.toBeNull(); // redo: an older answer no longer stands
   });
 
-  test("it quotes the page's words: the „Kes“ choice, the quiet line with its status words, the empty selection, the overtaken answer and the own answer's line", () => {
+  test("it quotes the page's words: the „Kes“ choice, the chips, the note's name, the empty selection, the overtaken answer, the own answer's line and its take-back", () => {
     const check = plan.items.find((c) => c.id === "testimine-automaattest")!;
     const text = [...check.steps, ...check.expect].join("\n");
     const empty = fill(adminEt.lists.emptyFiltered, { asju: t.things });
-    for (const word of [`„${t.who.label}“`, `„${t.who.auto}“`, `„${t.who.all}“`, `„${t.who.auto}: ${t.ok} · …“`, `„${t.bad}“`, `„${empty}“`, "„Dim · … · …“"])
+    for (const word of [
+      `„${t.who.label}“`,
+      `„${t.who.auto}“`,
+      `„${t.who.all}“`,
+      `„${t.who.auto}: ${t.ok}“`,
+      `„${t.who.auto}: ${t.bad}“`,
+      `„${t.who.auto}: …“`,
+      `„${empty}“`,
+      `„${fill(t.last, { name: "Dim", when: "…", status: t.ok })}“`,
+      `„${t.takeBack}“`,
+    ])
       expect(text, word).toContain(word);
-    expect(text).toContain(`„${t.who.auto}: ${t.overtaken.replace(" {status}", "")}“`);
+    expect(text).toContain(`„${t.who.auto}: ${t.overtaken.replace("{status}", "…")}“`);
+    // (no quiet line with a date any more: the chip has none)
+    expect(text).not.toContain(`„${t.who.auto}: ${t.ok} · …“`);
+  });
+});
+
+// Admin polish Part A (Dim 29.10): the test page says what is done (a marker before each title, a row that stays where it was answered, the steps open
+// on a check still to do) and an answer can be taken back (the pressed half again, or „Võta vastus tagasi“): a new check walks it.
+describe("Testimine says what is done (admin polish Part A, Dim 29.10)", () => {
+  const t = adminEt.testplan;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+
+  test("a new check in Haldus, Dim's, on a computer, right after the filters' one: the markers, the steps open, a row that stays, both ways to take an answer back, „Värskenda“", () => {
+    const check = find("testimine-tehtud-ja-tagasi");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const text = [check.title, ...check.steps, ...check.expect].join("\n");
+    for (const words of [
+      `„${t.who.all}“`,
+      `„${t.filter.open.replace(" {n}", "")}“`,
+      `„${t.ok}“`,
+      `„${t.expect}“`,
+      `„${t.why}“`,
+      `„${fill(t.last, { name: "Dim", when: "…", status: t.ok })}“`,
+      `„${t.takeBack}“`,
+      `„${t.refresh}“`,
+      "tühi ring",
+      "roheline ✓",
+      "punane ✕",
+      "jääb kontroll oma kohale",
+    ])
+      expect(text, words).toContain(words);
+    const ids = plan.items.map((c) => c.id);
+    expect(ids.indexOf("testimine-tehtud-ja-tagasi")).toBe(ids.indexOf("testimine-filtrid-valjalogitud") + 1);
+  });
+
+  test("the filters' check is a redo from the deploy: its steps are open now on a check still to do, and „Sammud ▸“ folds them first", () => {
+    const check = find("testimine-filtrid-valjalogitud");
+    expect(check.mark).toBe("redo");
+    expect(markedSince(check.markedAt)).toBe(true);
+    expect(check.expect.join("\n")).toContain(`„${t.steps} ▸“ peidab need, teine vajutus avab.`);
+    expect(check.expect.join("\n")).not.toContain(`„${t.steps} ▸“ avab sammud`);
   });
 });
 
@@ -1159,9 +1215,10 @@ describe("C7 Testimine (admin UX pass piece 4c, Task 4)", () => {
   };
   const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
 
-  test("a new check in Haldus, Dim's, on a computer: the line under the H1, both filter groups, the empty selection, an area's progress, „Sammud ▸“, signed out and back", () => {
+  test("a check in Haldus, Dim's, on a computer: the line under the H1, both filter groups, the empty selection, an area's progress, „Sammud ▸“, signed out and back", () => {
     const check = find("testimine-filtrid-valjalogitud");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    // (new in piece 4c; a redo since admin polish Part A, Dim 29.10: below)
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, href: "/admin/testimine" });
     expect(markedSince(check.markedAt)).toBe(true);
     const text = whole("testimine-filtrid-valjalogitud");
     const empty = fill(adminEt.lists.emptyFiltered, { asju: t.things });

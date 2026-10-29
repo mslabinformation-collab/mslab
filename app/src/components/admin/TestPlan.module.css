@@ -194,7 +194,9 @@
   list-style: none;
 }
 
-/* a check: a row (min 56 px; the P4 frame's `1fr | 110px | 240px`), and under it the fold, the note and the answers' lines */
+/* a check: a row (min 56 px; the P4 frame's `1fr | 110px | 240px`), and under it the fold, the note and the answers' lines. Admin polish Part A
+   (Dim 29.10): a done row is muted (its title in the muted ink), a failed one tinted (old Safari, without color-mix, draws it untinted: the marker
+   still says it) */
 .check {
   min-width: 0;
   padding: 0 22px;
@@ -202,6 +204,15 @@
   scroll-margin-top: 16px;
 }
 
+.check[data-check-state="done"] .titleText {
+  color: var(--muted);
+}
+
+.check[data-check-state="failed"] {
+  background: color-mix(in srgb, var(--bad) 7%, var(--paper));
+}
+
+/* (after the tint: a check linked to, #id, is highlighted whatever its state) */
 .check:target {
   background: var(--row-highlight);
 }
@@ -221,17 +232,51 @@
   min-width: 0;
 }
 
+/* the title, its state's marker before it (Dim 29.10; the marker's margin, not a flex gap, which Safari before 14.1 lacks) */
 .checkTitle {
+  display: flex;
+  align-items: flex-start;
   margin: 0;
   font: 400 14px/1.45 var(--font-body);
   overflow-wrap: anywhere;
 }
 
+.titleText {
+  min-width: 0;
+}
+
+/* an empty ring for an open check, a green ✓ for a done one, a red ✕ for a failed one (the glyph is not read: the state's word is) */
+.marker {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  border: 2px solid var(--heather);
+  border-radius: 50%;
+  color: var(--paper);
+  font: 700 11px/1 var(--font-body);
+}
+
+.marker[data-check-marker="done"] {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.marker[data-check-marker="failed"] {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
+/* the chips under the title, in line with its words (past the marker) */
 .meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 6px;
+  gap: 4px 6px;
+  padding-left: 30px;
 }
 
 .chip {
@@ -247,6 +292,24 @@
 .writes {
   border-color: transparent;
   background: color-mix(in srgb, var(--bad) 14%, var(--paper));
+  color: var(--bad);
+}
+
+/* Automaattest's result (Dim 29.10): green „Läbitud“, red „Viga“ (outlined, apart from „Loob andmeid“), grey „Jäta vahele“ and one from before a
+   redo; old Safari, without color-mix, keeps the chip's canvas with the coloured ring and words */
+.autoChip {
+  color: var(--muted);
+}
+
+.autoChip[data-check-auto="ok"] {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, var(--paper));
+  color: var(--ok);
+}
+
+.autoChip[data-check-auto="bad"] {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, var(--paper));
   color: var(--bad);
 }
 
@@ -371,28 +434,37 @@
   overflow-wrap: anywhere;
 }
 
+/* the last answer, „Võta vastus tagasi“ at its end (Dim 29.10): a 44 px target, so the line is as tall, with less room under it; on the words'
+   baseline (an inline box and a margin: no flex gap, which Safari before 14.1 lacks) */
+.last {
+  margin: -8px 0 4px;
+}
+
+.takeBack {
+  margin-left: 14px;
+  padding: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .overtaken {
   color: var(--warn);
   font-weight: 600;
 }
 
-/* Automaattest's answer (Dim 25.10): one quiet line, apart from the tester's own answer, its note under it */
-.auto {
+/* Automaattest's note (Dim 25.10), under the row with its name; its result is the chip in the meta line (Dim 29.10) */
+.autoNote {
   margin: 0 0 12px;
   padding-top: 8px;
   border-top: 1px dashed var(--line);
   color: var(--muted);
   font-size: 13px;
+  white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
-.auto p {
-  margin: 0;
-}
-
-.auto .autoNote {
-  margin-top: 2px;
-  white-space: pre-line;
+.autoName {
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {
@@ -402,7 +474,8 @@
   }
 }
 
-/* a phone: the title on its own line, then „Sammud ▸“ beside the two answers; the groups wrap without the hairline; a shorter bar */
+/* a phone: the row stacks (Dim 29.10: the marker and the title, the chips, „Sammud ▸“, then the two answers the full width); the groups wrap without
+   the hairline; a shorter bar */
 @media (max-width: 640px) {
   .filters {
     padding: 10px 14px;
@@ -437,13 +510,13 @@
   }
 
   .row {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 4px 14px;
-    padding: 10px 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 12px 0 10px;
   }
 
-  .titleCell {
-    grid-column: 1 / -1;
+  .stepsToggle {
+    padding-left: 30px;
   }
 }
 

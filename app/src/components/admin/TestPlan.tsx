@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { answerOf, checkState, NOTE_MAX, planCounts, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
+import { answerOf, checkState, NOTE_MAX, planCounts, sharedState, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
@@ -10,7 +10,7 @@ import { usePhoneChip } from "./course/usePhoneChip";
 import { ListEmpty } from "./ListStates";
 import { SaveStatus } from "./SaveStatus";
 import { createOutbox, type Outbox, type OutboxStatus } from "./testplan-outbox";
-import { TestplanCheck, type AutoLine } from "./TestplanCheck";
+import { TestplanCheck, type AutoAnswer } from "./TestplanCheck";
 import ui from "./ui.module.css";
 import styles from "./TestPlan.module.css";
 
@@ -18,9 +18,12 @@ import styles from "./TestPlan.module.css";
 // answers of both admins together. The plan comes with the page (the bundle's own file: it is there when the database is not); the answers come
 // with the page and are read again on every load and on „Värskenda“. What the tester presses or types is the outbox's (testplan-outbox.ts): it
 // shows over the server's answers until a save has carried it, so a press is never taken back by a read, a slow save or a lost connection.
-// Dim 25.10: a third tester, „Automaattest“, answers apart. Maria's and Dim's page shows each of its answers as one quiet line under the check,
-// never as their answer and never in their counts, and the „Kes“ choice „Automaattest“ shows the checks it answered. Automaattest's own page sees
-// every check and shows its answers as the checks' answers (the server sends them so).
+// Dim 25.10: a third tester, „Automaattest“, answers apart, and the „Kes“ choice „Automaattest“ shows the checks it answered. Automaattest's own page
+// sees every check and shows its answers as the checks' answers (the server sends them so). Admin polish Part A (Dim 29.10, reversing D10's "never
+// counts"): on Maria's and Dim's page its answer is a check's state where no person's answer stands (domain/testplan.ts sharedState), in the marker,
+// the line, the „Olek“ pills and the area bars, though never their answer (no half pressed, no note box); its result is a chip in the row.
+// Admin polish Part A besides: a check answered here (or taken back) keeps its row, in place and with its new state, until the „Olek“ or „Kes“ choice
+// is made again, „Värskenda“ is pressed or the page is loaded again (`kept`); the counts and the area bars follow at once.
 // Admin UX pass piece 4c (C7, README §4; the Part 4 frame „C7 Testimine“; piece4-texts S4-42…S4-46, §4, §5; R-i): the header is the eyebrow, the
 // H1, the line „{n} kontrolli · {k} läbitud · {v} viga“, one SaveStatus in place of the outbox line and „Värskenda“; one filter row of two
 // labelled groups, „Olek“ (Kõik / Avatud n / Viga n / Läbitud n, counted under the „Kes“ choice) and „Kes“ (Mina / Kõik / Automaattest); area
@@ -113,6 +116,9 @@ function browserStorage(): Storage | null {
 const forWho = (who: WhoChoice, item: TestItem, mine: "maria" | "dim" | null, autoIds: ReadonlySet<string>): boolean =>
   who === "all" || (who === "auto" ? autoIds.has(item.id) : mine === null || item.who === mine || item.who === "koos");
 const passes = (filter: Filter, st: CheckState | undefined): boolean => filter === "all" || st?.state === STATE_OF[filter];
+/** The checks' states as the counts read them (Dim 29.10): a person's answer in `answers`, else Automaattest's in `auto` (none on its own page). */
+const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, CheckState> =>
+  new Map(plan.items.map((i) => [i.id, sharedState(i, answerOf(doc.answers, i.id), doc.auto ? answerOf(doc.auto, i.id) : undefined, plan, buildAt)]));
 
 /**
  * The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer), the unsent ones over
@@ -155,7 +161,7 @@ export type TestPlanProps = {
   plan: Plan;
   /** The answers when the page was made, or null when they could not be read (the database is down). Automaattest's own, for its session. */
   initial: Record<string, PageAnswer> | null;
-  /** Automaattest's answers when the page was made, apart (Dim 25.10): a quiet line under each check, and the „Kes“ choice „Automaattest“. */
+  /** Automaattest's answers when the page was made, apart (Dim 25.10): a chip in each check's row (Dim 29.10), and the „Kes“ choice „Automaattest“. */
   auto?: Record<string, PageAnswer> | null;
   /** The signed-in admin: the tester („Mina“ is Maria's or Dim's checks; "auto", Automaattest, and null, any other admin, see every check). */
   you: { name: string; tester: Tester | null };
@@ -170,7 +176,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const [answers, setAnswers] = useState(initial);
   /** Automaattest's answers as last read (never written by this page: its own session's are `answers`). */
   const [auto, setAuto] = useState<Record<string, PageAnswer>>(initialAuto ?? {});
-  /** This is Automaattest's own session: its answers are `answers`, and no quiet line repeats them. */
+  /** This is Automaattest's own session: its answers are `answers` (the halves, the counts), and no chip repeats them. */
   const own = you.tester === "auto";
   const mine = you.tester === "maria" || you.tester === "dim" ? you.tester : null;
   const [reading, setReading] = useState(false);
@@ -193,11 +199,19 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const [picked, setPicked] = useState<View | null>(null);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [typed, setTyped] = useState<ReadonlyMap<string, string>>(() => new Map());
+  /**
+   * The checks answered (or taken back) on this page since the „Olek“ or „Kes“ choice was last made and „Värskenda“ last pressed (Dim 29.10): each
+   * keeps its row, in place and with its new state, whatever the choice says, so a press never makes the row under her finger jump away.
+   */
+  const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
+  const keep = (id: string) => setKept((s) => (s.has(id) ? s : new Set(s).add(id)));
 
   const storedView = useSyncExternalStore(subscribeNothing, readView, () => null);
   const hash = useSyncExternalStore(subscribeNothing, readHash, () => "");
   const view = useMemo(() => picked ?? parseView(storedView), [picked, storedView]);
+  /** A pill of „Olek“ or „Kes“ pressed (the one already chosen too: the choice made again lets the rows kept go). */
   const choose = (next: View) => {
+    setKept(new Set());
     setPicked(next);
     try {
       window.localStorage.setItem(VIEW_KEY, JSON.stringify(next));
@@ -230,9 +244,11 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   }, []);
   /**
    * „Värskenda“: reads again, with the button and the chip saying it is busy. A read that went through sends what waits here too (she may have
-   * signed in again meanwhile: the presses kept while she was signed out go, and the chip stops asking her to sign in; review M-2).
+   * signed in again meanwhile: the presses kept while she was signed out go, and the chip stops asking her to sign in; review M-2). The rows kept
+   * by her presses go at once (Dim 29.10): the list is the „Olek“ and „Kes“ choice's again.
    */
   const refresh = async () => {
+    setKept(new Set());
     setReading(true);
     const before = writes.current;
     const fresh = await readServer();
@@ -296,19 +312,21 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
     // (`version` stands for what the outbox holds now)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answers, outbox, version]);
-  const states = useMemo(() => new Map(plan.items.map((i) => [i.id, checkState(i, answerOf(doc.answers, i.id), plan, buildAt)])), [plan, doc, buildAt]);
   /** Automaattest's answers: its own session's are what it shows (`doc`, its presses included), anybody else's come apart (`auto`). */
   const autoDoc = useMemo(() => (own ? doc : docOf(auto, new Map())), [own, doc, auto]);
   const autoIds = useMemo(() => new Set(Object.keys(autoDoc.answers)), [autoDoc]);
-  /** The quiet line under each check Automaattest answered, for Maria's and Dim's page: its answer, and whether a redo has overtaken it. */
-  const autoLines = useMemo(() => {
-    const lines = new Map<string, AutoLine>();
-    if (own) return lines;
+  /** What the states and the counts read (Dim 29.10): the person's answers, and Automaattest's under them; its own page, its own answers only. */
+  const counted = useMemo<AnswersDoc>(() => (own ? doc : { ...doc, auto: autoDoc.answers }), [own, doc, autoDoc]);
+  const states = useMemo(() => statesOf(plan, counted, buildAt), [plan, counted, buildAt]);
+  /** Automaattest's answer to each check it answered, for its chip on Maria's and Dim's page: the answer, and whether a redo has overtaken it. */
+  const autoAnswers = useMemo(() => {
+    const chips = new Map<string, AutoAnswer>();
+    if (own) return chips;
     for (const item of plan.items) {
       const stored = answerOf(autoDoc.answers, item.id);
-      if (stored) lines.set(item.id, { answer: stored, overtaken: checkState(item, stored, plan, buildAt).overtaken !== null });
+      if (stored) chips.set(item.id, { answer: stored, overtaken: checkState(item, stored, plan, buildAt).overtaken !== null });
     }
-    return lines;
+    return chips;
   }, [own, plan, autoDoc, buildAt]);
   const byArea = useMemo(() => {
     const map = new Map<string, TestItem[]>();
@@ -317,23 +335,29 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   }, [plan]);
   /** The line under the H1 and the „Olek“ pills (S4-43, S4-44): the checks of the „Kes“ choice. */
   const counts = useMemo(
-    () => planCounts({ ...plan, items: plan.items.filter((i) => forWho(view.who, i, mine, autoIds)) }, doc, buildAt, null),
-    [plan, doc, buildAt, view.who, mine, autoIds],
+    () => planCounts({ ...plan, items: plan.items.filter((i) => forWho(view.who, i, mine, autoIds)) }, counted, buildAt, null),
+    [plan, counted, buildAt, view.who, mine, autoIds],
   );
   /** The area that starts open: the first with a check still open when the page was made (it does not move as the tester answers). */
   const firstOpen = useMemo(() => {
     const start = docOf(initial, new Map());
-    const startAuto = new Set(Object.keys((own ? initial : initialAuto) ?? {}));
-    return plan.items.find((i) => forWho(view.who, i, mine, startAuto) && checkState(i, answerOf(start.answers, i.id), plan, buildAt).state === "open")?.area ?? null;
+    const startStates = statesOf(plan, own ? start : { ...start, auto: docOf(initialAuto ?? null, new Map()).answers }, buildAt);
+    const startIds = new Set(Object.keys((own ? initial : initialAuto) ?? {}));
+    return plan.items.find((i) => forWho(view.who, i, mine, startIds) && startStates.get(i.id)?.state === "open")?.area ?? null;
   }, [plan, initial, initialAuto, own, buildAt, view.who, mine]);
   const hashArea = plan.items.find((i) => i.id === hash)?.area;
 
-  /** Each area that takes checks, with the checks of the „Kes“ choice (`mine`) and those the „Olek“ choice keeps (`shown`); a check linked to (#id) always. */
+  /**
+   * Each area that takes checks, with the checks of the „Kes“ choice (`ofWho`, which its progress counts) and those shown (`shown`): the ones the
+   * „Olek“ choice keeps, the ones kept by a press on this page (Dim 29.10), and a check linked to (#id) always.
+   */
   const sections = plan.areas
     .filter((area) => area.checks !== false)
     .map((area) => {
-      const ofWho = (byArea.get(area.id) ?? []).filter((i) => i.id === hash || forWho(view.who, i, mine, autoIds));
-      return { area, ofWho, shown: ofWho.filter((i) => i.id === hash || passes(view.filter, states.get(i.id))) };
+      const items = byArea.get(area.id) ?? [];
+      const ofWho = items.filter((i) => i.id === hash || forWho(view.who, i, mine, autoIds));
+      const shown = items.filter((i) => i.id === hash || kept.has(i.id) || (forWho(view.who, i, mine, autoIds) && passes(view.filter, states.get(i.id))));
+      return { area, ofWho, shown };
     });
   const empty = sections.every((s) => s.shown.length === 0);
   const sectionOf = new Map(sections.map((s) => [s.area.id, s]));
@@ -344,8 +368,19 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const press = (item: TestItem, status: Status) => {
     const note = typed.get(item.id) ?? states.get(item.id)?.answer?.note ?? "";
     ensureOutbox().answer(item.id, status, note);
+    keep(item.id);
     // (the note box is there under every answer; only a Viga takes the focus into it: a pass must not raise a phone's keyboard)
     if (status === "bad") focusAfterRef.current = item.id;
+  };
+  /**
+   * An answer taken back (Dim 29.10; outbox `clear`, Task 4): the check is as one never answered here (or Automaattest's again), and its note goes
+   * with it: what she typed is dropped, and the box is gone with the answer, so no note can answer the check again while the clear waits.
+   */
+  const takeBack = (item: TestItem) => {
+    setTyped((m) => withoutEntry(m, item.id));
+    if (focusAfterRef.current === item.id) focusAfterRef.current = null;
+    ensureOutbox().clear(item.id);
+    keep(item.id);
   };
   const type = (item: TestItem, status: Status, value: string) => {
     const text = clip(value);
@@ -492,11 +527,12 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
                         t={t}
                         item={item}
                         st={states.get(item.id)!}
-                        auto={autoLines.get(item.id) ?? null}
+                        auto={autoAnswers.get(item.id) ?? null}
                         unsent={local.has(item.id)}
                         typed={typed.get(item.id)}
                         focusAfterRef={focusAfterRef}
                         onPress={(status) => press(item, status)}
+                        onTakeBack={() => takeBack(item)}
                         onType={(status, value) => type(item, status, value)}
                         onLeave={() => leave(item)}
                       />

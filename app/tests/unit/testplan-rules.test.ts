@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, testerOf,
+  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sharedState, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type StoredAnswer, type TestItem, type TestPlan,
 } from "@/domain/testplan";
 
@@ -76,6 +76,42 @@ describe("checkState: open, done or failed (spec §4)", () => {
     // an overtaken answer is no longer the check's answer: it is shown under "Varasem vastus", not as the last one; a skip that stands stays the
     // check's answer though the check is open (its last line and its note are shown)
     expect(got.answer).toEqual(overtaken || a === undefined ? null : a);
+  });
+});
+
+// Admin polish Part A (Dim 29.10: „Automaattest counts for us“, reversing D10's "never counts" of 25.10): the state of a check on Maria's and Dim's
+// page is a person's answer while it stands, else Automaattest's (its OK done, its Viga failed, its Jäta vahele open); an answer a redo has overtaken
+// counts for neither. `answer` and `overtaken` stay the person's: the two halves, the note box and the last line are a person's only.
+describe("sharedState: a person's answer, else Automaattest's (Dim 29.10)", () => {
+  const redo20 = item({ mark: "redo", markedAt: "2026-10-20T00:00:00.000Z" });
+  const P = (status: Status, at = "2026-10-21T10:00:00.000Z") => answer(status, at, { by: "m@x.test" });
+  const A = (status: Status, at = "2026-10-21T11:00:00.000Z") => answer(status, at, { by: "auto@x.test" });
+  const CASES: { name: string; it?: TestItem; person?: StoredAnswer; auto?: StoredAnswer; state: "open" | "done" | "failed"; answer: "person" | null; overtaken: boolean }[] = [
+    { name: "nobody answered: open", state: "open", answer: null, overtaken: false },
+    { name: "a person's OK: done", person: P("ok"), state: "done", answer: "person", overtaken: false },
+    { name: "a person's Viga: failed", person: P("bad"), state: "failed", answer: "person", overtaken: false },
+    { name: "Automaattest's OK alone: done, with no person's answer", auto: A("ok"), state: "done", answer: null, overtaken: false },
+    { name: "Automaattest's Viga alone: failed", auto: A("bad"), state: "failed", answer: null, overtaken: false },
+    { name: "Automaattest's Jäta vahele alone: open", auto: A("skip"), state: "open", answer: null, overtaken: false },
+    { name: "a person's OK wins over Automaattest's Viga", person: P("ok"), auto: A("bad"), state: "done", answer: "person", overtaken: false },
+    { name: "a person's Viga wins over Automaattest's OK", person: P("bad"), auto: A("ok"), state: "failed", answer: "person", overtaken: false },
+    { name: "a person's Jäta vahele (stored before the button went) wins too: open", person: P("skip"), auto: A("ok"), state: "open", answer: "person", overtaken: false },
+    { name: "redo 20.10, a person's OK of 19.10 overtaken, Automaattest's OK of 21.10: done (its), the person's under „Varasem vastus“", it: redo20, person: P("ok", "2026-10-19T10:00:00.000Z"), auto: A("ok"), state: "done", answer: null, overtaken: true },
+    { name: "redo 20.10, Automaattest's OK of 19.10 overtaken: open", it: redo20, auto: A("ok", "2026-10-19T10:00:00.000Z"), state: "open", answer: null, overtaken: false },
+    { name: "redo 20.10, both of 19.10 overtaken: open, the person's under „Varasem vastus“", it: redo20, person: P("bad", "2026-10-19T10:00:00.000Z"), auto: A("ok", "2026-10-19T11:00:00.000Z"), state: "open", answer: null, overtaken: true },
+  ];
+  test.each(CASES)("$name", ({ it = item(), person, auto, state, answer: from, overtaken }) => {
+    const got = sharedState(it, person, auto, PLAN, BUILD);
+    expect(got.state).toBe(state);
+    expect(got.answer).toEqual(from === "person" ? person : null);
+    expect(got.overtaken).toEqual(overtaken ? person : null);
+  });
+
+  test("with no Automaattest answer it is checkState itself", () => {
+    for (const a of [undefined, P("ok"), P("bad"), P("skip"), P("ok", "2026-10-19T10:00:00.000Z")]) {
+      const it = item({ mark: "redo", markedAt: "2026-10-20T00:00:00.000Z" });
+      expect(sharedState(it, a, undefined, PLAN, BUILD)).toEqual(checkState(it, a, PLAN, BUILD));
+    }
   });
 });
 
@@ -694,8 +730,9 @@ describe("ownFaults: the number on Testimine's menu badge (admin UX pass, B6)", 
   });
 });
 
-// Dim 25.10: a third tester, „Automaattest“ (an automatic tester on the staging site), whose answers never count as Maria's or Dim's. They are kept
-// in the doc's own `auto` map, with the same answer shape; Maria's and Dim's stay in `answers` exactly as before.
+// Dim 25.10: a third tester, „Automaattest“ (an automatic tester on the staging site), whose answers are never Maria's or Dim's. They are kept
+// in the doc's own `auto` map, with the same answer shape; Maria's and Dim's stay in `answers` exactly as before. (Since Dim 29.10 its answer is
+// a check's state where no person's answer stands: sharedState, above.)
 describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", () => {
   const AUTO = "auto@x.test";
   const NAMES = `m@x.test=Maria Sosnina,d@x.test=Dim,${AUTO}=Automaattest`;
@@ -775,16 +812,35 @@ describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", ()
     expect(pingsFor(cleared.doc, again.doc, again.changed, PLAN, BUILD, "auto")).toEqual([{ id: "maria-1", kind: "bad", auto: true }]);
   });
 
-  test("planCounts for Maria, Dim and everybody ignore `auto`; ownFaults counts each admin's own standing Vead, Automaattest's in `auto`", () => {
+  // Admin polish Part A (Dim 29.10, reversing D10's "never counts" of 25.10): Automaattest's answer is a check's state where no person's answer
+  // stands, in the counts too (the header, the „Olek“ pills, the area bars, the Avaleht card); the menu badge (ownFaults) is as it was.
+  test("planCounts take Automaattest's answer where no person's answer stands; ownFaults still counts each admin's own standing Vead, Automaattest's in `auto`", () => {
     const shared = { "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { by: "m@x.test" }) };
     const auto = {
-      "maria-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }),
-      "dim-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }),
+      "maria-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }), // (Maria's OK wins)
+      "dim-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }), // (after dim-1's redo of 20.10: it stands)
       "koos-1": answer("ok", "2026-10-24T10:00:00.000Z", { by: AUTO }),
     };
-    for (const who of [null, "maria", "dim"] as const) expect(planCounts(PLAN, withAuto(shared, auto), BUILD, who), String(who)).toEqual(planCounts(PLAN, doc(shared), BUILD, who));
+    expect(planCounts(PLAN, withAuto(shared, auto), BUILD, null)).toEqual({ total: 3, done: 2, open: 0, bad: 1, redo: 0 });
+    expect(planCounts(PLAN, withAuto(shared, auto), BUILD, "maria")).toEqual({ total: 2, done: 2, open: 0, bad: 0, redo: 0 });
+    expect(planCounts(PLAN, withAuto(shared, auto), BUILD, "dim")).toEqual({ total: 2, done: 1, open: 0, bad: 1, redo: 0 });
+    // its Jäta vahele leaves a check open, and so does an answer of its a redo has overtaken (dim-1 marked 20.10, answered 19.10)
+    const weak = { "dim-1": answer("ok", "2026-10-19T10:00:00.000Z", { by: AUTO }), "koos-1": answer("skip", "2026-10-24T10:00:00.000Z", { by: AUTO }) };
+    expect(planCounts(PLAN, withAuto({}, weak), BUILD, "dim")).toEqual({ total: 2, done: 0, open: 2, bad: 0, redo: 0 });
+    // the doc without `auto` (Automaattest's own numbers are its map passed as `answers`) counts as before
+    expect(planCounts(PLAN, doc(auto), BUILD, null)).toEqual({ total: 3, done: 1, open: 0, bad: 2, redo: 0 });
     expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, "m@x.test")).toBe(0);
     expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, AUTO)).toBe(2);
+  });
+
+  test("planCounts: Maria's answer taken back on a check Automaattest passed counts it „Läbitud“ again, not open (Review Focus 5)", () => {
+    const stored = withAuto(
+      { "maria-1": answer("bad", "2026-10-25T09:00:00.000Z", { by: "m@x.test" }) },
+      { "maria-1": answer("ok", "2026-10-24T10:00:00.000Z", { by: AUTO }) },
+    );
+    expect(planCounts(PLAN, stored, BUILD, "maria")).toMatchObject({ done: 0, bad: 1 });
+    const cleared = mergeAnswers(stored, { "maria-1": clear() }, PLAN, "m@x.test", NOW, BUILD);
+    expect(planCounts(PLAN, cleared.doc, BUILD, "maria")).toMatchObject({ done: 1, bad: 0, open: 1 }); // (koos-1 has no answer)
   });
 
   test("the mark rule holds for Automaattest's answers: a redo after its Viga reopens the check, and a Viga after the redo is a new failure", () => {

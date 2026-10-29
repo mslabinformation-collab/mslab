@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type MutableRefObject } from "react";
+import { useId, useRef, useState, type MutableRefObject } from "react";
 import { NOTE_MAX, type CheckState, type Status, type StoredAnswer, type TestItem } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDayMonth, formatTime } from "@/i18n/format";
@@ -10,19 +10,28 @@ import styles from "./TestPlan.module.css";
 // One check of the test page (TestPlan.tsx), as admin UX pass piece 4c draws it (C7, P4 frame; S4-45): a row of the title (with the who, device and
 // „Loob andmeid“ chips and „Ava ↗“ under it), „Sammud ▸“, which folds the steps, „Mida näed“ and „Miks“, and the two answers „Läbitud“ | „Viga“ as
 // one segmented control. Under the row: the note box under every answer (Dim 22.10), the last answer, the one a redo has overtaken, and (Dim 25.10)
-// Automaattest's answer apart. A „Jäta vahele“ stored before the button went stays an answer (spec §10: the data stays): neither half is pressed,
-// its last line names it, and a note typed on it keeps it.
+// Automaattest's note. A „Jäta vahele“ stored before the button went stays an answer (spec §10: the data stays): neither half is pressed, its last
+// line names it, and a note typed on it keeps it.
+// Admin polish Part A (Dim 29.10: "clear which tests are done and which need doing"): a marker before the title (an empty ring, a green ✓, a red ✕,
+// with the state's word for a screen reader); the steps open on a check still to do and folded on a done or failed one; the pressed half pressed
+// again takes the answer back, and so does „Võta vastus tagasi“ at the end of the last-answer line (the note goes with the answer: no box is left to
+// type into); Automaattest's result is a chip in the meta line. The state is TestPlan's (domain/testplan.ts sharedState): a check Automaattest
+// alone passed is done, with no half pressed.
 
 type Texts = typeof adminEt.testplan;
 
 /** The two answers the row offers (spec §10: „Jäta vahele“ has no button any more). */
 const ANSWERS: readonly Status[] = ["ok", "bad"];
+/** The marker's glyph (not read: the state's word is): an open check's ring is empty. */
+const GLYPH: Record<CheckState["state"], string> = { open: "", done: "✓", failed: "✕" };
 
 /** An answer's word: „Läbitud“, „Viga“ or (stored before piece 4c) „Jäta vahele“. */
 const statusText = (t: Texts, status: Status): string => t[status];
+/** A check's state in the page's words, for a screen reader: „Avatud“ (the „Olek“ pill's word without its number), „Läbitud“, „Viga“. */
+const stateText = (t: Texts, state: CheckState["state"]): string => (state === "open" ? t.filter.open.replace(" {n}", "") : state === "done" ? t.ok : t.bad);
 
-/** Automaattest's answer to a check, for its quiet line (Dim 25.10); `overtaken`: a redo since then has made it one from before the change. */
-export type AutoLine = { answer: StoredAnswer; overtaken: boolean };
+/** Automaattest's answer to a check, for its chip (Dim 25.10, 29.10); `overtaken`: a redo since then has made it one from before the change. */
+export type AutoAnswer = { answer: StoredAnswer; overtaken: boolean };
 
 /** An answer's instant as the page shows it: "dd.mm HH:MM", Tallinn time. */
 const whenOf = (at: string): string => `${formatDayMonth(new Date(at), "et")} ${formatTime(new Date(at), "et")}`;
@@ -30,35 +39,55 @@ const whenOf = (at: string): string => `${formatDayMonth(new Date(at), "et")} ${
 type CheckProps = {
   t: Texts;
   item: TestItem;
+  /** The check's state (sharedState); `answer` and `overtaken` are a person's only. */
   st: CheckState;
-  /** Automaattest's answer to this check, shown apart under it (null: none, or this is Automaattest's own page). */
-  auto: AutoLine | null;
+  /** Automaattest's answer to this check, shown as a chip (null: none, or this is Automaattest's own page). */
+  auto: AutoAnswer | null;
   /** The shown answer is one not sent yet (no "last answer" line: it is not the server's). */
   unsent: boolean;
   typed: string | undefined;
   /** The check whose note field takes the focus when it appears (set by a „Viga“ press). */
   focusAfterRef: MutableRefObject<string | null>;
   onPress(status: Status): void;
+  /** Takes the answer back (Dim 29.10): the pressed half pressed again, or „Võta vastus tagasi“. */
+  onTakeBack(): void;
   onType(status: Status, value: string): void;
   onLeave(): void;
 };
 
-export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef, onPress, onType, onLeave }: CheckProps) {
+export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef, onPress, onTakeBack, onType, onLeave }: CheckProps) {
   const uid = useId();
-  const [stepsOpen, setStepsOpen] = useState(false);
+  /** The tester's own „Sammud ▸“ choice; until she makes one, the steps are open on a check still to do (Dim 29.10). */
+  const [stepsPicked, setStepsPicked] = useState<boolean | null>(null);
+  const stepsOpen = stepsPicked ?? st.state === "open";
+  const halves = useRef<Partial<Record<Status, HTMLButtonElement | null>>>({});
   const answer = st.answer;
   const titleId = `${uid}-title`;
   const stepsId = `${uid}-steps`;
   const when = answer && !unsent ? whenOf(answer.at) : "";
+  /** „Võta vastus tagasi“: the line and the link go with the answer, so the focus stays in the row, on the half that was pressed (a Jäta vahele's: the first). */
+  const takeBack = () => {
+    const half = halves.current[answer?.status === "bad" ? "bad" : "ok"];
+    onTakeBack();
+    half?.focus();
+  };
 
   return (
     <li id={item.id} className={styles.check} data-check={item.id} data-check-state={st.state}>
-      <div className={styles.row}>
+      <div className={styles.row} data-check-row="">
         <div className={styles.titleCell}>
-          <h3 id={titleId} className={styles.checkTitle}>
-            {item.title}
+          <h3 className={styles.checkTitle}>
+            <span className={styles.marker} aria-hidden="true" data-check-marker={st.state}>
+              {GLYPH[st.state]}
+            </span>
+            <span className={ui.sr} data-check-state-word="">
+              {stateText(t, st.state)}
+            </span>{" "}
+            <span id={titleId} className={styles.titleText} data-check-title="">
+              {item.title}
+            </span>
           </h3>
-          <div className={styles.meta}>
+          <div className={styles.meta} data-check-meta="">
             <span className={styles.chip} data-chip="">
               {t.who[item.who]}
             </span>
@@ -70,6 +99,12 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
             {item.writes && (
               <span className={`${styles.chip} ${styles.writes}`} data-chip="">
                 {t.writes}
+              </span>
+            )}
+            {auto && (
+              // Automaattest's result (Dim 29.10): green, red or grey; one from before a redo is grey and in the page's words
+              <span className={`${styles.chip} ${styles.autoChip}`} data-check-auto={auto.overtaken ? "overtaken" : auto.answer.status}>
+                {t.who.auto}: {auto.overtaken ? fill(t.overtaken, { status: statusText(t, auto.answer.status) }) : statusText(t, auto.answer.status)}
               </span>
             )}
             {item.href && (
@@ -86,14 +121,25 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
           aria-expanded={stepsOpen}
           aria-controls={stepsId}
           aria-describedby={titleId}
-          onClick={() => setStepsOpen((open) => !open)}
+          onClick={() => setStepsPicked(!stepsOpen)}
           data-steps-toggle=""
         >
           {t.steps} <span className={styles.arrow} aria-hidden="true">▸</span>
         </button>
         <div className={styles.segmented} role="group" aria-labelledby={titleId}>
           {ANSWERS.map((status) => (
-            <button key={status} type="button" className={styles.segment} aria-pressed={answer?.status === status} onClick={() => onPress(status)} data-answer={status}>
+            <button
+              key={status}
+              ref={(el) => {
+                halves.current[status] = el;
+              }}
+              type="button"
+              className={styles.segment}
+              aria-pressed={answer?.status === status}
+              // (the pressed half pressed again takes the answer back, Dim 29.10)
+              onClick={() => (answer?.status === status ? onTakeBack() : onPress(status))}
+              data-answer={status}
+            >
               {t[status]}
             </button>
           ))}
@@ -117,7 +163,8 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
       </div>
 
       {answer && (
-        // the note: open under every answer (Dim 22.10); a check with no answer has nothing to write a note on. A Viga asks what went wrong, any other answer just says „Märkus“.
+        // the note: open under every answer (Dim 22.10); a check with no answer of a person's has nothing to write a note on (an answer taken back
+        // takes its box with it, Dim 29.10). A Viga asks what went wrong, any other answer just says „Märkus“.
         <div className={styles.noteBox}>
           <textarea
             ref={(el) => {
@@ -139,8 +186,11 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
       )}
 
       {answer && !unsent && (
-        <p className={styles.last} data-check-last="">
-          {fill(t.last, { name: answer.by, when, status: statusText(t, answer.status) })}
+        <p className={styles.last}>
+          <span data-check-last="">{fill(t.last, { name: answer.by, when, status: statusText(t, answer.status) })}</span>
+          <button type="button" className={`${ui.link} ${styles.takeBack}`} aria-describedby={titleId} onClick={takeBack} data-take-back="">
+            {t.takeBack}
+          </button>
         </p>
       )}
       {st.overtaken && (
@@ -148,18 +198,11 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
           {fill(t.overtaken, { status: statusText(t, st.overtaken.status) })}
         </p>
       )}
-      {auto && (
-        // Automaattest's answer: never this tester's, so it fills no button, no note and no count; one from before a redo says so in the page's words
-        <div className={styles.auto}>
-          <p data-check-auto="">
-            {t.who.auto}: {auto.overtaken ? fill(t.overtaken, { status: statusText(t, auto.answer.status) }) : statusText(t, auto.answer.status)} · {whenOf(auto.answer.at)}
-          </p>
-          {auto.answer.note !== "" && (
-            <p className={styles.autoNote} data-check-auto-note="">
-              {auto.answer.note}
-            </p>
-          )}
-        </div>
+      {auto && auto.answer.note !== "" && (
+        // Automaattest's note, under the row with its name (its result is the chip above)
+        <p className={styles.autoNote}>
+          <span className={styles.autoName}>{t.who.auto}:</span> <span data-check-auto-note="">{auto.answer.note}</span>
+        </p>
       )}
     </li>
   );

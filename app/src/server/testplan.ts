@@ -15,7 +15,8 @@ import { adminFirstName } from "./auth";
 // merged under the row's lock; a failure ("Viga") and the first note on any answer earn their Telegram texts. The rules themselves (the merge, the pings, the counts) are the
 // pure domain/testplan.ts. The admin session is checked by the callers (app/api/admin/testplan withAdmin, the admin pages).
 // Dim 25.10: the automatic tester „Automaattest“ (its name in ADMIN_NAMES) answers into the same row's own map `auto`, never into `answers`:
-// Maria and Dim see its answers apart, and its answers never count as theirs.
+// Maria and Dim see its answers apart, and they are never theirs (since Dim 29.10 its answer is a check's state where no person's answer
+// stands: domain/testplan.ts sharedState, in the page and on the Avaleht card).
 // Logs carry counts and ids only: never a note, an e-mail address or a name.
 
 /** The `settings` key of the answers. */
@@ -77,7 +78,8 @@ export function toPageAnswers(doc: AnswersDoc, plan: TestPlan, names: string | u
 /**
  * The answers the page of `tester` gets (Dim 25.10): `answers`, the ones it shows as the checks' answers and edits (Automaattest's own `auto` for
  * Automaattest; the shared `answers` for Maria, Dim and any other admin), and `auto`, Automaattest's, which Maria's and Dim's page shows as a
- * quiet line under each check and its „Kes“ choice „Automaattest“ filters by. Both in the page's form (toPageAnswers).
+ * chip in each check's row (and, Dim 29.10, as the check's state where no person's answer stands) and its „Kes“ choice „Automaattest“ filters by.
+ * Both in the page's form (toPageAnswers).
  */
 export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefined, tester: Tester | null): { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer> } {
   const auto = toPageAnswers({ v: 1, answers: answersIn(doc, "auto") }, plan, names);
@@ -171,7 +173,8 @@ export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: str
 /**
  * The Avaleht card's numbers (spec §5): the open and failed checks of the signed-in admin's own tester (Maria: hers and the shared ones; Dim:
  * his and the shared ones; any other admin: all), or null when none is open or failed (the card is then not shown). Maria's, Dim's and any
- * other admin's count the shared answers only; Automaattest's (Dim 25.10) counts its own answers over the whole plan.
+ * other admin's count the shared answers, and Automaattest's where no person's answer stands (planCounts, admin polish Part A, Dim 29.10);
+ * Automaattest's own (Dim 25.10) counts its own answers over the whole plan.
  */
 export async function testplanCard(db: Db, email: string, names: string | undefined): Promise<{ open: number; bad: number } | null> {
   const tester = testerOf(email, names);

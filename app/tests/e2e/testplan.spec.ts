@@ -63,7 +63,7 @@ async function removeAnswers(ids: string[]): Promise<void> {
 }
 
 type ApiAnswer = { status: "ok" | "bad" | "skip"; note: string; at: string; byName: string };
-type Api = { plan: TestPlan; answers: Record<string, ApiAnswer>; you: { name: string; tester: "maria" | "dim" | null } };
+type Api = { plan: TestPlan; answers: Record<string, ApiAnswer>; auto: Record<string, ApiAnswer>; you: { name: string; tester: "maria" | "dim" | null } };
 
 const readApi = async (page: Page): Promise<Api> => {
   const res = await page.request.get("/api/admin/testplan");
@@ -108,10 +108,14 @@ async function openEveryArea(page: Page): Promise<void> {
 }
 const pressed = (page: Page, id: string) => check(page, id).locator('[data-answer][aria-pressed="true"]');
 
-/** What the Avaleht card should say for the signed-in admin, from the API's own answers (null: no card, nothing open or failed for his tester). */
+/**
+ * What the Avaleht card should say for the signed-in admin, from the API's own answers and Automaattest's under them (Dim 29.10: its answer counts
+ * where no person's stands; null: no card, nothing open or failed for his tester).
+ */
 async function expectedCard(page: Page): Promise<{ open: number; bad: number } | null> {
-  const { plan, answers, you } = await readApi(page);
-  const doc: AnswersDoc = { v: 1, answers: Object.fromEntries(Object.entries(answers).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }])) };
+  const { plan, answers, auto, you } = await readApi(page);
+  const stored = (map: Record<string, ApiAnswer>) => Object.fromEntries(Object.entries(map).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]));
+  const doc: AnswersDoc = { v: 1, answers: stored(answers), auto: stored(auto ?? {}) };
   const { open, bad } = planCounts(plan, doc, new Date(0).toISOString(), you.tester);
   return open + bad === 0 ? null : { open, bad };
 }
@@ -195,13 +199,16 @@ test("answers persist: „Läbitud“ and „Viga“ with their note boxes open,
   await expect(second).toHaveAttribute("data-check-state", "failed");
   await expect(third).toHaveAttribute("data-check-state", "open");
 
-  // „Sammud ▸“ folds the steps, „Mida näed“ and „Miks“
+  // the steps, „Mida näed“ and „Miks“ are open on a check still to do and folded on one done or failed (Dim 29.10); „Sammud ▸“ toggles them
   const steps = third.locator("[data-steps]");
-  await expect(steps).toBeHidden();
-  await third.locator("[data-steps-toggle]").click();
   await expect(steps).toBeVisible();
   await expect(steps).toContainText("Mida näed");
   await expect(steps).toContainText("Miks");
+  await expect(first.locator("[data-steps]")).toBeHidden();
+  await third.locator("[data-steps-toggle]").click();
+  await expect(steps).toBeHidden();
+  await third.locator("[data-steps-toggle]").click();
+  await expect(steps).toBeVisible();
 
   // the server has them: who answered, and the note
   const api = await readApi(page);
@@ -415,7 +422,102 @@ test("layout: no sideways scrolling and every control at least 44 px tall, at 39
   await openPage(page);
   await openEveryArea(page);
   await expect(page.locator("[data-check]").first()).toBeVisible();
-  // one check's steps open, so the fold is measured too
-  await page.locator("[data-check] [data-steps-toggle]").first().click();
+  // one check's steps open at least, so the fold is measured too (a check still to do has them open already, Dim 29.10)
+  const toggle = page.locator("[data-check] [data-steps-toggle]").first();
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
   await layoutHolds(page, [390, 834, 1194, 1440]);
+});
+
+// Admin polish Part A, Review Focus 4: at a phone's width the row stacks — the marker and the title, the chips, „Sammud ▸“, then the two answers the
+// full width — also with the plan's longest title and its steps open. Nothing is written: it runs in both projects.
+test("phone: at 390 and 375 px a row with the longest title and its steps open stacks, and the two answers keep the row's full width", async ({ page, context, visitorIp }) => {
+  await seeEverything(context);
+  await signInAsAdmin(page, context, visitorIp, created);
+  const { plan } = await readApi(page);
+  const longest = plan.items
+    .filter((i) => plan.areas.find((a) => a.id === i.area)?.checks !== false)
+    .reduce((a, b) => (b.title.length > a.title.length ? b : a));
+  await openPage(page, `#${longest.id}`); // (a link to a check opens its area)
+  const row = check(page, longest.id);
+  await expect(row).toBeVisible();
+  const toggle = row.locator("[data-steps-toggle]");
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  await expect(row.locator("[data-steps]")).toBeVisible();
+  for (const width of [390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await noOverflow(page), `${width} px: sideways scrolling`).toBe(true);
+    const box = async (selector: string) => (await row.locator(selector).first().boundingBox())!;
+    const [marker, title, meta, steps, answers, inner, fold] = await Promise.all(
+      ["[data-check-marker]", "[data-check-title]", "[data-check-meta]", "[data-steps-toggle]", '[role="group"]', "[data-check-row]", "[data-steps]"].map(box),
+    );
+    const halves = await Promise.all([box('[data-answer="ok"]'), box('[data-answer="bad"]')]);
+    const at = `${width} px`;
+    // the marker on the title's first line, before it; the title wraps inside the row
+    expect(marker.x + marker.width, `${at}: the marker before the title`).toBeLessThanOrEqual(title.x + 1);
+    expect(Math.abs(marker.y - title.y), `${at}: the marker on the title's first line`).toBeLessThan(6);
+    expect(title.x + title.width, `${at}: the title inside the row`).toBeLessThanOrEqual(inner.x + inner.width + 1);
+    expect(title.height, `${at}: a long title wraps`).toBeGreaterThan(25);
+    // one under the other: the title, the chips, „Sammud ▸“, the answers; the steps under the row
+    expect(meta.y, `${at}: the chips under the title`).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    expect(steps.y, `${at}: „Sammud ▸“ under the chips`).toBeGreaterThanOrEqual(meta.y + meta.height - 1);
+    expect(answers.y, `${at}: the answers under „Sammud ▸“`).toBeGreaterThanOrEqual(steps.y + steps.height - 1);
+    expect(fold.y, `${at}: the steps under the answers`).toBeGreaterThanOrEqual(answers.y + answers.height - 1);
+    // the two answers the row's full width, half each
+    expect(Math.abs(answers.x - inner.x), `${at}: the answers start at the row's edge`).toBeLessThan(1.5);
+    expect(Math.abs(answers.width - inner.width), `${at}: the answers the row's full width`).toBeLessThan(1.5);
+    for (const half of halves) expect(half.width, `${at}: a half is half of it`).toBeGreaterThan(answers.width / 2 - 6);
+    for (const half of halves) expect(half.height, `${at}: a half is 44 px tall`).toBeGreaterThanOrEqual(44);
+    expect(await smallTargets(row), `${at}: controls under 44 px`).toEqual([]);
+  }
+});
+
+// Admin polish Part A (Dim 29.10): an answer is taken back by its pressed half or „Võta vastus tagasi“, on the server too; under „Avatud“ the rows
+// answered stay until „Värskenda“. Review Focus 5's first half, in a browser.
+test("take back: under „Avatud“ a press keeps its row; the pressed half again and „Võta vastus tagasi“ take the answer back on the server; „Värskenda“ drops the row answered", async ({ page, context, visitorIp }, info) => {
+  test.skip(!desktop(info), "writes answers: the desktop project only");
+  await seeEverything(context);
+  await signInAsAdmin(page, context, visitorIp, created);
+  const { area, ids } = await pickChecks(page);
+  await openPage(page);
+  await page.locator('[data-filter="open"]').click();
+  await expect(page.locator('[data-filter="open"]')).toHaveAttribute("aria-pressed", "true");
+  await openArea(page, area);
+  const [first, second, third] = ids.map((id) => check(page, id));
+  const marker = (row: typeof first) => row.locator("[data-check-marker]");
+  for (const row of [first, second, third]) await expect(marker(row)).toHaveAttribute("data-check-marker", "open");
+
+  // „Läbitud“, then „Võta vastus tagasi“ at the end of its last line
+  await first.locator('[data-answer="ok"]').click();
+  await savedAt(page);
+  await expect(first).toBeVisible(); // (kept in place under „Avatud“)
+  await expect(marker(first)).toHaveAttribute("data-check-marker", "done");
+  await expect(first.locator("[data-check-last]")).toHaveText(/^Dim · \d\d\.\d\d \d\d:\d\d · Läbitud$/);
+  const link = first.locator("[data-take-back]");
+  await expect(link).toHaveText("Võta vastus tagasi");
+  await link.click();
+  await expect(first).toHaveAttribute("data-check-state", "open");
+  await expect(first.locator("[data-check-note]")).toHaveCount(0);
+  await expect(first.locator('[data-answer][aria-pressed="true"]')).toHaveCount(0);
+  await expect(first.locator('[data-answer="ok"]')).toBeFocused();
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
+  expect((await readApi(page)).answers[ids[0]]).toBeUndefined();
+
+  // „Viga“, then „Viga“ again
+  await second.locator('[data-answer="bad"]').click();
+  await expect(second).toHaveAttribute("data-check-state", "failed");
+  await expect(second.locator("[data-check-note]")).toBeFocused();
+  await expect.poll(async () => (await readApi(page)).answers[ids[1]]?.status).toBe("bad");
+  await second.locator('[data-answer="bad"]').click();
+  await expect(second).toHaveAttribute("data-check-state", "open");
+  await expect(second.locator("[data-check-note]")).toHaveCount(0);
+  await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
+
+  // a third answered and kept; „Värskenda“ lets it go, the two taken back stay (they are open)
+  await third.locator('[data-answer="ok"]').click();
+  await savedAt(page);
+  await expect(third).toHaveAttribute("data-check-state", "done");
+  await page.locator("[data-refresh]").click();
+  await expect(third).toHaveCount(0);
+  await expect(first).toBeVisible();
+  await expect(second).toBeVisible();
 });

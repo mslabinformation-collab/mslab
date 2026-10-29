@@ -488,14 +488,23 @@ describe("Automaattest's answers stay apart (Dim 25.10)", () => {
     expect(Object.keys((await readAnswers(db)).answers).sort()).toEqual(["dim-1", "maria-1"]);
   });
 
-  test("Maria's and Dim's Ülevaade cards and menu badges are the same with Automaattest's answers as without; its own card counts its answers over the plan", async () => {
+  // admin polish Part A (Dim 29.10, reversing D10's "never counts"): Automaattest's answer counts on the card where no person's answer stands; the
+  // menu badges (ownFaults) are as they were
+  test("Maria's and Dim's Ülevaade cards take Automaattest's answer where no person's stands; their menu badges are as without it; its own card counts its answers over the plan", async () => {
     await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "koos-1": { status: "bad" } }), T1, NAMES);
-    const before = [await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)];
-    expect(before).toEqual([{ open: 1, bad: 1 }, { open: 1, bad: 1 }, 1, 0]);
+    const badges = [await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)];
+    expect([await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), ...badges]).toEqual([{ open: 1, bad: 1 }, { open: 1, bad: 1 }, 1, 0]);
     await saveAnswers(db, AUTO, body({ "maria-1": { status: "bad" }, "maria-2": { status: "ok" }, "dim-1": { status: "bad" }, "koos-1": { status: "ok" } }), T2, NAMES);
-    expect([await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)]).toEqual(before);
+    // Maria: maria-1 her OK (it wins), maria-2 Automaattest's OK, koos-1 her Viga (it wins); Dim: dim-1 Automaattest's Viga, koos-1 Maria's Viga
+    expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 0, bad: 1 });
+    expect(await testplanCard(db, DIM, NAMES)).toEqual({ open: 0, bad: 2 });
+    expect([await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)]).toEqual(badges);
     expect(await testplanCard(db, AUTO, NAMES)).toEqual({ open: 0, bad: 2 });
     expect(await ownFaultCount(db, AUTO)).toBe(2);
+    // Maria takes her Viga of koos-1 back: Automaattest's OK is the check's state again, and her card has nothing open or failed left
+    await saveAnswers(db, MARIA, body({ "koos-1": { status: "clear" } }), T3, NAMES);
+    expect(await testplanCard(db, MARIA, NAMES)).toBeNull();
+    expect(await ownFaultCount(db, MARIA)).toBe(0);
   });
 
   test("its OK or Jäta vahele sends nothing, even with a note; its Viga's first note is the second message, once", async () => {

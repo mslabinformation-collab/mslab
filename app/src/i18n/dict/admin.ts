@@ -2520,8 +2520,10 @@ export const adminEt = {
   // The test page (phase 4, piece 1): /admin/testimine, the checks Maria and Dim answer. `tg` is the Telegram text of a Viga and of its first note
   // (server/testplan.ts pingText); since Dim 22.10 the first note of any answer is a `tg.note`, which shows the answer ({status}, in the button's
   // words). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
-  // `who.auto` (Dim 25.10) is the automatic tester whose answers stay apart: the „Kes“ choice, and the name of the quiet line under a check,
-  // "Automaattest: {status} · dd.mm HH:MM" (TestPlan.tsx puts it together from these words and `overtaken`; no other text of its own).
+  // `who.auto` (Dim 25.10) is the automatic tester whose answers stay apart: the „Kes“ choice, the name on its chip in a check's row,
+  // "Automaattest: {status}" (admin polish Part A, Dim 29.10; TestplanCheck.tsx puts it together from these words and `overtaken` as
+  // "{name}: {status}": no text of its own), and the name before its note under the row. A check's state word for a screen reader is
+  // `filter.open` without its number, `ok` or `bad`; `takeBack` (Dim 29.10) ends the last-answer line and takes that answer back.
   // Admin UX pass piece 4c (C7, piece4-texts S4-42…S4-46): the eyebrow, the line under the H1, the two labelled filter groups, „Sammud ▸“, the
   // answers „Läbitud“ | „Viga“ (`ok` reworded: the last-answer line, Automaattest's line and Telegram say it too, R-i) and the empty selection.
   // SaveStatus (`autosave.*`) replaced the page's own save words; the marks' chips, „Muudetud“ and „Sina: …“ went (§4).
@@ -2551,6 +2553,7 @@ export const adminEt = {
     note: "Märkus",
     notePrompt: "Mis läks valesti?",
     last: "{name} · {when} · {status}",
+    takeBack: "Võta vastus tagasi",
     overtaken: "Varasem vastus (enne muudatust): {status}",
     areaCount: "{done} / {total}",
     // S4-46 „Selle valikuga kontrolle pole.“ (the shared empty line, lists.emptyFiltered)

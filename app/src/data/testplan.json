@@ -2266,27 +2266,31 @@
       "area": "haldus",
       "who": "dim",
       "device": "arvuti",
-      "title": "Automaattesti vastused eraldi",
+      "title": "Automaattesti tulemus kontrolli real",
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vajuta rea „Kes“ juures „Automaattest“.",
         "Kui leht ütleb „Selle valikuga kontrolle pole.“, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
-        "Muidu ava mõni ala ja vaata ühe kontrolli nuppude all olevaid ridu.",
+        "Muidu ava mõni ala ja leia kontroll, millele automaattest vastas „Läbitud“ ja inimene pole vastanud.",
+        "Vaata selle kontrolli rida ja lehe ülaosas olevaid arve.",
+        "Vajuta selle kontrolli juures „Läbitud“ ja oota, kuni selle all on sinu vastuse rida.",
+        "Vajuta selle rea lõpus „Võta vastus tagasi“.",
         "Vajuta rea „Kes“ juures „Kõik“ ja vasta siis sellele kontrollile."
       ],
       "expect": [
         "Valik „Automaattest“ näitab ainult kontrolle, millele automaattest on vastanud.",
-        "Kontrolli all on rida „Automaattest: Läbitud · …“ (või „Viga“) koos kuupäevaga.",
-        "Kui automaattest kirjutas märkuse, on see selle rea all.",
-        "Kui sa pole sellele kontrollile ise vastanud, pole „Läbitud“ ega „Viga“ vajutatud.",
-        "Kui oled vastanud, on sinu nupp vajutatud ja rida „Dim · … · …“ alles.",
-        "Kui kontrolli muudeti pärast automaattesti vastust, algab rida „Automaattest: Varasem vastus (enne muudatust):“."
+        "Kontrolli real on roheline „Automaattest: Läbitud“ või punane „Automaattest: Viga“; muu automaattesti tulemus on hall.",
+        "Kui automaattest kirjutas märkuse, on see kontrolli all sõnadega „Automaattest: …“.",
+        "Automaattesti läbitud kontrollil on roheline ✓ ja see loeb ülaosas läbituks, kuigi ükski nupp pole vajutatud.",
+        "Pärast sinu vajutust on „Läbitud“ vajutatud ja all rida „Dim · … · Läbitud“ ning „Võta vastus tagasi“.",
+        "Pärast tagasivõtmist on kontrollil jälle roheline ✓ automaattesti tulemusega ja ükski nupp pole vajutatud.",
+        "Kui kontrolli muudeti pärast automaattesti vastust, on hall „Automaattest: Varasem vastus (enne muudatust): …“."
       ],
-      "why": "Automaattesti vastused ei tohi kunagi lugeda Maria ega Dimi vastuseks.",
+      "why": "Automaattesti tulemus loeb, kuni inimene pole ise vastanud, ja inimese vastus läheb alati ette.",
       "risk": "med",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "testimine-filtrid-valjalogitud",
@@ -2301,7 +2305,7 @@
         "Vajuta „Olek“ juures „Viga“, siis „Läbitud“, siis „Avatud“ ja lõpuks „Kõik“.",
         "Vali „Kes“ juures „Automaattest“ ja vajuta „Olek“ nuppu, mille arv on 0; kui sellist pole, jäta see samm vahele.",
         "Vajuta „Olek“ juures „Kõik“ ja „Kes“ juures „Mina“, siis kaks korda mõne ala nimele.",
-        "Vajuta selle kontrolli juures „Sammud ▸“ ja siis uuesti.",
+        "Vaata selle kontrolli samme ja vajuta selle juures kaks korda „Sammud ▸“.",
         "Logi teises vahekaardis halduse menüüst välja, tule siia tagasi ja vajuta selle kontrolli juures „Läbitud“.",
         "Logi uuesti sisse, ava „Testimine“ ja vaata selle kontrolli vastust."
       ],
@@ -2311,15 +2315,46 @@
         "„Mina“ näitab sinu ja ühiseid kontrolle, „Kõik“ kõiki kontrolle.",
         "Iga „Olek“ nupp näitab ainult selle olekuga kontrolle; nupp arvuga 0 näitab „Selle valikuga kontrolle pole.“.",
         "Ala päises on „… / …“ ja riba; kokku pannes kaovad ka ala märkus ja kontrollid.",
-        "„Sammud ▸“ avab sammud, „Mida näed“ ja „Miks“; teine vajutus peidab need.",
+        "Avatud kontrolli sammud, „Mida näed“ ja „Miks“ on kohe näha; „Sammud ▸“ peidab need, teine vajutus avab.",
         "Väljalogituna on päises „Salvestamata — logi uuesti sisse“ ja „Läbitud“ jääb vajutatuks.",
         "Pärast uuesti sisselogimist on vastus „Läbitud“ salvestatud ja päises on „Salvestatud …“."
       ],
       "why": "Testija peab nägema, mis on veel teha, ja väljalogituna ei tohi ükski vastus kaduda.",
       "risk": "med",
       "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "testimine-tehtud-ja-tagasi",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Testimise leht: mis on tehtud, ja vastuse tagasivõtmine",
+      "href": "/admin/testimine",
+      "steps": [
+        "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
+        "Vaata kontrollide pealkirjade ees olevaid märke ja selle kontrolli samme.",
+        "Vajuta selle kontrolli juures „Läbitud“.",
+        "Vajuta „Läbitud“ uuesti.",
+        "Vajuta „Läbitud“ veel kord ja oota, kuni selle all on rida „Dim · … · Läbitud“.",
+        "Vajuta selle rea lõpus „Võta vastus tagasi“.",
+        "Kui kõik oli nii, nagu all kirjas, vajuta „Läbitud“ ja siis „Värskenda“."
+      ],
+      "expect": [
+        "Avatud kontrolli ees on tühi ring, läbitud kontrolli ees roheline ✓ ja vigase ees punane ✕.",
+        "Avatud kontrollil on sammud, „Mida näed“ ja „Miks“ kohe näha.",
+        "Pärast „Läbitud“ jääb kontroll oma kohale, saab rohelise ✓ ja selle sammud peituvad.",
+        "Ülaosa arvud ja ala riba muutuvad kohe, kuigi kontroll on veel valiku „Avatud“ all.",
+        "Teine „Läbitud“ võtab vastuse tagasi: kontrollil on jälle tühi ring ja ükski nupp pole vajutatud.",
+        "„Võta vastus tagasi“ teeb sama ja võtab ära ka märkuse kasti.",
+        "Pärast „Värskenda“ kaob see kontroll valiku „Avatud“ alt."
+      ],
+      "why": "Testija peab kohe nägema, mis on tehtud, ja kogemata antud vastuse saab tagasi võtta.",
+      "risk": "med",
+      "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-sisselogimine-tagasi",

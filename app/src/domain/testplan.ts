@@ -6,7 +6,8 @@
 export type Who = "maria" | "dim" | "koos";
 /**
  * Who the signed-in admin tests as (spec D10): Maria, Dim, or (Dim 25.10) „Automaattest“, an automatic tester on the staging site whose answers
- * are kept apart (`AnswersDoc.auto`) and never count as Maria's or Dim's.
+ * are kept apart (`AnswersDoc.auto`) and are never Maria's or Dim's. (Since Dim 29.10 its answer is a check's state where no person's answer
+ * stands: sharedState.)
  */
 export type Tester = "maria" | "dim" | "auto";
 /** Which map of the answers doc a save goes into: the admins' shared `answers`, or Automaattest's own `auto` (Dim 25.10). */
@@ -53,7 +54,8 @@ export type IncomingStatus = Status | "clear";
 export type IncomingAnswer = { status: IncomingStatus; note: string; clientAt?: string };
 /**
  * `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both. An
- * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept).
+ * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept). From
+ * sharedState (Dim 29.10) both are a person's only: a check done or failed by Automaattest's answer alone has `answer` null.
  */
 export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnswer | null; overtaken: StoredAnswer | null };
 /**
@@ -235,6 +237,21 @@ export function checkState(item: TestItem, answer: StoredAnswer | undefined, pla
 }
 
 /**
+ * A check's state on Maria's and Dim's page and in their counts (admin polish Part A, Dim 29.10: „Automaattest counts for us“, which reverses
+ * D10's "never counts" of 25.10): a person's answer (`person`, from the doc's `answers`: Maria's, Dim's or another admin's) while it stands,
+ * Jäta vahele included (open); else Automaattest's (`auto`) while it stands, its OK done and its Viga failed (its Jäta vahele leaves the check
+ * open). An answer a redo has overtaken counts for neither. `answer` and `overtaken` stay the person's, as checkState gives them: the two answer
+ * halves, the note box, the last line and „Varasem vastus“ are a person's only, so a check Automaattest alone passed is done with `answer` null.
+ * With no Automaattest answer it is checkState itself.
+ */
+export function sharedState(item: TestItem, person: StoredAnswer | undefined, auto: StoredAnswer | undefined, plan: TestPlan, buildAt: string): CheckState {
+  const own = checkState(item, person, plan, buildAt);
+  if (own.answer !== null) return own;
+  const theirs = checkState(item, auto, plan, buildAt).state;
+  return theirs === "open" ? own : { state: theirs, answer: null, overtaken: own.overtaken };
+}
+
+/**
  * A note as it is stored (spec §7): trimmed, "" for white space or anything that is not text, cut at NOTE_MAX code points (Array.from, so an
  * emoji is one character), and trimmed again where the cut fell in white space, so cleaning a clean note changes nothing.
  */
@@ -405,9 +422,9 @@ export function testerOf(email: string, adminNames: string | undefined): Tester 
 /**
  * The header's and the Avaleht card's numbers (spec §4, §5) over the plan's own checks (answers to other ids are ignored). `who` narrows them
  * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (an OK still valid), open (a
- * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry an overtaken
- * answer. It reads the doc's `answers` only: Automaattest's `auto` never counts for Maria or Dim (Dim 25.10; its own numbers are its map passed
- * as `answers`).
+ * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry a person's
+ * overtaken answer. A check's state is sharedState's (admin polish Part A, Dim 29.10): the person's answer in `answers`, else Automaattest's in
+ * `auto`. Automaattest's own numbers are its map passed as `answers`, with no `auto`.
  */
 export function planCounts(
   plan: TestPlan,
@@ -418,7 +435,7 @@ export function planCounts(
   const counts = { total: 0, done: 0, open: 0, bad: 0, redo: 0 };
   for (const item of plan.items) {
     if (who !== null && item.who !== who && item.who !== "koos") continue;
-    const { state, overtaken } = checkState(item, answerOf(doc.answers, item.id), plan, buildAt);
+    const { state, overtaken } = sharedState(item, answerOf(doc.answers, item.id), doc.auto ? answerOf(doc.auto, item.id) : undefined, plan, buildAt);
     counts.total++;
     if (state === "done") counts.done++;
     else if (state === "failed") counts.bad++;
