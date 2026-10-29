@@ -192,13 +192,21 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     expect(await actions.sendTestAction({ id, to: "maria", locale: "et", version: shown })).toEqual({ ok: false, error: "changed" });
     expect(r.mails()).toHaveLength(0);
     expect(cache.refresh).toHaveBeenCalledTimes(1);
+    // a version that is missing, empty or no string (a page script older than the action) is `changed` too — never the wrong-address line — and refreshes the page
+    for (const [n, bad] of [[2, undefined], [3, ""], [4, 7]] as const) {
+      const input = { id, to: "maria", locale: "et", ...(bad === undefined ? {} : { version: bad }) } as unknown as { id: number; to: "maria"; locale: "et"; version: string };
+      expect(await actions.sendTestAction(input), JSON.stringify(input)).toEqual({ ok: false, error: "changed" });
+      expect(cache.refresh).toHaveBeenCalledTimes(n);
+    }
+    expect(r.mails()).toHaveLength(0);
     // the refreshed screen holds the stored version, and its test goes with the stored text; nothing more is refreshed
     expect(await sendTest(id, "maria", "et")).toEqual({ ok: true });
     expect(r.mails().map((m) => m.subject)).toEqual(["[Proov] Teise vahekaardi teema"]);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(cache.refresh).toHaveBeenCalledTimes(4);
     // a letter that is gone is `notFound` whatever the version says, and nothing is refreshed for it (as before)
     expect(await actions.sendTestAction({ id: id + 100, to: "maria", locale: "et", version: shown })).toEqual({ ok: false, error: "notFound" });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(await actions.sendTestAction({ id: id + 100, to: "maria", locale: "et", version: "" })).toEqual({ ok: false, error: "notFound" });
+    expect(cache.refresh).toHaveBeenCalledTimes(4);
   });
 
   test("startSendAction: the press with what the confirmation showed — the first batch goes at once on SITE_URL's links, the page is refreshed; `changed` refreshes nothing", async () => {
@@ -272,8 +280,8 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     ]);
     expect(r.mails()[0].html).toContain(`${SITE}/api/newsletter/loobu?proov=1`);
     const version = await versionOf(id);
-    // (an address, a language or a version the page never sends)
-    for (const bad of [{ id, to: "kati@example.com", locale: "et", version }, { id, to: "maria", locale: "en", version }, { id, to: "maria", locale: "et" }, { id, to: "maria", locale: "et", version: "" }] as unknown as { id: number; to: "maria"; locale: "et"; version: string }[])
+    // (an address or a language the page never sends)
+    for (const bad of [{ id, to: "kati@example.com", locale: "et", version }, { id, to: "maria", locale: "en", version }] as unknown as { id: number; to: "maria"; locale: "et"; version: string }[])
       expect(await actions.sendTestAction(bad), JSON.stringify(bad)).toEqual({ ok: false, error: "address" });
     expect(await actions.sendTestAction({ id: 0, to: "maria", locale: "et", version })).toEqual({ ok: false, error: "notFound" });
     vi.stubEnv("MARIA_EMAIL", "");

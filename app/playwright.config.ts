@@ -20,14 +20,11 @@ const phone = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 84
  * reviews-public.spec.ts is one too (student reviews, Task 5): it writes published and featured reviews, which the course pages and the home page show.
  * So is reviews.spec.ts (Task 6), the whole path of one review: it publishes and features one, and adds one of Maria's own. (reviews-race.spec.ts is not:
  * it talks to the database in its own process and no page shows what it writes.)
- * session-capacity-race.spec.ts (an admin's capacity save against a registration, piece 4c Task 6) is one: it talks to the database in its own process too, but the
- * public registration it runs is refused for a course that is not published, so its course is published for the few seconds a test takes, and the catalogue
- * and the calendar show it (and their tests count what they show).
  * admin-eelvaade.spec.ts (the draft preview, piece 3a Task 6) writes a draft of a seed course's title, which the admin course list calls „Avaldamata muudatused“ meanwhile.
  * And newsletter-campaigns.spec.ts (the simple newsletter, Task 5): its real send mails every confirmed subscriber there is (the ones other specs leave in the
  * database until the run's teardown among them), so it runs after them. (newsletter-race.spec.ts is not: it has a scratch database of its own.)
  */
-const EDITS = /(admin-(edit|site|eelvaade)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts|[\\/]newsletter-campaigns\.spec\.ts|[\\/]session-capacity-race\.spec\.ts)$/;
+const EDITS = /(admin-(edit|site|eelvaade)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts|[\\/]newsletter-campaigns\.spec\.ts)$/;
 const ORDER = /order\.setup\.ts$/;
 /** The visual suite has its own config: playwright.visual.config.ts (npm run visual). */
 const VISUAL = /[\\/]visual[\\/]/;
