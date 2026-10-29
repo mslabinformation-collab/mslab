@@ -61,11 +61,11 @@ table.list .who {
   display: none;
 }
 
-/* The card. The selectors say `table.list` so that they outweigh the shared label-row rules of the same container query (list-table.module.css
-   `.table td`, `.table td:first-child`), whichever stylesheet comes first. The row is a wrapping flex line, its items put in the card's order
-   (`order`): the payer cell gives its parts to the row (`display: contents`), so the name, the meta line and the „Ava … →“ hint can sit in
-   different lines of it. The name takes what the sum leaves; the meta line has a line of its own; the status takes what the hint leaves; „Montonios ↗“
-   has the last line. The date, the course and the kind are in the meta line, the e-mail is in the drawer. */
+/* The card. The selectors say `table.list` (and `tbody` for the cells) so that they outweigh the shared label-row rules of the same container query
+   (list-table.module.css `.table tr`, `.table tbody td`, `.table tbody td:first-child`), whichever stylesheet comes first. The row is a wrapping flex
+   line, its items put in the card's order (`order`): the payer cell gives its parts to the row (`display: contents`), so the name, the meta line and
+   the „Ava … →“ hint can sit in different lines of it. The name takes what the sum leaves; the meta line has a line of its own; the status takes what
+   the hint leaves; „Montonios ↗“ has the last line. The date, the course and the kind are in the meta line, the e-mail is in the drawer. */
 @container (max-width: 760px) {
   /* every card has a 3 px left border (transparent but for the ones to check, below) and the same padding, so all the text stays on one line down the list */
   table.list tr {
@@ -77,8 +77,8 @@ table.list .who {
     border-left: 3px solid transparent;
   }
 
-  table.list td,
-  table.list td:first-child {
+  table.list tbody td,
+  table.list tbody td:first-child {
     display: block;
     width: auto;
     min-width: 0;

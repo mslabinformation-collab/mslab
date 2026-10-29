@@ -247,9 +247,12 @@ async function answersPage(parsed: Parsed) {
                         </div>
                       </td>
                       <td data-label={t.col.course}>
-                        {pick(f.course.title, "et")}
-                        {f.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(f.startsAt, "et")}</span>}
-                        {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
+                        {/* one block: on a phone's label row (a grid of label | value) the day stays beside the title, in the value column (admin polish F5) */}
+                        <div>
+                          {pick(f.course.title, "et")}
+                          {f.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(f.startsAt, "et")}</span>}
+                          {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
+                        </div>
                       </td>
                       <td data-label={t.col.score} className={ui.nowrap}>
                         {f.answers.score === undefined ? adminEt.common.none : scoreOutOfTen(f.answers.score)}

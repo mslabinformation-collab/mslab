@@ -138,7 +138,8 @@
   overflow-wrap: anywhere;
 }
 
-/* B .link */
+/* B .link: a 44 px tall target with the words in the middle, and the line under the words (the frames draw these links underlined in #a49b9f),
+   not at the target's bottom edge, 14 px under them (admin polish F3). Safari before 12.1 draws the line in the ink and at its own distance. */
 .link {
   display: inline-flex;
   align-items: center;
@@ -146,15 +147,16 @@
   min-height: 44px;
   padding: 8px 0;
   border: 0;
-  border-bottom: 1px solid #a49b9f;
   background: none;
   color: var(--ink);
   font: 500 13px/1.3 var(--font-body);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: #a49b9f;
+  text-underline-offset: 4px;
 }
 
 .link:hover {
-  border-bottom-color: var(--ink);
+  text-decoration-color: var(--ink);
 }
 
 /* B .card */
@@ -241,6 +243,14 @@
 
 .table td strong {
   font-weight: 600;
+}
+
+/* A text link in a cell (Tagasiside's course, Tunnistused' „Laada alla“): its 44 px target reaches 12 px into the cell's padding above and below, so
+   its words sit on the cell's first line, level with the text of the cells beside it, and the row is no taller for it (admin polish F3). Two
+   longhands: Safari before 14.1 does not know `margin-block`. */
+.table td .link {
+  margin-top: -12px;
+  margin-bottom: -12px;
 }
 
 .nowrap {

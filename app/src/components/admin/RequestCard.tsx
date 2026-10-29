@@ -32,7 +32,7 @@ export function RequestCard({ view }: { view: RequestView }) {
       <header className={styles.head}>
         <div className={styles.who}>
           <h3 id={`req-${view.id}`} className={ui.h3}>
-            {view.title}
+            {breakableTitle(view.title)}
           </h3>
           {view.meta && (
             <p className={styles.meta} data-request-meta="">
@@ -83,5 +83,22 @@ export function RequestCard({ view }: { view: RequestView }) {
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * The title as the card draws it: a request with no name is titled by its address, which has no place to break but its hyphens, so on a phone it broke
+ * inside a word („…@example.co“ / „m“). A `<wbr>` before the „@“ lets the line break there first (admin polish F21); the text is the address as it was.
+ * A name (no „@“, or a space in it) is left as it is.
+ */
+function breakableTitle(title: string) {
+  const at = title.indexOf("@");
+  if (at <= 0 || /\s/.test(title)) return title;
+  return (
+    <>
+      {title.slice(0, at)}
+      <wbr />
+      {title.slice(at)}
+    </>
   );
 }

@@ -87,6 +87,16 @@ beforeAll(async () => {
   await db.insert(courseFeedback).values({ registrationId: liis.id, dismissedAt: at(13), createdAt: at(13) });
 });
 
+test("a row's course cell is one block, the title with its day: on a phone's label row (label | value) the day stays beside the title, in the value column (admin polish F5)", async () => {
+  const html = await render(FeedbackPage);
+  const cell = /<td data-label="Koolitus">([\s\S]*?)<\/td>/.exec(part(html, "data-feedback-row", a.id))?.[1] ?? "";
+  // nothing but one element in the cell (a bare text beside a span would be two grid items, and the span would wrap under the label)
+  expect(cell).toMatch(/^<div>[\s\S]*<\/div>$/);
+  expect(cell.match(/<div>/g)).toHaveLength(1);
+  expect(cell).toContain(course.title.et);
+  expect(cell).toMatch(/<span class="[^"]*">\d\d\.\d\d\.\d{4}<\/span><\/div>$/);
+});
+
 test("the list: newest first with each score; every course with its answers and average (a decimal comma); a name opens the answers", async () => {
   const html = await render(FeedbackPage);
   expect(rowIds(html)).toEqual([c.id, b.id, a.id]);

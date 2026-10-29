@@ -38,11 +38,11 @@
   text-decoration: underline;
 }
 
-/* The card. The selectors say `table.list` so that they outweigh the shared label-row rules of the same container query (list-table.module.css
-   `.table td`, `.table td:first-child`), whichever stylesheet comes first. The row is a wrapping flex line, its items put in the card's order
-   (`order`: the cells come in the table's column order, the status last): the name takes what the status pill leaves (its basis is wide enough
-   that the course, a line of its own, never fits beside it), and the session and the „· laekunud x“ that follows it share the last line. The
-   course cell gives its two spans to the row (`display: contents`) so that the session can sit beside the money. */
+/* The card. The selectors say `table.list` (and `tbody` for the cells) so that they outweigh the shared label-row rules of the same container query
+   (list-table.module.css `.table tr`, `.table tbody td`, `.table tbody td:first-child`), whichever stylesheet comes first. The row is a wrapping flex
+   line, its items put in the card's order (`order`: the cells come in the table's column order, the status last): the name takes what the status pill
+   leaves (its basis is wide enough that the course, a line of its own, never fits beside it), and the session and the „· laekunud x“ that follows it
+   share the last line. The course cell gives its two spans to the row (`display: contents`) so that the session can sit beside the money. */
 @container (max-width: 760px) {
   table.list tr {
     display: flex;
@@ -51,8 +51,8 @@
     gap: 2px 0;
   }
 
-  table.list td,
-  table.list td:first-child {
+  table.list tbody td,
+  table.list tbody td:first-child {
     display: block;
     width: auto;
     min-width: 0;

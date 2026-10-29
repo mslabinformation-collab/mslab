@@ -202,9 +202,89 @@ describe("list tables (the stylesheet)", () => {
     // every list's table is inside ListRows (Registreerimised and Maksed add their own class for the phone card)
     for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"])
       expect(page(`${f}/page.tsx`), f).toMatch(/<ListRows>\s*<table className=\{`\$\{ui\.table\} \$\{listTable\.table\}(?: \$\{styles\.list\})?`\}>/);
-    // the card's rules outweigh the shared label rows' (`.table td`, `.table td:first-child`) by naming the table
-    expect(page("registreerimised/registrations.module.css")).toMatch(/table\.list td:first-child \{/);
-    expect(page("maksed/payments.module.css")).toMatch(/table\.list td:first-child \{/);
+    // the card's rules outweigh the shared label rows' (`.table tbody td`, `.table tbody td:first-child`) by naming the table and its body
+    expect(page("registreerimised/registrations.module.css")).toMatch(/table\.list tbody td:first-child \{/);
+    expect(page("maksed/payments.module.css")).toMatch(/table\.list tbody td:first-child \{/);
+  });
+});
+
+// The admin polish pass (29.10, audit F3 F4 F5): the text link's line under its words, a link in a table cell on the cell's first line, the name
+// block without a blank line under the name for a mouse, and the phone's label rows the same whatever order the bundle puts the stylesheets in.
+describe("admin polish F3 F4 F5: text links, the name block and the phone's label rows (the stylesheets)", () => {
+  const read = (f: string) => readFileSync(join(process.cwd(), "src", f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /** The declarations of the first rule whose selector list is exactly `selector`, in `css` (squashed). */
+  const rule = (css: string, selector: string) => new RegExp(`(?:^|[{}] )${esc(selector)} \\{([^}]*)\\}`).exec(squash(css))?.[1]?.trim() ?? "";
+  /** The body of the at-rule block that starts with `head`. */
+  const block = (css: string, head: string) => {
+    const at = css.indexOf(head);
+    expect(at, head).toBeGreaterThan(-1);
+    const open = css.indexOf("{", at);
+    let depth = 0;
+    for (let i = open; i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      if (css[i] === "}" && --depth === 0) return css.slice(open + 1, i);
+    }
+    throw new Error(head);
+  };
+  const ui = read("components/admin/ui.module.css");
+  const list = read("components/admin/list-table.module.css");
+
+  it("F3: ui .link keeps its 44 px target and underlines its words (the frames' #a49b9f underline), not the target's bottom edge", () => {
+    const link = rule(ui, ".link");
+    expect(link).toMatch(/min-height: 44px;/);
+    expect(link).toMatch(/border: 0;/);
+    expect(link).not.toMatch(/border-bottom/);
+    expect(link).toMatch(/text-decoration: underline;/);
+    expect(link).toMatch(/text-decoration-color: #a49b9f;/);
+    expect(link).toMatch(/text-underline-offset: 4px;/);
+    expect(rule(ui, ".link:hover")).toBe("text-decoration-color: var(--ink);");
+  });
+
+  it("F3: in a table cell the link's words are on the cell's first line, level with the cells beside it (the target reaches 12 px into the padding)", () => {
+    // (two longhands, not `margin-block`: Safari before 14.1 does not know the shorthand)
+    expect(rule(ui, ".table td .link")).toBe("margin-top: -12px; margin-bottom: -12px;");
+  });
+
+  it("F4: the name and the phone / e-mail under it meet with no blank line, each still a 44 px target: the name's over its words, the contact's under them", () => {
+    // (16 + 18 + 10 = 44: the name's target reaches through the cell's 16 px padding to the row's top, and no further)
+    expect(rule(list, ".who .name:not(:last-child)")).toBe("padding: 16px 0 10px; margin-top: -16px;");
+    expect(rule(ui, ".table td")).toMatch(/padding: 16px 12px;/);
+    expect(rule(list, ".name")).toMatch(/line-height: 18px;/);
+    // the contact keeps ui .contactLink's 44 px, its words at the top, the rest in the cell's padding below (as far as the row's bottom)
+    expect(rule(ui, ".contactLink")).toMatch(/min-height: 44px;/);
+    expect(rule(list, ".who .name + a")).toBe("align-items: flex-start; margin-bottom: -16px;");
+    // no target is made smaller for a mouse
+    expect(list).not.toMatch(/pointer:\s*fine|min-height:\s*(?!44px)\d+px/);
+  });
+
+  it("F4: below a 760 px card the name's line is as tall as its words (its 44 px target centred on them), so a status tag or a sum beside it centres on the name", () => {
+    const narrow = block(list, "@container (max-width: 760px)");
+    // (and a name that is a cell's own child, Tunnistused'); after the table's rule, which it ties with
+    expect(rule(narrow, ".who .name, .who .name:not(:last-child), .table td > .name")).toBe("padding: 13px 0; margin: -13px 0;");
+    expect(list.indexOf("@container (max-width: 760px)")).toBeGreaterThan(list.indexOf(".who .name:not(:last-child) {"));
+    // a contact on such a card (none today: Registreerimised and Maksed leave it to the drawer) keeps its words in the middle, inside its own line
+    expect(rule(narrow, ".who .name + a")).toBe("align-items: center; margin-bottom: 0;");
+  });
+
+  it("F5: the phone's label rows name the tbody, so they outweigh ui .table td (16 px 12 px) whichever stylesheet the bundle puts last; every value in the second column", () => {
+    const narrow = block(list, "@container (max-width: 760px)");
+    const cells = rule(narrow, ".table tbody td, .table tbody td:first-child");
+    expect(cells).toMatch(/display: grid;/);
+    expect(cells).toMatch(/grid-template-columns: minmax\(96px, 30%\) minmax\(0, 1fr\);/);
+    expect(cells).toMatch(/padding: 5px 0;/);
+    expect(cells).toMatch(/border: 0;/);
+    // (ui's own rule is `.table td`: one class and one element; the label rows' are one class and two elements)
+    expect(rule(ui, ".table td")).toMatch(/padding: 16px 12px;/);
+    // a cell with two parts (a text and a line under it) keeps both in the value column, under each other: none wraps under the label
+    expect(rule(narrow, ".table tbody td > *")).toBe("grid-column: 2;");
+    // the pages' own cards still outweigh the label rows: `table.list tbody td` (one class, three elements) over `.table tbody td` (one class, two)
+    const page = (f: string) => read(`app/admin/(panel)/${f}`);
+    for (const f of ["registreerimised/registrations.module.css", "maksed/payments.module.css", "kalender/calendar.module.css"]) {
+      expect(squash(page(f)), f).toMatch(/table\.list tbody td, table\.list tbody td:first-child \{/);
+      expect(squash(page(f)), f).not.toMatch(/table\.list td, table\.list td:first-child \{/);
+    }
   });
 });
 

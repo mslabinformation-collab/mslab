@@ -32,6 +32,7 @@
   min-width: 0;
 }
 
+/* (an address as the title breaks before its „@“ first, RequestCard's `<wbr>`; inside a word only when a part of it is longer than the line) */
 .who h3 {
   overflow-wrap: anywhere;
 }

@@ -202,6 +202,14 @@ describe("ListToolbar: search", () => {
     expect(/\.select \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/max-width:\s*100%;/);
   });
 
+  it("on a phone the scope select is a line of its own, the toolbar's whole width like the search (admin polish F13; the stylesheet)", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const phone = /@media \(max-width: 640px\) \{\r?\n([\s\S]*?)\r?\n\}/.exec(css)?.[1] ?? "";
+    expect(/(?:^|\n)\s*\.select \{([^}]*)\}/.exec(phone)?.[1] ?? "").toMatch(/flex:\s*1 1 100%;/);
+    // above a phone it keeps its own width beside the search (at least 220 px)
+    expect(/\n\.select \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/flex:\s*0 1 auto;[^}]*min-width:\s*220px;/);
+  });
+
   it("the search field is a 48 px pill (the stylesheet)", () => {
     const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const search = /\.search \{([^}]*)\}/.exec(css)?.[1] ?? "";

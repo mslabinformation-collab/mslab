@@ -74,6 +74,19 @@
   text-decoration-color: var(--ink);
 }
 
+/* The name and the phone or e-mail under it without a blank line between them (admin polish F4), each still a 44 px target (admin-inbox.spec.ts
+   item 12): the name's target lies over its words, reaching through the cell's 16 px padding to the row's top; the phone or e-mail link's lies under
+   its words, reaching through the cell's padding to the row's bottom. The two meet edge to edge and never reach into the next row. */
+.who .name:not(:last-child) {
+  padding: 16px 0 10px;
+  margin-top: -16px;
+}
+
+.who .name + a {
+  align-items: flex-start;
+  margin-bottom: -16px;
+}
+
 @container (max-width: 760px) {
   .table thead {
     position: absolute;
@@ -100,8 +113,11 @@
     border-bottom: 0;
   }
 
-  .table td,
-  .table td:first-child {
+  /* (`tbody` in the selectors: one class and two elements outweigh ui .table td's one and one — its 16 px 12px padding — whichever stylesheet the
+     bundle puts last, so every label is at one indent and every row 5 px (admin polish F5). The pages' own cards name `table.list tbody td` to
+     outweigh these in turn.) */
+  .table tbody td,
+  .table tbody td:first-child {
     display: grid;
     grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
     justify-items: start;
@@ -117,7 +133,29 @@
     font-size: 12px;
   }
 
+  /* a cell of two parts keeps both in the value column, one under the other: none wraps under the label */
+  .table tbody td > * {
+    grid-column: 2;
+  }
+
   .who {
     min-width: 0;
+  }
+
+  /* The name's line is as tall as its words, its 44 px target centred on them and reaching 13 px over the lines above and below (the row is one link,
+     ListRows): a status tag or a sum beside it on a phone card centres on the name, and the line under it follows at once, as in every other label
+     row (admin polish F4, F5; the Part 2 phone frames centre the name and its tag). After the table's rule above, which it ties with. (Tunnistused'
+     name is the cell's own child; Kalender's, in its course line, keeps the card Part 4 draws.) The row's own phone or e-mail is not on these cards
+     (Registreerimised, Maksed); one that is keeps its words in the middle of its target, inside its own line. */
+  .who .name,
+  .who .name:not(:last-child),
+  .table td > .name {
+    padding: 13px 0;
+    margin: -13px 0;
+  }
+
+  .who .name + a {
+    align-items: center;
+    margin-bottom: 0;
   }
 }

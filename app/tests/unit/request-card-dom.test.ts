@@ -122,6 +122,20 @@ describe("the card", () => {
     expect(text($("[data-request-facts]"))).toBe("Ostu ei lõpetanud · ostukorvist");
   });
 
+  test("an address as the title may break before its „@“, so a phone does not break it inside a word (admin polish F21); its text is the address as it was", async () => {
+    await draw(request({ payload: { course: "kulm", intent: "purchase", email: "kristiina.pikknimi-testija@example.test", locale: "et" } }));
+    const title = $("h3")!;
+    expect(title.textContent).toBe("kristiina.pikknimi-testija@example.test");
+    const breaks = title.querySelectorAll("wbr");
+    expect(breaks).toHaveLength(1);
+    expect(breaks[0].previousSibling?.textContent).toBe("kristiina.pikknimi-testija");
+    expect(breaks[0].nextSibling?.textContent).toBe("@example.test");
+    // a name has none
+    await draw(russian);
+    expect($("h3")!.querySelectorAll("wbr")).toHaveLength(0);
+    expect($("h3")!.textContent).toBe("Юлия Соколова");
+  });
+
   test("the other tabs carry their own tag; only the interest is dark", async () => {
     const tags: [RequestRow["kind"], string][] = [["individual", "Individuaal"], ["practice", "Praktika"], ["waitlist", "Ootenimekiri"], ["change_request", "Muutmine"]];
     for (const [kind, tag] of tags) {

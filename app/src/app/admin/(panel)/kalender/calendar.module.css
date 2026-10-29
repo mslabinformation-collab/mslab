@@ -112,11 +112,12 @@
   background: var(--warn);
 }
 
-/* The phone. At 760 px of the box and under the section loses its card (`.box .card` outweighs the shared `ui.card` whichever stylesheet comes last), and
-   its rows are the cards. The selectors say `table.list` so that they outweigh the shared label-row rules of the same query (list-table.module.css `.table tr`,
-   `.table td`, `.table td:first-child`), whichever stylesheet comes first, and every property those set is set again here. The row is a two-column grid: the date
-   block at the left over both lines, the course and the place at the right, the seats under them; the state tag is left out (the seat bar and „tühistatud“ say
-   it). The full date, the weekday and the time stay in the page for the screen reader, clipped (as the shared table clips its header row). */
+/* The phone. At 760 px of the box and under the section loses its card (`.box .card` outweighs the shared `ui.card` whichever stylesheet comes last),
+   and its rows are the cards. The selectors say `table.list` (and `tbody` for the cells) so that they outweigh the shared label-row rules of the same
+   query (list-table.module.css `.table tr`, `.table tbody td`, `.table tbody td:first-child`), whichever stylesheet comes first, and every property
+   those set is set again here. The row is a two-column grid: the date block at the left over both lines, the course and the place at the right, the
+   seats under them; the state tag is left out (the seat bar and „tühistatud“ say it). The full date, the weekday and the time stay in the page for the
+   screen reader, clipped (as the shared table clips its header row). */
 @container (max-width: 760px) {
   .box .card {
     padding: 0;
@@ -153,8 +154,8 @@
 
   /* (`justify-items: stretch`: the shared label rows leave `start` on the cell, and a browser that aligns the children of a block by it would shrink
      the seat bar's line to its content) */
-  table.list td,
-  table.list td:first-child {
+  table.list tbody td,
+  table.list tbody td:first-child {
     display: block;
     width: auto;
     min-width: 0;

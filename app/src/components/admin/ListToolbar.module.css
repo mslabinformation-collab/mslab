@@ -213,6 +213,12 @@
 }
 
 @media (max-width: 640px) {
+  /* a phone: the scope select is a line of its own, as wide as the search above it (admin polish F13) — not as wide as its longest option. (The phone's
+     copy in a pill row, `.selectBox select` below, lies over its pill and takes the pill's size.) */
+  .select {
+    flex: 1 1 100%;
+  }
+
   .selectField {
     display: none;
   }
