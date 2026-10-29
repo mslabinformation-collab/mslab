@@ -1159,6 +1159,13 @@ describe("the Automaattest check (Dim 25.10, 29.10)", () => {
     // (no quiet line with a date any more: the chip has none)
     expect(text).not.toContain(`„${t.who.auto}: ${t.ok} · …“`);
   });
+
+  test("when no check is passed by Automaattest alone, the walk says what to do: look at one row and leave this check open (review Minor 7)", () => {
+    const { steps } = plan.items.find((c) => c.id === "testimine-automaattest")!;
+    const find = steps.findIndex((s) => s.includes("leia kontroll, millele automaattest vastas"));
+    expect(find).toBeGreaterThan(-1);
+    expect(steps[find + 1]).toMatch(/^Kui sellist kontrolli pole, .*jäta see kontroll avatuks\.$/);
+  });
 });
 
 // Admin polish Part A (Dim 29.10): the test page says what is done (a marker before each title, a row that stays where it was answered, the steps open
@@ -1188,11 +1195,31 @@ describe("Testimine says what is done (admin polish Part A, Dim 29.10)", () => {
       "tühi ring",
       "roheline ✓",
       "punane ✕",
-      "jääb kontroll oma kohale",
+      "kontroll jääb oma kohale",
     ])
       expect(text, words).toContain(words);
     const ids = plan.items.map((c) => c.id);
     expect(ids.indexOf("testimine-tehtud-ja-tagasi")).toBe(ids.indexOf("testimine-filtrid-valjalogitud") + 1);
+  });
+
+  // review Important 1: the walk shows everything it asks for, and this check's own steps stay open until its last one
+  test("the new check's walk is doable: it presses and takes back on another open check (a Viga for the ✕), and answers this one only at the end", () => {
+    const { steps, expect: lines } = find("testimine-tehtud-ja-tagasi");
+    expect(steps[0]).toContain(`„${t.filter.label}“ juures „${t.filter.open.replace(" {n}", "")}“`);
+    expect(steps[1]).toContain("teine avatud kontroll, mille all pole ühtegi vastuse rida");
+    // the presses and the take-backs are the other check's; this one is answered by the last step alone
+    for (const step of steps.slice(2, -1)) expect(step, step).not.toContain("selle kontrolli juures");
+    expect(steps.slice(2, -1).filter((s) => s.includes("teise kontrolli juures"))).toHaveLength(3);
+    expect(steps.at(-1)).toContain(`selle kontrolli juures „${t.ok}“ ja siis „${t.refresh}“`);
+    // the ✕ is seen after a Viga pressed in the walk, and the Viga is taken back by pressing it again
+    expect(steps.join("\n")).toContain(`teise kontrolli juures „${t.bad}“`);
+    expect(steps.join("\n")).toContain(`teise kontrolli juures uuesti „${t.bad}“`);
+    expect(lines.find((l) => l.includes("punane ✕"))).toMatch(/^Pärast „Viga“/);
+    // a Viga leaves the steps as they are, a Läbitud folds them (controller ruling on review Minor 6)
+    expect(lines.find((l) => l.includes("punane ✕"))).toContain("sammud on alles");
+    expect(lines.find((l) => l.includes("roheline ✓"))).toContain("sammud peituvad");
+    // what the Viga sends, and what taking it back does not
+    expect(lines.join("\n")).toContain("Telegrami");
   });
 
   test("the filters' check is a redo from the deploy: its steps are open now on a check still to do, and „Sammud ▸“ folds them first", () => {

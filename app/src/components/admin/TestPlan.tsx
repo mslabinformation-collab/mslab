@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { answerOf, checkState, NOTE_MAX, planCounts, sharedState, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
+import { answerOf, checkState, NOTE_MAX, planCounts, stateIn, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
@@ -116,9 +116,8 @@ function browserStorage(): Storage | null {
 const forWho = (who: WhoChoice, item: TestItem, mine: "maria" | "dim" | null, autoIds: ReadonlySet<string>): boolean =>
   who === "all" || (who === "auto" ? autoIds.has(item.id) : mine === null || item.who === mine || item.who === "koos");
 const passes = (filter: Filter, st: CheckState | undefined): boolean => filter === "all" || st?.state === STATE_OF[filter];
-/** The checks' states as the counts read them (Dim 29.10): a person's answer in `answers`, else Automaattest's in `auto` (none on its own page). */
-const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, CheckState> =>
-  new Map(plan.items.map((i) => [i.id, sharedState(i, answerOf(doc.answers, i.id), doc.auto ? answerOf(doc.auto, i.id) : undefined, plan, buildAt)]));
+/** The checks' states as the counts read them (Dim 29.10, domain/testplan.ts stateIn): a person's answer, else Automaattest's (none on its own page). */
+const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, CheckState> => new Map(plan.items.map((i) => [i.id, stateIn(doc, i, plan, buildAt)]));
 
 /**
  * The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer), the unsent ones over

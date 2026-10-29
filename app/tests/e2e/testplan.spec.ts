@@ -511,11 +511,24 @@ test("take back: under „Avatud“ a press keeps its row; the pressed half agai
   await expect(second).toHaveAttribute("data-check-state", "open");
   await expect(second.locator("[data-check-note]")).toHaveCount(0);
   await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
+  // from the keyboard too: Enter presses „Viga“, and Enter on the pressed half (a click with detail 0) takes it back (review Minor 1)
+  const bad = second.locator('[data-answer="bad"]');
+  await bad.focus();
+  await page.keyboard.press("Enter");
+  await expect(second).toHaveAttribute("data-check-state", "failed");
+  await bad.focus(); // (the Viga took the focus into its note box)
+  await page.keyboard.press("Enter");
+  await expect(second).toHaveAttribute("data-check-state", "open");
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
+  await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
 
-  // a third answered and kept; „Värskenda“ lets it go, the two taken back stay (they are open)
-  await third.locator('[data-answer="ok"]').click();
+  // a third answered by a double-click: it presses once and is not taken back by the second click (review Minor 1); kept, and „Värskenda“ lets
+  // it go, while the two taken back stay (they are open)
+  await third.locator('[data-answer="ok"]').dblclick();
   await savedAt(page);
   await expect(third).toHaveAttribute("data-check-state", "done");
+  await expect(third.locator('[data-answer="ok"]')).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await readApi(page)).answers[ids[2]]?.status).toBe("ok");
   await page.locator("[data-refresh]").click();
   await expect(third).toHaveCount(0);
   await expect(first).toBeVisible();

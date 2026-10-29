@@ -2272,6 +2272,7 @@
         "Ava halduses „Testimine“ ja vajuta rea „Kes“ juures „Automaattest“.",
         "Kui leht ütleb „Selle valikuga kontrolle pole.“, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
         "Muidu ava mõni ala ja leia kontroll, millele automaattest vastas „Läbitud“ ja inimene pole vastanud.",
+        "Kui sellist kontrolli pole, vaata ühe automaattesti vastatud kontrolli rida, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
         "Vaata selle kontrolli rida ja lehe ülaosas olevaid arve.",
         "Vajuta selle kontrolli juures „Läbitud“ ja oota, kuni selle all on sinu vastuse rida.",
         "Vajuta selle rea lõpus „Võta vastus tagasi“.",
@@ -2334,21 +2335,21 @@
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
-        "Vaata kontrollide pealkirjade ees olevaid märke ja selle kontrolli samme.",
-        "Vajuta selle kontrolli juures „Läbitud“.",
-        "Vajuta „Läbitud“ uuesti.",
-        "Vajuta „Läbitud“ veel kord ja oota, kuni selle all on rida „Dim · … · Läbitud“.",
+        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida, ja vaata selle märki.",
+        "Vajuta teise kontrolli juures „Viga“ ja vaata selle märki ja samme.",
+        "Vajuta teise kontrolli juures uuesti „Viga“.",
+        "Vajuta teise kontrolli juures „Läbitud“ ja oota, kuni selle all on rida „Dim · … · Läbitud“.",
         "Vajuta selle rea lõpus „Võta vastus tagasi“.",
-        "Kui kõik oli nii, nagu all kirjas, vajuta „Läbitud“ ja siis „Värskenda“."
+        "Kui kõik oli nii, nagu all kirjas, vajuta selle kontrolli juures „Läbitud“ ja siis „Värskenda“."
       ],
       "expect": [
-        "Avatud kontrolli ees on tühi ring, läbitud kontrolli ees roheline ✓ ja vigase ees punane ✕.",
-        "Avatud kontrollil on sammud, „Mida näed“ ja „Miks“ kohe näha.",
-        "Pärast „Läbitud“ jääb kontroll oma kohale, saab rohelise ✓ ja selle sammud peituvad.",
-        "Ülaosa arvud ja ala riba muutuvad kohe, kuigi kontroll on veel valiku „Avatud“ all.",
-        "Teine „Läbitud“ võtab vastuse tagasi: kontrollil on jälle tühi ring ja ükski nupp pole vajutatud.",
-        "„Võta vastus tagasi“ teeb sama ja võtab ära ka märkuse kasti.",
-        "Pärast „Värskenda“ kaob see kontroll valiku „Avatud“ alt."
+        "Avatud kontrolli ees on tühi ring ja selle sammud, „Mida näed“ ja „Miks“ on kohe näha.",
+        "Pärast „Viga“ on kontrolli ees punane ✕, sammud on alles ja kontroll jääb oma kohale.",
+        "Teine „Viga“ võtab vastuse tagasi: jälle tühi ring, ükski nupp pole vajutatud, märkuse kasti pole.",
+        "Pärast „Läbitud“ on kontrolli ees roheline ✓, selle sammud peituvad ning ülaosa arvud ja ala riba muutuvad kohe.",
+        "„Võta vastus tagasi“ teeb sama: kontrollil on jälle tühi ring ja sammud on lahti.",
+        "Sinu „Viga“ saadab Telegrami tavalise teate; vastuse tagasivõtmine teadet ei saada.",
+        "Pärast „Värskenda“ kaob see kontroll valiku „Avatud“ alt, teine kontroll jääb."
       ],
       "why": "Testija peab kohe nägema, mis on tehtud, ja kogemata antud vastuse saab tagasi võtta.",
       "risk": "med",

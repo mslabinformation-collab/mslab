@@ -388,18 +388,27 @@ describe("a check row (S4-45)", () => {
     expect(steps("a1-fail")).toEqual(["true", false]);
   });
 
-  test("a check answered on the page folds its steps; one taken back opens them again; a choice of the tester's own holds", async () => {
+  // (controller ruling on review Minor 6: a „Viga“ leaves the steps as they are — she is about to write in the note what failed —, a „Läbitud“ folds
+  // them, an answer taken back opens them; on load a done or failed check has them folded)
+  test("„Läbitud“ folds the steps, „Viga“ leaves them as they are, an answer taken back opens them; a choice of the tester's own holds", async () => {
     await showAll();
+    await openAll();
     const steps = (id: string) => check(id).querySelector<HTMLElement>("[data-steps]")!.hidden;
     expect(steps("a1-plain")).toBe(false);
+    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+    expect(steps("a1-plain")).toBe(false); // (a Viga: still open, under the note box asking what went wrong)
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(steps("a1-plain")).toBe(true);
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!); // (pressed again: taken back)
     expect(steps("a1-plain")).toBe(false);
+    // a Viga on a passed check, whose steps are folded, leaves them folded
+    expect(steps("a0-done")).toBe(true);
+    await click(check("a0-done").querySelector('[data-answer="bad"]')!);
+    expect(steps("a0-done")).toBe(true);
     // she folds them herself: they stay folded through the next press and its take-back
     await click(check("a1-plain").querySelector("[data-steps-toggle]")!);
-    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
-    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(steps("a1-plain")).toBe(true);
   });
 
@@ -640,6 +649,32 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect(state("a1-fail")).toBe("done");
   });
 
+  // review Minor 1: a double-click (or a tablet's double-tap) presses once; its second click must not take the answer back at once
+  test("a double-click on a half presses it and does not take it back; a click from the keyboard (detail 0) on the pressed half still does", async () => {
+    await showAll();
+    const ok = check("a1-plain").querySelector<HTMLButtonElement>('[data-answer="ok"]')!;
+    const clickWith = async (detail: number) => {
+      await act(async () => void ok.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail })));
+      await settle();
+    };
+    await clickWith(1);
+    await clickWith(2); // (the second click of the double-click: event.detail 2)
+    expect(state("a1-plain")).toBe("done");
+    expect(pressed("a1-plain")).toEqual(["ok"]);
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "ok", note: "" } } }]);
+    await clickWith(3); // (a third click of the same burst too)
+    expect(state("a1-plain")).toBe("done");
+    // Enter or Space on the focused pressed half: a click with detail 0, which takes the answer back
+    await clickWith(0);
+    expect(state("a1-plain")).toBe("open");
+    expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "clear", note: "" } } });
+    // a single click later (detail 1 again) presses as ever, and a single click on the pressed half takes it back
+    await clickWith(1);
+    expect(state("a1-plain")).toBe("done");
+    await clickWith(1);
+    expect(state("a1-plain")).toBe("open");
+  });
+
   test("the last-answer line ends with „Võta vastus tagasi“, which takes the answer back the same way; the focus stays on the check, on the half that was pressed", async () => {
     await showAll();
     const last = check("a1-fail").querySelector("[data-check-last]")!;
@@ -666,7 +701,9 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect(takeBack("a1-redo")).toBeNull(); // (its only answer is one a redo has overtaken)
   });
 
-  test("its note goes with the answer: the box is gone, a note still waiting to be sent is dropped, and the next press carries no note (Task 4's open concern)", async () => {
+  // (happy-dom's click moves no focus, so here the note box keeps it through the press and its note is still waiting for its second: the outbox's
+  // clear replaces it. A real browser blurs the box first, which sends the note: the next test.)
+  test("its note goes with the answer: the box is gone, a note still waiting in the outbox is replaced by the clear, and the next press carries no note (Task 4's open concern)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     try {
       await showAll();
@@ -684,6 +721,26 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // review Minor 3: in a real browser the press blurs the note box first, and the blur sends what she typed (a first note earns its Telegram
+  // message); the clear follows it, so in the end the check has no answer and no note
+  test("a note blurred by the press (a real browser) is sent first, then the clear: the check ends with no answer, no note and no box", async () => {
+    await showAll();
+    const box = note("a1-fail")!;
+    await act(async () => box.focus());
+    await typeInto(box, "Nupp ei tööta, ka teisel korral");
+    await act(async () => box.blur()); // (what the browser does when the half is pressed)
+    await settle();
+    await click(check("a1-fail").querySelector('[data-answer="bad"]')!);
+    expect(puts()).toEqual([
+      { answers: { "a1-fail": { status: "bad", note: "Nupp ei tööta, ka teisel korral" } } },
+      { answers: { "a1-fail": { status: "clear", note: "" } } },
+    ]);
+    expect(server!["a1-fail"]).toBeUndefined();
+    expect([state("a1-fail"), note("a1-fail")]).toEqual(["open", null]);
+    await click(check("a1-fail").querySelector('[data-answer="bad"]')!);
+    expect(puts().at(-1)).toEqual({ answers: { "a1-fail": { status: "bad", note: "" } } }); // (the next press carries none of it)
   });
 
   test("a „Jäta vahele“ stored before that button went has no half pressed; „Võta vastus tagasi“ takes it back, its note with it", async () => {

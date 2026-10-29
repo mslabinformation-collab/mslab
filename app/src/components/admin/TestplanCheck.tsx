@@ -57,9 +57,16 @@ type CheckProps = {
 
 export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef, onPress, onTakeBack, onType, onLeave }: CheckProps) {
   const uid = useId();
-  /** The tester's own „Sammud ▸“ choice; until she makes one, the steps are open on a check still to do (Dim 29.10). */
+  /** The tester's own „Sammud ▸“ choice: once she makes one, it holds. */
   const [stepsPicked, setStepsPicked] = useState<boolean | null>(null);
-  const stepsOpen = stepsPicked ?? st.state === "open";
+  /**
+   * Until she does (Dim 29.10, and the ruling on the review's Minor 6): open on a check still to do and folded on one done or failed when the
+   * row appears; then a pass folds them and an answer taken back opens them, while a Viga leaves them as they are (she is about to write what
+   * failed, and may want to read the steps while she does). `seen` is the state they were last set for (state kept from the render before).
+   */
+  const [stepsFor, setStepsFor] = useState({ seen: st.state, open: st.state === "open" });
+  if (stepsFor.seen !== st.state) setStepsFor({ seen: st.state, open: st.state === "failed" ? stepsFor.open : st.state === "open" });
+  const stepsOpen = stepsPicked ?? stepsFor.open;
   const halves = useRef<Partial<Record<Status, HTMLButtonElement | null>>>({});
   const answer = st.answer;
   const titleId = `${uid}-title`;
@@ -136,8 +143,9 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
               type="button"
               className={styles.segment}
               aria-pressed={answer?.status === status}
-              // (the pressed half pressed again takes the answer back, Dim 29.10)
-              onClick={() => (answer?.status === status ? onTakeBack() : onPress(status))}
+              // (the pressed half pressed again takes the answer back, Dim 29.10; but not by the second click of a double-click or a double-tap,
+              // `detail` 2 or more, which would undo the press it just made; Enter and Space click with `detail` 0, review Minor 1)
+              onClick={(e) => (answer?.status !== status ? onPress(status) : e.detail < 2 ? onTakeBack() : undefined)}
               data-answer={status}
             >
               {t[status]}

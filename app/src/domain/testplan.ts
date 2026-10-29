@@ -252,6 +252,14 @@ export function sharedState(item: TestItem, person: StoredAnswer | undefined, au
 }
 
 /**
+ * A check's state in a doc (Dim 29.10): sharedState of the person's answer in its `answers` and Automaattest's in its `auto` (none when the doc
+ * has no `auto`: Automaattest's own numbers pass its map as `answers`). The one reading the page's states and planCounts share.
+ */
+export function stateIn(doc: AnswersDoc, item: TestItem, plan: TestPlan, buildAt: string): CheckState {
+  return sharedState(item, answerOf(doc.answers, item.id), doc.auto ? answerOf(doc.auto, item.id) : undefined, plan, buildAt);
+}
+
+/**
  * A note as it is stored (spec §7): trimmed, "" for white space or anything that is not text, cut at NOTE_MAX code points (Array.from, so an
  * emoji is one character), and trimmed again where the cut fell in white space, so cleaning a clean note changes nothing.
  */
@@ -423,7 +431,7 @@ export function testerOf(email: string, adminNames: string | undefined): Tester 
  * The header's and the Avaleht card's numbers (spec §4, §5) over the plan's own checks (answers to other ids are ignored). `who` narrows them
  * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (an OK still valid), open (a
  * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry a person's
- * overtaken answer. A check's state is sharedState's (admin polish Part A, Dim 29.10): the person's answer in `answers`, else Automaattest's in
+ * overtaken answer. A check's state is stateIn's (admin polish Part A, Dim 29.10): the person's answer in `answers`, else Automaattest's in
  * `auto`. Automaattest's own numbers are its map passed as `answers`, with no `auto`.
  */
 export function planCounts(
@@ -435,7 +443,7 @@ export function planCounts(
   const counts = { total: 0, done: 0, open: 0, bad: 0, redo: 0 };
   for (const item of plan.items) {
     if (who !== null && item.who !== who && item.who !== "koos") continue;
-    const { state, overtaken } = sharedState(item, answerOf(doc.answers, item.id), doc.auto ? answerOf(doc.auto, item.id) : undefined, plan, buildAt);
+    const { state, overtaken } = stateIn(doc, item, plan, buildAt);
     counts.total++;
     if (state === "done") counts.done++;
     else if (state === "failed") counts.bad++;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sharedState, testerOf,
+  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sharedState, stateIn, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type StoredAnswer, type TestItem, type TestPlan,
 } from "@/domain/testplan";
 
@@ -105,6 +105,16 @@ describe("sharedState: a person's answer, else Automaattest's (Dim 29.10)", () =
     expect(got.state).toBe(state);
     expect(got.answer).toEqual(from === "person" ? person : null);
     expect(got.overtaken).toEqual(overtaken ? person : null);
+  });
+
+  // review Minor 8: the page and the counts read a doc through one helper
+  test("stateIn reads a check of a doc: its person's answer in `answers`, Automaattest's in `auto`; a doc without `auto` is checkState of `answers`", () => {
+    const it = PLAN.items[0];
+    const withBoth: AnswersDoc = { v: 1, answers: { "maria-1": P("bad") }, auto: { "maria-1": A("ok") } };
+    expect(stateIn(withBoth, it, PLAN, BUILD)).toEqual(sharedState(it, P("bad"), A("ok"), PLAN, BUILD));
+    expect(stateIn({ v: 1, answers: {}, auto: { "maria-1": A("ok") } }, it, PLAN, BUILD).state).toBe("done");
+    expect(stateIn(doc({ "maria-1": P("ok") }), it, PLAN, BUILD)).toEqual(checkState(it, P("ok"), PLAN, BUILD));
+    expect(stateIn(doc(), it, PLAN, BUILD)).toEqual({ state: "open", answer: null, overtaken: null });
   });
 
   test("with no Automaattest answer it is checkState itself", () => {
