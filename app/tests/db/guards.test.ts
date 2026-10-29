@@ -14,6 +14,8 @@ vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.stubEnv("ADMIN_EMAILS", "admin@example.test,second.admin@example.com"); // the sign-in allow-list: server/env.ts reads process.env
 
 import { adminAction, createSession, isCrossSite, requireAdmin, requireAdminEmail, withAdmin } from "@/server/auth";
+import LoginPage from "@/app/admin/login/page";
+import { LoginForm } from "@/app/admin/login/LoginForm";
 
 let db: Db;
 beforeAll(async () => {
@@ -144,5 +146,35 @@ describe("requireAdmin / requireAdminEmail", () => {
       state.path = path;
       expect(await redirectOf(requireAdmin()), String(path)).toBe("/admin/login");
     }
+  });
+});
+
+// B19 (piece 4c Task 5, review m-1): /admin/login?tagasi= is a redirect of its own for an admin who is signed in already (SaveStatus's link pressed
+// after signing in in another tab), and the form's way back for one who is not. Both take the checked value only.
+describe("the login page with ?tagasi=", () => {
+  const open = (searchParams: Record<string, string>) => LoginPage({ searchParams: Promise.resolve(searchParams) });
+  const redirectOf = async (run: Promise<unknown>) => String(((await run.catch((e) => e)) as { digest?: string }).digest).split(";")[2];
+  /** The LoginForm element in the page's tree, for its props. */
+  const formIn = (node: unknown): { props: { tagasi?: string } } | null => {
+    if (!node || typeof node !== "object") return null;
+    if (Array.isArray(node)) return node.map(formIn).find(Boolean) ?? null;
+    const el = node as { type?: unknown; props?: { children?: unknown } };
+    if (el.type === LoginForm) return el as { props: { tagasi?: string } };
+    return formIn(el.props?.children);
+  };
+
+  test("signed in: a good way back is where it sends her (fragment included), anything else is /admin", async () => {
+    await signIn();
+    expect(await redirectOf(open({ tagasi: "/admin/kalender?id=3" }))).toBe("/admin/kalender?id=3");
+    expect(await redirectOf(open({ tagasi: "/admin/testimine#kirjad-halduse-link" }))).toBe("/admin/testimine#kirjad-halduse-link");
+    for (const tagasi of ["//evil", "//evil.example/admin", "/\\evil", "%2F%2Fevil", "https://evil.example/admin", "/admin/login", "/adminx", "/admin/kalen\tder", `/admin/${"k".repeat(300)}`])
+      expect(await redirectOf(open({ tagasi })), tagasi).toBe("/admin");
+    expect(await redirectOf(open({}))).toBe("/admin");
+  });
+
+  test("signed out: the form gets the checked way back, and nothing for a bad one", async () => {
+    expect(formIn(await open({ tagasi: "/admin/kalender?id=3", viga: "link" }))?.props.tagasi).toBe("/admin/kalender?id=3");
+    for (const tagasi of ["//evil", "/admin/login", "/adminx"]) expect(formIn(await open({ tagasi }))?.props.tagasi, tagasi).toBeUndefined();
+    expect(formIn(await open({}))?.props.tagasi).toBeUndefined();
   });
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { ADMIN_PATH_HEADER, PATH_ORIGIN, RETURN_MAX, adminLoginHref, adminReturnPath } from "@/lib/admin-return";
 
@@ -52,7 +54,7 @@ describe("adminReturnPath: anything else is null (the landing is then /admin)", 
     ["https://mslab.example/admin"], // an absolute URL, even of this site: the app only ever sends a path
     ["http:/admin"],
     ["javascript:alert(1)"],
-    // encoded slashes, backslashes and dots (lib/site-gate.ts UNCLEAN)
+    // encoded slashes, backslashes and dots (lib/unclean-path.ts UNCLEAN, the gate's rule too)
     ["%2F%2Fevil"],
     ["/%2F%2Fevil"],
     ["/admin/%2F%2Fevil"],
@@ -109,5 +111,13 @@ describe("adminLoginHref: the login page with the way back", () => {
 
   test("the middleware's request header", () => {
     expect(ADMIN_PATH_HEADER).toBe("x-mslab-path");
+  });
+});
+
+describe("what the browser gets of it (review m-4)", () => {
+  test("it imports only the gate's one pattern (lib/unclean-path.ts), never the gate or its cookie signing: SaveStatus runs it in the browser", () => {
+    const imports = [...readFileSync(join(process.cwd(), "src", "lib", "admin-return.ts"), "utf8").matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]);
+    expect(imports).toEqual(["./unclean-path"]);
+    expect(readFileSync(join(process.cwd(), "src", "lib", "unclean-path.ts"), "utf8")).not.toMatch(/^import /m);
   });
 });

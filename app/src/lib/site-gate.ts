@@ -6,6 +6,7 @@
 
 import { verifyPreview } from "./preview-cookie";
 import { ROOT_FILE_SOURCE } from "./root-files";
+import { UNCLEAN } from "./unclean-path";
 
 /**
  * The coming-soon page of each language: what the middleware rewrites a gated page request to. Under its own root layout
@@ -68,14 +69,10 @@ export function gateOn(value: string | undefined): boolean {
 const THROUGH = new RegExp(`^\\/(admin(\\/|$)|api\\/(auth|admin|cron|newsletter)(\\/|$)|api\\/bunny\\/webhook$|api\\/payments\\/notify$|maksa\\/[^/]+$|_next\\/|media(\\/|$)|${ROOT_FILE_SOURCE})`);
 
 /**
- * A path the router could read as another one: a dot segment ("/admin/../konto"), an encoded dot, slash or backslash, a
- * backslash, or two slashes in a row. A browser never sends one (the URL parser removes real dot segments before the
- * middleware sees the path); such a path never goes through, whatever its first segment. The admin's way back after signing in
- * (lib/admin-return.ts, B19) refuses the same paths.
+ * Is `path` one of the addresses that always go through (see THROUGH)? A path the router could read as another one
+ * (lib/unclean-path.ts UNCLEAN: a dot segment, an encoded dot, slash or backslash, a backslash, two slashes in a row) never goes
+ * through, whatever its first segment. The admin's way back after signing in (lib/admin-return.ts, B19) refuses the same paths.
  */
-export const UNCLEAN = /(^|\/)\.{1,2}(\/|$)|%2e|%2f|%5c|\\|\/\//i;
-
-/** Is `path` one of the addresses that always go through (see THROUGH)? */
 export function alwaysThrough(path: string): boolean {
   return THROUGH.test(path) && !UNCLEAN.test(path);
 }

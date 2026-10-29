@@ -56,7 +56,10 @@ test.describe("guard (GET only)", () => {
   test("the list, the PDF, the CSV and the sample need a session", async ({ request }) => {
     const page = await request.get("/admin/arved", { maxRedirects: 0 });
     expect([303, 307, 308]).toContain(page.status());
-    expect(page.headers().location).toMatch(/\/admin\/login$/);
+    // B19: the login page keeps the page asked for as ?tagasi=
+    const login = new URL(page.headers().location, "http://x");
+    expect(login.pathname).toBe("/admin/login");
+    expect(login.searchParams.get("tagasi")).toBe("/admin/arved");
     for (const path of ["/api/admin/arve/1", "/api/admin/arved?kuu=2026-10", "/api/admin/naidisarve"]) {
       const res = await request.get(path);
       expect([res.status(), await res.json()], path).toEqual([401, { ok: false, error: "unauthorized" }]);

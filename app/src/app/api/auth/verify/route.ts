@@ -14,21 +14,25 @@ import { setPreviewCookie } from "@/server/preview";
  * tagasi was checked when the link was made and is checked again here (lib/admin-return.ts): one that is not an admin page
  * of this site lands on /admin without a word. Using the token and creating the session are one transaction, so a database failure in
  * between leaves the link usable. Anything else goes to /admin/login:
- * ?viga=link (unknown, expired or used token, or an address that is no longer allowed), =server (the database failed);
+ * ?viga=link (unknown, expired or used token, or an address that is no longer allowed), =server (the database failed), both
+ * with the checked way back as &tagasi= (so asking for a new link still lands her there);
  * a prefetch goes there without a notice and without touching the token.
  */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  const back = adminReturnPath(url.searchParams.get("tagasi"), url.origin);
+  /** The login page's notice, with the way back (none for the panel's front page, where a sign-in lands anyway). */
+  const notice = (viga: "link" | "server") => `/admin/login?viga=${viga}${back && back !== "/admin" ? `&tagasi=${encodeURIComponent(back)}` : ""}`;
   let session: string | null = null;
   let target = "/admin/login";
   if (!isPrefetch(request.headers)) {
     try {
       // The allow-list is checked again inside: an address taken off the list since the link was sent does not get in.
       session = await redeemLoginToken(getDb(), url.searchParams.get("t") ?? "", serverEnv().ADMIN_EMAILS);
-      target = session ? (adminReturnPath(url.searchParams.get("tagasi"), url.origin) ?? "/admin") : "/admin/login?viga=link";
+      target = session ? (back ?? "/admin") : notice("link");
     } catch (e) {
       logFailure("[auth] verify failed", e); // never the message: it holds the token hash and the e-mail
-      target = "/admin/login?viga=server";
+      target = notice("server");
     }
   }
   const res = NextResponse.redirect(new URL(target, url.origin), 303);

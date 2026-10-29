@@ -108,7 +108,10 @@ test("guard: the course editor and its lesson drawer need an admin session", asy
   for (const path of ["/admin/koolitused/1", "/admin/koolitused/1?oppetund=1"]) {
     const res = await request.get(path, { maxRedirects: 0 });
     expect([303, 307, 308], path).toContain(res.status());
-    expect(res.headers().location, path).toMatch(/\/admin\/login$/);
+    // B19: the login page keeps the page asked for as ?tagasi=
+    const login = new URL(res.headers().location, "http://x");
+    expect(login.pathname, path).toBe("/admin/login");
+    expect(login.searchParams.get("tagasi"), path).toBe(path);
   }
 });
 

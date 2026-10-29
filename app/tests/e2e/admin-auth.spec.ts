@@ -306,15 +306,21 @@ test.describe("the link", () => {
     await sessionCookie(context);
   });
 
-  test("expires after 15 minutes", async ({ page }) => {
+  test("expires after 15 minutes; the notice keeps the way back, so the next link still lands there", async ({ page, context }) => {
     submitsForms();
     opensDevLink();
-    const { body } = await requestLink(page, ADMIN);
+    await page.goto("/admin/login?tagasi=%2Fadmin%2Fmaksed");
+    const { body } = await submitLogin(page, ADMIN);
     await expireAuthToken(tokenOf(body.devLink!));
     unlockLogin(); // an expired link does not count towards the cap
     await page.goto(pathOf(body.devLink!));
-    await expect(page).toHaveURL(/\/admin\/login\?viga=link$/);
+    await expect(page).toHaveURL(/\/admin\/login\?viga=link&tagasi=%2Fadmin%2Fmaksed$/);
     await expect(page.locator("main").getByRole("alert")).toHaveText(LINK_ERROR);
+    // review m-5: asked for again from the notice, the new link lands on the page she wanted
+    const again = await submitLogin(page, ADMIN);
+    await page.goto(pathOf(again.body.devLink!));
+    await expect(page).toHaveURL(/\/admin\/maksed$/);
+    await sessionCookie(context);
   });
 
   test("an unknown or malformed token is refused without a session", async ({ page, context }) => {

@@ -4,7 +4,7 @@
 // checked: the login request checks it and the link checks it again (adminReturnPath). Anything else lands on /admin without a word (builder
 // notes §5 C8). Plain functions: the middleware, the server and the browser (SaveStatus) use them.
 
-import { UNCLEAN } from "./site-gate";
+import { UNCLEAN } from "./unclean-path";
 
 /** The request header the middleware sets on every /admin request: the path and query asked for (a server component knows neither); requireAdmin reads it. */
 export const ADMIN_PATH_HEADER = "x-mslab-path";
@@ -30,7 +30,7 @@ const LOGIN = /^\/admin\/login(\/|$)/;
 /**
  * `raw` as a way back: a page of the admin on `origin` (/admin or /admin/…, never the login page itself), rebuilt from the parsed path, query and
  * fragment (so what goes into a Location header is encoded), or null. Refused: anything that is not a path with one slash in front (another site,
- * `//evil`, `/\evil`, an absolute URL, `%2F%2Fevil`), what lib/site-gate.ts UNCLEAN refuses in the path (dot segments, encoded dots, slashes and
+ * `//evil`, `/\evil`, an absolute URL, `%2F%2Fevil`), what lib/unclean-path.ts UNCLEAN refuses (the coming-soon gate's rule) in the path (dot segments, encoded dots, slashes and
  * backslashes, a backslash, two slashes in a row), a control character anywhere, and more than RETURN_MAX characters.
  */
 export function adminReturnPath(raw: string | null, origin: string): string | null {

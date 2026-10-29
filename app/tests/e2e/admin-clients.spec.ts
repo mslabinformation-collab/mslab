@@ -96,7 +96,10 @@ test("guard: Õpilased and the student's view need an admin session", async ({ r
   for (const path of ["/admin/opilased", "/admin/opilased?id=1", "/admin/opilased/1/vaade", "/admin/opilased/1/vaade/e-koolitus"]) {
     const res = await request.get(path, { maxRedirects: 0 });
     expect([303, 307, 308], path).toContain(res.status());
-    expect(res.headers().location, path).toMatch(/\/admin\/login$/);
+    // B19: the login page keeps the page asked for as ?tagasi=
+    const login = new URL(res.headers().location, "http://x");
+    expect(login.pathname, path).toBe("/admin/login");
+    expect(login.searchParams.get("tagasi"), path).toBe(path);
   }
 });
 

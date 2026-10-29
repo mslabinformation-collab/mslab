@@ -391,8 +391,27 @@ describe("the way back after signing in (B19)", () => {
     expect(await open(`${ORIGIN}/api/auth/verify?t=${token}&tagasi=${encodeURIComponent("/admin/maksed")}`)).toBe("/admin/maksed");
   });
 
-  test("a link that does not work keeps its notice and goes nowhere else", async () => {
-    expect(await open(`${ORIGIN}/api/auth/verify?t=${"A".repeat(43)}&tagasi=${encodeURIComponent("/admin/kalender")}`)).toBe("/admin/login?viga=link");
+  // review m-5: a used or expired link keeps the checked way back on the login page, so asking for a new link still lands her there
+  test("a link that does not work goes to its notice with the checked way back, and with none for a bad one", async () => {
+    const dead = `${ORIGIN}/api/auth/verify?t=${"A".repeat(43)}`;
+    expect(await open(`${dead}&tagasi=${encodeURIComponent("/admin/kalender?id=3#x")}`)).toBe("/admin/login?viga=link&tagasi=%2Fadmin%2Fkalender%3Fid%3D3%23x");
+    for (const tagasi of ["//evil.example", "/\\evil.example", "%2F%2Fevil", "/admin/login", "/adminx", "/admin/kalen\tder", `/admin/${"k".repeat(294)}`, "/admin"])
+      expect(await open(`${dead}&tagasi=${encodeURIComponent(tagasi)}`), tagasi).toBe("/admin/login?viga=link");
+    expect(await open(dead)).toBe("/admin/login?viga=link");
+    // a used link too
+    const token = await createLoginToken(db, "admin@example.test");
+    await open(`${ORIGIN}/api/auth/verify?t=${token}`);
+    expect(await open(`${ORIGIN}/api/auth/verify?t=${token}&tagasi=${encodeURIComponent("/admin/maksed")}`)).toBe("/admin/login?viga=link&tagasi=%2Fadmin%2Fmaksed");
+  });
+
+  test("a database failure goes to its notice with the checked way back too", async () => {
+    state.db = { transaction: () => Promise.reject(new Error("db down")), update: () => { throw new Error("db down"); }, select: () => { throw new Error("db down"); } };
+    try {
+      expect(await open(`${ORIGIN}/api/auth/verify?t=${"A".repeat(43)}&tagasi=${encodeURIComponent("/admin/maksed")}`)).toBe("/admin/login?viga=server&tagasi=%2Fadmin%2Fmaksed");
+      expect(await open(`${ORIGIN}/api/auth/verify?t=${"A".repeat(43)}&tagasi=${encodeURIComponent("//evil.example")}`)).toBe("/admin/login?viga=server");
+    } finally {
+      state.db = db;
+    }
   });
 });
 

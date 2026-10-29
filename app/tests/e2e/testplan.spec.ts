@@ -145,7 +145,10 @@ async function layoutHolds(page: Page, widths: number[]): Promise<void> {
 test("guard: the page and its API need an admin session", async ({ request }) => {
   const page = await request.get("/admin/testimine", { maxRedirects: 0 });
   expect([303, 307, 308]).toContain(page.status());
-  expect(page.headers().location).toMatch(/\/admin\/login$/);
+  // B19: the login page keeps the page asked for as ?tagasi=
+  const login = new URL(page.headers().location, "http://x");
+  expect(login.pathname).toBe("/admin/login");
+  expect(login.searchParams.get("tagasi")).toBe("/admin/testimine");
   for (const method of ["get", "put"] as const) {
     const res = await request[method]("/api/admin/testplan", method === "put" ? { data: { answers: {} } } : {});
     expect(res.status(), method).toBe(401);
