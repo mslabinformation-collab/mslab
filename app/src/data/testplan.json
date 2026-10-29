@@ -562,7 +562,8 @@
         "Maria postkasti tuleb tavaline kiri „[Proov] Proov 3 pakkumine“ logo, pildi, teksti, koodi ja nupuga.",
         "Sinu postkasti tuleb venekeelne proov, teemas „[Proov]“, juba uue eelvaate reaga.",
         "Link avab lehe „Proovikiri — päris kirjas viib see link loobumisele.“ ja midagi ei muutu.",
-        "Esimeses vahekaardis on teade, et kirja muudeti vahepeal mujal ja midagi ei saadetud; Maria postkasti uut proovi ei tule.",
+        "Esimeses vahekaardis on kohe teade ja Maria postkasti uut proovi ei tule.",
+        "Teade: „Kirja muudeti vahepeal teises aknas. Proovi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada proov“.“.",
         "Tellijate loendis on Proov 3 aadress endiselt olemas."
       ],
       "why": "Proov on tavaline kiri: välimus ja loobumislink on kontrollitud ning proov ei saada teksti, mida ekraanil ei näe.",

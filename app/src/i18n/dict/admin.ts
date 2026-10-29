@@ -2175,6 +2175,9 @@ export const adminEt = {
         server: "Ei õnnestunud. Proovi uuesti.",
         busy: "Eelmine kiri on veel saatmisel. Saada see, kui see on lõppenud.",
         changed: "Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“.",
+        // „Saada proov“ on a letter saved elsewhere since (ruling R-j; Dim 29.10): a test is never refused over the subscribers, so it has its own words; the editor says
+        // them for the test only, and also for a test sent with no version (an outdated page script), which is `changed` too
+        testChanged: "Kirja muudeti vahepeal teises aknas. Proovi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada proov“.",
         empty: "Kinnitatud tellijaid pole: kirja pole kellelegi saata.",
         notSending: "Selle kirja saatmine ei ole pooleli.",
         refused: "Saatmine peatus: Resend keeldus. Kirjuta Dimile.",

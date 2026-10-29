@@ -689,13 +689,14 @@ function Sends({
       if (!(await flush()) || now.current !== pressed) return setTestLine(IDLE);
       if (!sendable()) return setTestLine({ tone: "error", text: adminEt.editor.invalid });
       // the version of the text on the screen, now that the flush confirmed it (as the panel's read sends it): a letter another tab or device saved since is
-      // `changed` — nothing is sent, the action has refreshed the page, and the line says the existing sentence (ruling R-j)
+      // `changed` — nothing is sent, the action has refreshed the page, and the line is the test's own sentence (ruling R-j; the send-to-all one names the
+      // subscribers and „Saada kõigile“)
       const r = await sendTestAction({ id, to: target.key, locale, version: versionNow() }).catch(() => LOST);
       if (r.ok) setTestLine({ tone: "done", text: fill(t.test.sent, { email: target.address }) });
       else if ("fields" in r) {
         mark(r.fields);
         setTestLine({ tone: "error", text: adminEt.editor.invalid });
-      } else setTestLine({ tone: "error", text: refusal(r.error) });
+      } else setTestLine({ tone: "error", text: r.error === "changed" ? t.errorsOf.testChanged : refusal(r.error) });
     } finally {
       setTesting(false);
     }

@@ -501,15 +501,16 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     expect(actions.sendTestAction).toHaveBeenCalledWith({ id: 7, to: "me", locale: "et", version: "k:v1" });
   });
 
-  test("„Saada proov“ refused is said in words: ten an hour, it did not go, no such address, a letter saved elsewhere since (the existing `changed` sentence), a lost connection", async () => {
+  test("„Saada proov“ refused is said in words: ten an hour, it did not go, no such address, a letter saved elsewhere since (the test's own `changed` sentence), a lost connection", async () => {
     await show(DRAFT);
     const said: [unknown, string][] = [
       [{ ok: false, error: "limited" }, "Selle tunni 10 proovi on saadetud. Proovi tunni pärast uuesti."],
       [{ ok: false, error: "mail" }, "Proovi ei saanud saata. Proovi uuesti."],
       [{ ok: false, error: "address" }, "Sellele aadressile ei saa proovi saata."],
       [{ ok: false, error: "notFound" }, "Seda kirja enam pole."],
-      // ruling R-j: the version the screen held was not the stored one (the action has refreshed the page, as the panel's read does)
-      [{ ok: false, error: "changed" }, "Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“."],
+      // ruling R-j (Dim 29.10): the version the screen held was not the stored one (the action has refreshed the page, as the panel's read does): the test's own
+      // sentence, not the send-to-all one
+      [{ ok: false, error: "changed" }, "Kirja muudeti vahepeal teises aknas. Proovi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada proov“."],
     ];
     for (const [answer, line] of said) {
       actions.sendTestAction.mockResolvedValueOnce(answer);

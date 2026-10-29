@@ -178,6 +178,8 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     expect(await actions.prepareSendAction({ id, version: shown })).toEqual({ ok: false, error: "changed" });
     expect(cache.refresh).toHaveBeenCalledTimes(1);
     expect(adminEt.newsletter.campaigns.errorsOf.changed).toBe("Kirja või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada kõigile“.");
+    // (the send-to-all sentence stays as it was; the test send has its own, Dim 29.10)
+    expect(adminEt.newsletter.campaigns.errorsOf.testChanged).toBe("Kirja muudeti vahepeal teises aknas. Proovi ei saadetud: laadi leht uuesti, vaata kiri üle ja vajuta uuesti „Saada proov“.");
     expect(await actions.prepareSendAction({ id } as unknown as { id: number; version: string })).toEqual({ ok: false, error: "notFound" });
     expect(await prepare(id)).toMatchObject({ ok: true, et: 1, ru: 0 });
   });
@@ -346,7 +348,7 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
   });
 
   test("every code the send actions answer has its words in the editor's table (an unknown code would fall back to the general line)", () => {
-    const codes = ["notFound", "sent", "busy", "empty", "changed", "notSending", "refused", "limited", "mail", "address", "server"] as const;
+    const codes = ["notFound", "sent", "busy", "empty", "changed", "testChanged", "notSending", "refused", "limited", "mail", "address", "server"] as const;
     for (const code of codes) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
     expect(new Set(codes.map((c) => adminEt.newsletter.campaigns.errorsOf[c])).size).toBe(codes.length); // (no two codes say the same)
   });
