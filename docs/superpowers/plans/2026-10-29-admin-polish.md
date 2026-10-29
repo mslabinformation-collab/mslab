@@ -8,12 +8,12 @@
 
 **Tech Stack:** Next.js 16 App Router, React 19, CSS modules, Drizzle + postgres.js, vitest + happy-dom, PGlite db tests, Playwright.
 
-**Spec:** Dim's request of 29.10 (in chat): "Give admin a UI/UX pass, make sure buttons and everything is inline and nice … Make sure mobile works as well." Testimine: automatic results not visibly Läbitud/Viga; accidental Läbitud cannot be undone; steps hidden behind a toggle; a passed check disappears from the list; "needs to be simple and understandable — clear which tests are done and which need doing". The audit: `C:/Users/DMITRI~1.MAR/AppData/Local/Temp/claude/C--Users-Dmitri-MARKIT-source-repos-MSLab/4d4b1714-8042-48bf-9255-8160f9b36e85/scratchpad/admin-audit/report.md` (F1–F22, with file:line causes, screenshots and re-usable capture scripts in the same folder). Part A design: section "Part A" below (proposed to Dim 29.10).
+**Spec:** Dim's request of 29.10 (in chat): "Give admin a UI/UX pass, make sure buttons and everything is inline and nice … Make sure mobile works as well." Testimine: automatic results not visibly Läbitud/Viga; accidental Läbitud cannot be undone; steps hidden behind a toggle; a passed check disappears from the list; "needs to be simple and understandable — clear which tests are done and which need doing". The audit: `C:/Users/DMITRI~1.MAR/AppData/Local/Temp/claude/C--Users-Dmitri-MARKIT-source-repos-MSLab/4d4b1714-8042-48bf-9255-8160f9b36e85/scratchpad/admin-audit/report.md` (F1–F22, with file:line causes, screenshots and re-usable capture scripts in the same folder). Part A: Dim's answers of 29.10 (AskUserQuestion): undo = press the pressed half again + „Võta vastus tagasi“; an answered row stays until the filter changes, „Värskenda“ or reload; steps open on open checks; **Automaattest's result counts for us** — a check the automatic test passed is „Läbitud“ for Maria and Dim unless they answer it themselves (Tasks 4–5).
 
 ## Global Constraints
 
 - Public site untouched: only admin styles/components (`app/src/components/admin/**`, `app/src/app/admin/**`), never `components/site/ui.module.css` or public pages.
-- No new client-facing text in Part B. Part A's only new texts: „Võta vastus tagasi“ and „Siin on automaattesti tulemused. Oma vastuse annad valikus „Mina“.“ (byte-exact, in `adminEt`).
+- No new client-facing text in Part B. Part A's only new text: „Võta vastus tagasi“ (byte-exact, in `adminEt`).
 - Phone = 390×844 and 375 px: no horizontal page scroll; every tappable control ≥ 40 px (44 px where it is today); desktop = 1440×900 and 1280×800.
 - A hand-off design is built as designed (`docs/superpowers/specs/admin-ux-pass/handoff/README.md`): a fix that changes what a frame explicitly draws (a placement, an order) is not made silently — keep the drawn layout and list it in the report for Dim; alignment/overflow bugs the frames don't draw are fixed.
 - Every behaviour change updates `app/src/data/testplan.json` per its rules (`redo`/`reworded`/`new`, `markedAt: "deploy"`); pure visual fixes need no test-plan change.
@@ -26,7 +26,7 @@
 2. A long real text in a list row and in a gallery caption (F2): the box grows, nothing is cut.
 3. The desktop sidebar at 1280×800 with „Koduleht ja uudiskiri“ open (F6): every item and „Logi välja“ reachable, the footer whole.
 4. Testimine at 390 px with a long check title and the steps open: the row stacks, the two answer halves stay full width.
-5. Testimine with the „Olek“ filter on „Avatud“: a press keeps the row in place; changing the filter or „Värskenda“ then drops it.
+5. Testimine with the „Olek“ filter on „Avatud“: a press keeps the row in place; changing the filter or „Värskenda“ then drops it. And a check Automaattest passed whose person's answer is taken back is „Läbitud“ again (Automaattest's), not „Avatud“.
 
 ---
 
@@ -85,7 +85,7 @@
 - [ ] A check answered on the page stays in the list (in place, with its new state) until the „Olek“ or „Kes“ choice changes, „Värskenda“ is pressed or the page reloads; counts and area bars update at once.
 - [ ] Pressing the pressed half again takes the answer back (Task 4's clear); the last-answer line ends with „Võta vastus tagasi“, which does the same. The check is „Avatud“ again; its note goes with the answer.
 - [ ] Steps, „Mida näed“ and „Miks“ are open on an open check; a done or failed check shows them folded; „Sammud ▸“ toggles either way.
-- [ ] Automaattest: its result is a chip in the row's meta line (green „Automaattest: Läbitud“, red „Automaattest: Viga“, grey „Automaattest: Jäta vahele“), not a quiet line; its note stays under the row. „Kes → Automaattest“ shows Automaattest's own states: the line, the „Olek“ pills, the area bars and the markers count its answers; the rows have no answer halves and no note box; under the filters: „Siin on automaattesti tulemused. Oma vastuse annad valikus „Mina“.“
+- [ ] Automaattest counts for us (Dim 29.10, reverses D10's "never counts" of 25.10): a check with no valid answer of Maria's or Dim's takes Automaattest's valid answer as its state (ok → „Läbitud“, bad → „Viga“, a skip → open; one a redo has overtaken does not count) — in the marker, the line, the „Olek“ pills, the area bars and Avaleht's card (`planCounts`, `checkState`'s caller). A person's answer always wins over it. The two halves show only a person's answer (an Automaattest-only pass has no half pressed); a press by a person over it is an ordinary answer. Its result is a chip in the row's meta line (green „Automaattest: Läbitud“, red „Automaattest: Viga“, grey „Automaattest: Jäta vahele“), not a quiet line; its note stays under the row. The menu badge (`ownFaults`) is unchanged. „Kes → Automaattest“ keeps listing the checks it answered.
 - [ ] Phone (390/375): the row stacks (marker + title, meta, steps, the two halves full width).
 - [ ] Test plan: reword/redo the Testimine checks this changes.
 - [ ] Commit: `feat(testplan): Testimine says what is done — state markers, rows stay, steps open, take an answer back, Automaattest's own view`
