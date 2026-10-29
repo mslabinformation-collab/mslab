@@ -3,6 +3,7 @@ import { act, createElement, useEffect, useState } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nInput } from "@/components/admin/I18nInput";
 import { ListEditor } from "@/components/admin/ListEditor";
 import { UndoProvider } from "@/components/admin/UndoBar";
 import type { I18n } from "@/i18n/field";
@@ -425,5 +426,15 @@ describe("ListEditor: a row's field lines up with its handle, number and buttons
     } finally {
       delete (HTMLTextAreaElement.prototype as { scrollHeight?: number }).scrollHeight;
     }
+  });
+
+  it("a field's notes under it (hint, error) are marked for a row's grid (data-i18n-note), each in an area of its own (Task 1 review M-5)", async () => {
+    await act(async () =>
+      root.render(createElement(I18nInput, { label: "Õpiväljund 1", labelHidden: true, value: { et: "Oskab", ru: "Умеет" }, onChange: () => {}, hint: "Vihje", error: "Viga" })),
+    );
+    expect($$("[data-i18n-note]").map((el) => [el.getAttribute("data-i18n-note"), text(el)])).toEqual([
+      ["hint", "Vihje"],
+      ["error", "Viga"],
+    ]);
   });
 });

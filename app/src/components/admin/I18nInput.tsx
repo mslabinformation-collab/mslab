@@ -179,17 +179,17 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, grow, m
         </button>
       )}
       {hint && (
-        <p id={`${uid}-hint`} className={ui.hint}>
+        <p id={`${uid}-hint`} className={ui.hint} data-i18n-note="hint">
           {hint}
         </p>
       )}
       {showMissing && (
-        <p id={`${uid}-missing`} className={ui.hint}>
+        <p id={`${uid}-missing`} className={ui.hint} data-i18n-note="missing">
           {t.missingHint}
         </p>
       )}
       {error && (
-        <p id={`${uid}-error`} className={ui.error}>
+        <p id={`${uid}-error`} className={ui.error} data-i18n-note="error">
           {error}
         </p>
       )}

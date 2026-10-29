@@ -184,6 +184,36 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
   });
 });
 
+// The points' rows (ListEditor; admin polish F1, Task 1 review M-1 / M-8): where the handle, the number and ↑ ↓ × share the field's line, they are level
+// with it; where the list is too narrow for that (Praktika's cards at 1280), the row goes compact (its controls one line over a wide field). Read only.
+test.describe("practice packages: the points' rows line up and fit (admin polish F1)", () => {
+  /** The first point's field and its ↑, in page px: their vertical centres, whether ↑ stands over the field (compact) and the field's width. */
+  const firstRow = (page: Page) =>
+    page.locator("[data-list-editor] [data-row]").first().evaluate((row) => {
+      const box = (el: Element) => el.getBoundingClientRect();
+      const field = box(row.querySelector("[data-lang-field]")!);
+      const up = box(row.querySelector('[data-drag-tool="up"]')!);
+      return { fieldMid: field.top + field.height / 2, upMid: up.top + up.height / 2, compact: up.bottom <= field.top + 1, fieldWidth: field.width };
+    });
+
+  test("at 1440 × 900 a point's field is level with its ↑ (± 2 px); at 1280 × 800 the row is compact or its field at least 260 px wide", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "the desktop widths: the desktop project");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/praktika");
+    await adminReady(page);
+    await expect(page.locator("[data-list-editor] [data-row]").first()).toBeVisible();
+    const wide = await firstRow(page);
+    expect(wide.compact, "at 1440 the point keeps the C5 frame's one line").toBe(false);
+    expect(Math.abs(wide.fieldMid - wide.upMid), "the field's centre and ↑'s").toBeLessThanOrEqual(2);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(async () => {
+      const narrow = await firstRow(page);
+      return narrow.compact || narrow.fieldWidth >= 260;
+    }, { message: "at 1280 the row is compact or its field at least 260 px wide" }).toBe(true);
+  });
+});
+
 /** The answer to a home part's autosave (POST api/admin/sisu/home/0/osa/<part>): 200, or the status asked for (400, a refusal). */
 const homeSaved = (page: Page, part: string, status = 200) =>
   page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/home/0/osa/${part}`) && r.request().method() === "POST" && r.status() === status);

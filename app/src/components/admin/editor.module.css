@@ -212,12 +212,15 @@
   gap: 8px 16px;
 }
 
+/* the rows' list (DragList's ol) is the container "list-rows": its rows go compact where the list is too narrow for a field beside its controls
+   (below) */
 .rows {
   display: grid;
   gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
+  container: list-rows / inline-size;
 }
 
 .item {
@@ -287,10 +290,13 @@
 .dragRow {
   grid-template-columns: 44px 30px minmax(0, 1fr) auto;
   grid-template-areas:
-    ".      .   head  .    "
-    ".      .   ref   .    "
-    "handle num field tools"
-    ".      .   after .    ";
+    ".      .   head    .    "
+    ".      .   ref     .    "
+    "handle num field   tools"
+    ".      .   after   .    "
+    ".      .   hint    .    "
+    ".      .   missing .    "
+    ".      .   error   .    ";
   gap: 0 12px;
   padding-left: 6px;
 }
@@ -331,7 +337,10 @@
   min-height: 72px;
 }
 
-/* ListEditor's row: its I18nInput gives its parts to the row's grid (the row's main and the field's box have no box of their own) */
+/* ListEditor's row: its I18nInput gives its parts to the row's grid (the row's main and the field's box have no box of their own). So every part
+   the box can show needs an area of its own here, or the grid would place it in the first free cell of column 1: the label is the screen
+   readers' only (absolute, out of the grid), the head, the Estonian text, the field, „Kopeeri eesti keelest“ and the notes under the field
+   (I18nInput's hint, its missing-translation line, its error: data-i18n-note) each have theirs. */
 .i18nRow > .rowMain,
 .i18nRow .i18n {
   display: contents;
@@ -354,6 +363,21 @@
 .i18nRow .copy {
   grid-area: after;
   justify-self: start;
+  margin-top: 7px;
+}
+
+.i18nRow [data-i18n-note="hint"] {
+  grid-area: hint;
+  margin-top: 7px;
+}
+
+.i18nRow [data-i18n-note="missing"] {
+  grid-area: missing;
+  margin-top: 7px;
+}
+
+.i18nRow [data-i18n-note="error"] {
+  grid-area: error;
   margin-top: 7px;
 }
 
@@ -567,9 +591,14 @@
   margin-top: 14px;
 }
 
-/* list rows: two lines at least; the box grows with its text (I18nInput grow: GrowingText) */
+/* list rows: two lines at least; ListEditor's box grows with its text (I18nInput grow: GrowingText), so it has no grip of its own (a drag of
+   it would be undone by the next measure) */
 .item textarea {
   min-height: 72px;
+}
+
+.textRow textarea {
+  resize: none;
 }
 
 /* ---------- recommendations ---------- */
@@ -630,11 +659,14 @@
 @container course-cards (max-width: 640px) {
   .dragRow {
     grid-template-areas:
-      "handle num   .     tools"
-      "head   head  head  head"
-      "ref    ref   ref   ref"
-      "field  field field field"
-      "after  after after after";
+      "handle  num     .       tools"
+      "head    head    head    head"
+      "ref     ref     ref     ref"
+      "field   field   field   field"
+      "after   after   after   after"
+      "hint    hint    hint    hint"
+      "missing missing missing missing"
+      "error   error   error   error";
   }
 
   .dragRow > [data-drag-tool="handle"],
@@ -662,6 +694,52 @@
   }
 }
 
+/* „Soovitused“ in a narrow card column (396 px at 1280): the tags under the course's name, as on a phone (below; admin polish F19) */
+@container course-cards (max-width: 460px) {
+  .pick {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .pickName {
+    flex-basis: calc(100% - 32px);
+  }
+
+  .pickTags {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding-left: 32px;
+  }
+}
+
+/* A list narrower than 480 px (Praktika's cards at 1366 and 1280: 458 and 415 px) would leave its field under ~210 px beside the handle, the
+   number and ↑ ↓ × (a one-line point cut): its rows go compact, whatever the page around them. At 1440 the cards' lists are 495 px and keep the C5
+   frame's one line (field 223 px). */
+@container list-rows (max-width: 480px) {
+  .dragRow {
+    grid-template-areas:
+      "handle  num     .       tools"
+      "head    head    head    head"
+      "ref     ref     ref     ref"
+      "field   field   field   field"
+      "after   after   after   after"
+      "hint    hint    hint    hint"
+      "missing missing missing missing"
+      "error   error   error   error";
+  }
+
+  .dragRow > [data-drag-tool="handle"],
+  .dragRow > .num,
+  .dragRow > .tools {
+    align-self: center;
+    margin: 0 0 8px;
+  }
+
+  .dragRow > .num {
+    min-height: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
@@ -675,11 +753,14 @@
   /* one line: ⋮⋮, the number and ↑ ↓ ×; the field under it over the whole row (the modules' rows: LessonsEditor.module.css) */
   .dragRow {
     grid-template-areas:
-      "handle num   .     tools"
-      "head   head  head  head"
-      "ref    ref   ref   ref"
-      "field  field field field"
-      "after  after after after";
+      "handle  num     .       tools"
+      "head    head    head    head"
+      "ref     ref     ref     ref"
+      "field   field   field   field"
+      "after   after   after   after"
+      "hint    hint    hint    hint"
+      "missing missing missing missing"
+      "error   error   error   error";
   }
 
   .dragRow > [data-drag-tool="handle"],
