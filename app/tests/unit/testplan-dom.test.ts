@@ -354,6 +354,8 @@ describe("a check row (S4-45)", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     const fold = plain.querySelector<HTMLElement>("[data-steps]")!;
     expect(toggle.getAttribute("aria-controls")).toBe(fold.id);
+    // (one of many „Sammud“ buttons on the page: the check's title describes it, review M-5)
+    expect(container.querySelector(`[id="${toggle.getAttribute("aria-describedby")}"]`)!.textContent).toBe("Kontroll a1-plain");
     expect(fold.hidden).toBe(true);
     await click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -493,9 +495,10 @@ describe("a check row (S4-45)", () => {
 });
 
 describe("SaveStatus in place of the outbox line (R-i)", () => {
-  test("no chip before anything is sent; „✓ Salvestatud HH:MM“ after a save; „Salvestamata — proovin uuesti“ while one fails", async () => {
+  test("„✓ Salvestatud“ from the start once the answers were read; „✓ Salvestatud HH:MM“ after a save; „Salvestamata — proovin uuesti“ while one fails", async () => {
     await showAll();
-    expect(chip()).toBeNull();
+    expect(chip()).toBe("saved");
+    expect(chipText()).toBe("✓ Salvestatud");
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(chip()).toBe("saved");
     expect(chipText()).toMatch(/^✓ Salvestatud \d\d:\d\d$/);
@@ -507,6 +510,20 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(chip()).toBe("retry");
     expect(chipText()).toBe("Salvestamata — proovin uuesti");
     expect(pressed("a2-fresh")).toEqual(["bad"]); // (her press is shown all the same)
+  });
+
+  test("the chip is there from the start, so its first change is spoken: the status region says „Salvestan…“ while the first save is on its way", async () => {
+    await showAll();
+    const spoken = () => $('[data-save-status] [role="status"]')!.textContent;
+    expect(spoken()).toBe("Salvestatud");
+    let finish: (r: Response) => void = () => {};
+    putReply = () => new Promise<Response>((r) => (finish = r));
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(chip()).toBe("saving");
+    expect(spoken()).toBe("Salvestan…");
+    await act(async () => finish(json({ ok: true, answers: { ...SERVER, "a1-plain": answer("ok", "2026-10-16T12:00:00.000Z") } })));
+    await settle();
+    expect(chip()).toBe("saved");
   });
 
   test("a press after the session ended (401) shows „Salvestamata — logi uuesti sisse“; the press is kept on the device and on the page, and not sent again by itself", async () => {
@@ -541,7 +558,29 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(chip()).toBe("signedOut");
     getReply = () => json({ ok: true, plan: PLAN, answers: server, auto: {}, you: MARIA });
     await click($("[data-refresh]")!);
-    expect(chip()).toBeNull();
+    expect(chip()).toBe("saved");
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]); // (nothing waited: the read's flush sends nothing)
+  });
+
+  test("signed in again, „Värskenda“ sends the presses kept while signed out, and the chip stops asking her to sign in (review M-2)", async () => {
+    await showAll();
+    putReply = async () => unauthorized();
+    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+    expect(chip()).toBe("signedOut");
+    // she signs in in another tab; back here, she presses „Värskenda“
+    putReply = async (body) => {
+      server = { ...(server ?? {}) };
+      for (const [id, a] of Object.entries(body.answers)) server[id] = { status: a.status, note: a.note, at: "2026-10-16T12:00:00.000Z", byName: "Maria" };
+      return json({ ok: true, answers: server });
+    };
+    await click($("[data-refresh]")!);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([
+      { answers: { "a1-plain": { status: "bad", note: "" } } },
+      { answers: { "a1-plain": { status: "bad", note: "" } } },
+    ]);
+    expect(chip()).toBe("saved");
+    expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 15:00 · Viga");
   });
 
   test("the database is down (initial: null): no chip, every check shown open, and a press is kept and retried", async () => {
@@ -562,7 +601,7 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     await showAll();
     getReply = () => new Response("<html>Internal Server Error</html>", { status: 500 });
     await click($("[data-refresh]")!);
-    expect(chip()).toBeNull();
+    expect(chip()).toBe("saved"); // (the answers came with the page; nothing waits)
     await openAll();
     expect(ids()).toHaveLength(6);
     expect(state("a1-fail")).toBe("failed"); // (what was read before is still shown)
@@ -577,11 +616,13 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(state("a1-plain")).toBe("done");
   });
 
-  test("with the database down at the start, the first good read fills the answers in", async () => {
+  test("with the database down at the start, the first good read fills the answers in, and brings the chip", async () => {
     await showAll({ initial: null });
+    expect(chip()).toBeNull();
     server = { ...SERVER };
     getReply = () => json({ ok: true, plan: PLAN, answers: server, you: MARIA });
     await click($("[data-refresh]")!);
+    expect(chip()).toBe("saved");
     await openAll();
     expect(state("a1-fail")).toBe("failed");
   });

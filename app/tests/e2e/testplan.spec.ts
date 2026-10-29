@@ -27,6 +27,11 @@ const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.
 /** The page's one SaveStatus (README §1.4): `data-save-kind` is its state, `[data-save-text]` the words it shows. */
 const chip = (page: Page) => page.locator("[data-testplan] [data-save-status]");
 const chipText = (page: Page) => chip(page).locator("[data-save-text]");
+/**
+ * A save of this page came back: „✓ Salvestatud HH:MM“. (The chip says „✓ Salvestatud“ with no time from the start once the answers were read,
+ * review M-1, so the kind alone would pass before the save is over.)
+ */
+const savedAt = (page: Page, timeout?: number) => expect(chipText(page)).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout });
 const check = (page: Page, id: string) => page.locator(`[data-check="${id}"]`);
 const VIEW_KEY = "mslab-testplan-view";
 const OUTBOX_KEY = "mslab-testplan-outbox";
@@ -180,8 +185,9 @@ test("answers persist: „Läbitud“ and „Viga“ with their note boxes open,
   await expect(note).toHaveAttribute("placeholder", "Mis läks valesti?");
   await note.fill("E2E: nupp ei tööta");
   await note.blur();
-  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
-  await expect(chipText(page)).toHaveText(/^✓ Salvestatud \d\d:\d\d$/);
+  // (every press and the note delivered: nothing is left in the outbox; then the chip shows the last save's time)
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
+  await savedAt(page);
   await expect(first).toHaveAttribute("data-check-state", "done");
   await expect(second).toHaveAttribute("data-check-state", "failed");
   await expect(third).toHaveAttribute("data-check-state", "open");
@@ -254,7 +260,7 @@ test("a second admin session answers the third check differently; the first sees
   await openPage(page);
   await openArea(page, area);
   await check(page, ids[2]).locator('[data-answer="bad"]').click();
-  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+  await savedAt(page);
   await page.evaluate(() => ((window as unknown as { __sameDocument: boolean }).__sameDocument = true));
 
   // the other session, in a browser of its own
@@ -268,7 +274,7 @@ test("a second admin session answers the third check differently; the first sees
     await openArea(page2, area);
     await expect(pressed(page2, ids[2])).toHaveAttribute("data-answer", "bad"); // (it reads what the first gave)
     await check(page2, ids[2]).locator('[data-answer="ok"]').click();
-    await expect(chip(page2)).toHaveAttribute("data-save-kind", "saved");
+    await savedAt(page2);
   } finally {
     await other.close();
   }
@@ -296,7 +302,7 @@ test("offline: a press is kept and shown as „Salvestamata — proovin uuesti�
   expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toContain('"ok"');
 
   await context.setOffline(false);
-  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved", { timeout: 15_000 }); // (the browser's 'online', or the retry after 2 s)
+  await savedAt(page, 15_000); // (the browser's 'online', or the retry after 2 s)
   expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 
   await page.reload();
@@ -334,7 +340,7 @@ test("signed out: a press shows „Salvestamata — logi uuesti sisse“, is kep
   // signed in again, the page sends the kept press at once
   await signInAsAdmin(page, context, visitorIp, created);
   await openPage(page);
-  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+  await savedAt(page);
   expect((await readApi(page)).answers[ids[1]]).toMatchObject({ status: "bad", byName: "Dim" });
   expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 });
@@ -352,7 +358,7 @@ test("a press left on the device by a visit that never got to send it is sent wh
   await page.reload();
   await adminReady(page);
   await openArea(page, area);
-  await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+  await savedAt(page);
   await expect(check(page, ids[1])).toHaveAttribute("data-check-state", "failed");
   expect((await readApi(page)).answers[ids[1]]).toMatchObject({ status: "bad", note: "E2E: jäi saatmata" });
   expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();

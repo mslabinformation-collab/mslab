@@ -85,6 +85,7 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
           className={styles.stepsToggle}
           aria-expanded={stepsOpen}
           aria-controls={stepsId}
+          aria-describedby={titleId}
           onClick={() => setStepsOpen((open) => !open)}
           data-steps-toggle=""
         >

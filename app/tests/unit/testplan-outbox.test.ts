@@ -353,6 +353,112 @@ describe("a 401: the session ended", () => {
     expect(storage.dump()).toBeNull();
   });
 
+  // Task 4 review I-1: the magic link signs her in in a NEW tab. That tab sends what the signed-out one kept, and she goes on answering there; the
+  // signed-out tab, shown again later, must not send its old press over what she saved since.
+  describe("two tabs: the one she signed in with delivers the kept press", () => {
+    type Saved = Record<string, { status: string; note: string }>;
+    /** A server for both tabs: the signed-out tab's first save is refused, then every save goes in, each the newest answer. */
+    const serverOf = () => {
+      const server: Saved = {};
+      const put = (refuseFirst: boolean) => {
+        let refused = !refuseFirst;
+        return vi.fn(async (body: { answers: Saved }) => {
+          if (!refused) {
+            refused = true;
+            return unauthorized();
+          }
+          Object.assign(server, body.answers);
+          return okResponse();
+        });
+      };
+      return { server, put };
+    };
+    const shown = () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    test("the signed-out tab shown again sends nothing for that check, and the note saved in the other tab stays", async () => {
+      const storage = memoryStorage();
+      const { server, put } = serverOf();
+      const putA = put(true);
+      const a = outboxOver(storage, putA as never);
+      a.outbox.answer("x", "ok", "");
+      await settle();
+      expect(a.outbox.status()).toBe("signedOut");
+
+      // she signs in: the link opens tab B, which sends the kept press at once
+      const putB = put(false);
+      const b = outboxOver(storage, putB as never);
+      await settle();
+      expect(server.x).toEqual({ status: "ok", note: "" });
+      expect(storage.dump()).toBeNull();
+      // ...and writes a note there
+      b.outbox.note("x", "Märkus tabis B", "ok");
+      await b.outbox.flush();
+      expect(server.x).toEqual({ status: "ok", note: "Märkus tabis B" });
+
+      // back to tab A
+      shown();
+      await settle();
+      expect(putA).toHaveBeenCalledTimes(1); // (only the 401: nothing sent over tab B's note)
+      expect(server.x).toEqual({ status: "ok", note: "Märkus tabis B" });
+      expect(a.outbox.unsent().size).toBe(0);
+      expect(a.outbox.status()).not.toBe("signedOut");
+      // and a press of another check in tab A goes as usual
+      a.outbox.answer("y", "bad", "");
+      await settle();
+      expect(server.y).toEqual({ status: "bad", note: "" });
+      expect(Object.keys(bodyOf(putA, 1).answers)).toEqual(["y"]);
+    });
+
+    test("a newer press tab B has not sent yet is taken by tab A instead (the newest press of a check wins)", async () => {
+      const storage = memoryStorage();
+      const { server, put } = serverOf();
+      const putA = put(true);
+      const a = outboxOver(storage, putA as never);
+      a.outbox.answer("x", "ok", "");
+      await settle();
+      const b = outboxOver(storage, vi.fn(() => new Promise<Response>(() => {})) as never); // (tab B's saves never come back)
+      vi.setSystemTime(new Date("2026-10-16T10:05:00.000Z"));
+      b.outbox.answer("x", "bad", "Tabis B");
+      shown();
+      await settle();
+      expect(bodyOf(putA, 1)).toEqual({ answers: { x: { status: "bad", note: "Tabis B" } } });
+      expect(server.x).toEqual({ status: "bad", note: "Tabis B" });
+    });
+
+    test("a press the signed-out tab could not write (storage full) is never taken as delivered: shown again, it is sent", async () => {
+      const flags = { failSet: true };
+      const storage = memoryStorage(flags);
+      const { server, put } = serverOf();
+      const putA = put(true);
+      const a = outboxOver(storage, putA as never);
+      a.outbox.answer("x", "ok", "Ainult mälus");
+      await settle();
+      expect(storage.dump()).toBeNull(); // (not written)
+      flags.failSet = false;
+      shown();
+      await settle();
+      expect(server.x).toEqual({ status: "ok", note: "Ainult mälus" });
+    });
+
+    test("a storage that cannot be read tells nothing: the kept press is sent", async () => {
+      const storage = memoryStorage();
+      const { server, put } = serverOf();
+      const putA = put(true);
+      const a = outboxOver(storage, putA as never);
+      a.outbox.answer("x", "ok", "");
+      await settle();
+      storage.getItem = () => {
+        throw new DOMException("blocked", "SecurityError");
+      };
+      shown();
+      await settle();
+      expect(server.x).toEqual({ status: "ok", note: "" });
+    });
+  });
+
   test("a failure after a 401 is a failure again (retrying, on its timer), not signedOut", async () => {
     const put = vi.fn().mockResolvedValueOnce(unauthorized()).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
     const { outbox } = outboxOver(memoryStorage(), put);
@@ -532,15 +638,13 @@ describe("the clean-up after a confirmed save", () => {
 
 describe("a storage that cannot be written", () => {
   // (the answers are then in this page's memory only: the status never says "offline", whose text promises they are kept on the device)
-  test("a write that throws still sends, with the ordinary status: saving, then saved; keeps() says the device does not keep the answer", async () => {
+  test("a write that throws still sends, with the ordinary status: saving, then saved", async () => {
     let finish: (r: Response) => void = () => {};
     const put = vi.fn(() => new Promise<Response>((r) => (finish = r)));
     const { outbox } = outboxOver(memoryStorage({ failSet: true }), put);
-    expect(outbox.keeps()).toBe(true); // (nothing written yet)
     outbox.answer("a", "ok", "");
     expect(put).toHaveBeenCalledTimes(1);
     expect(outbox.status()).toBe("saving");
-    expect(outbox.keeps()).toBe(false);
     finish(okResponse());
     await settle();
     expect(outbox.status()).toBe("saved");
@@ -549,7 +653,6 @@ describe("a storage that cannot be written", () => {
   test("no storage at all (null) is the same: a failed send is retrying, and the retries go on", async () => {
     const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
     const { outbox } = outboxOver(null, put);
-    expect(outbox.keeps()).toBe(false);
     outbox.answer("a", "ok", "");
     expect(outbox.status()).toBe("saving");
     await settle();
@@ -557,17 +660,6 @@ describe("a storage that cannot be written", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(put).toHaveBeenCalledTimes(2);
     expect(outbox.status()).toBe("saved");
-  });
-
-  test("keeps() is whether the last press could be written: a storage that is full, then has room again", async () => {
-    const flags = { failSet: true };
-    const put = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-    const { outbox } = outboxOver(memoryStorage(flags), put);
-    outbox.answer("a", "ok", "");
-    expect(outbox.keeps()).toBe(false);
-    flags.failSet = false;
-    outbox.answer("b", "ok", "");
-    expect(outbox.keeps()).toBe(true);
   });
 
   test("a storage that cannot be read (getItem throws) is the same: the press is sent", async () => {

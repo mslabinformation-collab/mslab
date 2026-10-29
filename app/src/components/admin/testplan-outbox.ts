@@ -6,7 +6,7 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 // - a status press is sent at once, a note 1 s after the last keystroke (or at once, when the field loses the focus: flush);
 // - until a save that carried an answer comes back ok, this browser keeps it (localStorage `mslab-testplan-outbox`, one entry per check, the newest
 //   press of a check wins), and a reload or a new tab sends what it finds there at once. A browser that cannot keep it (storage full, blocked or
-//   absent) still sends it, with the ordinary status (the answer is then in this page's memory only, which `keeps()` tells);
+//   absent) still sends it, with the ordinary status (the answer is then in this page's memory only);
 // - a save that fails is tried again after 2, 5, 10, 20, then every 30 s, and at once when the browser is back online or the tab is shown again;
 // - a save the route refuses with 401 (the session ended; admin UX pass piece 4c, R-i) is "signedOut": no timer asks again (every try would be
 //   refused until she signs in), the presses stay here, and they go with her next press or note, when the tab is shown again or the browser is
@@ -15,7 +15,9 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 //   the save that carried THAT press came back ok, never one made after it was sent.
 // - and a stale press is never sent again over a newer answer: the server stamps every save as the newest (spec §5), so a press it has
 //   confirmed leaves the storage at once, even when the page was left while that save was on its way (stop()), and with it any older press of
-//   that check still stored there (one whose newer press could not be written).
+//   that check still stored there (one whose newer press could not be written). A press this tab wrote to the storage and finds gone from it
+//   before a send was confirmed by another tab (only a confirmed save takes a press out): it is not sent again (piece 4c, Task 4 review I-1: a
+//   tab signed out, kept presses, shown again after the tab she signed in with saved newer ones over them).
 // The storage is shared by the tabs of a browser, so it is changed entry by entry (read, change, write back) and read again before each send: a tab
 // never erases another's unsent answers. The server stamps `at` itself (spec §5); `clientAt` only orders the presses of one check on this device,
 // so it stays in the outbox and is not sent.
@@ -44,8 +46,6 @@ export type Outbox = {
   /** Sends what is queued now (a note waiting for its second included); resolves when that save is over, whatever came of it. */
   flush(): Promise<void>;
   status(): OutboxStatus;
-  /** False when this device cannot keep an unsent answer: there is no storage, or the last press could not be written to it (full, blocked). */
-  keeps(): boolean;
   /** The answers not confirmed yet (the page shows them over the server's). A new map on every call. */
   unsent(): ReadonlyMap<string, { status: Status; note: string }>;
   /** `fn` is called after every change of `status()` or `unsent()`; returns the unsubscribe. */
@@ -125,8 +125,11 @@ export function createOutbox(deps: OutboxDeps): Outbox {
   let attempts = 0;
   /** Some save has come back ok (the status then reads "saved" once nothing is left). */
   let saved = false;
-  /** The last write to the storage went through (false: no storage, or it threw). */
-  let kept = storage !== null;
+  /**
+   * The press of each queued check that is in the storage (`clientAt`): this tab wrote it there, or took it from there. Gone from the storage
+   * later, another tab's confirmed save took it out (I-1).
+   */
+  const written = new Map<string, string>();
   let stopped = false;
   let noteTimer: unknown = null;
   let retryTimer: unknown = null;
@@ -140,44 +143,59 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     return new Date(lastStamp).toISOString();
   };
 
-  /** What the storage holds now (empty when it cannot be read). */
-  function readStore(): Map<string, Entry> {
-    if (storage === null) return new Map();
+  /** What the storage holds now, or null when there is none or it cannot be read. */
+  function readStore(): Map<string, Entry> | null {
+    if (storage === null) return null;
     try {
       return parseStored(storage.getItem(OUTBOX_KEY));
     } catch {
-      return new Map();
+      return null;
     }
   }
-  /**
-   * Changes the stored entries one by one (read, change, write back), so another tab's are kept. `keeps`: this write is of a press, so whether it
-   * went through is whether the press is kept on this device (taking an answer out says nothing of that).
-   */
-  function writeStore(change: (stored: Map<string, Entry>) => void, keeps: boolean): void {
-    if (storage === null) {
-      if (keeps) kept = false;
-      return;
-    }
+  /** Changes the stored entries one by one (read, change, write back), so another tab's are kept. True when the write went through. */
+  function writeStore(change: (stored: Map<string, Entry>) => void): boolean {
+    if (storage === null) return false;
     try {
-      const stored = readStore();
+      const stored = readStore() ?? new Map<string, Entry>();
       change(stored);
       if (stored.size === 0) storage.removeItem(OUTBOX_KEY);
       else storage.setItem(OUTBOX_KEY, JSON.stringify(Object.fromEntries(stored)));
-      if (keeps) kept = true;
+      return true;
     } catch {
-      if (keeps) kept = false;
+      return false;
     }
   }
-  /** Takes the stored entries that are newer than the queue's (another tab's presses, or the ones left by an earlier visit). */
-  function adopt(): void {
-    for (const [id, entry] of readStore()) {
+  /**
+   * Reads the storage before a send (true when the queue changed):
+   * - a queued press this tab knows to be in the storage, and is not there any more, was confirmed by another tab (only a confirmed save takes a
+   *   press out, with the older ones of its check): the server holds it or something newer, so it leaves the queue unsent (I-1). Never when the
+   *   storage cannot be read, nor for a press that could not be written (storage full): then nothing is known;
+   * - the stored entries that are newer than the queue's are taken (another tab's presses, or the ones left by an earlier visit).
+   */
+  function adopt(): boolean {
+    const stored = readStore();
+    if (stored === null) return false;
+    let changed = false;
+    for (const [id, mine] of [...queue]) {
+      if (written.get(id) !== mine.clientAt || stored.has(id)) continue;
+      queue.delete(id);
+      written.delete(id);
+      if (mine.clientAt > (confirmed.get(id) ?? "")) confirmed.set(id, mine.clientAt);
+      changed = true;
+    }
+    for (const [id, entry] of stored) {
       const mine = queue.get(id);
       if (entry.clientAt <= (confirmed.get(id) ?? "")) continue;
       if (!mine || entry.clientAt > mine.clientAt) {
         queue.set(id, entry);
+        written.set(id, entry.clientAt);
         known.set(id, entry.status);
+        changed = true;
       }
     }
+    // (another tab of this browser got a save through: the session is live again, whatever this tab's last answer was)
+    if (changed && queue.size === 0) signedOut = false;
+    return changed;
   }
 
   const clearNote = () => {
@@ -193,8 +211,11 @@ export function createOutbox(deps: OutboxDeps): Outbox {
   async function run(): Promise<void> {
     do {
       again = false;
-      adopt();
-      if (queue.size === 0) return;
+      const changed = adopt();
+      if (queue.size === 0) {
+        if (changed) emit(); // (another tab confirmed what was waiting here: the page shows the server's answers again)
+        return;
+      }
       const sent = new Map(queue);
       emit();
       let answers: Record<string, PageAnswer> | "signedOut" | null = null;
@@ -231,7 +252,10 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       // an entry is done only if it is still the press that was sent
       for (const [id, entry] of sent) {
         if (entry.clientAt > (confirmed.get(id) ?? "")) confirmed.set(id, entry.clientAt);
-        if (queue.get(id)?.clientAt === entry.clientAt) queue.delete(id);
+        if (queue.get(id)?.clientAt === entry.clientAt) {
+          queue.delete(id);
+          written.delete(id);
+        }
       }
       // ...and in the storage, that press and any older one of the check (left there when a newer press could not be written): the server holds
       // something at least as new, and one sent again would be stamped the newest answer. A newer one (another tab's) stays. This runs after
@@ -241,7 +265,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
           const left = stored.get(id);
           if (left && left.clientAt <= entry.clientAt) stored.delete(id);
         }
-      }, false);
+      });
       if (stopped) return; // (the page is gone: nobody to tell, nothing to send next)
       deps.onAnswers(answers);
       emit();
@@ -266,7 +290,9 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     const entry: Entry = { status, note, clientAt: stamp() };
     queue.set(id, entry);
     known.set(id, status);
-    writeStore((stored) => void stored.set(id, entry), true);
+    // (a press that could not be written lives in this page's memory only, and nothing is known of it from the storage)
+    if (writeStore((stored) => void stored.set(id, entry))) written.set(id, entry.clientAt);
+    else written.delete(id);
   };
 
   const onBack = () => {
@@ -311,9 +337,6 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       // (signed out, a press tries again at once: it stays "signedOut" while that try is on its way, so the chip does not flicker)
       if (signedOut) return "signedOut";
       return failing ? "retrying" : "saving";
-    },
-    keeps() {
-      return kept;
     },
     unsent() {
       return new Map([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));

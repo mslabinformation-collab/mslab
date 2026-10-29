@@ -131,17 +131,19 @@ const withoutEntry = <V,>(map: ReadonlyMap<string, V>, id: string): ReadonlyMap<
 const clip = (text: string): string => Array.from(text).slice(0, NOTE_MAX).join("");
 
 /**
- * The page's one SaveStatus (README §1.4, C7; R-i), or null while nothing has been sent (the outbox line was empty then too): „Kontrollin
- * salvestatud teksti…“ while „Värskenda“ reads; „Salvestamata — logi uuesti sisse“ when a save or a read was refused with 401 and nothing has
- * gone through since; else the outbox's saving, retry and saved.
+ * The page's one SaveStatus (README §1.4, C7; R-i): „Kontrollin salvestatud teksti…“ while „Värskenda“ reads; „Salvestamata — logi uuesti
+ * sisse“ when a save or a read was refused with 401 and nothing has gone through since; else the outbox's saving, retry and saved (with the time
+ * of the last save). With nothing sent, „Salvestatud“ once the answers were read (the shared engine starts so too; the chip is there from the
+ * start, so the page does not jump and its first change is spoken). Null only while the answers have never been read (the database down: no
+ * approved words for that, the review's question c2).
  */
-function chipOf(outbox: OutboxStatus, reading: boolean, readSignedOut: boolean, savedAt: Date | null): AutosaveStatus | null {
+function chipOf(outbox: OutboxStatus, reading: boolean, readSignedOut: boolean, savedAt: Date | null, read: boolean): AutosaveStatus | null {
   if (reading) return { kind: "checking" };
   if (outbox === "signedOut" || readSignedOut) return { kind: "signedOut" };
   if (outbox === "retrying") return { kind: "retry" };
   if (outbox === "saving") return { kind: "saving" };
   if (outbox === "saved") return { kind: "saved", at: savedAt };
-  return null;
+  return read ? { kind: "saved", at: null } : null;
 }
 
 export type TestPlanProps = {
@@ -167,6 +169,8 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const own = you.tester === "auto";
   const mine = you.tester === "maria" || you.tester === "dim" ? you.tester : null;
   const [reading, setReading] = useState(false);
+  /** The server's answers have been read (with the page, by a read since, or as a save's answer). */
+  const [read, setRead] = useState(initial !== null);
   /** The last read was refused with 401 (the session ended) and none has gone through since. */
   const [readSignedOut, setReadSignedOut] = useState(false);
   /** When the last save came back ok (the chip's „Salvestatud HH:MM“). */
@@ -206,15 +210,22 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
       return;
     }
     setReadSignedOut(false);
+    setRead(true);
     if (writes.current === before) setAnswers(fresh.answers);
     setAuto(fresh.auto);
   }, []);
-  /** „Värskenda“: reads again, with the button and the chip saying it is busy. */
+  /**
+   * „Värskenda“: reads again, with the button and the chip saying it is busy. A read that went through sends what waits here too (she may have
+   * signed in again meanwhile: the presses kept while she was signed out go, and the chip stops asking her to sign in; review M-2).
+   */
   const refresh = async () => {
     setReading(true);
     const before = writes.current;
-    apply(await readServer(), before);
+    const fresh = await readServer();
+    apply(fresh, before);
     setReading(false);
+    // (the outbox is made when the page mounts; before that nothing can wait in it)
+    if (fresh !== null && fresh !== "signedOut") void outboxRef.current?.flush();
   };
 
   /**
@@ -234,6 +245,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
       onAnswers: (fresh) => {
         writes.current += 1;
         setAnswers(fresh);
+        setRead(true);
         setSavedAt(new Date());
         setReadSignedOut(false);
       },
@@ -312,7 +324,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const empty = sections.every((s) => s.shown.length === 0);
   const sectionOf = new Map(sections.map((s) => [s.area.id, s]));
 
-  const chip = chipOf(outbox ? outbox.status() : "idle", reading, readSignedOut, savedAt);
+  const chip = chipOf(outbox ? outbox.status() : "idle", reading, readSignedOut, savedAt, read);
   const line = fill(counts.total === 1 ? t.progress.one : t.progress.many, { n: counts.total, done: counts.done, bad: counts.bad });
 
   const press = (item: TestItem, status: Status) => {
@@ -399,7 +411,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
       ) : (
         plan.areas.map((area) => {
           if (area.checks === false) {
-            // a notes-only area („Enne alustamist“, „Koristamine“): its words, always in view, with the „Olek“ choice off
+            // a notes-only area (`checks: false`, today „Enne alustamist“): its words, always in view, with the „Olek“ choice off
             if (view.filter !== "all") return null;
             return (
               <section key={area.id} className={`${ui.card} ${styles.notes}`} aria-labelledby={`${uid}-area-${area.id}`} data-area={area.id}>

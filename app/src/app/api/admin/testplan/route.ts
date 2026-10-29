@@ -21,9 +21,10 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
  * GET /api/admin/testplan — the test page's plan and everybody's answers (phase 4, piece 1, spec §5): signed-in admins only (withAdmin: 401 JSON
  * without a session). 200 `{ ok: true, plan, answers, auto, you }`: `answers` are the plan's checks' answers by id, each `{ status, note, at, byName }`
  * (never the answerer's e-mail address), `you` is `{ name, tester }`, whose tester the page's „Kes“ choice „Mina“ follows (server/testplan.ts
- * testplanYou; the page's own copy comes with its HTML). A 401 is the page's signed-out state (admin UX pass piece 4c, R-i). Dim 25.10: `auto` is Automaattest's answers, kept apart (the quiet line under each check); for Automaattest's own session
- * `answers` are its own (server/testplan.ts pageView). When the answers cannot be read, 503 `{ ok: false, error: "unavailable", plan, answers:
- * null, you }`: the page still shows the plan and keeps its answers on the device. Never cached.
+ * testplanYou; the page's own copy comes with its HTML). A 401 is the page's signed-out state (admin UX pass piece 4c, R-i). Dim 25.10: `auto`
+ * is Automaattest's answers, kept apart (the quiet line under each check); for Automaattest's own session `answers` are its own
+ * (server/testplan.ts pageView). When the answers cannot be read, 503 `{ ok: false, error: "unavailable", plan, answers: null, you }`: the page
+ * still shows the plan and keeps its answers on the device. Never cached.
  */
 export const GET = withAdmin(async (_request, _ctx, { email }) => {
   const names = serverEnv().ADMIN_NAMES;
