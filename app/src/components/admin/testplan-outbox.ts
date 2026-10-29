@@ -1,4 +1,4 @@
-import type { IncomingAnswer, Status } from "@/domain/testplan";
+import type { IncomingAnswer, IncomingStatus, Status } from "@/domain/testplan";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build; this file runs on old iPads, no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
 
 // The test page's outbox (phase 4, piece 1, spec §4 "Saving"), without React: TestPlan.tsx renders what it holds and tells it what the tester
@@ -13,6 +13,8 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 //   back online (she signed in in another tab), or on the next visit (she signed in, and came back);
 // - one save at a time: a press made while a save is on its way waits for it, and is sent right after it. An answer leaves the outbox only when
 //   the save that carried THAT press came back ok, never one made after it was sent.
+// - an answer taken back (Dim 29.10) is a press like the others, with the status "clear": the newest press of a check wins, so a clear replaces a
+//   press waiting here and a press replaces a clear; the server removes the check's answer from the tester's own side.
 // - and a stale press is never sent again over a newer answer: the server stamps every save as the newest (spec §5), so a press it has
 //   confirmed leaves the storage at once, even when the page was left while that save was on its way (stop()), and with it any older press of
 //   that check still stored there (one whose newer press could not be written). A press this tab wrote to the storage and finds gone from it
@@ -22,7 +24,7 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 // never erases another's unsent answers. The server stamps `at` itself (spec §5); `clientAt` only orders the presses of one check on this device,
 // so it stays in the outbox and is not sent.
 
-/** The `localStorage` key of the unsent answers: `{ <checkId>: { status, note, clientAt } }`. */
+/** The `localStorage` key of the unsent answers: `{ <checkId>: { status, note, clientAt } }` (the status of a press taken back is "clear", its note ""). */
 export const OUTBOX_KEY = "mslab-testplan-outbox";
 /** A save that fails is tried again after these (ms); after the last, every `RETRY_MS[4]`. */
 export const RETRY_MS = [2000, 5000, 10_000, 20_000, 30_000] as const;
@@ -32,22 +34,27 @@ export const NOTE_WAIT_MS = 1000;
 /** `signedOut`: the last save was answered 401 and nothing has been saved since (R-i). The page shows these in SaveStatus (TestPlan.tsx). */
 export type OutboxStatus = "idle" | "saving" | "saved" | "retrying" | "signedOut";
 /** An unsent answer: what the tester pressed or typed, and the (strictly increasing) instant of that press on this device. */
-type Entry = { status: Status; note: string; clientAt: string };
+type Entry = { status: IncomingStatus; note: string; clientAt: string };
 
 export type Outbox = {
   /** A status press: queued and sent at once. `note` is the check's note as it stands. */
   answer(id: string, status: Status, note: string): void;
   /**
+   * The check's answer taken back (Dim 29.10): queued and sent at once, like a press. It replaces a press (or a note) of the check waiting here,
+   * and is replaced by the next press; the check then has no status here, so a note typed after it is as for a check never answered.
+   */
+  clear(id: string): void;
+  /**
    * A note typed: queued, sent 1 s after the last call. It goes with the status of the check's press waiting here, when there is one (the page
    * shows that press, and a page not redrawn since it was made passes the status before it); else `status`, the check's status as the page
-   * shows it; else the last press here; else it has nothing to attach to and is dropped.
+   * shows it; else the last press here; else it has nothing to attach to and is dropped. A clear waiting here is no press to go with.
    */
   note(id: string, note: string, status?: Status): void;
   /** Sends what is queued now (a note waiting for its second included); resolves when that save is over, whatever came of it. */
   flush(): Promise<void>;
   status(): OutboxStatus;
-  /** The answers not confirmed yet (the page shows them over the server's). A new map on every call. */
-  unsent(): ReadonlyMap<string, { status: Status; note: string }>;
+  /** The answers not confirmed yet (the page shows them over the server's; a "clear" shows the check without its answer). A new map on every call. */
+  unsent(): ReadonlyMap<string, { status: IncomingStatus; note: string }>;
   /** `fn` is called after every change of `status()` or `unsent()`; returns the unsubscribe. */
   onChange(fn: () => void): () => void;
   stop(): void;
@@ -65,7 +72,7 @@ export type OutboxDeps = {
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const isStatus = (v: unknown): v is Status => v === "ok" || v === "bad" || v === "skip";
+const isStatus = (v: unknown): v is IncomingStatus => v === "ok" || v === "bad" || v === "skip" || v === "clear";
 /** A `clientAt` as this file writes it (`toISOString`): such instants compare as text in time order. */
 const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 /** The instant of a stored entry without a usable one of its own: the oldest press there is (it is sent, and loses to any press made here). */
@@ -111,7 +118,7 @@ async function outcomeOf(res: Response): Promise<Record<string, PageAnswer> | "s
 export function createOutbox(deps: OutboxDeps): Outbox {
   const { storage } = deps;
   const queue = new Map<string, Entry>();
-  /** The last status pressed per check: what a note without a status of its own attaches to. */
+  /** The last status pressed per check: what a note without a status of its own attaches to. A clear takes the check out of it (`remember`). */
   const known = new Map<string, Status>();
   /** The instant of the newest press of each check that a save has confirmed: the storage may still hold it (a write that failed), and it is not taken again. */
   const confirmed = new Map<string, string>();
@@ -137,6 +144,11 @@ export function createOutbox(deps: OutboxDeps): Outbox {
 
   const emit = () => {
     for (const fn of [...listeners]) fn();
+  };
+  /** Notes what was pressed last on a check (Dim 29.10: after a clear the check has no status to remember). */
+  const remember = (id: string, status: IncomingStatus) => {
+    if (status === "clear") known.delete(id);
+    else known.set(id, status);
   };
   const stamp = (): string => {
     lastStamp = Math.max(deps.now(), lastStamp + 1);
@@ -189,7 +201,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       if (!mine || entry.clientAt > mine.clientAt) {
         queue.set(id, entry);
         written.set(id, entry.clientAt);
-        known.set(id, entry.status);
+        remember(id, entry.status);
         changed = true;
       }
     }
@@ -292,10 +304,10 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     return inflight;
   }
 
-  const queueEntry = (id: string, status: Status, note: string) => {
+  const queueEntry = (id: string, status: IncomingStatus, note: string) => {
     const entry: Entry = { status, note, clientAt: stamp() };
     queue.set(id, entry);
-    known.set(id, status);
+    remember(id, status);
     // (a press that could not be written lives in this page's memory only, and nothing is known of it from the storage)
     if (writeStore((stored) => void stored.set(id, entry))) written.set(id, entry.clientAt);
     else written.delete(id);
@@ -322,9 +334,18 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       emit();
       void send();
     },
+    clear(id) {
+      if (stopped) return;
+      clearNote();
+      queueEntry(id, "clear", "");
+      emit();
+      void send();
+    },
     note(id, note, status) {
       if (stopped) return;
-      const of = queue.get(id)?.status ?? status ?? known.get(id);
+      // (a clear waiting here is no press to go with: the check is then as one never answered, Dim 29.10)
+      const waiting = queue.get(id)?.status;
+      const of = (waiting === "clear" ? undefined : waiting) ?? status ?? known.get(id);
       if (of === undefined) return;
       queueEntry(id, of, note);
       clearNote();
@@ -345,7 +366,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       return failing ? "retrying" : "saving";
     },
     unsent() {
-      return new Map([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));
+      return new Map<string, { status: IncomingStatus; note: string }>([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));
     },
     onChange(fn) {
       listeners.add(fn);

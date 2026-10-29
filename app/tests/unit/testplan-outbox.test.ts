@@ -796,3 +796,168 @@ describe("presses on one check", () => {
     expect(outbox.status()).toBe("idle");
   });
 });
+
+// Dim 29.10: a press can be taken back. `clear(id)` is queued like a press: the latest press of a check wins, in the queue, in the storage and in
+// the body ({ status: "clear", note: "" }); the server removes the check's answer from the tester's own side (src/server/testplan.ts parseBody).
+describe("a clear: an answer taken back (Dim 29.10)", () => {
+  test("is sent at once like a press: saving, then saved; its entry leaves the storage and the server's answers go to onAnswers", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn(async () => okResponse());
+    const { outbox, onAnswers } = outboxOver(storage, put);
+    outbox.clear("a");
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    expect(outbox.status()).toBe("saving");
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "clear", note: "" });
+    expect(outbox.unsent().get("a")).toEqual({ status: "clear", note: "" }); // (the page shows the check taken back until the server has said so)
+
+    await settle();
+    expect(outbox.status()).toBe("saved");
+    expect(storage.dump()).toBeNull();
+    expect(onAnswers).toHaveBeenCalledWith(ANSWERS);
+    expect(outbox.unsent().size).toBe(0);
+  });
+
+  test("after an unsent press it replaces it: the retry carries the clear only, and the storage holds the one entry", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "bad", "Nupp ei tööta");
+    await settle(); // (that save failed: the Viga waits)
+    outbox.clear("a");
+    await settle();
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    expect(Object.keys(JSON.parse(storage.dump()!))).toEqual(["a"]);
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "clear" });
+    expect(outbox.unsent().get("a")).toEqual({ status: "clear", note: "" });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(bodyOf(put, 2)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    expect(storage.dump()).toBeNull();
+  });
+
+  test("a press after an unsent clear replaces it", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.clear("a");
+    await settle();
+    outbox.answer("a", "ok", "Tahvlis korras");
+    await settle();
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "ok", note: "Tahvlis korras" } } });
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "ok", note: "Tahvlis korras" });
+    expect(outbox.unsent().get("a")).toEqual({ status: "ok", note: "Tahvlis korras" });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(bodyOf(put, 2)).toEqual({ answers: { a: { status: "ok", note: "Tahvlis korras" } } });
+    expect(storage.dump()).toBeNull();
+  });
+
+  test("made while the save of a press is on its way: that save is not cleared by its answer, and the clear is sent right after it", async () => {
+    const storage = memoryStorage();
+    let finish: (r: Response) => void = () => {};
+    const put = vi.fn().mockImplementationOnce(() => new Promise<Response>((r) => (finish = r))).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "bad", "");
+    outbox.clear("a");
+    expect(put).toHaveBeenCalledTimes(1); // (one save at a time)
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "bad", note: "" } } });
+    finish(okResponse());
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    expect(storage.dump()).toBeNull();
+    expect(outbox.status()).toBe("saved");
+  });
+
+  test("takes back a note waiting for its second: the note's timer is cancelled, and no save of the note follows", async () => {
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "bad", "");
+    await settle();
+    outbox.note("a", "Nupp ei tööta");
+    await vi.advanceTimersByTimeAsync(400);
+    outbox.clear("a");
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    await vi.advanceTimersByTimeAsync(5000);
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+  });
+
+  test("survives a reload: a new outbox over the same storage sends the leftover clear at once", async () => {
+    const storage = memoryStorage();
+    const failing = outboxOver(storage, vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    failing.outbox.clear("a");
+    await settle();
+    failing.outbox.stop();
+
+    const put = vi.fn(async () => okResponse());
+    const { outbox, onAnswers } = outboxOver(storage, put);
+    expect(put).toHaveBeenCalledTimes(1); // (before anything is pressed)
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "clear", note: "" } } });
+    expect(outbox.unsent().get("a")).toEqual({ status: "clear", note: "" });
+    await settle();
+    expect(storage.dump()).toBeNull();
+    expect(onAnswers).toHaveBeenCalledTimes(1);
+    expect(outbox.status()).toBe("saved");
+  });
+
+  test("a stored status that is neither a press nor a clear is still dropped", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      OUTBOX_KEY,
+      JSON.stringify({ a: { status: "maybe", note: "", clientAt: "2026-10-16T09:00:00.000Z" }, b: { status: "clear", note: "", clientAt: "2026-10-16T09:00:00.000Z" } }),
+    );
+    const put = vi.fn(async () => okResponse());
+    outboxOver(storage, put);
+    expect(bodyOf(put, 0)).toEqual({ answers: { b: { status: "clear", note: "" } } });
+  });
+
+  test("a stored clear and a newer press of another tab: the newer one wins, whichever it is", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.clear("a");
+    await settle();
+    storage.setItem(OUTBOX_KEY, JSON.stringify({ a: { status: "skip", note: "Teises vahelehes", clientAt: "2026-10-16T10:00:30.000Z" } }));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "skip", note: "Teises vahelehes" } } });
+  });
+
+  test("a note after a clear is a note on a check never answered: it attaches to the status the page passes (the clear waiting is not a status), else it is dropped", async () => {
+    const put = vi.fn(() => new Promise<Response>(() => {}));
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "bad", "");
+    outbox.clear("a");
+    outbox.note("a", "x"); // (neither the press before the clear nor the clear itself is a status to attach to)
+    expect(outbox.unsent().get("a")).toEqual({ status: "clear", note: "" });
+    outbox.note("a", "Hea", "skip"); // (with no press waiting, the page's status is the one)
+    expect(outbox.unsent().get("a")).toEqual({ status: "skip", note: "Hea" });
+  });
+
+  test("once the clear is confirmed, a note with no status of its own is dropped, as for a check never answered", async () => {
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "bad", "");
+    await settle();
+    outbox.clear("a");
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+    outbox.note("a", "Nupp ei tööta");
+    expect(outbox.unsent().size).toBe(0);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(put).toHaveBeenCalledTimes(2);
+  });
+
+  test("onChange is told, and a stopped outbox takes no clear", async () => {
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(memoryStorage(), put);
+    const heard = vi.fn();
+    outbox.onChange(heard);
+    outbox.clear("a");
+    expect(heard).toHaveBeenCalled();
+    await settle();
+    outbox.stop();
+    outbox.clear("b");
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(outbox.unsent().size).toBe(0);
+  });
+});

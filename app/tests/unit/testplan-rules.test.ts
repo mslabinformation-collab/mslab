@@ -30,6 +30,8 @@ const PLAN: TestPlan = {
 const answer = (status: Status, at: string, over: Partial<StoredAnswer> = {}): StoredAnswer => ({ status, note: "", at, by: "a@x.test", ...over });
 const doc = (answers: Record<string, StoredAnswer> = {}): AnswersDoc => ({ v: 1, answers });
 const inc = (status: Status, note = ""): IncomingAnswer => ({ status, note });
+/** The incoming "clear" (Dim 29.10): a save takes the check's answer back. */
+const clear = (): IncomingAnswer => ({ status: "clear", note: "" });
 
 describe("appliesAt: the instant a redo is judged by", () => {
   const CASES: { name: string; item: TestItem; expected: string | null }[] = [
@@ -228,6 +230,73 @@ describe("mergeAnswers (spec D4, §5)", () => {
     const got = mergeAnswers(stored, {}, PLAN, "m@x.test", NOW, BUILD);
     expect(got.changed).toEqual([]);
     expect(got.doc).toEqual(stored);
+  });
+
+  // Dim 29.10: a save can take an answer back. The incoming status "clear" removes the check's stored answer, with its note and ping records.
+  describe("a clear takes an answer back (Dim 29.10)", () => {
+    const stored = doc({
+      "maria-1": answer("bad", "2026-10-16T12:00:00.000Z", { note: "katki", pinged: "2026-10-16T12:00:01.000Z", notePinged: true }),
+      "dim-1": answer("ok", "2026-10-16T13:00:00.000Z", { by: "d@x.test" }),
+    });
+
+    test("removes that check's answer, the note and the ping records with it; the other answers stay as they were; the stored doc is not edited", () => {
+      const frozen = JSON.stringify(stored);
+      const { doc: merged, changed } = mergeAnswers(stored, { "maria-1": clear() }, PLAN, "m@x.test", NOW, BUILD);
+      expect(merged).toEqual(doc({ "dim-1": stored.answers["dim-1"] }));
+      expect(changed).toEqual(["maria-1"]);
+      expect(JSON.stringify(stored)).toBe(frozen);
+    });
+
+    test("ignores whatever note it carries: a clear is not an answer with a note", () => {
+      const { doc: merged } = mergeAnswers(stored, { "maria-1": { status: "clear", note: "ei loe" } }, PLAN, "m@x.test", NOW, BUILD);
+      expect(Object.keys(merged.answers)).toEqual(["dim-1"]);
+    });
+
+    test("a clear of a check with no answer, or of an id outside the plan, is a no-op: nothing removed, nothing changed", () => {
+      const got = mergeAnswers(stored, { "koos-1": clear(), ghost: clear() }, PLAN, "m@x.test", NOW, BUILD);
+      expect(got.changed).toEqual([]);
+      expect(got.doc).toEqual(stored);
+      // (an answer stored for an id the plan no longer has is not the save's to remove)
+      const old = doc({ ghost: answer("bad", "2026-09-01T00:00:00.000Z", { note: "vana" }) });
+      expect(mergeAnswers(old, { ghost: clear() }, PLAN, "m@x.test", NOW, BUILD).doc).toEqual(old);
+    });
+
+    test("one save may carry presses and clears: each id is taken as sent", () => {
+      const { doc: merged, changed } = mergeAnswers(stored, { "maria-1": clear(), "koos-1": inc("skip", "hiljem"), "dim-1": clear() }, PLAN, "m@x.test", NOW, BUILD);
+      expect(changed).toEqual(["maria-1", "koos-1", "dim-1"]);
+      expect(merged).toEqual(doc({ "koos-1": { status: "skip", note: "hiljem", at: NOW.toISOString(), by: "m@x.test" } }));
+    });
+
+    test("a doc that holds nothing left after it is an empty map, and a doc without `auto` gets none", () => {
+      const only = doc({ "maria-1": answer("ok", "2026-10-16T12:00:00.000Z") });
+      const merged = mergeAnswers(only, { "maria-1": clear() }, PLAN, "m@x.test", NOW, BUILD).doc;
+      expect(merged).toEqual({ v: 1, answers: {} });
+      expect(Object.keys(merged)).toEqual(["v", "answers"]);
+    });
+
+    test("earns no Telegram message, whatever was cleared: a Viga, with its note, or an OK", () => {
+      for (const id of ["maria-1", "dim-1"]) {
+        const merged = mergeAnswers(stored, { [id]: clear() }, PLAN, "m@x.test", NOW, BUILD);
+        expect(pingsFor(stored, merged.doc, merged.changed, PLAN, BUILD), id).toEqual([]);
+      }
+    });
+
+    test("a Viga cleared and then pressed again is a new answer: it earns its first message again, with no memory of the cleared one", () => {
+      const first = new Date("2026-10-17T10:00:00.000Z");
+      const bad1 = mergeAnswers(doc(), { "maria-1": inc("bad", "katki") }, PLAN, "m@x.test", first, BUILD);
+      const pings1 = pingsFor(doc(), bad1.doc, bad1.changed, PLAN, BUILD);
+      expect(pings1).toEqual([{ id: "maria-1", kind: "bad" }]);
+      const sent1 = markPinged(bad1.doc, pings1, first);
+
+      const cleared = mergeAnswers(sent1, { "maria-1": clear() }, PLAN, "m@x.test", new Date("2026-10-17T10:05:00.000Z"), BUILD);
+      expect(pingsFor(sent1, cleared.doc, cleared.changed, PLAN, BUILD)).toEqual([]);
+      expect(cleared.doc.answers).toEqual({});
+
+      const later = new Date("2026-10-17T10:10:00.000Z");
+      const bad2 = mergeAnswers(cleared.doc, { "maria-1": inc("bad", "katki") }, PLAN, "m@x.test", later, BUILD);
+      expect(bad2.doc.answers["maria-1"]).toEqual({ status: "bad", note: "katki", at: later.toISOString(), by: "m@x.test" }); // (no `pinged`, no `notePinged` carried)
+      expect(pingsFor(cleared.doc, bad2.doc, bad2.changed, PLAN, BUILD)).toEqual([{ id: "maria-1", kind: "bad" }]);
+    });
   });
 
   test("`buildAt` is required: a call without it does not compile (a forgotten build instant must not turn into a message on every save)", () => {
@@ -672,6 +741,38 @@ describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", ()
     expect(Object.keys(shared.doc)).toEqual(["v", "answers"]);
     const auto = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, AUTO, NOW, BUILD, "auto");
     expect(auto.doc).toEqual({ v: 1, answers: {}, auto: { "maria-1": { status: "ok", note: "", at: NOW.toISOString(), by: AUTO } } });
+  });
+
+  // Dim 29.10: a clear takes back the session's own side only. Maria's taking back her answer leaves Automaattest's, so a check Automaattest passed
+  // is its pass again (the page's rule, Task 5); Automaattest's taking back its own leaves hers.
+  test("a clear by Maria removes her answer and leaves `auto` exactly as it was; a clear into `auto` removes Automaattest's and leaves `answers`", () => {
+    const stored = withAuto(
+      { "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: "m@x.test", note: "katki", pinged: "2026-10-17T10:00:01.000Z", notePinged: true }) },
+      { "maria-1": answer("ok", "2026-10-24T10:00:00.000Z", { by: AUTO }), "dim-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO, pinged: "2026-10-24T10:00:01.000Z" }) },
+    );
+    const byMaria = mergeAnswers(stored, { "maria-1": clear() }, PLAN, "m@x.test", NOW, BUILD);
+    expect(byMaria.changed).toEqual(["maria-1"]);
+    expect(byMaria.doc).toEqual(withAuto({}, stored.auto!));
+
+    const byAuto = mergeAnswers(stored, { "dim-1": clear(), "maria-1": clear() }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(byAuto.changed).toEqual(["dim-1", "maria-1"]);
+    expect(byAuto.doc).toEqual(withAuto(stored.answers, {}));
+
+    // a clear of a check only the other side has answered is a no-op for this side
+    const noop = mergeAnswers(stored, { "dim-1": clear() }, PLAN, "m@x.test", NOW, BUILD);
+    expect(noop.changed).toEqual([]);
+    expect(noop.doc).toEqual(stored);
+  });
+
+  test("Automaattest's Viga taken back earns no message, and its Viga pressed again is a new failure, marked `auto`", () => {
+    const first = new Date("2026-10-25T10:00:00.000Z");
+    const bad = mergeAnswers(doc(), { "maria-1": inc("bad", "nupp puudub") }, PLAN, AUTO, first, BUILD, "auto");
+    const sent = markPinged(bad.doc, pingsFor(doc(), bad.doc, bad.changed, PLAN, BUILD, "auto"), first);
+    const cleared = mergeAnswers(sent, { "maria-1": clear() }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(pingsFor(sent, cleared.doc, cleared.changed, PLAN, BUILD, "auto")).toEqual([]);
+    expect(cleared.doc.auto).toEqual({});
+    const again = mergeAnswers(cleared.doc, { "maria-1": inc("bad", "nupp puudub") }, PLAN, AUTO, new Date("2026-10-25T11:00:00.000Z"), BUILD, "auto");
+    expect(pingsFor(cleared.doc, again.doc, again.changed, PLAN, BUILD, "auto")).toEqual([{ id: "maria-1", kind: "bad", auto: true }]);
   });
 
   test("planCounts for Maria, Dim and everybody ignore `auto`; ownFaults counts each admin's own standing Vead, Automaattest's in `auto`", () => {

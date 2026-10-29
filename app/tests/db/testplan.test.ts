@@ -160,6 +160,88 @@ describe("saveAnswers", () => {
   });
 });
 
+// Dim 29.10: a save can take an answer back: `{ status: "clear" }` (the note absent, or any text, which is ignored) removes the check's answer.
+describe("saveAnswers: a clear takes an answer back (Dim 29.10)", () => {
+  freshDb();
+  const clearBody = (...ids: string[]) => ({ answers: Object.fromEntries(ids.map((id) => [id, { status: "clear" }])) });
+
+  test("the row no longer holds the answer, the other answers stay, and the doc comes back without it; no message", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" }, "maria-2": { status: "ok" } }), T1, NAMES);
+    const saved = await saveAnswers(db, MARIA, clearBody("maria-1"), T2, NAMES);
+    expect(saved).toEqual({ ok: true, doc: doc({ "maria-2": answer("ok") }), pings: [] });
+    expect(await rowOf(db)).toEqual({ v: 1, answers: { "maria-2": { status: "ok", note: "", at: T1.toISOString(), by: MARIA } } });
+    expect(toPageAnswers(await readAnswers(db), PLAN, NAMES)).toEqual({ "maria-2": { status: "ok", note: "", at: T1.toISOString(), byName: "Maria" } });
+  });
+
+  test("the note may be absent or any text, and is not looked at; the log counts the clear as a change", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "ok" }, "dim-1": { status: "ok" } }), T1, NAMES);
+    vi.mocked(console.info).mockClear();
+    const saved = await saveAnswers(db, MARIA, { answers: { "maria-1": { status: "clear" }, "maria-2": { status: "clear", note: "" }, "dim-1": { status: "clear", note: "ei loe" } } }, T2, NAMES);
+    expect(saved).toEqual({ ok: true, doc: doc(), pings: [] });
+    expect(vi.mocked(console.info).mock.calls.flat().map(String)).toEqual(["[testplan] saved 3 answers, 0 messages"]);
+  });
+
+  test("a clear of a check with no answer, or of an id outside the plan, is no error: the save succeeds and changes nothing", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1, NAMES);
+    const before = await rowOf(db);
+    const saved = await saveAnswers(db, MARIA, clearBody("maria-2", "ghost"), T2, NAMES);
+    expect(saved).toEqual({ ok: true, doc: doc({ "maria-1": answer("ok") }), pings: [] });
+    expect(await rowOf(db)).toEqual(before);
+    // ...nor with no row at all: the row is made, empty
+    await db.delete(settings);
+    expect(await saveAnswers(db, MARIA, clearBody("maria-1"), T3, NAMES)).toEqual({ ok: true, doc: doc(), pings: [] });
+  });
+
+  test("a clear and a press in one save: each is taken as sent, and the pressed Viga earns its message", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" } }), T1, NAMES);
+    const saved = await saveAnswers(db, MARIA, { answers: { "maria-1": { status: "clear" }, "maria-2": { status: "bad", note: "" } } }, T2, NAMES);
+    expect(saved.ok && saved.pings).toEqual([{ id: "maria-2", kind: "bad" }]);
+    expect(Object.keys((await readAnswers(db)).answers)).toEqual(["maria-2"]);
+  });
+
+  test("a Viga taken back earns no message; the same person's Viga pressed again is a new answer and earns its first message again", async () => {
+    const bad = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1, NAMES);
+    expect(bad.ok && bad.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
+    const cleared = await saveAnswers(db, MARIA, clearBody("maria-1"), T2, NAMES);
+    expect(cleared.ok && cleared.pings).toEqual([]);
+    const again = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T3, NAMES);
+    expect(again.ok && again.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
+    expect((await readAnswers(db)).answers["maria-1"]).toEqual({ status: "bad", note: "katki", at: T3.toISOString(), by: MARIA, pinged: T3.toISOString(), notePinged: true });
+  });
+
+  test("the card and the menu badge follow: a Viga taken back is open again, and no longer counts as a fault", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T1, NAMES);
+    expect([await testplanCard(db, MARIA, NAMES), await ownFaultCount(db, MARIA)]).toEqual([{ open: 2, bad: 1 }, 1]);
+    await saveAnswers(db, MARIA, clearBody("maria-1"), T2, NAMES);
+    expect([await testplanCard(db, MARIA, NAMES), await ownFaultCount(db, MARIA)]).toEqual([{ open: 3, bad: 0 }, 0]);
+  });
+
+  test("Automaattest's clear removes its own answer only, Maria's removes hers only; neither touches the other's", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "hea" } }), T1, NAMES);
+    await saveAnswers(db, AUTO, body({ "maria-1": { status: "ok" }, "dim-1": { status: "ok" } }), T1, NAMES);
+    const autoOk = { status: "ok", note: "", at: T1.toISOString(), by: AUTO };
+
+    await saveAnswers(db, AUTO, clearBody("maria-1"), T2, NAMES);
+    expect(await rowOf(db)).toEqual({
+      v: 1,
+      answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA, notePinged: true } },
+      auto: { "dim-1": autoOk },
+    });
+
+    await saveAnswers(db, AUTO, body({ "maria-1": { status: "ok" } }), T2, NAMES);
+    await saveAnswers(db, MARIA, clearBody("maria-1", "dim-1"), T3, NAMES);
+    expect(await rowOf(db)).toEqual({ v: 1, answers: {}, auto: { "dim-1": autoOk, "maria-1": { ...autoOk, at: T2.toISOString() } } });
+    expect(pageView(await readAnswers(db), PLAN, NAMES, "maria").answers).toEqual({}); // (the check falls back to Automaattest's answer, which is apart in `auto`)
+    expect(Object.keys(pageView(await readAnswers(db), PLAN, NAMES, "maria").auto).sort()).toEqual(["dim-1", "maria-1"]);
+  });
+
+  test("a clear by Maria on a row without `auto` writes none into it", async () => {
+    await db.insert(settings).values({ key: "testplan_answers", value: { v: 1, answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA } } } });
+    await saveAnswers(db, MARIA, clearBody("maria-1"), T2, NAMES);
+    expect(await rowOf(db)).toEqual({ v: 1, answers: {} });
+  });
+});
+
 
 const TOO_MANY = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`id-${i}`, { status: "ok", note: "" }]));
 describe("saveAnswers: a bad body", () => {
@@ -183,6 +265,9 @@ describe("saveAnswers: a bad body", () => {
     { name: "no note", value: { answers: { "maria-1": { status: "ok" } } } },
     { name: "a note that is no text", value: { answers: { "maria-1": { status: "ok", note: 5 } } } },
     { name: "one good answer and one bad: nothing is saved", value: { answers: { "maria-1": { status: "ok", note: "" }, "maria-2": { status: "nope", note: "" } } } },
+    { name: "a status that looks like clear but is not (Clear, clear )", value: { answers: { "maria-1": { status: "Clear" }, "maria-2": { status: "clear ", note: "" } } } },
+    { name: "a clear with a note that is no text", value: { answers: { "maria-1": { status: "clear", note: 5 } } } },
+    { name: "a good clear and a bad answer: nothing is saved", value: { answers: { "maria-1": { status: "clear" }, "maria-2": { status: "maybe", note: "" } } } },
     { name: "more than 300 ids", value: { answers: TOO_MANY } },
   ])("is invalid and stores nothing: $name", async ({ value }) => {
     expect(await saveAnswers(db, MARIA, value, T1, NAMES)).toEqual({ ok: false, error: "invalid" });

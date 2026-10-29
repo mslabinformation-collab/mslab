@@ -26,7 +26,8 @@ const EMPTY: AnswersDoc = { v: 1, answers: {} };
 const MAX_IDS = 300;
 /** A Telegram message holds at most this many characters (code points) of the note. */
 const PING_NOTE_MAX = 300;
-const STATUSES: readonly string[] = ["ok", "bad", "skip"];
+/** The statuses a save may carry: the three that are stored, and (Dim 29.10) "clear", which takes the answer back. */
+const STATUSES: readonly string[] = ["ok", "bad", "skip", "clear"];
 
 /** The plan, from the committed file (spec D3): its shape is src/data/testplan.json's, which tests/unit/testplan-file.test.ts holds to checkPlan. */
 export const testPlan = planFile as unknown as TestPlan;
@@ -87,6 +88,8 @@ export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefi
  * A request body as the answers it asks to save, or null when it is not one: an object whose `answers` is an object of at most MAX_IDS
  * `{ status: ok | bad | skip, note: text }` (one bad answer refuses the whole save). Only those two fields are taken over: `clientAt` (the
  * device's own press order, used in the browser only) and anything else a body carries are dropped here.
+ * Dim 29.10: `{ status: "clear" }` takes an answer back; its note may be absent or any text and is read as "" (a note that is no text still
+ * refuses the save, as it does on any answer).
  */
 function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
   if (!isObject(body) || !isObject(body.answers)) return null;
@@ -94,8 +97,14 @@ function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
   if (sent.length > MAX_IDS) return null;
   const answers: [string, IncomingAnswer][] = [];
   for (const [id, raw] of sent) {
-    if (!isObject(raw) || typeof raw.status !== "string" || !STATUSES.includes(raw.status) || typeof raw.note !== "string") return null;
-    answers.push([id, { status: raw.status as Status, note: raw.note }]);
+    if (!isObject(raw) || typeof raw.status !== "string" || !STATUSES.includes(raw.status)) return null;
+    if (raw.status === "clear") {
+      if (raw.note !== undefined && typeof raw.note !== "string") return null;
+      answers.push([id, { status: "clear", note: "" }]);
+    } else {
+      if (typeof raw.note !== "string") return null;
+      answers.push([id, { status: raw.status as Status, note: raw.note }]);
+    }
   }
   return Object.fromEntries(answers);
 }
@@ -106,6 +115,7 @@ function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
  * once take turns and each merges into what the other wrote; the stored answers are read, the save merged in (`by` the session's e-mail, `at`
  * `now`), the Telegram messages it earns worked out and recorded as sent, and the row written back. The messages are returned, not sent: the caller
  * sends them once the transaction has committed, and a failed send never changes the answer.
+ * A status "clear" (Dim 29.10) takes the check's answer back from the session's own side (merged in the same way, and it earns no message).
  * `names` is ADMIN_NAMES (Dim 25.10): the session's admin named „Automaattest…“ there saves into the row's `auto`, never into `answers`; every
  * other admin's save goes into `answers` and leaves `auto` as it is.
  */

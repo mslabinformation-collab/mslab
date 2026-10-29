@@ -41,8 +41,16 @@ export type StoredAnswer = { status: Status; note: string; at: string; by: strin
  * written before it has none) holds Automaattest's answers, of the same shape, apart. A save goes into one map and leaves the other as it is.
  */
 export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer>; auto?: Record<string, StoredAnswer> };
-/** An answer as the device sends it. `clientAt` only orders several unsent presses of one check on the device; the server stamps `at` itself. */
-export type IncomingAnswer = { status: Status; note: string; clientAt?: string };
+/**
+ * A status as a save carries it (Dim 29.10): the three that are stored, or "clear", which takes the check's answer back and is never stored.
+ * `Status` and `StoredAnswer` stay ok | bad | skip.
+ */
+export type IncomingStatus = Status | "clear";
+/**
+ * An answer as the device sends it. `clientAt` only orders several unsent presses of one check on the device; the server stamps `at` itself. The
+ * note of a "clear" (Dim 29.10) is never used: the device sends "", and the server reads any other text, or none, as "".
+ */
+export type IncomingAnswer = { status: IncomingStatus; note: string; clientAt?: string };
 /**
  * `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both. An
  * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept).
@@ -264,10 +272,14 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
 /**
  * A save merged into the stored answers (spec D4, §5). Each incoming answer of a check in the plan becomes `{ status, note, at, by }` with the
  * note cleaned, `at` the server's `now` and `by` the session's: nothing else of the incoming object is used (not its `by`, not its `at`). An
- * id outside the plan, or a status that is none of ok / bad / skip, is ignored; answers stored for ids outside the plan are kept untouched.
- * `changed` lists the ids written, in the order sent. The stored entry's `pinged` and `notePinged` carry over only while it stays the same
- * answer: it had this status, it has it again, and no redo has overtaken it; otherwise the answer is a new one and earns its own messages (D6;
- * Dim 22.10: an OK and a Jäta vahele have a first note that is announced too, so they carry `notePinged` the way a Viga does).
+ * id outside the plan, or a status that is none of ok / bad / skip / clear, is ignored; answers stored for ids outside the plan are kept untouched.
+ * A "clear" (Dim 29.10: a save can take an answer back) removes the check's stored answer from the same map, its note and its `pinged` and
+ * `notePinged` with it (the next Viga of that check is a new failure and earns its messages: no memory of the cleared one); a clear of a check
+ * with no answer in that map does nothing. It earns no message (pingsFor finds no answer to announce).
+ * `changed` lists the ids written, and the ids whose answer a clear removed, in the order sent. The stored entry's `pinged` and `notePinged`
+ * carry over only while it stays the same answer: it had this status, it has it again, and no redo has overtaken it; otherwise the answer is a
+ * new one and earns its own messages (D6; Dim 22.10: an OK and a Jäta vahele have a first note that is announced too, so they carry
+ * `notePinged` the way a Viga does).
  * `buildAt` (required) is what a "deploy" mark reads as (appliesAt): pass the running build's instant, TESTPLAN_BUILD_AT. It has no default
  * on purpose. A guess such as `now` would make every stored failure of a check marked "deploy" older than its mark, so each save of the same
  * failure would count as a new one and send the first Telegram message again (a message per pause in typing a note). Pure: `stored` is not edited.
@@ -290,7 +302,16 @@ export function mergeAnswers(
   const at = now.toISOString();
   for (const [id, raw] of Object.entries(incoming)) {
     const item = items.get(id);
-    if (!item || !isObject(raw) || !isStatus(raw.status)) continue;
+    if (!item || !isObject(raw)) continue;
+    if (raw.status === "clear") {
+      // (this map's answer only: the other side's stays, and a check this side never answered is left as it is)
+      if (answerOf(answers, id) !== undefined) {
+        delete answers[id];
+        changed.push(id);
+      }
+      continue;
+    }
+    if (!isStatus(raw.status)) continue;
     const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at, by };
     const prev = answerOf(before, id);
     if (prev && prev.status === entry.status && checkState(item, prev, plan, buildAt).overtaken === null) {

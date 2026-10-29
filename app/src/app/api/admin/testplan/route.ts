@@ -56,7 +56,9 @@ async function sendPings(env: Env, pings: Ping[], doc: AnswersDoc, names: string
 
 /**
  * PUT /api/admin/testplan — a save of answers, body `{ answers: { <id>: { status: ok | bad | skip, note } } }` (`clientAt` is allowed and
- * ignored: the server stamps `at`, and `by` is the session's e-mail address, never the body's). Signed-in admins only; a cross-site PUT is
+ * ignored: the server stamps `at`, and `by` is the session's e-mail address, never the body's). Dim 29.10: `{ status: "clear" }` (note absent or
+ * any text, ignored) takes the check's answer back from the session's own side (the shared answers, or Automaattest's `auto`); it earns no
+ * message, and a clear of a check with no answer is a save that changes nothing. Signed-in admins only; a cross-site PUT is
  * 403 (withAdmin). 200 `{ ok: true, answers }`: all the plan's answers as GET gives them, merged (Automaattest's own for its session, Dim 25.10:
  * its saves go into the row's `auto` and never into the shared answers). 400 `{ ok: false, error: "invalid" }`
  * for a body that is not a save; 413 `{ ok: false, error: "tooLarge" }` over 128 KB; 503 `{ ok: false, error: "unavailable" }` when the

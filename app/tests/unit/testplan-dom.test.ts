@@ -694,6 +694,18 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
     expect(chip()).toBe("saved");
   });
+
+  // (server side of Task 4 only: no control takes an answer back yet. A clear left on the device is sent, and until the server has said so the page
+  // shows the check without the answer the server still holds.)
+  test("a clear left on the device by an earlier visit is sent, and the check shows without its answer meanwhile", async () => {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify({ "a1-fail": { status: "clear", note: "", clientAt: "2026-10-16T09:00:00.000Z" } }));
+    putReply = async () => json({ ok: false, error: "unavailable" }, 503);
+    await showAll();
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-fail": { status: "clear", note: "" } } }]);
+    expect(state("a1-fail")).toBe("open"); // (the server still holds Dim's Viga)
+    expect(check("a1-fail").querySelector("[data-check-last]")).toBeNull();
+    expect(localStorage.getItem(OUTBOX_KEY)).not.toBeNull(); // (the save failed: it waits on the device)
+  });
 });
 
 // Dim 29.10 (review Q1, ruling c2): when the answers cannot be read, the page says so in his words and shows no numbers until a read goes through

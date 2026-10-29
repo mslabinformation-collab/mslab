@@ -165,6 +165,23 @@ describe("Automaattest", () => {
     expect(text).not.toContain("@");
   });
 
+  test("its clear removes its own answer from `auto` and leaves Maria's; Maria's clear leaves its answer, which her GET then shows apart", async () => {
+    await signIn(MARIA);
+    await put({ answers: { "maria-1": { status: "ok", note: "" } } });
+    await signIn(AUTO);
+    await put({ answers: { "maria-1": { status: "ok", note: "" }, "dim-1": { status: "ok", note: "" } } });
+    const res = await put({ answers: { "dim-1": { status: "clear" } } });
+    expect(await res.json()).toMatchObject({ ok: true, answers: { "maria-1": { status: "ok", byName: "Automaattest" } } });
+    const row = (await stored()) as unknown as { answers: Record<string, unknown>; auto: Record<string, unknown> };
+    expect([Object.keys(row.answers), Object.keys(row.auto)]).toEqual([["maria-1"], ["maria-1"]]);
+
+    await signIn(MARIA);
+    const taken = await put({ answers: { "maria-1": { status: "clear" } } });
+    expect(await taken.json()).toEqual({ ok: true, answers: {} });
+    const view = (await (await get()).json()) as { answers: object; auto: Record<string, unknown> };
+    expect([view.answers, Object.keys(view.auto)]).toEqual([{}, ["maria-1"]]);
+  });
+
   test("its Viga is sent to Telegram as Automaattest's; its OK with a note sends nothing", async () => {
     await signIn(AUTO);
     await put({ answers: { "maria-1": { status: "ok", note: "korras" } } });
@@ -219,7 +236,8 @@ describe("PUT", () => {
 
   test.each([
     { name: "answers a list", body: { answers: [] } },
-    { name: "a status that is none of ok, bad, skip", body: { answers: { "maria-1": { status: "maybe", note: "" } } } },
+    { name: "a status that is none of ok, bad, skip, clear", body: { answers: { "maria-1": { status: "maybe", note: "" } } } },
+    { name: "a clear with a note that is no text", body: { answers: { "maria-1": { status: "clear", note: 5 } } } },
     { name: "no answers", body: {} },
     { name: "JSON that is a list", body: [] },
     { name: "text that is no JSON", body: "{ not json" },
@@ -253,6 +271,46 @@ describe("PUT", () => {
     await signIn();
     const res = await put({ answers: { "maria-1": { status: "ok", note: "" }, "maria-2": { status: "skip", note: "  " } } });
     expect(res.status).toBe(200);
+    expect(state.later).toEqual([]);
+  });
+
+  // Dim 29.10: `{ status: "clear" }` takes an answer back.
+  test("a clear: 200, the answer is gone from the row and from the merged answers in the body, and no message is scheduled", async () => {
+    await signIn();
+    await put({ answers: { "maria-1": { status: "ok", note: "" }, "maria-2": { status: "ok", note: "" } } });
+    const res = await put({ answers: { "maria-1": { status: "clear" } } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ ok: true, answers: { "maria-2": expect.objectContaining({ status: "ok", byName: "Maria" }) } });
+    expect(text).not.toContain("@");
+    expect(Object.keys((await stored())?.answers ?? {})).toEqual(["maria-2"]);
+    expect(state.later).toEqual([]);
+    // ...and a GET after it agrees
+    expect(Object.keys(((await (await get()).json()) as { answers: object }).answers)).toEqual(["maria-2"]);
+  });
+
+  test("a clear of a Viga with a note sends nothing; the Viga pressed again is a new failure and is sent", async () => {
+    await signIn();
+    await put({ answers: { "maria-1": { status: "bad", note: "nupp ei tööta" } } });
+    await runLater();
+    expect(sendTelegram).toHaveBeenCalledTimes(1);
+    await put({ answers: { "maria-1": { status: "clear", note: "" } } });
+    expect(state.later).toEqual([]);
+    expect((await stored())?.answers).toEqual({});
+    await put({ answers: { "maria-1": { status: "bad", note: "nupp ei tööta" } } });
+    await runLater();
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text.split("\n")[0])).toEqual([
+      "Testimine — Viga: Avaleht telefonis (Maria)",
+      "Testimine — Viga: Avaleht telefonis (Maria)",
+    ]);
+  });
+
+  test("a clear of a check with no answer, or of an id outside the plan: 200, nothing stored that was not, nothing sent; a note on a clear is ignored", async () => {
+    await signIn();
+    const res = await put({ answers: { "maria-1": { status: "clear" }, ghost: { status: "clear", note: "ei loe" } } });
+    expect([res.status, await res.json()]).toEqual([200, { ok: true, answers: {} }]);
+    expect((await stored())?.answers).toEqual({});
     expect(state.later).toEqual([]);
   });
 

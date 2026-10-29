@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { answerOf, checkState, NOTE_MAX, planCounts, type AnswersDoc, type CheckState, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
+import { answerOf, checkState, NOTE_MAX, planCounts, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
@@ -114,10 +114,16 @@ const forWho = (who: WhoChoice, item: TestItem, mine: "maria" | "dim" | null, au
   who === "all" || (who === "auto" ? autoIds.has(item.id) : mine === null || item.who === mine || item.who === "koos");
 const passes = (filter: Filter, st: CheckState | undefined): boolean => filter === "all" || st?.state === STATE_OF[filter];
 
-/** The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer). */
-function docOf(answers: Record<string, PageAnswer> | null, unsent: ReadonlyMap<string, { status: Status; note: string }>): AnswersDoc {
-  const entries: [string, StoredAnswer][] = Object.entries(answers ?? {}).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]);
-  for (const [id, a] of unsent) entries.push([id, { status: a.status, note: a.note, at: UNSENT_AT, by: "" }]);
+/**
+ * The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer), the unsent ones over
+ * them. An unsent "clear" (Dim 29.10, an answer taken back) takes the check's answer out until the server has said so.
+ */
+function docOf(answers: Record<string, PageAnswer> | null, unsent: ReadonlyMap<string, { status: IncomingStatus; note: string }>): AnswersDoc {
+  const entries = new Map<string, StoredAnswer>(Object.entries(answers ?? {}).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]));
+  for (const [id, a] of unsent) {
+    if (a.status === "clear") entries.delete(id);
+    else entries.set(id, { status: a.status, note: a.note, at: UNSENT_AT, by: "" });
+  }
   return { v: 1, answers: Object.fromEntries(entries) };
 }
 
@@ -285,7 +291,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
 
   // what is shown: the server's answers, the unsent ones over them
   const { doc, local } = useMemo(() => {
-    const unsent = outbox ? outbox.unsent() : new Map<string, { status: Status; note: string }>();
+    const unsent = outbox ? outbox.unsent() : new Map<string, { status: IncomingStatus; note: string }>();
     return { doc: docOf(answers, unsent), local: new Set(unsent.keys()) };
     // (`version` stands for what the outbox holds now)
     // eslint-disable-next-line react-hooks/exhaustive-deps
