@@ -79,5 +79,13 @@ export function reviewPills(olek: ReviewStatusWord | null, counts: Record<Review
   });
 }
 
+/** A feedback answer's „Hinne“ as the Vastused list's cell writes it under its column „Hinne“: „9/10“ (tagasiside/page.tsx). */
+export const scoreOutOfTen = (score: number): string => `${score}/10`;
+/**
+ * A review card's score for a screen reader (Dim 29.10: the stars are aria-hidden, so the card says the score in a visually hidden line): the
+ * Vastused list's column word and cell, „Hinne 9/10“. None on a card without stars (a review Maria added, an answer without a score).
+ */
+export const spokenScore = (score: number): string => `${adminEt.feedback.col.score} ${scoreOutOfTen(score)}`;
+
 /** A review card's element id (piece 4c, R-d): the anchor of `/admin/tagasiside?vaade=arvustused#arvustus-<id>`, and the card the focus stays on (D5). */
 export const reviewCardId = (id: number): string => `arvustus-${id}`;

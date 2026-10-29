@@ -443,6 +443,8 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     const check = text("kontakt-tagasiside-haldus");
     for (const word of [t.filterLabel, t.all, t.toReview, t.toStudent, t.toRegistration, adminEt.lists.clearAll]) expect(check, word).toContain(`„${word}“`);
     expect(check).toContain("järgi vastuseid ei leitud");
+    // (Task 7, the review's M-1: with a course and a search on, the page says one „Vastuseid“, the search's; the dictionary's word before its count)
+    expect(check).toContain(`üks „${t.count.replace(" {n}", " …")}“`);
     // (the course buttons of before, and the two links' old words)
     for (const gone of ["Nuppude reas", "Õpilase juurde", "Registreeringu juurde", "Selle koolituse kohta pole tagasisidet."]) expect(plan.items.map((i) => [...i.steps, ...i.expect].join("\n")).join("\n"), gone).not.toContain(gone);
   });
@@ -1271,6 +1273,22 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     expect(preview).toBeGreaterThan(check.steps.findIndex((s) => s.includes("„Soodustus (%)“: 15")));
     expect(preview).toBeLessThan(check.steps.findIndex((s) => s.startsWith("Vajuta „Avalda muudatused“")));
     expect(check.expect.find((l) => l.startsWith("Eelvaates"))).toContain("„Avaldamata 2“");
+  });
+
+  test("haldus-hupikaken-numbrid (new, piece 4c Task 7): Dim's range words of 29.10 at the two numbers, and „Sisesta täisarv.“ for no whole number", () => {
+    const check = item("haldus-hupikaken-numbrid");
+    expect(check).toMatchObject({ mark: "new", who: "dim", href: "/admin/kampaania", writes: false });
+    expect(markedSince(check.markedAt)).toBe(true);
+    expect(plan.items.findIndex((c) => c.id === "haldus-hupikaken-numbrid")).toBe(plan.items.findIndex((c) => c.id === "haldus-hupikaken") + 1);
+    const errors = adminEt.courseEditor.errors;
+    for (const words of [t.discount, t.codeDays, `„${errors.discountRange}“`, `„${errors.codeDaysRange}“`, `„${errors.whole}“`]) expect(whole("haldus-hupikaken-numbrid"), words).toContain(words);
+    // each value typed has its words: 100 and 366 out of their range, 7,5 no whole number
+    for (const [typed, words] of [["100", errors.discountRange], ["7,5", errors.whole], ["366", errors.codeDaysRange]]) {
+      expect(check.steps.some((s) => s.includes(`: ${typed} `)), typed).toBe(true);
+      expect(check.expect.find((l) => l.startsWith(`Pärast ${typed} `)), typed).toContain(words);
+    }
+    // nothing is published: the last step puts both back
+    expect(whole("haldus-hupikaken-numbrid")).not.toContain(adminEt.publish.publish);
   });
 
   test("avalik-hupikaken (redo): 8 s, once in 30 days per browser, the home page only — new visitors in a private window", () => {

@@ -40,6 +40,7 @@ What exists today:
     - „Avaldatud“ (published);
     - „Peidetud“ (hidden).
   - Each pending review has „Avalda“ and „Peida“. A published review can be hidden, and a hidden one published again.
+  - **Undo and focus (4c, 29.10); the admin UX pass, spec 2026-10-21 §9, C6.** „Avalda“ and „Peida“ act at once, and the bar „Arvustus avaldatud.“ / „Arvustus peidetud.“ offers „Võta tagasi“ for 8 s. It puts back the status and `decided_at` of the moment before the press, but only while the review is as the press left it (its status and `updated_at`): a review that moved since (published again in another tab, „Avalehel“, an edit) is not written over, and the bar says „Arvustust muudeti vahepeal. Vaata see üle.“. The focus stays on the card acted on, or goes to its neighbour when the card leaves a filtered list. The list is cards, with the stars of the student's „Hinne“ (Maria's screen only, S4-Q5: 9–10 five … 0–2 one, none without a score; a screen reader hears „Hinne {n}/10“), and the status filter is the pills „Ootab kinnitust {n}“ · „Avaldatud {n}“ · „Peidetud {n}“ with no „Kõik“: every review is listed until a pill is pressed, and a pressed pill toggles off. The heading's count of pending reviews is gone (the menu badge and the pill have it).
   - „Arvustused“ is a tab of the „Tagasiside“ page, `?vaade=arvustused`, with `?olek=ootel|avaldatud|peidetud` for one status, and it has no paging for now: tens of rows are expected, and the status filter is enough until the list passes about 100 (R6). (amended 18.10 during the build)
   - The „Kõik“ view lists by status (waiting, published, hidden) and then newest written first (R7). (amended 18.10 during the build)
   - **Who may offer one.** The form opens as it does today (a contact registration after its course day, not cancelled; an e-course once „Lõpetatud“), and Maria's approval is the check. So she can judge whether the writer really took part, each student review in „Arvustused“ shows the registration's status (for example „Ootab ettemaksu“) and whether a protocol was sent; an e-course review shows „Lõpetatud {date}“ (my call, from the builder check).
@@ -60,6 +61,7 @@ What exists today:
     - its language;
     - a required internal note, „Kust see pärit on?“ (Draft), never shown publicly.
   - The form tells her: „Lisa ainult päris õpilase sõnad tema loal.“ (Draft).
+  - **Soft delete (4c, 29.10).** „Lisa arvustus +“ opens a drawer, and the review is made only with „Lisa arvustus“. „Muuda“ opens a drawer that saves each field by itself, guarded by the review's version. „Kustuta“ asks nothing and only marks the review (`reviews.removed_at`, migration 0021, §3): every reader leaves a marked review out at once (the public pages, the student's account, Maria's list and counts, the menu badge, Avaleht's queue), „Võta tagasi“ clears the mark within the bar's 8 s, and the row is purged once the mark is 10 s old (by her next „Kustuta“, else by the daily sweep). Only a review Maria added is ever marked or purged; a student's withdrawal (D6) stays a hard delete.
   - She may edit or delete these, and only these. A new one is published when she first adds it, because she adds it herself (my call); an edit keeps its status (below). (amended 18.10 during the build)
   - Her internal note is capped at 500 characters (R3), and the date written is from the year 2000 on (a typo like 0026 is refused; a date ahead is not). (amended 18.10 during the build)
   - Editing a manual review keeps its status and its „Avalehel“ setting, so a hidden one stays hidden. Moving it to another course refreshes the pages of both courses and the home page (R4). (amended 18.10 during the build)
@@ -73,7 +75,7 @@ What exists today:
     - the shown name;
     - the course;
     - the month and year written (for example „okt 2026“).
-  - **What it does not show:** no score, no stars and no average.
+  - **What it does not show:** no score, no stars and no average. (4c, 29.10: this is the public pages'. Maria's cards in the admin show stars from the score, S4-Q5.)
   - **The notice.** Under each block and section: „Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.“ (Draft).
     - Consumer law asks a trader who shows reviews to say whether and how it checks that they come from real customers.
     - This line is the site's statement. It is not legal advice.
@@ -104,6 +106,7 @@ What exists today:
 - `featured`: boolean, default false, the „Avalehel“ toggle;
 - `decided_at`;
 - `note`: Maria's internal source note, for `manual` only;
+- `removed_at` (4c, 29.10), migration 0021: when Maria deleted a review she added („Kustuta“); null otherwise. A marked row is read by nothing and purged once the mark is 10 s old (D4);
 - `created_at` and `updated_at`.
 
 The index is (`course_id`, `status`, `written_at` desc). The text and the name are copies made at consent: later changes to her account name do not touch them.
@@ -121,7 +124,7 @@ The index is (`course_id`, `status`, `written_at` desc). The text and the name a
 - **Her account.** The course card shows the permission line and „Võta luba tagasi“ while her review exists (D6); the dashboard's data gives each contact, individual-course and e-course card `review: { id } | null` (an individual-course registration has no session, and its student is offered the form once Maria has sent the protocol, so she takes her permission back from her card too: ruling R10). (amended 18.10 during the build) An e-course gets the same open feedback card as a contact course once it is „Lõpetatud“ (D3), placed where today's feedback cards are.
 - **The admin.**
   - The „Tagasiside“ page gains „Arvustused“ (D2) and „Lisa arvustus“ (D4).
-  - The page heading counts the pending reviews.
+  - The page heading counts the pending reviews. (4c, 29.10: replaced by the pills' counts and, on a phone, the tab „Arvustused · Ootab {n}“; D2.)
   - The student's drawer shows whether she allowed publishing, and the review's status.
 - **The cache.** Any review change refreshes that course's page and the home page (`cache-targets.ts`).
 

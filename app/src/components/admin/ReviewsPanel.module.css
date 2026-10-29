@@ -75,6 +75,20 @@
   letter-spacing: 0.1em;
 }
 
+/* the score for a screen reader („Hinne 9/10“, Dim 29.10): the stars beside it are aria-hidden */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;

@@ -119,10 +119,40 @@ test("a course: its average and scores, every option counted in Maria's wording;
     [String(course.id), "Kulmude lamineerimine", false],
     [String(other.id), "Ripsmete tõstmine", false],
   ]);
-  const none = await render(FeedbackPage, { koolitus: "999" });
-  expect(none).toContain("Selle valikuga vastuseid pole.");
-  expect(none).not.toContain("Selle koolituse kohta pole tagasisidet.");
-  expect(none).toMatch(/<a [^>]*href="\/admin\/tagasiside"[^>]*>Tühjenda otsing ja filtrid<\/a>/);
+  expect(html).not.toContain("Selle koolituse kohta pole tagasisidet.");
+});
+
+test("a ?koolitus= the select does not offer (none, or a course without answers) is no course: every answer, „Kõik koolitused“ chosen (Task 3 review M-3)", async () => {
+  for (const koolitus of ["999", String(course.id + other.id + 100)]) {
+    const html = await render(FeedbackPage, { koolitus });
+    // the list and the select agree, as Registreerimised resets a scope it does not know
+    expect(rowIds(html), koolitus).toEqual([c.id, b.id, a.id]);
+    expect(courseOptions(html).filter((o) => o[2]).map((o) => o[1]), koolitus).toEqual(["Kõik koolitused"]);
+    expect(html).toContain("data-feedback-courses");
+    expect(html).not.toContain("data-feedback-summary");
+    expect(html).not.toContain("Selle valikuga vastuseid pole.");
+    // the addresses on the page do not carry it on
+    expect(html).not.toContain(`koolitus=${koolitus}`);
+  }
+  // with a search, it is the search alone
+  const searched = await render(FeedbackPage, { koolitus: "999", otsi: "maasikas" });
+  expect(rowIds(searched)).toEqual([a.id]);
+  expect(part(searched, "data-feedback-row", a.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;id=${a.id}"`);
+});
+
+test("a course and a search together say one „Vastuseid“, the list's: the course's numbers leave their own count out while a search is on (Task 3 review M-1)", async () => {
+  const counts = (html: string) => [...html.matchAll(/Vastuseid: (\d+)/g)].map((m) => Number(m[1]));
+  const both = await render(FeedbackPage, { koolitus: String(course.id), otsi: "maasikas" });
+  expect(both).toContain(`data-feedback-summary="${course.id}"`);
+  expect(both).not.toContain("data-feedback-course-count");
+  expect(counts(both)).toEqual([1]);
+  // the course's other numbers stay, the whole course's
+  expect(both).toContain("Hindeid: 2");
+  expect(both).toContain("Keskmine hinne: 7,5 / 10");
+  // without a search the course's count is there, and agrees with its list
+  const course0 = await render(FeedbackPage, { koolitus: String(course.id) });
+  expect(course0).toContain("data-feedback-course-count");
+  expect(counts(course0)).toEqual([2, 2]);
 });
 
 test("the search (S4-40): the answers of whoever's name or e-mail holds the text, beside the course select; a row and the drawer keep it", async () => {
@@ -140,6 +170,40 @@ test("the search (S4-40): the answers of whoever's name or e-mail holds the text
   expect(part(html, "data-feedback-course", course.id)).toContain(`href="/admin/tagasiside?otsi=maasikas&amp;koolitus=${course.id}"`);
   const open = await render(FeedbackPage, { otsi: "maasikas", koolitus: String(course.id), id: String(a.id) });
   expect(open).toContain(`data-close-href="/admin/tagasiside?otsi=maasikas&amp;koolitus=${course.id}"`);
+});
+
+test("the pager of a searched list keeps the search (and the course) on both of its ways (Task 3 review M-2)", async () => {
+  const filled = state.db;
+  const many = await makeTestDb();
+  state.db = many;
+  try {
+    const { course: c1, session } = await protocolCourse(many);
+    // 52 answers that the search finds (more than a page of 50) and one it does not
+    const people = [...Array.from({ length: 52 }, (_, i) => [`Proov ${i + 1}`, `proov${i + 1}@example.test`]), ["Mari Maasikas", "mari@example.test"]];
+    const regs = await many
+      .insert(registrations)
+      .values(people.map(([name, email]) => ({ courseId: c1.id, courseSessionId: session.id, kind: "group" as const, name, email, paymentChoice: "full" as const, status: "confirmed" as const })))
+      .returning();
+    await many.insert(courseFeedback).values(regs.map((r, i) => ({ registrationId: r.id, answers: { score: 8 }, locale: "et" as const, submittedAt: at(1 + (i % 28)), createdAt: at(1 + (i % 28)) })));
+    // the pager's links („← Eelmine“, „Järgmine →“) by their rel
+    const ways = (html: string) =>
+      Object.fromEntries([...html.matchAll(/<a [^>]*rel="(prev|next)"[^>]*>/g)].map((m) => [m[1], m[0].match(/href="([^"]*)"/)![1].replace(/&amp;/g, "&")]));
+    const first = await render(FeedbackPage, { otsi: "proov" });
+    expect(first).toContain("Vastuseid: 52");
+    expect(rowIds(first)).toHaveLength(50);
+    expect(ways(first)).toEqual({ next: "/admin/tagasiside?otsi=proov&leht=2" });
+    const second = await render(FeedbackPage, { otsi: "proov", leht: "2" });
+    expect(rowIds(second)).toHaveLength(2);
+    expect(ways(second)).toEqual({ prev: "/admin/tagasiside?otsi=proov" });
+    // a row on page 2 opens its drawer on page 2, and the drawer closes there
+    expect(part(second, "data-feedback-row", rowIds(second)[0])).toContain(`href="/admin/tagasiside?otsi=proov&amp;leht=2&amp;id=${rowIds(second)[0]}"`);
+    // with the course chosen too, both stay
+    const withCourse = await render(FeedbackPage, { otsi: "proov", koolitus: String(c1.id) });
+    expect(ways(withCourse)).toEqual({ next: `/admin/tagasiside?otsi=proov&koolitus=${c1.id}&leht=2` });
+    expect(ways(await render(FeedbackPage, { otsi: "proov", koolitus: String(c1.id), leht: "2" }))).toEqual({ prev: `/admin/tagasiside?otsi=proov&koolitus=${c1.id}` });
+  } finally {
+    state.db = filled;
+  }
 });
 
 test("the search finds nothing: „{q}“ järgi vastuseid ei leitud. and the way back; with no answers at all, only that there are none", async () => {

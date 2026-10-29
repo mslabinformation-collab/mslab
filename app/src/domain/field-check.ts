@@ -18,6 +18,10 @@ export type FieldError =
   | "slugTaken"
   | "amount"
   | "whole"
+  // Hüpikaken's two numbers, a whole number outside its range (Dim 29.10; piece 4b Task 4 review m7): words of their own, a value that is no whole
+  // number at all is still `whole`
+  | "discountRange"
+  | "codeDaysRange"
   | "priceRequired"
   | "listEt"
   | "tooMany"
@@ -103,11 +107,15 @@ export class Check {
     return parseEuroCents(value) ?? this.fail(name, "amount");
   }
 
-  /** A whole number in min…max; null when blank. */
-  whole(name: string, value: string, min: number, max: number): number | null {
+  /**
+   * A whole number in min…max; null when blank. A value that is no whole number is `whole`; a whole number outside min…max is `range`, for a field
+   * whose range has words of its own (Hüpikaken's discount and days, Dim 29.10), and `whole` too for every other field.
+   */
+  whole(name: string, value: string, min: number, max: number, range: FieldError = "whole"): number | null {
     const v = value.trim();
     if (!v) return null;
-    if (!/^\d{1,4}$/.test(v) || Number(v) < min || Number(v) > max) return this.fail(name, "whole");
+    if (!/^-?\d+$/.test(v)) return this.fail(name, "whole");
+    if (!/^\d{1,4}$/.test(v) || Number(v) < min || Number(v) > max) return this.fail(name, range);
     return Number(v);
   }
 

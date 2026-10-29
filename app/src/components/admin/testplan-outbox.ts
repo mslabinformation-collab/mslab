@@ -193,8 +193,14 @@ export function createOutbox(deps: OutboxDeps): Outbox {
         changed = true;
       }
     }
-    // (another tab of this browser got a save through: the session is live again, whatever this tab's last answer was)
-    if (changed && queue.size === 0) signedOut = false;
+    // (another tab of this browser got a save through: the session is live again, whatever this tab's last answer was, and no failure of this tab's
+    // stands — its next press is not said as a retry, nor waits a longer step of the backoff; piece 4c Task 4 re-review Minor 1)
+    if (changed && queue.size === 0) {
+      signedOut = false;
+      failing = false;
+      attempts = 0;
+      clearRetry();
+    }
     return changed;
   }
 

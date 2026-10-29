@@ -743,6 +743,34 @@ describe("the answers cannot be read (Dim 29.10)", () => {
     expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
   });
 
+  test("unread, then a 401 on „Värskenda“: the line and the signed-out chip both show, and no counts come back — both are true (re-review Minor 3)", async () => {
+    await showAll({ initial: null });
+    expect(unreadLine()).toBe(UNREAD);
+    getReply = () => unauthorized();
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe(UNREAD);
+    expect(chip()).toBe("signedOut");
+    noCounts();
+  });
+
+  test("a read that fails after a save came back with every answer leaves no line: that save is newer than the read (re-review Minor 2)", async () => {
+    await showAll();
+    let fail: () => void = () => {};
+    getReply = () => new Promise<Response>((done) => (fail = () => done(json({ ok: false, error: "unavailable" }, 503))));
+    await click($("[data-refresh]")!); // (the read is on its way)
+    await openAll();
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!); // (its save comes back with every answer)
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    await act(async () => fail());
+    await settle();
+    expect(unreadLine()).toBe("");
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    // a read that fails with no save since still says so
+    getReply = () => json({ ok: false, error: "unavailable" }, 503);
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe(UNREAD);
+  });
+
   test("a read that goes through takes the line away and brings the counts back; so does a save that comes back", async () => {
     await showAll({ initial: null });
     expect(unreadLine()).toBe(UNREAD);

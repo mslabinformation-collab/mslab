@@ -9,7 +9,8 @@ import listTable from "@/components/admin/list-table.module.css";
 import { EditReviewForm, NewReviewForm } from "@/components/admin/ManualReviewForm";
 import { Pager } from "@/components/admin/Pager";
 import {
-  courseLabel, REVIEW_STATUS_WORD, REVIEW_STATUS_WORDS, reviewCardId, reviewPills, reviewRowView, REVIEWS_HREF, reviewsHref, type ReviewStatusWord,
+  courseLabel, REVIEW_STATUS_WORD, REVIEW_STATUS_WORDS, reviewCardId, reviewPills, reviewRowView, REVIEWS_HREF, reviewsHref, scoreOutOfTen,
+  type ReviewStatusWord,
 } from "@/components/admin/review-view";
 import { ReviewsPanel } from "@/components/admin/ReviewsPanel";
 import { adminTitle } from "@/components/admin/sections";
@@ -80,8 +81,9 @@ const CHOICE_KEYS = Object.keys(FEEDBACK_CHOICES) as ChoiceKey[];
  * Tagasiside (phase protocols, spec §7): the students' answers to the course feedback form, newest first, 50 a page, with the search (the name or the
  * e-mail address, S4-40) and the course select side by side in the list's toolbar. Without a course, every course that has answers with its count and
  * average (a link to the filter); with one, its numbers: the average score and every option of the seven choice questions with its count (the search
- * narrows the list, not these numbers). A row's name opens its answers (the drawer, ?id=), which links to the answer's review in Arvustused when it has
- * one (S4-41). Read-only. An e-course's
+ * narrows the list, not these numbers; while it is on, the course's own answer count is left out, so the list's is the one „Vastuseid“). A ?koolitus=
+ * the select does not offer is no course. A row's name opens its answers (the drawer, ?id=), which links to the answer's review in Arvustused when it
+ * has one (S4-41). Read-only. An e-course's
  * answer has no course day: "Lõpetatud {date}", the day her access was completed, stands in its place.
  *
  * The second view, "Arvustused" (?vaade=arvustused; admin UX pass piece 4c, README C6, the Part 4 frame „C6 Tagasiside“): the header's ink „Lisa arvustus +“,
@@ -174,11 +176,14 @@ async function reviewsPage(view: Parsed) {
 }
 
 /** "Vastused": the answers (see FeedbackPage). */
-async function answersPage(view: Parsed) {
+async function answersPage(parsed: Parsed) {
   const db = getDb();
-  const [list, stats, open, waiting, reviewOf] = await Promise.all([
+  const stats = await feedbackStats(db);
+  // a ?koolitus= the select does not offer (no course, or one without answers: a stale link) is no course, as Registreerimised resets its scope, so
+  // the list and the select agree („Kõik koolitused“ over every answer; piece 4c Task 3 review M-3)
+  const view: Parsed = stats.some((s) => s.course.id === parsed.koolitus) ? parsed : { ...parsed, koolitus: null };
+  const [list, open, waiting, reviewOf] = await Promise.all([
     pageFeedback(db, { courseId: view.koolitus, search: view.otsi, page: view.leht }),
-    feedbackStats(db),
     view.id ? feedbackById(db, view.id) : null,
     pendingReviewCount(db),
     // (the review the open answer gave rise to, if it is still there: the reader leaves a removed one out. The answer's id is the address's)
@@ -205,7 +210,7 @@ async function answersPage(view: Parsed) {
         <ListToolbar placeholder={t.searchPlaceholder} scope={stats.length > 0 ? scope : undefined} />
 
         {view.koolitus === null && stats.length > 0 && <CourseTable stats={stats} courseHref={(id) => href({ ...view, koolitus: id, leht: 1 })} />}
-        {chosen && <CourseNumbers stats={chosen} />}
+        {chosen && <CourseNumbers stats={chosen} searching={view.otsi !== ""} />}
 
         <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
           <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
@@ -242,7 +247,7 @@ async function answersPage(view: Parsed) {
                         {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
                       </td>
                       <td data-label={t.col.score} className={ui.nowrap}>
-                        {f.answers.score === undefined ? adminEt.common.none : `${f.answers.score}/10`}
+                        {f.answers.score === undefined ? adminEt.common.none : scoreOutOfTen(f.answers.score)}
                       </td>
                     </tr>
                   ))}
@@ -302,7 +307,12 @@ function CourseTable({ stats, courseHref }: { stats: CourseFeedbackStats[]; cour
 }
 
 /** One course's numbers (spec §7): the answers, the scores and their average, and every option of every choice question with its count. */
-function CourseNumbers({ stats }: { stats: CourseFeedbackStats }) {
+/**
+ * A course's numbers (its average, its scores, every option's count), the whole course's, whatever the search. While a search narrows the list, the
+ * course's own „Vastuseid: {n}“ is left out: the list's card says the search's count in the same words, and two different „Vastuseid“ on one screen
+ * read as a contradiction (piece 4c Task 3 review M-1).
+ */
+function CourseNumbers({ stats, searching }: { stats: CourseFeedbackStats; searching: boolean }) {
   const t = adminEt.feedback;
   const s = stats.summary;
   return (
@@ -311,7 +321,7 @@ function CourseNumbers({ stats }: { stats: CourseFeedbackStats }) {
         {pick(stats.course.title, "et")}
       </h2>
       <p className={styles.numbers}>
-        <span>{fill(t.count, { n: s.count })}</span>
+        {!searching && <span data-feedback-course-count="">{fill(t.count, { n: s.count })}</span>}
         <span>{fill(t.scored, { n: s.scored })}</span>
         <strong data-feedback-average="">{s.average === null ? t.noScore : fill(t.average, { score: formatScore(s.average) })}</strong>
       </p>

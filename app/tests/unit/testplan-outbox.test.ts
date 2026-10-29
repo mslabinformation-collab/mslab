@@ -443,6 +443,46 @@ describe("a 401: the session ended", () => {
       expect(server.x).toEqual({ status: "ok", note: "Ainult mälus" });
     });
 
+    test("a press another tab delivers while this tab retries leaves no failure here: the next press says saving, its failure waits the first step (re-review Minor 1)", async () => {
+      const storage = memoryStorage();
+      const server: Saved = {};
+      // tab A has no connection: every save of its fails
+      const putA = vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      const a = outboxOver(storage, putA as never);
+      a.outbox.answer("x", "ok", "");
+      await settle();
+      await vi.advanceTimersByTimeAsync(2000); // (the first retry fails too: the next would wait 5 s, then 10 s)
+      expect(putA).toHaveBeenCalledTimes(2);
+      expect(a.outbox.status()).toBe("retrying");
+      // tab B, online, delivers the kept press
+      outboxOver(
+        storage,
+        vi.fn(async (body: { answers: Saved }) => {
+          Object.assign(server, body.answers);
+          return okResponse();
+        }) as never,
+      );
+      await settle();
+      expect(server.x).toEqual({ status: "ok", note: "" });
+      // tab A shown again: the press is known delivered, so nothing is sent and no failure of its stands
+      shown();
+      await settle();
+      expect(putA).toHaveBeenCalledTimes(2);
+      expect(a.outbox.unsent().size).toBe(0);
+      expect(a.outbox.status()).not.toBe("retrying");
+      // its next press says „Salvestan…“ while on its way (not the retry line)...
+      a.outbox.answer("y", "bad", "");
+      expect(putA).toHaveBeenCalledTimes(3);
+      expect(a.outbox.status()).toBe("saving");
+      // ...and, failing, is tried again after the first step of the backoff (2 s), not the third (10 s)
+      await settle();
+      expect(a.outbox.status()).toBe("retrying");
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(putA).toHaveBeenCalledTimes(4);
+    });
+
     test("a storage that cannot be read tells nothing: the kept press is sent", async () => {
       const storage = memoryStorage();
       const { server, put } = serverOf();

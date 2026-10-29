@@ -9,6 +9,9 @@ const fieldErrors = {
   slugTaken: "See aadress on juba teisel koolitusel.",
   amount: "Sisesta summa eurodes, näiteks 290 või 290,50.",
   whole: "Sisesta täisarv.",
+  // Hüpikaken's „Soodustus (%)“ (1–99) and „Kood kehtib (päeva)“ (1–365) as a whole number outside the range (Dim 29.10); no whole number: `whole`
+  discountRange: "Soodustus peab olema 1–99%.",
+  codeDaysRange: "Kood saab kehtida 1–365 päeva.",
   priceRequired: "Avaldatud koolitusel peab olema hind.",
   listEt: "Igal real peab olema eestikeelne tekst.",
   tooMany: "Liiga palju ridu.",

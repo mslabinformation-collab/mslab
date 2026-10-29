@@ -37,7 +37,7 @@ Every phase after this one changes behaviour that some checks describe. So the p
   - **A "Viga" on a check that was reopened by a `redo`** is a new failure: the answer before it was given before the check's `markedAt`. It sends its own messages. This tells Dim that a fix did not work.
   - The answer records `pinged` (the instant of the first message) and `notePinged` (true after the second), so the server knows what it has sent.
   - A failed send never fails the save.
-  - **Dim 22.10: every answer has a note box, and the first note on any answer pings.** The note box opens under OK and Jäta vahele as it does under Viga (below, §4), and the first non-empty note on an OK or a Jäta vahele sends one message, in the format of the second message above with the answer shown: "Testimine — Märkus: {title} ({name}) · OK" (or "· Jäta vahele"; the second message of a Viga now ends "· Viga"). It uses the same path and the same `notePinged` record, once per answer: a note carried along when the answer changes is not a new note, and a `redo`-overtaken answer starts again. An answer with no note sends nothing.
+  - **Dim 22.10: every answer has a note box, and the first note on any answer pings.** The note box opens under OK and Jäta vahele as it does under Viga (below, §4), and the first non-empty note on an OK or a Jäta vahele sends one message, in the format of the second message above with the answer shown: "Testimine — Märkus: {title} ({name}) · OK" (4c, 29.10: "· Läbitud") (or "· Jäta vahele"; the second message of a Viga now ends "· Viga"). It uses the same path and the same `notePinged` record, once per answer: a note carried along when the answer changes is not a new note, and a `redo`-overtaken answer starts again. An answer with no note sends nothing.
 - **D7. Test data is labelled** (Dim, 16.10: as recommended). Every check that creates something (`writes: true`) tells the tester exactly what to type:
   - the name "Proov" plus a number;
   - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@…`), which Gmail delivers to the tester's own inbox.
@@ -154,6 +154,14 @@ Phone-first, in the admin's look. Top to bottom:
   - The note saves 1 s after typing stops, and when the field loses focus.
   - A save in flight shows "Salvestan…", a saved one "Salvestatud", a failed one "Salvestamata — proovin uuesti".
   - Unsaved answers are kept in the device's storage and sent again on the next load or when the connection is back. That follows the protocols' pattern: it survives flaky Wi-Fi, two tabs and the Back button, and handles full storage gracefully.
+- **Amended (4c, 29.10) by the admin UX pass (spec 2026-10-21 §9, §10, C7).** The data stays as stored (`ok`, `bad`, `skip`, the notes, `auto`, the marks, the pings); the screen changes:
+  - **the header:** „Haldus“, „Testimine“, the line „{n} kontrolli · {k} läbitud · {v} viga“ over the checks of the „Kes“ choice, one status chip and „Värskenda“; the „Sina: …“ line is gone (the sidebar names who is signed in);
+  - **the filters:** one row, „Olek“ (Kõik / Avatud n / Viga n / Läbitud n) and „Kes“ (Mina / Kõik / Automaattest; „Mina“ is the tester's own checks and `koos`, every check for an admin who is not a tester). The „Muudetud“ filter is gone;
+  - **a check:** one row with the title and its chips, „Ava ↗“, „Sammud ▸“ (it folds the steps, „Mida näed“ and „Miks“) and two halves, **„Läbitud“** (the old „OK“, stored `ok`) and „Viga“. **There is no „Jäta vahele“ button**, and the mark tags „Uuesti testida“, „Sõnastus muutus“, „Uus“ are gone: a check the deploy marks simply shows as „Avatud“ again. The note box under every answer stays (Dim 22.10);
+  - **an old „Jäta vahele“** (stored before the button went) **counts as open** (Dim 29.10): in the line, the pills, the area bar and the Avaleht card; its answer and its note stay, and its last line still says „· Jäta vahele“;
+  - **an area** shows „{done} / {total}“ and a bar, and folds with its note; a selection with no check says „Selle valikuga kontrolle pole.“;
+  - **saving** is shown by the shared status chip („Salvestan…“, „✓ Salvestatud {kell}“, „Salvestamata — proovin uuesti“); a save or a read answered 401 shows „Salvestamata — logi uuesti sisse“ (its last words link to the sign-in and back): the press stays on the device with no retry timer, and goes after she signs in again;
+  - **the answers cannot be read** (Dim 29.10): the page says „Vastuseid ei saanud praegu lugeda. Need on alles; vajuta hiljem „Värskenda“.“ in place of the line and shows no numbers until a read or a save goes through (§7's line is replaced).
 - **Reading.** The page loads the plan and the answers in one request. The two admins' answers show together. On every load and on "Värskenda" the page reads the server's answers again, so a tester sees the other's answers without a full reload.
 
 ## 5. Server
@@ -202,8 +210,8 @@ Phone-first, in the admin's look. Top to bottom:
 - **Two admins answer the same check at once.** The newer `at` wins, and the page shows that one after the next read.
 - **A note with only white space** counts as no note.
 - **"Viga" with no note** is allowed. The note field opens and asks "Mis läks valesti?", but the save does not wait for it.
-- **Both admins on one device.** The page always shows whose session it is ("Sina: Maria"), and `by` is the session's.
-- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" and sends them later — only when this device can keep them (its storage works); on a device that cannot, the page shows the ordinary "Salvestan…" / "Salvestamata — proovin uuesti" states instead (amended 16.10 in the final review).
+- **Both admins on one device.** The page always shows whose session it is ("Sina: Maria"), and `by` is the session's. (4c, 29.10: the sidebar shows whose session it is; the page's „Sina: …“ is gone, §4.)
+- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" (4c, 29.10: replaced by "Vastuseid ei saanud praegu lugeda. Need on alles; vajuta hiljem „Värskenda“.", with no numbers on the page, §4) and sends them later — only when this device can keep them (its storage works); on a device that cannot, the page shows the ordinary "Salvestan…" / "Salvestamata — proovin uuesti" states instead (amended 16.10 in the final review).
 
 ## 8. Testing
 

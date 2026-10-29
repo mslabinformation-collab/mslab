@@ -207,10 +207,13 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
    */
   const apply = useCallback((fresh: Read | "signedOut" | null, before: number) => {
     if (fresh === null) {
-      setUnread(true);
+      // (a read that began before a save came back is older than that save, which brought every answer: its failure tells nothing; re-review Minor 2)
+      if (writes.current === before) setUnread(true);
       return;
     }
     if (fresh === "signedOut") {
+      // (`unread` stays as it is: a page that could not read its answers and is now signed out says both — the line and the signed-out chip —
+      // because both are true, and clearing the line would show counts of answers never read; re-review Minor 3)
       setReadSignedOut(true);
       return;
     }

@@ -103,6 +103,23 @@ describe("the Tagasiside page's reads", () => {
     expect(await ids("\\")).toEqual([backslash]);
   });
 
+  test("in an e-mail address too, % and a backslash match themselves (Task 3 review M-4): the address side is escaped as the name side is", async () => {
+    const { course, session } = await protocolCourse(db);
+    const answerOf = async (name: string, email: string, day: number) => (await answered((await student(db, course, session, name, { email })).id, { score: 8 }, day)).id;
+    const percent = await answerOf("Kati Kask", "kati%kask@example.test", 13);
+    const backslash = await answerOf("Mari Mets", "mari\\mets@example.test", 14);
+    const plain = await answerOf("Anu Aas", "anu.aas@example.test", 15);
+    const ids = async (search: string) => (await pageFeedback(db, { search, page: 1 })).rows.map((r) => r.id);
+    expect(await ids("%")).toEqual([percent]); // as a wildcard it would find all three
+    expect(await ids("i%k")).toEqual([percent]);
+    expect(await ids("a%a")).toEqual([]); // as a wildcard it would find all three („anu.aas@…“, „Kati Kask“, „…@example…“)
+    expect(await ids("\\")).toEqual([backslash]);
+    expect(await ids("i\\m")).toEqual([backslash]);
+    expect(await ids("\\m")).toEqual([backslash]); // unescaped, „\m“ would be „m“ and find all three („…@example.test“)
+    expect(await ids("_")).toEqual([]); // nobody's name or address has one
+    expect(await ids("anu.aas@")).toEqual([plain]); // (and a plain part of an address finds its own)
+  });
+
   test("per course, by its title: the answers, the scores, the average to one decimal, every option of every choice question counted", async () => {
     const { course, other } = await setup();
     const stats = await feedbackStats(db);

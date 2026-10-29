@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
@@ -777,5 +779,56 @@ describe("piece 4c, R-a: „Võta tagasi“ of „Avalda“ / „Peida“", () =
       expect(await restoreReviewDecision(db, review.id, expected, UNDONE_AT)).toMatchObject({ ok: true });
       expect(await reviewOf(review.id)).toMatchObject({ status: "published", decidedAt: HIDDEN_AT });
     });
+  });
+});
+
+// docs/deploy.md section 27, item 2 (piece 4c, Task 7): the older code does not read `removed_at`, so before a code rollback the reviews Maria deleted
+// and not yet purged are read and then deleted, by the two statements the section prints. Run here as printed: the read names exactly the marked rows,
+// and the delete takes exactly those, never a live review of hers nor a student's.
+describe("the rollback statements of deploy.md §27 item 2, as printed there", () => {
+  const section = (): string => {
+    const doc = readFileSync(join(process.cwd(), "..", "docs", "deploy.md"), "utf8").replace(/\r\n/g, "\n");
+    const at = doc.indexOf("\n## 27. ");
+    if (at < 0) throw new Error("docs/deploy.md has no section 27");
+    const end = doc.indexOf("\n## ", at + 1);
+    return doc.slice(at, end < 0 ? undefined : end);
+  };
+  const item2 = (): string => {
+    const s = section();
+    const from = s.indexOf("\n2. **Rollback warning");
+    if (from < 0) throw new Error("section 27 has no item 2");
+    return s.slice(from, s.indexOf("\n3. ", from));
+  };
+  const statement = (pattern: RegExp): string => {
+    const found = pattern.exec(item2());
+    if (!found) throw new Error(`not in docs/deploy.md section 27, item 2: ${pattern}`);
+    return found[1];
+  };
+  const run = async (q: string): Promise<Record<string, unknown>[]> => {
+    const res = (await db.execute(sql.raw(q))) as unknown as { rows?: Record<string, unknown>[] } & Record<string, unknown>[];
+    return (res.rows ?? res) as Record<string, unknown>[];
+  };
+
+  test("the read lists the reviews Maria deleted and nothing else; the delete takes exactly those; the read is empty after it", async () => {
+    const read = statement(/`(select id, kind, name, removed_at from reviews where removed_at is not null)`/);
+    const del = statement(/`(delete from reviews where removed_at is not null)`/);
+    expect(del).toBe("delete from reviews where removed_at is not null");
+    // (a student's pending review, then three of Maria's on the same course)
+    const { course, review: student } = await pendingOf();
+    const kept = await addReview(course.id, { name: "Anu A." });
+    const gone = await addReview(course.id, { name: "Kati K." });
+    const alsoGone = await addReview(course.id, { name: "Liis L." });
+    expect(await removeManualReview(db, gone.id, LATER)).toMatchObject({ ok: true });
+    expect(await removeManualReview(db, alsoGone.id, LATER)).toMatchObject({ ok: true });
+    expect((await run(read)).map((r) => [Number(r.id), r.kind, r.name]).sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [gone.id, "manual", "Kati K."],
+      [alsoGone.id, "manual", "Liis L."],
+    ]);
+    await run(del);
+    expect((await all()).map((r) => r.id)).toEqual([student.id, kept.id]);
+    expect(await run(read)).toEqual([]);
+    // with nothing marked it deletes nothing
+    await run(del);
+    expect((await all()).map((r) => r.id)).toEqual([student.id, kept.id]);
   });
 });

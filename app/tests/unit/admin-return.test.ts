@@ -116,8 +116,15 @@ describe("adminLoginHref: the login page with the way back", () => {
 
 describe("what the browser gets of it (review m-4)", () => {
   test("it imports only the gate's one pattern (lib/unclean-path.ts), never the gate or its cookie signing: SaveStatus runs it in the browser", () => {
-    const imports = [...readFileSync(join(process.cwd(), "src", "lib", "admin-return.ts"), "utf8").matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["./unclean-path"]);
-    expect(readFileSync(join(process.cwd(), "src", "lib", "unclean-path.ts"), "utf8")).not.toMatch(/^import /m);
+    // every module the file names, however written: `import … from`, an import over several lines, `export … from`, a bare `import "x"`, a
+    // dynamic `import("x")` and `require("x")` (piece 4c Task 5 re-review Minor: the first pin read one-line imports only)
+    const modulesOf = (file: string) =>
+      [...readFileSync(join(process.cwd(), "src", "lib", file), "utf8").matchAll(/\bfrom\s*["']([^"']+)["']|\bimport\s*\(?\s*["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']/g)].map(
+        (m) => m[1] ?? m[2] ?? m[3],
+      );
+    expect(modulesOf("admin-return.ts")).toEqual(["./unclean-path"]);
+    expect(modulesOf("unclean-path.ts")).toEqual([]);
+    // and no word of the gate's modules anywhere in it (a path built some other way)
+    expect(readFileSync(join(process.cwd(), "src", "lib", "admin-return.ts"), "utf8")).not.toMatch(/site-gate|preview-cookie|root-files/);
   });
 });

@@ -168,6 +168,24 @@ describe("what each card shows (the Part 4 frame; S4-37)", () => {
     expect($("[data-review-stars]", rowOf(1))).toBeNull();
   });
 
+  test("a screen reader hears the score (Dim 29.10): a visually hidden „Hinne {n}/10“, the Vastused list's words, beside the aria-hidden stars; none without a score", async () => {
+    const scores = [10, 7, 0];
+    await show(scores.map((score, i) => student({ id: i + 1, score })));
+    expect(scores.map((_, i) => $("[data-review-score]", rowOf(i + 1))?.textContent)).toEqual(["Hinne 10/10", "Hinne 7/10", "Hinne 0/10"]);
+    const line = $("[data-review-score]", rowOf(1))!;
+    // the column word of the Vastused list, so the two say a score alike
+    expect(line.textContent).toBe(`${adminEt.feedback.col.score} 10/10`);
+    // heard: not inside the stars' aria-hidden, and drawn visually hidden
+    expect(line.closest("[aria-hidden]")).toBeNull();
+    expect(line.className).toContain("srOnly");
+    // in the card's top row, right after the stars
+    expect(line.previousElementSibling).toBe($("[data-review-stars]", rowOf(1)));
+    // no score, no line: an answer without a „Hinne“ and a review Maria added
+    await show([student({ id: 1, score: null }), manual()]);
+    expect($("[data-review-score]", rowOf(1))).toBeNull();
+    expect($("[data-review-score]", rowOf(2))).toBeNull();
+  });
+
   test("a review Maria added has no stars (no score), says „Lisatud käsitsi“ and shows her note; it has no proof", async () => {
     await show([manual()]);
     expect($("[data-review-stars]", rowOf(2))).toBeNull();

@@ -1770,6 +1770,32 @@
       "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
+      "id": "haldus-hupikaken-numbrid",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Hüpikaken: soodustuse ja päevade piirid",
+      "href": "/admin/kampaania",
+      "steps": [
+        "Ava „Hüpikaken“ ja jäta meelde praegune „Soodustus (%)“ ja „Kood kehtib (päeva)“.",
+        "Kirjuta „Soodustus (%)“: 100 ja liigu väljalt edasi.",
+        "Kirjuta „Soodustus (%)“: 7,5 ja liigu väljalt edasi.",
+        "Kirjuta „Kood kehtib (päeva)“: 366 ja liigu väljalt edasi.",
+        "Pane mõlemad väljad tagasi endiseks ja liigu väljalt edasi."
+      ],
+      "expect": [
+        "Pärast 100 on välja all „Soodustus peab olema 1–99%.“.",
+        "Pärast 7,5 on välja all „Sisesta täisarv.“.",
+        "Pärast 366 on välja all „Kood saab kehtida 1–365 päeva.“.",
+        "Endiste väärtustega kaovad teated; avalehel ja jaluses ei muutu midagi."
+      ],
+      "why": "Vale arvu korral ütleb väli, mis vahemikus arv olema peab.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-seaded-kontakt",
       "area": "haldus",
       "who": "maria",
@@ -5364,7 +5390,7 @@
         "Loendis on Proov 1 vastus koos hindega.",
         "Lehe üleval on nupud „Vastused“ ja „Arvustused“; arvustuste arvuga nuppu seal enam ei ole.",
         "Valikus „Koolitus“ on ka „Kõik koolitused“; koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
-        "Osa nimest või e-postist leiab Proov 1 vastuse; tundmatu tekst annab rea „… järgi vastuseid ei leitud“.",
+        "Osa nimest või e-postist leiab Proov 1, lehel on üks „Vastuseid: …“; tundmatu tekst: „… järgi vastuseid ei leitud“.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
         "Paneelis on lingid „Vaata arvustust →“, „Ava õpilane →“ ja „Ava registreering →“; esimene viib arvustuse kaardile.",
         "Registreeringu paneelis on voldirida „Tagasiside“; suletuna näitab see kokkuvõtet „Saadetud …“.",

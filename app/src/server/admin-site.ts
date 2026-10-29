@@ -442,9 +442,9 @@ function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
       const title = c.text(`${p}title`, v.title, L.campaignTitle, { required: shown });
       const body = c.text(`${p}text`, v.text, L.campaignText);
       const imageKey = c.image(`${p}imageKey`, v.imageKey, { required: shown });
-      const discountPercent = c.whole(`${p}discountPercent`, v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX);
+      const discountPercent = c.whole(`${p}discountPercent`, v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX, "discountRange");
       if (discountPercent === null) c.fail(`${p}discountPercent`, "required");
-      const codeDays = c.whole(`${p}codeDays`, v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX);
+      const codeDays = c.whole(`${p}codeDays`, v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX, "codeDaysRange");
       if (!c.ok || discountPercent === null) return null;
       const fields = { kicker: orEmpty(kicker), title: orEmpty(title), text: orEmpty(body), imageKey };
       // the row keeps its `active` (the switch's) and its other columns; the setting keeps its other keys (Seaded's code, the old label)

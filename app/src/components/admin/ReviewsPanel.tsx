@@ -8,7 +8,7 @@ import { fill, formatDate } from "@/i18n/format";
 import { decideReviewAction, removeReviewAction, setFeaturedAction, undoDecisionAction, undoRemoveReviewAction } from "@/server/actions/admin-reviews";
 import { focusFell } from "./focus-fell";
 import { ListEmpty } from "./ListStates";
-import { courseLabel, REVIEWS_HREF, reviewCardId, type ReviewRowView } from "./review-view";
+import { courseLabel, REVIEWS_HREF, reviewCardId, spokenScore, type ReviewRowView } from "./review-view";
 import { Switch } from "./Switch";
 import { useUndo } from "./UndoBar";
 import ui from "./ui.module.css";
@@ -16,7 +16,8 @@ import styles from "./ReviewsPanel.module.css";
 
 // „Arvustused“ (student reviews, Task 4; spec D2, D4, §4, §5; admin UX pass piece 4c, Task 2: README C6, the Part 4 frame „C6 Tagasiside“, S4-36 …
 // S4-38, rulings R-a, R-b, R-d): the reviews of Tagasiside's second view as cards in a 2-column grid (one on a phone), a waiting one first and with an
-// ink border. A card: the stars of the student's „Hinne“ (domain/review.ts starsOf; none on a review Maria added), the status pill (and „Lisatud
+// ink border. A card: the stars of the student's „Hinne“ (domain/review.ts starsOf; none on a review Maria added; aria-hidden, a visually hidden
+// „Hinne 9/10“ says the score instead, Dim 29.10), the status pill (and „Lisatud
 // käsitsi“, and „Avalehel“ on a hidden review that keeps it), the words in quotes, „{nimi} · {koolitus} · {dd.mm.yyyy}“, the language and what Maria
 // judges a student by (the registration's status and whether a protocol was sent, or the day an e-course was completed) or her note; then the
 // buttons by status — waiting „Avalda“ (ink) and „Peida“, published „Peida“ with the „Avalehel“ switch, hidden „Avalda“ — and on a review she added
@@ -232,10 +233,15 @@ export function ReviewsPanel({
                 data-review-featured={r.featured || undefined}
               >
                 <div className={styles.top}>
-                  {stars > 0 && (
-                    <span className={styles.stars} aria-hidden="true" data-review-stars={stars}>
-                      {"★".repeat(stars)}
-                    </span>
+                  {stars > 0 && r.score !== null && (
+                    <>
+                      <span className={styles.stars} aria-hidden="true" data-review-stars={stars}>
+                        {"★".repeat(stars)}
+                      </span>
+                      <span className={styles.srOnly} data-review-score="">
+                        {spokenScore(r.score)}
+                      </span>
+                    </>
                   )}
                   <span className={styles.tags}>
                     <span className={`${ui.tag} ${styles.state} ${STATUS_TONE[r.status]}`} data-review-tag="">

@@ -95,6 +95,11 @@ Login: e-mail magic link (Resend), 15-minute single-use token, allow-list exactl
 Dim's address and Maria's address (the Worker secret `ADMIN_EMAILS`). Session cookie: HttpOnly, Secure, SameSite=Lax,
 30 days, stored hashed in the DB (revocable).
 
+**Amended (4c, 29.10) by the admin UX pass (spec 2026-10-21 §9, C8, B19, B20):**
+- **B19, the way back.** An admin page opened signed out sends her to `/admin/login?tagasi=<the page>`; the form sends it with the request (with the page's `#fragment`), the mailed link carries it as `&tagasi=`, and the link lands her there. It is checked when the link is made and again when it is opened: a path of this site's admin (`/admin` or `/admin/…`, never the login page), no control character, nothing the coming-soon gate's pattern refuses (dot segments, encoded slashes or dots, a backslash, two slashes), at most 300 characters, rebuilt from the parsed URL. Anything else lands on `/admin` without a word. A dead link's notice keeps the way back.
+- **B20, the honest limit.** Every typed address, allowed or not, gets 3 requests in 10 minutes (a key of the SHA-256 of the address in the KV store, so no address is stored there); the 4th answers „Saatsid juba 3 linki. Proovi 10 minuti pärast uuesti.“, the same for an allowed and an unknown address. The per-IP limit (5 in 10 minutes, „Liiga palju katseid. Proovi mõne minuti pärast.“) and the token cap (3 unused links per address) stay behind it.
+- **The page.** The sent state names the address typed, for any address: „Link on teel“, „Saatsime lingi aadressile {email}. See kehtib 15 minutit.“; the address is remembered on the device after a sent link, with „Muu aadress“ to change it.
+
 Sections in phase 1:
 - **Ülevaade** — counts of new requests/registrations, upcoming sessions, quick links.
 - **Koolitused** — list + editor: type, level, ET/RU texts, prices, duration/modules/videos/access,

@@ -34,7 +34,8 @@ import { POST as saveRoute } from "@/app/api/admin/sisu/[entity]/[id]/osa/[part]
 import { POST as publishRoute } from "@/app/api/admin/sisu/[entity]/[id]/avalda/route";
 import { POST as discardRoute } from "@/app/api/admin/sisu/[entity]/[id]/loobu/route";
 import { POST as switchRoute } from "@/app/api/admin/hupikaken/naita/route";
-import { loadSettings, writeSettingsPart } from "@/server/admin-site";
+import { loadSettings, popupParts, writeSettingsPart } from "@/server/admin-site";
+import { Check } from "@/server/edit-check";
 import { discardSite, publishSite, readPopupSwitch, readSiteEditor, switchPopup, writeSitePart } from "@/server/site-drafts";
 import { withSiteDrafts } from "@/server/site-preview";
 
@@ -173,8 +174,12 @@ describe("a draft waits for „Avalda muudatused“ (S4-Q2 A, Review Focus 4)", 
       const a = await save(patch);
       return a.ok || a.error !== "invalid" ? {} : a.fields;
     };
-    for (const discountPercent of ["0", "100", "abc", "1.5", "-5"]) expect(await refused({ discountPercent }), discountPercent).toEqual({ discountPercent: "whole" });
-    for (const codeDays of ["0", "366", "30 päeva"]) expect(await refused({ codeDays }), codeDays).toEqual({ codeDays: "whole" });
+    // a whole number outside its range has its field's own words (Dim 29.10): „Soodustus peab olema 1–99%.“, „Kood saab kehtida 1–365 päeva.“
+    for (const discountPercent of ["0", "100", "-5", "12345"]) expect(await refused({ discountPercent }), discountPercent).toEqual({ discountPercent: "discountRange" });
+    for (const codeDays of ["0", "366", "-1"]) expect(await refused({ codeDays }), codeDays).toEqual({ codeDays: "codeDaysRange" });
+    // a value that is no whole number at all keeps „Sisesta täisarv.“
+    for (const discountPercent of ["abc", "1.5", "10%", "+5"]) expect(await refused({ discountPercent }), discountPercent).toEqual({ discountPercent: "whole" });
+    for (const codeDays of ["30 päeva", "7,5"]) expect(await refused({ codeDays }), codeDays).toEqual({ codeDays: "whole" });
     expect(await refused({ title: { et: "x".repeat(121) } })).toEqual({ title: "tooLong" });
     expect(await refused({ imageKey: "javascript:alert(1)" })).toEqual({ imageKey: "image" });
     expect(await popupDrafts()).toHaveLength(0);
@@ -185,6 +190,20 @@ describe("a draft waits for „Avalda muudatused“ (S4-Q2 A, Review Focus 4)", 
 });
 
 describe("„Avalda muudatused“ of the offer (the strict check)", () => {
+  test("a number outside its range has the save's words in the strict check too (Dim 29.10): the server's two checks give one code per case", async () => {
+    const parts = await popupParts(db);
+    const codes = (value: Partial<PopupOfferValue>) => {
+      const c = new Check();
+      parts.offer.check(c, { ...SEED_OFFER, ...value }, "offer");
+      return c.errors as Record<string, string>;
+    };
+    expect(codes({ discountPercent: "100", codeDays: "366" })).toEqual({ "offer.discountPercent": "discountRange", "offer.codeDays": "codeDaysRange" });
+    expect(codes({ discountPercent: "0", codeDays: "0" })).toEqual({ "offer.discountPercent": "discountRange", "offer.codeDays": "codeDaysRange" });
+    expect(codes({ discountPercent: "1.5", codeDays: "30 päeva" })).toEqual({ "offer.discountPercent": "whole", "offer.codeDays": "whole" });
+    expect(codes({ discountPercent: "99", codeDays: "365" })).toEqual({});
+    expect(codes({ discountPercent: "" })).toEqual({ "offer.discountPercent": "required" });
+  });
+
   test("while the popup is off, an unfinished offer publishes (its title and picture are asked when it is switched on); the discount is always needed", async () => {
     expect((await save({ title: { et: "" }, imageKey: "", discountPercent: "" })).ok).toBe(true);
     expect(await publishNow()).toEqual({ stamp: expect.any(Number), published: [], blocked: [{ part: "offer", reason: "missing", fields: ["soodustus"] }] });

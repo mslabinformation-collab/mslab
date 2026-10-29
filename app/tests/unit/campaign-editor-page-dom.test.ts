@@ -6,6 +6,7 @@ import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { CampaignEditor } from "@/components/admin/CampaignEditor";
 import { EditLangProvider } from "@/components/admin/EditLang";
 import { UndoProvider } from "@/components/admin/UndoBar";
+import { looseOffer } from "@/domain/site-checks";
 import type { PopupOfferValue, SitePartState } from "@/domain/site-entities";
 import { stubFetch } from "../fakes";
 
@@ -259,13 +260,31 @@ describe("the offer waits for „Avalda muudatused“ (S4-30); the switch never 
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 2 · Pealkiri (RU), Kood kehtib. Avalikul lehel on näha eelmine versioon.");
   });
 
-  it("a number the server refuses (`whole`) is said at its field", async () => {
+  it("a number the server refuses is said at its field, in the field's own words out of its range (Dim 29.10) and „Sisesta täisarv.“ when it is no whole number", async () => {
     await show();
-    remote.refuse = { discountPercent: "whole" };
-    await type(field("offer.discountPercent"), "150");
-    await leave(field("offer.discountPercent"));
-    expect(field("offer.discountPercent")!.getAttribute("aria-invalid")).toBe("true");
-    expect(describedBy(field("offer.discountPercent"))).toContain("Sisesta täisarv.");
+    const cases = [
+      ["discountPercent", "150", "Soodustus peab olema 1–99%."],
+      ["discountPercent", "0", "Soodustus peab olema 1–99%."],
+      ["discountPercent", "abc", "Sisesta täisarv."],
+      ["codeDays", "366", "Kood saab kehtida 1–365 päeva."],
+      ["codeDays", "30 päeva", "Sisesta täisarv."],
+    ] as const;
+    for (const [name, typed, words] of cases) {
+      // the route's answer is the server's own loose check of what was typed (domain/site-checks.ts looseOffer), so the words are the ones she reads
+      remote.refuse = looseOffer({ ...OFFER, [name]: typed });
+      expect(Object.keys(remote.refuse), typed).toEqual([name]);
+      await type(field(`offer.${name}`), typed);
+      await leave(field(`offer.${name}`));
+      expect(field(`offer.${name}`)!.getAttribute("aria-invalid"), typed).toBe("true");
+      expect(describedBy(field(`offer.${name}`)), typed).toContain(words);
+      for (const other of ["Soodustus peab olema 1–99%.", "Kood saab kehtida 1–365 päeva.", "Sisesta täisarv."].filter((w) => w !== words))
+        expect(describedBy(field(`offer.${name}`)), typed).not.toContain(other);
+    }
+    // typed right, the field's words go
+    remote.refuse = null;
+    await type(field("offer.codeDays"), "30");
+    await leave(field("offer.codeDays"));
+    expect(field("offer.codeDays")!.getAttribute("aria-invalid")).not.toBe("true");
   });
 });
 
@@ -407,7 +426,7 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
 
   it("a field the server holds back (a discount of 150) never stops the switch: it goes anyway (flush „settle“), and the field keeps its words", async () => {
     await show();
-    remote.refuse = { discountPercent: "whole" };
+    remote.refuse = { discountPercent: "discountRange" };
     await type(field("offer.discountPercent"), "150");
     await click(toggle());
     expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
