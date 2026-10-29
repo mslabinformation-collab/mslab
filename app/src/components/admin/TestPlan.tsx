@@ -133,17 +133,16 @@ const clip = (text: string): string => Array.from(text).slice(0, NOTE_MAX).join(
 /**
  * The page's one SaveStatus (README §1.4, C7; R-i): „Kontrollin salvestatud teksti…“ while „Värskenda“ reads; „Salvestamata — logi uuesti
  * sisse“ when a save or a read was refused with 401 and nothing has gone through since; else the outbox's saving, retry and saved (with the time
- * of the last save). With nothing sent, „Salvestatud“ once the answers were read (the shared engine starts so too; the chip is there from the
- * start, so the page does not jump and its first change is spoken). Null only while the answers have never been read (the database down: no
- * approved words for that, the review's question c2).
+ * of the last save). With nothing sent, „Salvestatud“ (the shared engine starts so too; the chip is there from the start, so the page does not
+ * jump and its first change is spoken) — but none while the answers cannot be read (`unread`): the page's own line says so then (Dim 29.10).
  */
-function chipOf(outbox: OutboxStatus, reading: boolean, readSignedOut: boolean, savedAt: Date | null, read: boolean): AutosaveStatus | null {
+function chipOf(outbox: OutboxStatus, reading: boolean, readSignedOut: boolean, savedAt: Date | null, unread: boolean): AutosaveStatus | null {
   if (reading) return { kind: "checking" };
   if (outbox === "signedOut" || readSignedOut) return { kind: "signedOut" };
   if (outbox === "retrying") return { kind: "retry" };
   if (outbox === "saving") return { kind: "saving" };
   if (outbox === "saved") return { kind: "saved", at: savedAt };
-  return read ? { kind: "saved", at: null } : null;
+  return unread ? null : { kind: "saved", at: null };
 }
 
 export type TestPlanProps = {
@@ -169,8 +168,11 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const own = you.tester === "auto";
   const mine = you.tester === "maria" || you.tester === "dim" ? you.tester : null;
   const [reading, setReading] = useState(false);
-  /** The server's answers have been read (with the page, by a read since, or as a save's answer). */
-  const [read, setRead] = useState(initial !== null);
+  /**
+   * The answers cannot be read (Dim 29.10, review Q1): the page could not read them, or the last read failed other than with a 401. The page then
+   * says so in place of its numbers, and shows none (every check would read „Avatud“) until a read goes through or a save brings every answer.
+   */
+  const [unread, setUnread] = useState(initial === null);
   /** The last read was refused with 401 (the session ended) and none has gone through since. */
   const [readSignedOut, setReadSignedOut] = useState(false);
   /** When the last save came back ok (the chip's „Salvestatud HH:MM“). */
@@ -200,17 +202,20 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
 
   /**
    * What a read made of: the server's answers (a read that began before a save came back is older than that save and is not taken), the session
-   * ended (the chip says so), or nothing could be read (what was read before stays). Automaattest's answers are always taken: no save of this
-   * page changes them.
+   * ended (the chip says so), or nothing could be read (what was read before stays on the page, without its numbers). Automaattest's answers are
+   * always taken: no save of this page changes them.
    */
   const apply = useCallback((fresh: Read | "signedOut" | null, before: number) => {
-    if (fresh === null) return;
+    if (fresh === null) {
+      setUnread(true);
+      return;
+    }
     if (fresh === "signedOut") {
       setReadSignedOut(true);
       return;
     }
     setReadSignedOut(false);
-    setRead(true);
+    setUnread(false);
     if (writes.current === before) setAnswers(fresh.answers);
     setAuto(fresh.auto);
   }, []);
@@ -245,7 +250,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
       onAnswers: (fresh) => {
         writes.current += 1;
         setAnswers(fresh);
-        setRead(true);
+        setUnread(false); // (a save's answer is every answer there is)
         setSavedAt(new Date());
         setReadSignedOut(false);
       },
@@ -324,7 +329,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const empty = sections.every((s) => s.shown.length === 0);
   const sectionOf = new Map(sections.map((s) => [s.area.id, s]));
 
-  const chip = chipOf(outbox ? outbox.status() : "idle", reading, readSignedOut, savedAt, read);
+  const chip = chipOf(outbox ? outbox.status() : "idle", reading, readSignedOut, savedAt, unread);
   const line = fill(counts.total === 1 ? t.progress.one : t.progress.many, { n: counts.total, done: counts.done, bad: counts.bad });
 
   const press = (item: TestItem, status: Status) => {
@@ -349,8 +354,14 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
         <div className={styles.titles}>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
           <h1 className={`${ui.h1} ${styles.h1}`}>{t.title}</h1>
-          <p className={`${ui.muted} ${styles.line}`} data-progress="">
-            {line}
+          {!unread && (
+            <p className={`${ui.muted} ${styles.line}`} data-progress="">
+              {line}
+            </p>
+          )}
+          {/* the answers cannot be read (Dim 29.10): always there, so the change is spoken; empty (no height) while they can */}
+          <p role="status" className={styles.unread} data-unread="">
+            {unread ? fill(t.unread, { refresh: t.refresh }) : ""}
           </p>
         </div>
         <div className={ui.headAside}>
@@ -376,7 +387,8 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
                 onClick={() => choose({ ...view, filter: f })}
                 data-filter={f}
               >
-                {f === "all" ? t.filter.all : fill(t.filter[f], { n: counts[f] })}
+                {/* (no number while the answers cannot be read: the pill's word alone) */}
+                {f === "all" ? t.filter.all : unread ? t.filter[f].replace(" {n}", "") : fill(t.filter[f], { n: counts[f] })}
               </button>
             ))}
           </div>
@@ -442,10 +454,14 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
                     {area.name}
                   </span>
                   <span className={styles.progress}>
-                    <span data-area-count="">{fill(t.areaCount, { done, total: ofWho.length })}</span>
-                    <span className={styles.bar} aria-hidden="true">
-                      <span className={styles.barFill} style={{ width }} data-area-bar="" />
-                    </span>
+                    {!unread && (
+                      <>
+                        <span data-area-count="">{fill(t.areaCount, { done, total: ofWho.length })}</span>
+                        <span className={styles.bar} aria-hidden="true">
+                          <span className={styles.barFill} style={{ width }} data-area-bar="" />
+                        </span>
+                      </>
+                    )}
                     <span className={styles.caret} aria-hidden="true">
                       ▾
                     </span>

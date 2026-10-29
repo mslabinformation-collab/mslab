@@ -87,6 +87,9 @@ const pressed = (id: string) => $$(`[data-check="${id}"] [data-answer][aria-pres
 const chip = () => $("[data-save-status]")?.getAttribute("data-save-kind") ?? null;
 const chipText = () => $("[data-save-text]")?.textContent ?? "";
 const line = () => $("[data-progress]")!.textContent;
+/** Dim 29.10 (review Q1): the line when the answers cannot be read, word for word. */
+const UNREAD = "Vastuseid ei saanud praegu lugeda. Need on alles; vajuta hiljem „Värskenda“.";
+const unreadLine = () => $("[data-unread]")!.textContent;
 const pills = (group: "olek" | "kes") => $$(`[data-filter-group="${group}"] button`).map((b) => b.textContent);
 const olek = (f: "all" | "open" | "bad" | "done") => $(`[data-filter="${f}"]`)!;
 const kes = (w: "mina" | "all" | "auto") => $(`[data-who="${w}"]`)!;
@@ -386,20 +389,35 @@ describe("a check row (S4-45)", () => {
     expect(check("a0-done").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 13:00 · Läbitud");
   });
 
-  test("a „Jäta vahele“ stored before the button went stays as it was: done, counted „Läbitud“, neither answer pressed, its last line and note box", async () => {
+  // Dim 29.10 (review Q2): a check answered „Jäta vahele“ before that button went is open again — in the line, the „Olek“ pills and filters and
+  // the area bar — while the stored answer and its note stay as they are, and its last line still says it was skipped.
+  test("a „Jäta vahele“ stored before the button went counts as „Avatud“: open, in the line, the pills and the area bar; its last line and note box stay", async () => {
     await showAll({ initial: { ...SERVER, "a1-plain": answer("skip", "2026-10-16T09:30:00.000Z", "Maria", "Hiljem") } });
-    expect(state("a1-plain")).toBe("done");
+    expect(state("a1-plain")).toBe("open");
     expect(pressed("a1-plain")).toEqual([]);
     expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 12:30 · Jäta vahele");
     const note = check("a1-plain").querySelector<HTMLTextAreaElement>("[data-check-note]")!;
     expect([note.value, note.placeholder]).toEqual(["Hiljem", "Märkus"]);
-    expect(pills("olek")).toContain("Läbitud 2");
+    // (as without it: a1-plain was open then too)
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 4", "Viga 1", "Läbitud 1"]);
+    expect($('[data-area="a1"] [data-area-count]')!.textContent).toBe("0 / 3");
     // a note typed on it keeps its answer
     await act(async () => note.focus());
     await typeInto(note, "Hiljem, tahvlis");
     await act(async () => note.blur());
     await settle();
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "skip", note: "Hiljem, tahvlis" } } }]);
+  });
+
+  test("a stored „Jäta vahele“ is listed under „Avatud“ with its note, and not under „Läbitud“", async () => {
+    await showAll({ initial: { ...SERVER, "a1-plain": answer("skip", "2026-10-16T09:30:00.000Z", "Maria", "Hiljem") } });
+    await click(olek("open"));
+    expect(ids()).toContain("a1-plain");
+    expect(check("a1-plain").querySelector<HTMLTextAreaElement>("[data-check-note]")!.value).toBe("Hiljem");
+    expect(check("a1-plain").querySelector("[data-check-last]")!.textContent).toContain("· Jäta vahele");
+    await click(olek("done"));
+    expect(ids()).toEqual(["a0-done"]);
   });
 
   test("a redo answered before its instant is open, with the old answer under it as „Varasem vastus“, and no answer pressed", async () => {
@@ -589,7 +607,7 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     await openAll();
     expect(ids()).toEqual(["a0-done", "a1-redo", "a1-fail", "a1-plain", "a2-fresh", "a2-dim"]);
     expect($$("[data-check-state]").every((c) => c.getAttribute("data-check-state") === "open")).toBe(true);
-    expect(line()).toBe("6 kontrolli · 0 läbitud · 0 viga");
+    expect(unreadLine()).toBe(UNREAD); // (and no counts: Dim 29.10, below)
     putReply = async () => json({ ok: false, error: "unavailable" }, 503);
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(state("a1-plain")).toBe("done");
@@ -601,7 +619,8 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     await showAll();
     getReply = () => new Response("<html>Internal Server Error</html>", { status: 500 });
     await click($("[data-refresh]")!);
-    expect(chip()).toBe("saved"); // (the answers came with the page; nothing waits)
+    expect(unreadLine()).toBe(UNREAD);
+    expect(chip()).toBeNull(); // (nothing waits, and „Salvestatud“ would say more than is known)
     await openAll();
     expect(ids()).toHaveLength(6);
     expect(state("a1-fail")).toBe("failed"); // (what was read before is still shown)
@@ -614,6 +633,7 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     getReply = () => json({ ok: true, plan: PLAN, answers: server, you: MARIA });
     await click($("[data-refresh]")!);
     expect(state("a1-plain")).toBe("done");
+    expect(unreadLine()).toBe("");
   });
 
   test("with the database down at the start, the first good read fills the answers in, and brings the chip", async () => {
@@ -673,6 +693,74 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(state("a1-plain")).toBe("failed");
     expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
     expect(chip()).toBe("saved");
+  });
+});
+
+// Dim 29.10 (review Q1, ruling c2): when the answers cannot be read, the page says so in his words and shows no numbers until a read goes through
+// (every check would show „Avatud“, and „… · 0 läbitud · 0 viga“ would be false).
+describe("the answers cannot be read (Dim 29.10)", () => {
+  /** No number anywhere: no line of counts, the „Olek“ pills by their words, no area progress. */
+  const noCounts = () => {
+    expect($("[data-progress]")).toBeNull();
+    expect(pills("olek")).toEqual(["Kõik", "Avatud", "Viga", "Läbitud"]);
+    expect($$("[data-area-count]")).toEqual([]);
+    expect($$("[data-area-bar]")).toEqual([]);
+  };
+
+  test("the first read fails: the line in a status region, no counts, no chip; the checks and the filters still work", async () => {
+    await showAll({ initial: null }); // (the page's read failed, and so does the read on load: 503)
+    expect(unreadLine()).toBe(UNREAD);
+    expect($("[data-unread]")!.getAttribute("role")).toBe("status");
+    noCounts();
+    expect(chip()).toBeNull();
+    expect($$("[data-area-toggle]").length).toBeGreaterThan(0); // (the areas are there, with their names and ▾)
+    await click(olek("open"));
+    expect(ids()).toHaveLength(6);
+  });
+
+  test("„Värskenda“ fails (a 503, a 500 page, no connection): the line, and the counts go; a 401 is the signed-out state instead", async () => {
+    await showAll();
+    expect(unreadLine()).toBe("");
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
+    for (const reply of [() => json({ ok: false, error: "unavailable" }, 503), () => new Response("<html>500</html>", { status: 500 })]) {
+      getReply = reply;
+      await click($("[data-refresh]")!);
+      expect(unreadLine()).toBe(UNREAD);
+      noCounts();
+    }
+    getReply = () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe(UNREAD);
+    getReply = () => json({ ok: true, plan: PLAN, answers: server, auto: {}, you: MARIA }); // (the next page's read on load goes through)
+    await remount();
+    await showAll();
+    getReply = () => unauthorized();
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe("");
+    expect(chip()).toBe("signedOut");
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
+  });
+
+  test("a read that goes through takes the line away and brings the counts back; so does a save that comes back", async () => {
+    await showAll({ initial: null });
+    expect(unreadLine()).toBe(UNREAD);
+    server = { ...SERVER };
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe("");
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 4", "Viga 1", "Läbitud 1"]);
+    expect($$("[data-area-count]").map((c) => c.textContent)).toEqual(["1 / 1", "0 / 3", "0 / 2"]);
+    expect(chip()).toBe("saved");
+    // the database down again, then a press whose save comes back with every answer
+    getReply = () => json({ ok: false, error: "unavailable" }, 503);
+    await click($("[data-refresh]")!);
+    expect(unreadLine()).toBe(UNREAD);
+    await openAll();
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(unreadLine()).toBe("");
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
   });
 });
 

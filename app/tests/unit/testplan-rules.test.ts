@@ -50,7 +50,9 @@ describe("checkState: open, done or failed (spec §4)", () => {
   const CASES: { name: string; item: TestItem; answer: StoredAnswer | undefined; state: "open" | "done" | "failed"; overtaken: boolean }[] = [
     { name: "no answer: open", item: item(), answer: undefined, state: "open", overtaken: false },
     { name: "ok: done", item: item(), answer: answer("ok", "2026-10-17T10:00:00.000Z"), state: "done", overtaken: false },
-    { name: "skip: done", item: item(), answer: answer("skip", "2026-10-17T10:00:00.000Z"), state: "done", overtaken: false },
+    // admin UX pass piece 4c (Dim 29.10, Q2): „Jäta vahele“ has no button any more, and one stored before is open again, its answer kept
+    { name: "skip: open, its answer kept (Dim 29.10)", item: item(), answer: answer("skip", "2026-10-17T10:00:00.000Z"), state: "open", overtaken: false },
+    { name: "redo marked 20.10, skipped 19.10: open, the skip overtaken", item: redo20, answer: answer("skip", "2026-10-19T10:00:00.000Z"), state: "open", overtaken: true },
     { name: "bad: failed", item: item(), answer: answer("bad", "2026-10-17T10:00:00.000Z"), state: "failed", overtaken: false },
     { name: "redo marked 20.10, answered ok 19.10: open, the old answer overtaken", item: redo20, answer: answer("ok", "2026-10-19T10:00:00.000Z"), state: "open", overtaken: true },
     { name: "redo marked 20.10, answered bad 19.10: open, the old failure overtaken", item: redo20, answer: answer("bad", "2026-10-19T10:00:00.000Z"), state: "open", overtaken: true },
@@ -69,8 +71,9 @@ describe("checkState: open, done or failed (spec §4)", () => {
     const got = checkState(it, a, PLAN, BUILD);
     expect(got.state).toBe(state);
     expect(got.overtaken).toEqual(overtaken ? a : null);
-    // an overtaken answer is no longer the check's answer: it is shown under "Varasem vastus", not as the last one
-    expect(got.answer).toEqual(state === "open" ? null : a);
+    // an overtaken answer is no longer the check's answer: it is shown under "Varasem vastus", not as the last one; a skip that stands stays the
+    // check's answer though the check is open (its last line and its note are shown)
+    expect(got.answer).toEqual(overtaken || a === undefined ? null : a);
   });
 });
 
@@ -557,6 +560,11 @@ describe("planCounts: what the header and the Avaleht card show (spec §4, §5)"
     expect(planCounts(PLAN, FULL, BUILD, "maria")).toEqual({ total: 2, done: 2, open: 0, bad: 0, redo: 0 });
     // Dim: his own (reopened by the redo) and the shared one
     expect(planCounts(PLAN, FULL, BUILD, "dim")).toEqual({ total: 2, done: 1, open: 1, bad: 0, redo: 1 });
+  });
+
+  test("a stored „Jäta vahele“ counts as open, not as done, and is no redo (piece 4c, Dim 29.10)", () => {
+    const skipped = doc({ "maria-1": answer("skip", "2026-10-17T10:00:00.000Z", { note: "Hiljem" }), "koos-1": answer("ok", "2026-10-17T10:00:00.000Z") });
+    expect(planCounts(PLAN, skipped, BUILD, "maria")).toEqual({ total: 2, done: 1, open: 1, bad: 0, redo: 0 });
   });
 
   test("a failure counts as bad, not as done or open; an unanswered check is open but not a redo", () => {

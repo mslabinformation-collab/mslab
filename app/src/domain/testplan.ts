@@ -43,7 +43,10 @@ export type StoredAnswer = { status: Status; note: string; at: string; by: strin
 export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer>; auto?: Record<string, StoredAnswer> };
 /** An answer as the device sends it. `clientAt` only orders several unsent presses of one check on the device; the server stamps `at` itself. */
 export type IncomingAnswer = { status: Status; note: string; clientAt?: string };
-/** `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both: an open check has no valid answer. */
+/**
+ * `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both. An
+ * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept).
+ */
 export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnswer | null; overtaken: StoredAnswer | null };
 /**
  * A Telegram message to send: the first for a new failure ("bad"), the second for the first note of an answer, a failure's or (Dim 22.10) an OK's
@@ -212,14 +215,15 @@ export function appliesAt(item: TestItem, plan: TestPlan, buildAt: string): stri
 
 /**
  * A check's state (spec §4): no answer, or an answer given before its redo's instant (`appliesAt`; an answer at that very instant stands):
- * open, the old answer in `overtaken` and `answer` null; else Viga is failed, OK and Jäta vahele are done. Instants are compared as instants,
- * not as text ("…:00Z" and "…:00.000Z" are the same moment).
+ * open, the old answer in `overtaken` and `answer` null; else Viga is failed and OK is done. A Jäta vahele (admin UX pass piece 4c, Dim 29.10:
+ * that button went, and such a check is still to be done) is open, with the stored answer kept as `answer`: the page shows its last line and its
+ * note, and a note typed on it keeps it. Instants are compared as instants, not as text ("…:00Z" and "…:00.000Z" are the same moment).
  */
 export function checkState(item: TestItem, answer: StoredAnswer | undefined, plan: TestPlan, buildAt: string): CheckState {
   if (!answer) return { state: "open", answer: null, overtaken: null };
   const since = appliesAt(item, plan, buildAt);
   if (since !== null && Date.parse(answer.at) < Date.parse(since)) return { state: "open", answer: null, overtaken: answer };
-  return { state: answer.status === "bad" ? "failed" : "done", answer, overtaken: null };
+  return { state: answer.status === "bad" ? "failed" : answer.status === "skip" ? "open" : "done", answer, overtaken: null };
 }
 
 /**
@@ -379,9 +383,10 @@ export function testerOf(email: string, adminNames: string | undefined): Tester 
 
 /**
  * The header's and the Avaleht card's numbers (spec §4, §5) over the plan's own checks (answers to other ids are ignored). `who` narrows them
- * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (OK or Jäta vahele, still
- * valid), open or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry an overtaken answer. It reads the
- * doc's `answers` only: Automaattest's `auto` never counts for Maria or Dim (Dim 25.10; its own numbers are its map passed as `answers`).
+ * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (an OK still valid), open (a
+ * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry an overtaken
+ * answer. It reads the doc's `answers` only: Automaattest's `auto` never counts for Maria or Dim (Dim 25.10; its own numbers are its map passed
+ * as `answers`).
  */
 export function planCounts(
   plan: TestPlan,

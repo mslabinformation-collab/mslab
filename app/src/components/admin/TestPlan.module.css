@@ -25,6 +25,15 @@
   overflow-wrap: anywhere;
 }
 
+/* in the line's place while the answers cannot be read (Dim 29.10); empty, it takes no room */
+.unread {
+  margin: 0;
+  color: var(--bad);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 /* the filter row (P4: a white card, „OLEK“ and „KES“ in capitals, a hairline between the groups) */
 .filters {
   display: flex;

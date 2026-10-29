@@ -356,8 +356,10 @@ describe("testplanCard", () => {
     expect(await testplanCard(db, DIM, NAMES)).toEqual({ open: 1, bad: 1 });
   });
 
-  test("null when every counted check is done (OK or Jäta vahele); a standing Viga keeps the card", async () => {
+  test("null when every counted check is done (OK); a stored Jäta vahele is open (piece 4c, Dim 29.10); a standing Viga keeps the card", async () => {
     await save(MARIA, { "maria-1": { status: "ok" }, "maria-2": { status: "skip" }, "koos-1": { status: "ok" } });
+    expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 1, bad: 0 }); // (maria-2's skip)
+    await save(MARIA, { "maria-2": { status: "ok" } });
     expect(await testplanCard(db, MARIA, NAMES)).toBeNull();
     // Dim's own check is still open for him
     expect(await testplanCard(db, DIM, NAMES)).toEqual({ open: 1, bad: 0 });

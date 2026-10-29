@@ -2515,6 +2515,8 @@ export const adminEt = {
     eyebrow: "Haldus",
     // S4-43: under the H1, over the checks of the „Kes“ choice
     progress: { one: "1 kontroll · {done} läbitud · {bad} viga", many: "{n} kontrolli · {done} läbitud · {bad} viga" },
+    // in its place while the answers cannot be read (Dim 29.10, the review's Q1): the page shows no numbers then; {refresh} is `refresh`
+    unread: "Vastuseid ei saanud praegu lugeda. Need on alles; vajuta hiljem „{refresh}“.",
     // S4-44 („Olek“, „Kes“ are capitals in CSS); {n} the checks of that state under the „Kes“ choice
     filter: { label: "Olek", all: "Kõik", open: "Avatud {n}", bad: "Viga {n}", done: "Läbitud {n}" },
     // the „Kes“ choices (`mina`, `all`, `auto`); `maria`, `dim`, `koos` are the who chip of a check
