@@ -159,6 +159,18 @@
   text-decoration-color: var(--ink);
 }
 
+/* A way back whose arrow is hidden from screen readers (`<span aria-hidden>←</span> {words}`: Hindamine's test screen, a student's view as her):
+   the arrow and the words are two flex items, so the line broke at the 10 px gap between them. The space moves into the arrow's own box and the
+   gap closes, so the line runs on under „← words“, as under the links whose arrow is in their text („← Koolitused“). (Without :has the gap stays,
+   the line breaks as before; a browser without the flex gap gets the space alone, the line unbroken.) */
+.link:has(> [aria-hidden="true"]:first-child) {
+  gap: 0;
+}
+
+.link > [aria-hidden="true"]:first-child::after {
+  content: "\a0";
+}
+
 /* B .card */
 .card {
   min-width: 0;

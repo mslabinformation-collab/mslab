@@ -242,6 +242,12 @@ describe("admin polish F3 F4 F5: text links, the name block and the phone's labe
     expect(rule(ui, ".link:hover")).toBe("text-decoration-color: var(--ink);");
   });
 
+  it("F3 (the sweep, Task 6): a way back whose arrow is hidden from screen readers has one line under „← words“: the gap closes, the space goes into the arrow's box", () => {
+    // (`<span aria-hidden="true">←</span> {words}`: Hindamine's test screen and the two pages of a student's view; the arrow and the words are two flex items)
+    expect(rule(ui, '.link:has(> [aria-hidden="true"]:first-child)')).toBe("gap: 0;");
+    expect(rule(ui, '.link > [aria-hidden="true"]:first-child::after')).toBe('content: "\\a0";');
+  });
+
   it("F3: in a table cell the link's words are on the cell's first line, level with the cells beside it (the target reaches 12 px into the padding)", () => {
     // (two longhands, not `margin-block`: Safari before 14.1 does not know the shorthand)
     expect(rule(ui, ".table td .link")).toBe("margin-top: -12px; margin-bottom: -12px;");
