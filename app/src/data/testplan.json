@@ -2291,7 +2291,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
       "id": "testimine-filtrid-valjalogitud",
@@ -2324,7 +2324,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
       "id": "testimine-tehtud-ja-tagasi",
@@ -2355,7 +2355,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
       "id": "haldus-sisselogimine-tagasi",
@@ -2591,7 +2591,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -4812,7 +4812,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
       "id": "ekursus-lopetatud",
