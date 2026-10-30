@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useState, useSyncExternalStore } from "react";
+import { useReducer, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatTime } from "@/i18n/format";
@@ -157,6 +157,19 @@ export function SaveStatus({
       <span role="status" className={ui.sr}>
         {spoken.words}
       </span>
+    </span>
+  );
+}
+
+/**
+ * A line of the screen's own words in the chip's place and look (SaveStatus's neutral chip): a new record's drawer before its create button is pressed,
+ * where nothing autosaves yet (admin polish F22: „Lisa arvustus +“, Kalender's „Lisa toimumine +“). It is the status region itself; `data-*` name it
+ * for tests.
+ */
+export function StatusLine({ children, ...data }: { children: ReactNode } & { [attribute: `data-${string}`]: string }) {
+  return (
+    <span className={`${styles.chip} ${styles.neutral}`} role="status" {...data}>
+      <span className={styles.text}>{children}</span>
     </span>
   );
 }

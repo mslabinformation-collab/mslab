@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import { clientEmail, insertAccountFixtures } from "./account";
 import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { insertCertificate } from "./certificate";
@@ -32,6 +32,22 @@ const WIDTHS = [880, 1180, 1280, 1360];
 /** A laptop's widths, where Registreerimised must be a table (the card is wider than 760 px at each of them). */
 const TABLE_WIDTHS = [1180, 1280, 1366, 1440];
 
+/**
+ * One student for a test: a confirmed registration whose feedback she answered (Tagasiside's row, and its course in „Koolituste kaupa“ and the scope
+ * select) and an e-course certificate in the name `certificateName` (Tunnistused); removed with her address after the test.
+ */
+async function seedStudent(info: TestInfo, tag: string, name: string, certificateName: string, feedback: Record<string, string | number>) {
+  const email = clientEmail(tag, runName(info));
+  made.add(email);
+  await removeClientRows(email);
+  const fx = await insertAccountFixtures(email, { name, cards: ["confirmed", "ecourse"] });
+  const registrationId = fx.registrations.confirmed!;
+  await insertFeedbackAnswer(registrationId, feedback);
+  const [access] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from course_access where client_id = ${fx.clientId}`, { marksPages: false });
+  const certificate = await insertCertificate(access.id, certificateName);
+  return { email, fx, registrationId, certificate };
+}
+
 /** Where a row's cells lie against the content box of its list's card, and what the table is. */
 async function fit(page: Page, row: string) {
   return page.locator(row).evaluate((tr) => {
@@ -59,13 +75,8 @@ async function fit(page: Page, row: string) {
 test("every list that uses the shared table keeps all its columns inside its card, from 880 to 1440 px", async ({ page, context, visitorIp, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   info.setTimeout(info.timeout + 120_000); // each page's first view under `next dev` compiles it
-  const email = clientEmail("lists", runName(info));
-  made.add(email);
-  await removeClientRows(email);
   const name = `Liis Loend ${info.project.name}`;
-  const fx = await insertAccountFixtures(email, { name, cards: ["confirmed", "ecourse"] });
-  const registrationId = fx.registrations.confirmed!;
-  await insertFeedbackAnswer(registrationId, { score: 8, expectations: "exceeded", recommend: "Jah, kindlasti." });
+  const { email, fx, registrationId, certificate } = await seedStudent(info, "lists", name, "Liis Loend", { score: 8, expectations: "exceeded", recommend: "Jah, kindlasti." });
   const payment = await insertStoredPayment({
     email,
     name,
@@ -95,8 +106,6 @@ test("every list that uses the shared table keeps all its columns inside its car
     minutesAgo: 4,
   });
   await onLocalDb((sql) => sql`update payments set check_reason = 'double' where id = ${worst.id}`, { marksPages: false });
-  const [access] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from course_access where client_id = ${fx.clientId}`, { marksPages: false });
-  const certificate = await insertCertificate(access.id, "Liis Loend");
   await signInAsAdmin(page, context, visitorIp, created);
 
   // (`tableAt`: the widths at which the list must be a table, not the stack of rows)
@@ -130,22 +139,14 @@ test("every list that uses the shared table keeps all its columns inside its car
   }
 });
 
-// The phone's label rows and the toolbar (admin polish F5, F13; the sweep's guard, Task 6). At 390 and 375 px the shared table is a stack of label rows: in
-// Tagasiside's two tables (the answers and „Koolituste kaupa“) and in Tunnistused every cell is a 5 px row, its label at one indent (the cell's own left
-// edge, whatever order the bundle puts the stylesheets in), and every part of its value, an element or a bare text, in the second column, none wrapped
-// under the label. And the toolbar's scope select (Registreerimised „Koolitus ja toimumine“, Tagasiside „Koolitus“, Arved „Kuu“) is a line of its own as
-// wide as the search over it, not as wide as its longest option.
-test("phone 390 and 375 px: label rows at one indent with every value in column 2 (F5), and the scope select as wide as the search (F13)", async ({ page, context, visitorIp, isMobile }, info) => {
+// The phone's label rows (admin polish F5; the sweep's guard, Task 6). At 390 and 375 px the shared table is a stack of label rows: in Tagasiside's two
+// tables (the answers and „Koolituste kaupa“) and in Tunnistused every cell is a 5 px row, its label at one indent (the cell's own left edge, whatever
+// order the bundle puts the stylesheets in), and every part of its value, an element or a bare text, in the second column, none wrapped under the label.
+test("phone 390 and 375 px: label rows at one indent with every value in column 2 (F5)", async ({ page, context, visitorIp, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   info.setTimeout(info.timeout + 90_000);
-  const email = clientEmail("phone-rows", runName(info));
-  made.add(email);
-  await removeClientRows(email);
   const name = `Liis Telefon ${info.project.name}`;
-  const fx = await insertAccountFixtures(email, { name, cards: ["confirmed", "ecourse"] });
-  await insertFeedbackAnswer(fx.registrations.confirmed!, { score: 9, expectations: "exceeded", recommend: "Jah." });
-  const [access] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from course_access where client_id = ${fx.clientId}`, { marksPages: false });
-  const certificate = await insertCertificate(access.id, "Liis Telefon");
+  const { fx, certificate } = await seedStudent(info, "phone-rows", name, "Liis Telefon", { score: 9, expectations: "exceeded", recommend: "Jah." });
   await signInAsAdmin(page, context, visitorIp, created);
 
   /** Each shown cell of the row: its left edge and padding, where its second column starts, and the left edges of its value's parts. */
@@ -177,13 +178,6 @@ test("phone 390 and 375 px: label rows at one indent with every value in column 
           };
         }),
     );
-  const toolbar = () =>
-    page.locator("[data-list-toolbar]").evaluate((tb) => {
-      const search = tb.querySelector("form[role=search]")!.getBoundingClientRect();
-      const select = Array.from(tb.querySelectorAll("select")).find((s) => !s.closest("[data-scope-phone]") && s.getBoundingClientRect().width > 0)!;
-      const r = select.getBoundingClientRect();
-      return { search: { left: search.left, width: search.width }, select: { label: select.getAttribute("aria-label"), left: r.left, width: r.width } };
-    });
   const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
   for (const width of [390, 375]) {
@@ -208,15 +202,54 @@ test("phone 390 and 375 px: label rows at one indent with every value in column 
       }
       expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
     }
-    for (const url of ["/admin/registreerimised", "/admin/tagasiside", "/admin/arved"]) {
+  }
+});
+
+// The toolbar's scope select on a phone (admin polish F13; the sweep's guard, Task 6, a test of its own since the final fix wave): at 390 and 375 px it is
+// a line of its own as wide as the search over it, not as wide as its longest option: Registreerimised „Koolitus ja toimumine“, Tagasiside „Koolitus“
+// (shown once a course has answers: the seeded student's), Arved „Kuu“; and Kalender's „Koolitus“, which has no search over it, as wide as its row
+// (Kalender's city is the pill „Linn ▾“, its own test below). The select measured must have that name, so no other select can stand in for it.
+test("phone 390 and 375 px: the toolbar's scope select is as wide as the search over it, or as Kalender's row (F13)", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  info.setTimeout(info.timeout + 90_000);
+  await seedStudent(info, "phone-scope", `Liis Valik ${info.project.name}`, "Liis Valik", { score: 9, expectations: "exceeded", recommend: "Jah." });
+  await signInAsAdmin(page, context, visitorIp, created);
+
+  /** The toolbar's scope select drawn as a field (not a phone pill's copy), and the line it must fill: the search over it, or its row's content box. */
+  const toolbar = () =>
+    page.locator("[data-list-toolbar]").evaluate((tb) => {
+      const select = Array.from(tb.querySelectorAll("select")).find((s) => !s.closest("[data-scope-phone]") && s.getBoundingClientRect().width > 0)!;
+      const search = tb.querySelector("form[role=search]");
+      const row = select.parentElement!;
+      const cs = getComputedStyle(row);
+      const rb = row.getBoundingClientRect();
+      const line = search
+        ? { by: "search", left: search.getBoundingClientRect().left, width: search.getBoundingClientRect().width }
+        : { by: "row", left: rb.left + parseFloat(cs.paddingLeft), width: rb.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) };
+      const r = select.getBoundingClientRect();
+      return { line, select: { label: select.getAttribute("aria-label"), left: r.left, width: r.width } };
+    });
+  const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+  for (const width of [390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const { url, label, by } of [
+      { url: "/admin/registreerimised", label: "Koolitus ja toimumine", by: "search" },
+      { url: "/admin/tagasiside", label: "Koolitus", by: "search" },
+      { url: "/admin/arved", label: "Kuu", by: "search" },
+      { url: "/admin/kalender", label: "Koolitus", by: "row" },
+    ]) {
       await page.goto(url);
       await adminReady(page);
       const t = await toolbar();
       const where = `${url} at ${width} px (${JSON.stringify(t)})`;
-      expect(Math.abs(t.select.left - t.search.left), `${where}: the scope select starts under the search`).toBeLessThanOrEqual(1);
-      expect(Math.abs(t.select.width - t.search.width), `${where}: the scope select as wide as the search`).toBeLessThanOrEqual(1);
-      expect(t.select.left + t.select.width, `${where}: inside the screen`).toBeLessThanOrEqual(width);
-      expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+      expect(t.select.label, `${where}: the scope select`).toBe(label);
+      expect(t.line.by, `${where}: what it is measured against`).toBe(by);
+      // (soft: a red run names every page that misses, not only the first)
+      expect.soft(Math.abs(t.select.left - t.line.left), `${where}: the scope select starts under the ${by}`).toBeLessThanOrEqual(1);
+      expect.soft(Math.abs(t.select.width - t.line.width), `${where}: the scope select as wide as the ${by}`).toBeLessThanOrEqual(1);
+      expect.soft(t.select.left + t.select.width, `${where}: inside the screen`).toBeLessThanOrEqual(width);
+      expect.soft(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
     }
   }
 });

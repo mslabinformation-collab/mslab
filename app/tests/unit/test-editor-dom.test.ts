@@ -313,7 +313,9 @@ test("a question's text box grows with its text: its height is the text's, measu
 // level with the option's field and × (editor .check tops them for a label of several lines; they were 11 px above the field's middle)
 test("an option's „Õige“ box and word are in the middle of its label, level with the field and ×", async () => {
   const css = (await import("node:fs")).readFileSync(`${process.cwd()}/src/components/admin/TestEditor.module.css`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-  expect(/\.correct \{([^}]*)\}/.exec(css.replace(/\s+/g, " "))?.[1].trim()).toBe("align-items: center; padding: 0 4px; white-space: nowrap;");
+  // (named under its row, `.option .correct`, so it outweighs editor .check, one class, whatever order the bundle puts the two stylesheets in: the
+  // final fix wave, Task 6 review Minor 3)
+  expect(/(?:^|[{}] )\.option \.correct \{([^}]*)\}/.exec(css.replace(/\s+/g, " "))?.[1].trim()).toBe("align-items: center; padding: 0 4px; white-space: nowrap;");
   await render(draft([choice("q0000001", "Esimene", [["A", true], ["B", false]])]));
   const label = $('[data-option="0"] [data-option-correct]')!.closest("label")!;
   expect(label.className).toMatch(/correct/);

@@ -120,14 +120,14 @@
   align-items: center;
 }
 
-/* (TabPills' own margin is for a row under a heading) */
-.lettersTabs > nav {
+/* the tab row „Tellijad | Kirjad“ at the heading's right end, in both views (F12); TabPills' own margin is for a row under a heading */
+.headTabs > nav {
   margin: 0;
 }
 
 @media (max-width: 899.98px) {
   [data-letter-open] .lettersTitle,
-  [data-letter-open] .lettersTabs {
+  [data-letter-open] .headTabs {
     display: none;
   }
 

@@ -39,12 +39,12 @@
 
   /* The post's editor beside the list is 758 px at 1440 (598 at 1280): its heading (SiteEditorPage) is two lines, the H1, then the one line of ET | RU
      at the left and the chip with „Vaata lehel ↗“ at the right, as the C3 frame draws that line over the editor's cards (admin polish F7: the H1 and
-     the buttons squeezed each other into three lines) */
+     the buttons squeezed each other into three lines). The right side is named (`data-site-aside`), so a child added after it cannot take its line. */
   .editor [data-site-heading] {
     row-gap: 14px;
   }
 
-  .editor [data-site-heading] > :last-child {
+  .editor [data-site-heading] > [data-site-aside] {
     flex-basis: 100%;
     justify-content: flex-start;
   }

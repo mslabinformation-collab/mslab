@@ -35,14 +35,16 @@ describe("F7: the H1 row's right side — ET | RU, the chip's place, „Vaata le
   it("the post's editor beside the list: the H1, then the line with ET | RU at its left and the chip with „Vaata lehel ↗“ at its right (the C3 frame)", () => {
     const sheet = css("components", "admin", "news", "NewsList.module.css");
     const wide = "@media (min-width: 1180px) {";
-    expect(rule(sheet, ".editor [data-site-heading] > :last-child", wide)).toMatch(/flex-basis: 100%;/);
+    // (the right side by its name, not as the heading's last child: a child added after it would take the line; Task 3 review Minor 2)
+    expect(rule(sheet, ".editor [data-site-heading] > [data-site-aside]", wide)).toMatch(/flex-basis: 100%;/);
+    expect(sheet).not.toMatch(/:last-child/);
     expect(rule(sheet, ".editor [data-site-heading] [data-site-chip]", wide)).toMatch(/margin-left: auto;/);
   });
 
   it("the markup the rules name: the heading, its text, its right side and the chip's place", () => {
     const page = readFileSync(join(process.cwd(), "src", "components", "admin", "site", "SiteEditorPage.tsx"), "utf8");
     expect(page).toContain('<div className={`${ui.heading} ${styles.heading}`} data-site-heading="">');
-    expect(page).toContain("<div className={`${ui.headAside} ${styles.aside}`}>");
+    expect(page).toContain('<div className={`${ui.headAside} ${styles.aside}`} data-site-aside="">');
     expect(page).toContain('<span ref={chipSlot} className={styles.statusSlot} data-site-chip="">');
     const course = readFileSync(join(process.cwd(), "src", "components", "admin", "course", "CourseHeader.tsx"), "utf8");
     expect(course).toContain("<div className={`${ui.heading} ${styles.heading}`}>");

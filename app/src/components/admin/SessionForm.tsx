@@ -18,11 +18,10 @@ import { Choice } from "./Choice";
 import { ConfirmPanel } from "./ConfirmPanel";
 import { focusFell } from "./focus-fell";
 import { useGuardSource } from "./LeaveGuard";
-import { SaveStatus } from "./SaveStatus";
+import { SaveStatus, StatusLine } from "./SaveStatus";
 import { focusFormField, useNewRecord } from "./useNewRecord";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
-import chip from "./SaveStatus.module.css";
 import styles from "./SessionForm.module.css";
 
 // The Kalender drawer (admin UX pass piece 3b, Task 3; README B3, the Part 3 frame „B3 Kalender“ and the Part 4 „B3 Session drawer“; piece3-texts
@@ -788,9 +787,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
       <header className={styles.head} data-session-head="">
         <div className={styles.chipRow}>
           {/* a new record's line in the chip's place, as the chip (SaveStatus's neutral one) of every other drawer (admin polish F22) */}
-          <span className={`${chip.chip} ${chip.neutral}`} role="status" data-new-session-line="">
-            <span className={chip.text}>{ready ? fill(adminEt.courseEditor.newReady, { button: t.form.create }) : adminEt.courseEditor.newRequired}</span>
-          </span>
+          <StatusLine data-new-session-line="">{ready ? fill(adminEt.courseEditor.newReady, { button: t.form.create }) : adminEt.courseEditor.newRequired}</StatusLine>
         </div>
         <h2 className={styles.title}>{t.drawer.newLabel}</h2>
       </header>

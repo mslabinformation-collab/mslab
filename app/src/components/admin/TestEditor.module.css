@@ -34,8 +34,9 @@
 }
 
 /* „Õige“: one word, so its box and word stand in the middle of the 44 px label, level with the option's field and its × (editor .check tops them for
-   a label of several lines, with a 10 px padding this label does not have: they were 11 px above the line — the admin polish sweep) */
-.correct {
+   a label of several lines, with a 10 px padding this label does not have: they were 11 px above the line — the admin polish sweep). Named under its
+   row, so it outweighs that one-class rule whatever order the bundle puts the two stylesheets in. */
+.option .correct {
   align-items: center;
   padding: 0 4px;
   white-space: nowrap;

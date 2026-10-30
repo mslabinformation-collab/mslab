@@ -12,12 +12,11 @@ import { saveManualReviewAction } from "@/server/actions/admin-reviews";
 import { patchSender, type Fields, type SendPatch } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
 import { useDrawerClose } from "./Drawer";
-import { SaveStatus } from "./SaveStatus";
+import { SaveStatus, StatusLine } from "./SaveStatus";
 import type { ReviewCourseOption } from "./review-view";
 import { focusFormField, useNewRecord } from "./useNewRecord";
 import ed from "./editor.module.css";
 import ui from "./ui.module.css";
-import chip from "./SaveStatus.module.css";
 import styles from "./ReviewsPanel.module.css";
 
 // The two drawers of a review Maria received elsewhere (student reviews, Task 4; spec D4; admin UX pass piece 4c, Task 2: README C6, S4-39, rulings
@@ -344,9 +343,7 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
       <header className={styles.drawerHead}>
         <div className={styles.chipRow}>
           {/* a new record's line in the chip's place, as the chip (SaveStatus's neutral one) of every other drawer (admin polish F22) */}
-          <span className={`${chip.chip} ${chip.neutral}`} role="status" data-new-review-line="">
-            <span className={chip.text}>{ready ? fill(adminEt.courseEditor.newReady, { button: t.create }) : adminEt.courseEditor.newRequired}</span>
-          </span>
+          <StatusLine data-new-review-line="">{ready ? fill(adminEt.courseEditor.newReady, { button: t.create }) : adminEt.courseEditor.newRequired}</StatusLine>
         </div>
         <h2 id={`${uid}-title`} className={styles.drawerTitle}>
           {t.newTitle}

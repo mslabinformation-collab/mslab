@@ -134,7 +134,7 @@ async function subscribersPage(search: Search) {
               {t.csvDownload}
             </a>
           </div>
-          <div className={styles.lettersTabs}>
+          <div className={styles.headTabs}>
             <Views view="subscribers" />
           </div>
         </div>
@@ -225,7 +225,7 @@ async function campaignsPage(email: string, kampaania: string) {
         {/* (ET | RU before the tabs: the tabs stay at the row's right end, in the same place in both views, F12) */}
         <div className={`${ui.headAside} ${styles.lettersAside}`}>
           {chosen && <LangSwitch />}
-          <div className={styles.lettersTabs}>
+          <div className={styles.headTabs}>
             <Views view="campaigns" />
           </div>
         </div>

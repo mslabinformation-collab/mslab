@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { answerOf, checkState, NOTE_MAX, planCounts, stateIn, type AnswersDoc, type CheckState, type IncomingStatus, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
+import { answerOf, checkState, NOTE_MAX, planCounts, stateIn, type AnswersDoc, type CheckState, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
 import { usePhoneChip } from "./course/usePhoneChip";
 import { ListEmpty } from "./ListStates";
 import { SaveStatus } from "./SaveStatus";
-import { createOutbox, type Outbox, type OutboxStatus } from "./testplan-outbox";
+import { createOutbox, type Outbox, type OutboxStatus, type UnsentAnswer } from "./testplan-outbox";
 import { TestplanCheck, type AutoAnswer } from "./TestplanCheck";
 import ui from "./ui.module.css";
 import styles from "./TestPlan.module.css";
@@ -123,7 +123,7 @@ const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, Che
  * The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer), the unsent ones over
  * them. An unsent "clear" (Dim 29.10, an answer taken back) takes the check's answer out until the server has said so.
  */
-function docOf(answers: Record<string, PageAnswer> | null, unsent: ReadonlyMap<string, { status: IncomingStatus; note: string }>): AnswersDoc {
+function docOf(answers: Record<string, PageAnswer> | null, unsent: ReadonlyMap<string, UnsentAnswer>): AnswersDoc {
   const entries = new Map<string, StoredAnswer>(Object.entries(answers ?? {}).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]));
   for (const [id, a] of unsent) {
     if (a.status === "clear") entries.delete(id);
@@ -306,7 +306,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
 
   // what is shown: the server's answers, the unsent ones over them
   const { doc, local } = useMemo(() => {
-    const unsent = outbox ? outbox.unsent() : new Map<string, { status: IncomingStatus; note: string }>();
+    const unsent = outbox ? outbox.unsent() : new Map<string, UnsentAnswer>();
     return { doc: docOf(answers, unsent), local: new Set(unsent.keys()) };
     // (`version` stands for what the outbox holds now)
     // eslint-disable-next-line react-hooks/exhaustive-deps

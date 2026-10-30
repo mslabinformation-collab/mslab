@@ -341,7 +341,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
             </p>
           )}
         </div>
-        <div className={`${ui.headAside} ${styles.aside}`}>
+        <div className={`${ui.headAside} ${styles.aside}`} data-site-aside="">
           <LangSwitch />
           <span ref={chipSlot} className={styles.statusSlot} data-site-chip="">
             <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} />

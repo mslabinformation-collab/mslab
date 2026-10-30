@@ -33,8 +33,10 @@ export const NOTE_WAIT_MS = 1000;
 
 /** `signedOut`: the last save was answered 401 and nothing has been saved since (R-i). The page shows these in SaveStatus (TestPlan.tsx). */
 export type OutboxStatus = "idle" | "saving" | "saved" | "retrying" | "signedOut";
+/** An answer not confirmed yet, as the page shows it over the server's: a press with its note, or a "clear" (the check without its answer). */
+export type UnsentAnswer = { status: IncomingStatus; note: string };
 /** An unsent answer: what the tester pressed or typed, and the (strictly increasing) instant of that press on this device. */
-type Entry = { status: IncomingStatus; note: string; clientAt: string };
+type Entry = UnsentAnswer & { clientAt: string };
 
 export type Outbox = {
   /** A status press: queued and sent at once. `note` is the check's note as it stands. */
@@ -54,7 +56,7 @@ export type Outbox = {
   flush(): Promise<void>;
   status(): OutboxStatus;
   /** The answers not confirmed yet (the page shows them over the server's; a "clear" shows the check without its answer). A new map on every call. */
-  unsent(): ReadonlyMap<string, { status: IncomingStatus; note: string }>;
+  unsent(): ReadonlyMap<string, UnsentAnswer>;
   /** `fn` is called after every change of `status()` or `unsent()`; returns the unsubscribe. */
   onChange(fn: () => void): () => void;
   stop(): void;
@@ -366,7 +368,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       return failing ? "retrying" : "saving";
     },
     unsent() {
-      return new Map<string, { status: IncomingStatus; note: string }>([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));
+      return new Map<string, UnsentAnswer>([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));
     },
     onChange(fn) {
       listeners.add(fn);
