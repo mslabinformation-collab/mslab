@@ -11,6 +11,7 @@ import { DragList } from "./DragList";
 import { insertAt } from "./row-keys";
 import { UnpublishedTag } from "./UnpublishedTag";
 import { focusFell } from "./focus-fell";
+import { GrowingText } from "./GrowingText";
 import { useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
@@ -261,7 +262,7 @@ export function TestEditor({
                   </fieldset>
                   <div className={ui.field}>
                     <label htmlFor={id}>{fill(f.testQuestion, { n })}</label>
-                    <textarea
+                    <GrowingText
                       id={id}
                       className={ui.textarea}
                       rows={2}

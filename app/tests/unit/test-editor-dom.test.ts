@@ -283,3 +283,39 @@ test("the undo's focus goes to the question that came back, by its id, also when
   expect(current.questions.map((q) => q.id)).toEqual(["q0000001", "q0000003"]);
   expect(document.activeElement).toBe($('[data-question="1"] [data-question-text]'));
 });
+
+// the admin polish sweep (Task 6; Task 1 left it): a question's text box grows with its text, as the list rows' boxes do (GrowingText), so a long
+// question is read whole and not in a scrolling box; it has no grip, which the next measure would undo
+test("a question's text box grows with its text: its height is the text's, measured again as it is typed; no grip", async () => {
+  // no layout in happy-dom: a text box's content is 46 px for a short text, 130 px for a long one
+  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+    configurable: true,
+    get(this: HTMLTextAreaElement) {
+      return this.value.length > 40 ? 130 : 46;
+    },
+  });
+  try {
+    await render(draft([{ id: "q0000001", kind: "open", text: "Lühike küsimus" }]));
+    const box = $<HTMLTextAreaElement>('[data-question="0"] [data-question-text]')!;
+    expect(box.tagName).toBe("TEXTAREA");
+    expect(box.style.height).toBe("48px");
+    await type(box, "Kirjelda, kuidas valid kliendi näo kuju ja kulmude kasvusuuna järgi sobiva vormi ning värvi, ja mida ütled talle järelhoolduse kohta.");
+    expect($<HTMLTextAreaElement>('[data-question="0"] [data-question-text]')!.style.height).toBe("132px");
+    expect(current.questions[0]).toMatchObject({ text: expect.stringContaining("järelhoolduse") });
+  } finally {
+    delete (HTMLTextAreaElement.prototype as { scrollHeight?: number }).scrollHeight;
+  }
+  const css = (await import("node:fs")).readFileSync(`${process.cwd()}/src/components/admin/TestEditor.module.css`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  expect(css.replace(/\s+/g, " ")).toContain(".body [data-question-text] { resize: none; }");
+});
+
+// the admin polish sweep (Task 6): an option's „Õige“ is one word on a 44 px label with no padding over it, so its box and word stand in its middle,
+// level with the option's field and × (editor .check tops them for a label of several lines; they were 11 px above the field's middle)
+test("an option's „Õige“ box and word are in the middle of its label, level with the field and ×", async () => {
+  const css = (await import("node:fs")).readFileSync(`${process.cwd()}/src/components/admin/TestEditor.module.css`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  expect(/\.correct \{([^}]*)\}/.exec(css.replace(/\s+/g, " "))?.[1].trim()).toBe("align-items: center; padding: 0 4px; white-space: nowrap;");
+  await render(draft([choice("q0000001", "Esimene", [["A", true], ["B", false]])]));
+  const label = $('[data-option="0"] [data-option-correct]')!.closest("label")!;
+  expect(label.className).toMatch(/correct/);
+  expect(label.className).toMatch(/check/);
+});
