@@ -675,6 +675,26 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect(state("a1-plain")).toBe("open");
   });
 
+  // final review Important 1: on a pressed half the first click takes the answer back, and the page re-renders before the second, so the
+  // second must not press the half again (a new Viga with an empty note, and a second Telegram message): the whole burst is one click
+  test("a double-click on the pressed „Viga“ half takes the answer back once: the check is open, one clear is sent, no press and no empty note after it", async () => {
+    await showAll();
+    await openAll();
+    expect([pressed("a1-fail"), note("a1-fail")!.value]).toEqual([["bad"], "Nupp ei tööta"]);
+    const bad = check("a1-fail").querySelector<HTMLButtonElement>('[data-answer="bad"]')!;
+    const clickWith = async (detail: number) => {
+      await act(async () => void bad.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail })));
+      await settle();
+    };
+    await clickWith(1);
+    await clickWith(2); // (the second click of the double-click: event.detail 2)
+    expect(state("a1-fail")).toBe("open");
+    expect(pressed("a1-fail")).toEqual([]);
+    expect(note("a1-fail")).toBeNull();
+    expect(puts()).toEqual([{ answers: { "a1-fail": { status: "clear", note: "" } } }]);
+    expect(server!["a1-fail"]).toBeUndefined();
+  });
+
   test("the last-answer line ends with „Võta vastus tagasi“, which takes the answer back the same way; the focus stays on the check, on the half that was pressed", async () => {
     await showAll();
     const last = check("a1-fail").querySelector("[data-check-last]")!;

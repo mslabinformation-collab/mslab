@@ -521,6 +521,22 @@ test("take back: under „Avatud“ a press keeps its row; the pressed half agai
   await expect(second).toHaveAttribute("data-check-state", "open");
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
   await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
+  // a pressed „Viga“ double-clicked (the final review's Important 1): one take-back, and the second click presses nothing again (no new Viga
+  // with an empty note, no second Telegram message)
+  await bad.click();
+  await expect(second).toHaveAttribute("data-check-state", "failed");
+  await expect.poll(async () => (await readApi(page)).answers[ids[1]]?.status).toBe("bad");
+  const sent: string[] = [];
+  const onPut = (r: { method(): string; url(): string; postData(): string | null }) => {
+    if (r.method() === "PUT" && new URL(r.url()).pathname === "/api/admin/testplan") sent.push(r.postData() ?? "");
+  };
+  page.on("request", onPut);
+  await bad.dblclick();
+  await expect(second).toHaveAttribute("data-check-state", "open");
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
+  await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
+  page.off("request", onPut);
+  expect(sent.map((body) => (JSON.parse(body) as { answers: Record<string, { status: string }> }).answers[ids[1]]?.status)).toEqual(["clear"]);
 
   // a third answered by a double-click: it presses once and is not taken back by the second click (review Minor 1); kept, and „Värskenda“ lets
   // it go, while the two taken back stay (they are open)

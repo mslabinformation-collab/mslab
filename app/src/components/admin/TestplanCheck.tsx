@@ -15,7 +15,7 @@ import styles from "./TestPlan.module.css";
 // Admin polish Part A (Dim 29.10: "clear which tests are done and which need doing"): a marker before the title (an empty ring, a green ✓, a red ✕,
 // with the state's word for a screen reader); the steps open on a check still to do and folded on a done or failed one; the pressed half pressed
 // again takes the answer back, and so does „Võta vastus tagasi“ at the end of the last-answer line (the note goes with the answer: no box is left to
-// type into); Automaattest's result is a chip in the meta line. The state is TestPlan's (domain/testplan.ts sharedState): a check Automaattest
+// type into); a double-click or double-tap on either half counts as its first click alone; Automaattest's result is a chip in the meta line. The state is TestPlan's (domain/testplan.ts sharedState): a check Automaattest
 // alone passed is done, with no half pressed.
 
 type Texts = typeof adminEt.testplan;
@@ -143,9 +143,15 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
               type="button"
               className={styles.segment}
               aria-pressed={answer?.status === status}
-              // (the pressed half pressed again takes the answer back, Dim 29.10; but not by the second click of a double-click or a double-tap,
-              // `detail` 2 or more, which would undo the press it just made; Enter and Space click with `detail` 0, review Minor 1)
-              onClick={(e) => (answer?.status !== status ? onPress(status) : e.detail < 2 ? onTakeBack() : undefined)}
+              // (the pressed half pressed again takes the answer back, Dim 29.10. A double-click or a double-tap is one click: its second click,
+              // `detail` 2 or more, is ignored on either half before anything else, as the first has already re-rendered the row; otherwise it would
+              // undo the press it just made, or press again the half whose answer it just took back, with an empty note. Enter and Space click with
+              // `detail` 0, review Minor 1 and the final review's Important 1)
+              onClick={(e) => {
+                if (e.detail > 1) return;
+                if (answer?.status !== status) onPress(status);
+                else onTakeBack();
+              }}
               data-answer={status}
             >
               {t[status]}
