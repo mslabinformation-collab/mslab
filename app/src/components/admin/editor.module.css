@@ -337,10 +337,11 @@
   min-height: 72px;
 }
 
-/* ListEditor's row: its I18nInput gives its parts to the row's grid (the row's main and the field's box have no box of their own). So every part
-   the box can show needs an area of its own here, or the grid would place it in the first free cell of column 1: the label is the screen
-   readers' only (absolute, out of the grid), the head, the Estonian text, the field, „Kopeeri eesti keelest“ and the notes under the field
-   (I18nInput's hint, its missing-translation line, its error: data-i18n-note) each have theirs. */
+/* ListEditor's row (and a module's head, LessonsEditor.module.css .moduleHead): its I18nInput gives its parts to the row's grid (the row's main and
+   the field's box have no box of their own). So every part the box can show needs an area of its own in the row's template, or the grid would
+   place it in the first free cell of column 1: the label is the screen readers' only (absolute, out of the grid), the head, the Estonian text, the
+   field, „Kopeeri eesti keelest“ and the notes under the field (I18nInput's hint, its missing-translation line, its error: data-i18n-note) each
+   have theirs. */
 .i18nRow > .rowMain,
 .i18nRow .i18n {
   display: contents;

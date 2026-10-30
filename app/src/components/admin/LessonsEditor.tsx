@@ -329,12 +329,14 @@ function ModuleRow({ module: m, n, courseId, online, handle, arrows, onName, mov
 
   return (
     <div className={styles.box} data-module={m.id}>
-      <div className={styles.moduleHead}>
+      {/* (the name's I18nInput gives its parts to the head's grid, editor .i18nRow / .rowMain: its field shares the line of ⋮⋮, the number and
+          ↑ ↓ whatever stands over it, the Estonian text in RU or „tõlge tulekul“) */}
+      <div className={`${styles.moduleHead} ${ed.i18nRow}`}>
         {handle && <span className={styles.handle}>{handle}</span>}
         <span className={styles.moduleNum} aria-hidden="true">
           {String(n).padStart(2, "0")}
         </span>
-        <div className={styles.name} onBlur={title.flush} data-module-name="">
+        <div className={`${styles.name} ${ed.rowMain}`} onBlur={title.flush} data-module-name="">
           <I18nInput
             label={label}
             labelHidden

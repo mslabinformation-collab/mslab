@@ -214,6 +214,66 @@ test.describe("practice packages: the points' rows line up and fit (admin polish
   });
 });
 
+// The module heads of „Moodulid ja õppetunnid“ (LessonsEditor; the polish pass's final fix wave, Task 6 item 7a), the same rule as the points' rows:
+// where ⋮⋮, the number and ↑ ↓ share the name's line (1440: the course column is wider than 560 px) the name's field is level with them (± 2 px), in
+// ET and in RU, where the name's Estonian text stands over the field (it pushed the field 13 px under them); where the head is compact (1280, a phone)
+// they are one level line over a field of the head's whole width. Read only: the seed's first e-course with modules; the edit language is the device's.
+test.describe("the module heads line up, in ET and in RU (admin polish, the final fix wave)", () => {
+  /** Each module head: whether it is compact (⋮⋮ over the field), the most a control's centre is off the field's (one line) or off the others' (compact). */
+  const heads = (page: Page) =>
+    page.locator("[data-lessons-editor] [data-module]").evaluateAll((boxes) =>
+      boxes.map((box) => {
+        const head = box.firstElementChild!;
+        const field = head.querySelector("[data-lang-field]")!.getBoundingClientRect();
+        const number = Array.from(head.querySelectorAll('span[aria-hidden="true"]')).find((s) => /^\d\d$/.test(s.textContent!.trim()))!;
+        const controls = [head.querySelector('[data-drag-tool="handle"]'), number, head.querySelector('[data-drag-tool="up"]'), head.querySelector('[data-drag-tool="down"]')]
+          .filter((el): el is Element => el !== null)
+          .map((el) => el.getBoundingClientRect());
+        const mids = controls.map((r) => r.top + r.height / 2);
+        const fieldMid = field.top + field.height / 2;
+        const whole = head.getBoundingClientRect();
+        return {
+          lang: head.querySelector("[data-lang-field]")!.getAttribute("data-lang-field"),
+          etText: head.querySelector("[data-et-ref]") !== null,
+          compact: controls[0].bottom <= field.top + 1,
+          offField: Math.max(...mids.map((m) => Math.abs(m - fieldMid))),
+          spread: Math.max(...mids) - Math.min(...mids),
+          sides: [field.left - whole.left, whole.right - field.right],
+        };
+      }),
+    );
+
+  test("1440: the name's field is level with ⋮⋮, the number and ↑ ↓ (± 2 px) in ET and RU; 1280 and a phone: one level line over a full-width field", async ({ page, context, visitorIp }, info) => {
+    const course = await one((sql) => sql<{ id: number }[]>`
+      select c.id from courses c where c.type = 'e_learning' and (select count(*) from course_modules m where m.course_id = c.id) >= 2 order by c.id limit 1`);
+    expect(course, "the seed's e-course with modules").toBeTruthy();
+    const sizes: [number, number, "wide" | "compact"][] = phone(info) ? [[390, 844, "compact"]] : [[1440, 900, "wide"], [1280, 800, "compact"]];
+    await signIn(page, context, visitorIp);
+    for (const [width, height, shape] of sizes) {
+      await page.setViewportSize({ width, height });
+      await page.goto(`/admin/koolitused/${course.id}`);
+      await adminReady(page);
+      for (const lang of ["et", "ru"] as const) {
+        await editLang(page, lang);
+        const all = await heads(page);
+        const where = `${width} px, ${lang.toUpperCase()}`;
+        expect(all.length, `${where}: the modules`).toBeGreaterThanOrEqual(2);
+        for (const h of all) {
+          const it = `${where}: ${JSON.stringify(h)}`;
+          expect(h.lang, it).toBe(lang);
+          if (lang === "ru") expect(h.etText, `${it}: the name's Estonian text over its field`).toBe(true);
+          expect(h.compact, `${it}: ${shape}`).toBe(shape === "compact");
+          if (shape === "wide") expect(h.offField, `${it}: a control's centre off the field's`).toBeLessThanOrEqual(2);
+          else {
+            expect(h.spread, `${it}: the line's controls level`).toBeLessThanOrEqual(2);
+            for (const side of h.sides) expect(Math.abs(side), `${it}: the field as wide as the head`).toBeLessThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+});
+
 /** The answer to a home part's autosave (POST api/admin/sisu/home/0/osa/<part>): 200, or the status asked for (400, a refusal). */
 const homeSaved = (page: Page, part: string, status = 200) =>
   page.waitForResponse((r) => r.url().endsWith(`/api/admin/sisu/home/0/osa/${part}`) && r.request().method() === "POST" && r.status() === status);

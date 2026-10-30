@@ -48,12 +48,24 @@
   padding: 12px 14px;
 }
 
+/* ⋮⋮ | the number | the name | „avaldamata“ | ↑ ↓ on one line. The name's I18nInput gives its parts to this grid (editor .i18nRow, as a list row's
+   does; the final fix wave of the admin polish), so the line is the field's own whatever stands over or under it in the name's column: „tõlge
+   tulekul“ (head) and, in RU, the Estonian text (ref) over it; „Kopeeri eesti keelest“ (after) and the notes (hint, missing, error) under it. (The
+   line was centred on the whole name box: in RU the field sat 13 px under ⋮⋮, the number and ↑ ↓.) The rows are 0 apart, as an empty row would
+   still take a gap; the parts keep their 7 px by .i18nRow's margins. */
 .moduleHead {
   display: grid;
   grid-template-columns: 44px 24px minmax(0, 1fr) auto auto;
-  grid-template-areas: "handle num name tag arrows";
+  grid-template-areas:
+    ".      .   head    .   .     "
+    ".      .   ref     .   .     "
+    "handle num field   tag arrows"
+    ".      .   after   .   .     "
+    ".      .   hint    .   .     "
+    ".      .   missing .   .     "
+    ".      .   error   .   .     ";
   align-items: center;
-  gap: 10px;
+  gap: 0 10px;
 }
 
 .handle {
@@ -68,7 +80,6 @@
 }
 
 .name {
-  grid-area: name;
   min-width: 0;
 }
 
@@ -216,13 +227,26 @@
     padding: 12px;
   }
 
-  /* ⋮⋮, the number, the tag and the arrows on one line, the name under them */
+  /* ⋮⋮, the number, the tag and the arrows on one line, 8 px over the name's parts, which have the box's width */
   .moduleHead {
     grid-template-columns: 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "handle num tag arrows"
-      "name name name name";
-    gap: 8px;
+      "handle  num     tag     arrows"
+      "head    head    head    head"
+      "ref     ref     ref     ref"
+      "field   field   field   field"
+      "after   after   after   after"
+      "hint    hint    hint    hint"
+      "missing missing missing missing"
+      "error   error   error   error";
+    gap: 0 8px;
+  }
+
+  .moduleHead > .handle,
+  .moduleHead > .moduleNum,
+  .moduleHead > .rowTag,
+  .moduleHead > .arrows {
+    margin-bottom: 8px;
   }
 
   .lessonPart,
@@ -244,9 +268,22 @@
   .moduleHead {
     grid-template-columns: 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "handle num tag arrows"
-      "name name name name";
-    gap: 8px;
+      "handle  num     tag     arrows"
+      "head    head    head    head"
+      "ref     ref     ref     ref"
+      "field   field   field   field"
+      "after   after   after   after"
+      "hint    hint    hint    hint"
+      "missing missing missing missing"
+      "error   error   error   error";
+    gap: 0 8px;
+  }
+
+  .moduleHead > .handle,
+  .moduleHead > .moduleNum,
+  .moduleHead > .rowTag,
+  .moduleHead > .arrows {
+    margin-bottom: 8px;
   }
 
   .lessonPart,
