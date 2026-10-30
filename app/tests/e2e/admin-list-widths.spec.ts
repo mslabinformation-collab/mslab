@@ -130,6 +130,97 @@ test("every list that uses the shared table keeps all its columns inside its car
   }
 });
 
+// The phone's label rows and the toolbar (admin polish F5, F13; the sweep's guard, Task 6). At 390 and 375 px the shared table is a stack of label rows: in
+// Tagasiside's two tables (the answers and „Koolituste kaupa“) and in Tunnistused every cell is a 5 px row, its label at one indent (the cell's own left
+// edge, whatever order the bundle puts the stylesheets in), and every part of its value, an element or a bare text, in the second column, none wrapped
+// under the label. And the toolbar's scope select (Registreerimised „Koolitus ja toimumine“, Tagasiside „Koolitus“, Arved „Kuu“) is a line of its own as
+// wide as the search over it, not as wide as its longest option.
+test("phone 390 and 375 px: label rows at one indent with every value in column 2 (F5), and the scope select as wide as the search (F13)", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  info.setTimeout(info.timeout + 90_000);
+  const email = clientEmail("phone-rows", runName(info));
+  made.add(email);
+  await removeClientRows(email);
+  const name = `Liis Telefon ${info.project.name}`;
+  const fx = await insertAccountFixtures(email, { name, cards: ["confirmed", "ecourse"] });
+  await insertFeedbackAnswer(fx.registrations.confirmed!, { score: 9, expectations: "exceeded", recommend: "Jah." });
+  const [access] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from course_access where client_id = ${fx.clientId}`, { marksPages: false });
+  const certificate = await insertCertificate(access.id, "Liis Telefon");
+  await signInAsAdmin(page, context, visitorIp, created);
+
+  /** Each shown cell of the row: its left edge and padding, where its second column starts, and the left edges of its value's parts. */
+  const cellsOf = (row: string) =>
+    page.locator(row).first().evaluate((tr) =>
+      Array.from(tr.querySelectorAll<HTMLElement>(":scope > td"))
+        .filter((td) => td.getBoundingClientRect().height > 0)
+        .map((td) => {
+          const cs = getComputedStyle(td);
+          const box = td.getBoundingClientRect();
+          const [first] = cs.gridTemplateColumns.split(" ").map(parseFloat);
+          const parts: { what: string; left: number }[] = [];
+          for (const n of Array.from(td.childNodes)) {
+            if (n.nodeType === Node.TEXT_NODE && n.textContent!.trim()) {
+              const range = document.createRange();
+              range.selectNodeContents(n);
+              const r = range.getClientRects()[0];
+              if (r) parts.push({ what: n.textContent!.trim().slice(0, 20), left: r.left });
+            } else if (n instanceof HTMLElement && n.getBoundingClientRect().width > 0 && getComputedStyle(n).position !== "absolute")
+              parts.push({ what: n.tagName, left: n.getBoundingClientRect().left }); // (a screen reader's word, out of the flow, is no part of the row)
+          }
+          return {
+            label: td.dataset.label ?? "",
+            display: cs.display,
+            left: box.left + parseFloat(cs.paddingLeft),
+            padding: `${cs.paddingTop} ${cs.paddingBottom}`,
+            column2: box.left + parseFloat(cs.paddingLeft) + first + parseFloat(cs.columnGap),
+            parts,
+          };
+        }),
+    );
+  const toolbar = () =>
+    page.locator("[data-list-toolbar]").evaluate((tb) => {
+      const search = tb.querySelector("form[role=search]")!.getBoundingClientRect();
+      const select = Array.from(tb.querySelectorAll("select")).find((s) => !s.closest("[data-scope-phone]") && s.getBoundingClientRect().width > 0)!;
+      const r = select.getBoundingClientRect();
+      return { search: { left: search.left, width: search.width }, select: { label: select.getAttribute("aria-label"), left: r.left, width: r.width } };
+    });
+  const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+  for (const width of [390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const { url, row } of [
+      { url: `/admin/tagasiside`, row: `tr[data-feedback-row]:has-text("${name}")` },
+      { url: `/admin/tagasiside`, row: `tr[data-feedback-course="${fx.course.id}"]` },
+      { url: `/admin/tunnistused`, row: `tr[data-register-row="${certificate.id}"]` },
+    ]) {
+      await page.goto(url);
+      await adminReady(page);
+      await expect(page.locator(row).first(), `${url} at ${width} px: the seeded row`).toBeVisible();
+      const cells = await cellsOf(row);
+      const where = `${url} ${row} at ${width} px`;
+      expect(cells.length, `${where}: its cells`).toBeGreaterThanOrEqual(3);
+      for (const c of cells) {
+        expect(c.display, `${where}, „${c.label}“: a label row`).toBe("grid");
+        expect(c.padding, `${where}, „${c.label}“: a 5 px row`).toBe("5px 5px");
+        expect(Math.abs(c.left - cells[0].left), `${where}, „${c.label}“: the label at the first cell's indent`).toBeLessThanOrEqual(1);
+        expect(c.parts.length, `${where}, „${c.label}“: a value`).toBeGreaterThan(0);
+        for (const p of c.parts) expect(Math.abs(p.left - c.column2), `${where}, „${c.label}“: ${p.what} in the value column (${JSON.stringify(c)})`).toBeLessThanOrEqual(1);
+      }
+      expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+    }
+    for (const url of ["/admin/registreerimised", "/admin/tagasiside", "/admin/arved"]) {
+      await page.goto(url);
+      await adminReady(page);
+      const t = await toolbar();
+      const where = `${url} at ${width} px (${JSON.stringify(t)})`;
+      expect(Math.abs(t.select.left - t.search.left), `${where}: the scope select starts under the search`).toBeLessThanOrEqual(1);
+      expect(Math.abs(t.select.width - t.search.width), `${where}: the scope select as wide as the search`).toBeLessThanOrEqual(1);
+      expect(t.select.left + t.select.width, `${where}: inside the screen`).toBeLessThanOrEqual(width);
+      expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
 // Kalender (B3, piece 3b Task 1) is the shared list table with four columns (date and weekday | course and place | seats with a bar | state). Its own session
 // is a draft course's (the „Mustand“ tag beside the name) with one student confirmed („1 / 6“). From 1180 to 1440 px the four cells of the row are side by side inside the section's card; from 880 the table stays inside it; and
 // the page never scrolls sideways. On a phone (640, 390 and 375 px; the box is 760 px or less, calendar.module.css .box) the section has no card and each session is a
