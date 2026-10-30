@@ -1274,7 +1274,7 @@ describe("a note box under every check (Dim 30.10)", () => {
   test("the take-back's check is a redo from the deploy: the answer taken back leaves the box there, empty, and no line says the box is gone", () => {
     const check = find("testimine-tehtud-ja-tagasi");
     expect(check.mark).toBe("redo");
-    expect(check.markedAt).toBe("deploy");
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-31T00:00:00.000Z")).not.toBeNull();
     // (its walk presses and takes back on another check: never one with a redo's old answer, which the take-back would erase; review Minor 3)
     expect(check.steps[1]).toContain("ega „Varasem vastus“ rida");
@@ -1288,7 +1288,8 @@ describe("a note box under every check (Dim 30.10)", () => {
 
   test("a new check right after the take-back's: Dim's, on a computer, in Haldus, writing (its first note sends a Telegram message), new from the deploy", () => {
     const check = find("testimine-markus-ilma-vastuseta");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "new", markedAt: "deploy", href: "/admin/testimine" });
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "new", href: "/admin/testimine" });
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     const ids = plan.items.map((c) => c.id);
     expect(ids.indexOf("testimine-markus-ilma-vastuseta")).toBe(ids.indexOf("testimine-tehtud-ja-tagasi") + 1);
   });

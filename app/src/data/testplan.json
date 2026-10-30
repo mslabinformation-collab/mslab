@@ -2355,7 +2355,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T08:09:10.347Z"
     },
     {
       "id": "testimine-markus-ilma-vastuseta",
@@ -2387,7 +2387,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-30T08:09:10.347Z"
     },
     {
       "id": "haldus-sisselogimine-tagasi",
