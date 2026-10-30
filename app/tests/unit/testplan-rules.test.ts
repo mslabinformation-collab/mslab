@@ -913,3 +913,147 @@ describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", ()
     expect(Object.keys(readAnswersDoc({ v: 1, answers: {}, auto: null }))).toEqual(["v", "answers"]);
   });
 });
+
+// Dim 30.10: a note box under every check. A note typed without pressing is stored on its own, `{ status: "note", note, at, by }` in the session's own
+// map (`answers`, or `auto` for Automaattest), one entry per check per side as ever. It decides no state ("open stays open, Automaattest's ✓ stays ✓")
+// and counts as nothing; its first note pings Telegram like any answer's. A "note" whose text cleans to "" is a clear.
+describe("a note on its own (Dim 30.10)", () => {
+  const NOW = new Date("2026-10-30T10:00:00.000Z");
+  const AUTO = "auto@x.test";
+  const redo20 = item({ mark: "redo", markedAt: "2026-10-20T00:00:00.000Z" });
+  /** A note stored on its own (Maria's unless `over` says otherwise). */
+  const noted = (note: string, at = "2026-10-21T10:00:00.000Z", over: Partial<StoredAnswer> = {}): StoredAnswer => ({ status: "note", note, at, by: "m@x.test", ...over });
+  /** A note sent on its own, as the page sends one typed on a check with no answer of hers. */
+  const alone = (note: string): IncomingAnswer => ({ status: "note", note });
+  const A = (status: Status, at = "2026-10-21T11:00:00.000Z") => answer(status, at, { by: AUTO });
+  const withAuto = (answers: Record<string, StoredAnswer>, auto: Record<string, StoredAnswer>): AnswersDoc => ({ v: 1, answers, auto });
+
+  test("checkState: a note is open, with the note as the check's answer; no redo overtakes it (a note is no verdict)", () => {
+    expect(checkState(item(), noted("Nupp on hall"), PLAN, BUILD)).toEqual({ state: "open", answer: noted("Nupp on hall"), overtaken: null });
+    // (typed before the redo's instant: still the check's note, never „Varasem vastus“)
+    const early = noted("Nupp on hall", "2026-10-19T10:00:00.000Z");
+    expect(checkState(redo20, early, PLAN, BUILD)).toEqual({ state: "open", answer: early, overtaken: null });
+  });
+
+  const CASES: { name: string; it?: TestItem; auto?: StoredAnswer; state: "open" | "done" | "failed" }[] = [
+    { name: "no Automaattest answer: open", state: "open" },
+    { name: "Automaattest's OK: done (its ✓ stays)", auto: A("ok"), state: "done" },
+    { name: "Automaattest's Viga: failed", auto: A("bad"), state: "failed" },
+    { name: "Automaattest's Jäta vahele: open", auto: A("skip"), state: "open" },
+    { name: "Automaattest's note alone: open", auto: noted("auto märkus", "2026-10-21T11:00:00.000Z", { by: AUTO }), state: "open" },
+    { name: "Automaattest's OK a redo overtook: open", it: redo20, auto: A("ok", "2026-10-19T10:00:00.000Z"), state: "open" },
+  ];
+  test.each(CASES)("sharedState: a person's note, $name; the answer is her note, nothing overtaken", ({ it = item(), auto, state }) => {
+    const person = noted("Minu märkus");
+    expect(sharedState(it, person, auto, PLAN, BUILD)).toEqual({ state, answer: person, overtaken: null });
+  });
+
+  test("sharedState: Automaattest's note alone decides nothing either, and a person's answer still wins over it", () => {
+    const autoNote = noted("auto märkus", "2026-10-21T11:00:00.000Z", { by: AUTO });
+    expect(sharedState(item(), undefined, autoNote, PLAN, BUILD)).toEqual({ state: "open", answer: null, overtaken: null });
+    const ok = answer("ok", "2026-10-21T10:00:00.000Z", { by: "m@x.test" });
+    expect(sharedState(item(), ok, autoNote, PLAN, BUILD)).toEqual({ state: "done", answer: ok, overtaken: null });
+    // stateIn reads the same off a doc
+    expect(stateIn(withAuto({ "maria-1": noted("x") }, { "maria-1": A("ok") }), PLAN.items[0], PLAN, BUILD)).toEqual({ state: "done", answer: noted("x"), overtaken: null });
+  });
+
+  test("planCounts and ownFaults: a note counts as nothing (open, or Automaattest's state), never as a redo", () => {
+    // maria-1 her note alone; koos-1 her note over Automaattest's OK; dim-1 (redo 20.10) her note typed before the redo, and Automaattest's note
+    const notes = withAuto(
+      { "maria-1": noted("a"), "koos-1": noted("b"), "dim-1": noted("c", "2026-10-19T10:00:00.000Z") },
+      { "koos-1": A("ok"), "dim-1": noted("d", "2026-10-21T11:00:00.000Z", { by: AUTO }) },
+    );
+    expect(planCounts(PLAN, notes, BUILD, null)).toEqual({ total: 3, done: 1, open: 2, bad: 0, redo: 0 });
+    expect(planCounts(PLAN, doc({ "maria-1": noted("a") }), BUILD, "maria")).toEqual({ total: 2, done: 0, open: 2, bad: 0, redo: 0 });
+    expect(ownFaults(PLAN, withAuto({ "maria-1": noted("a") }, { "dim-1": noted("d", "2026-10-21T11:00:00.000Z", { by: AUTO }) }), BUILD, "m@x.test")).toBe(0);
+    expect(ownFaults(PLAN, withAuto({}, { "dim-1": noted("d", "2026-10-21T11:00:00.000Z", { by: AUTO }) }), BUILD, AUTO)).toBe(0);
+  });
+
+  test("readAnswersDoc keeps a stored note by the rules of any answer, in either map; a note whose text cleans to nothing is no entry", () => {
+    const at = "2026-10-30T09:00:00.000Z";
+    const value = {
+      v: 1,
+      answers: { "maria-1": { status: "note", note: "  Nupp on hall  ", at, by: "m@x.test", notePinged: true }, "maria-2": { status: "note", note: "   ", at, by: "m@x.test" } },
+      auto: { "dim-1": { status: "note", note: "auto", at, by: AUTO }, "koos-1": { status: "note", note: 5, at, by: AUTO } },
+    };
+    expect(readAnswersDoc(value)).toEqual({
+      v: 1,
+      answers: { "maria-1": { status: "note", note: "Nupp on hall", at, by: "m@x.test", notePinged: true } },
+      auto: { "dim-1": { status: "note", note: "auto", at, by: AUTO } },
+    });
+  });
+
+  test("mergeAnswers stores it as `{ status: \"note\", note, at, by }`, the note cleaned, in the session's own map only", () => {
+    const { doc: merged, changed } = mergeAnswers(doc(), { "maria-1": alone("  Nupp on hall  ") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(changed).toEqual(["maria-1"]);
+    expect(merged).toEqual(doc({ "maria-1": { status: "note", note: "Nupp on hall", at: NOW.toISOString(), by: "m@x.test" } }));
+    const ok = { "maria-1": answer("ok", "2026-10-21T10:00:00.000Z", { by: "m@x.test" }) };
+    const byAuto = mergeAnswers(doc(ok), { "maria-1": alone("auto märkus") }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(byAuto.doc).toEqual(withAuto(ok, { "maria-1": { status: "note", note: "auto märkus", at: NOW.toISOString(), by: AUTO } }));
+    // an id outside the plan is ignored, as for any answer
+    expect(mergeAnswers(doc(), { ghost: alone("x") }, PLAN, "m@x.test", NOW, BUILD)).toEqual({ doc: doc(), changed: [] });
+  });
+
+  test("a note whose text cleans to \"\" acts exactly as a clear: the entry of that map goes, whatever it was; with none, nothing changes", () => {
+    const stored = withAuto(
+      { "maria-1": noted("Nupp on hall", "2026-10-21T10:00:00.000Z", { notePinged: true }), "dim-1": answer("ok", "2026-10-21T10:00:00.000Z", { by: "m@x.test" }) },
+      { "maria-1": A("ok") },
+    );
+    const emptied = mergeAnswers(stored, { "maria-1": alone("   "), "dim-1": alone(""), "koos-1": alone("") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(emptied.changed).toEqual(["maria-1", "dim-1"]);
+    expect(emptied.doc).toEqual(withAuto({}, stored.auto!));
+    expect(emptied.doc).toEqual(mergeAnswers(stored, { "maria-1": clear(), "dim-1": clear(), "koos-1": clear() }, PLAN, "m@x.test", NOW, BUILD).doc);
+    expect(pingsFor(stored, emptied.doc, emptied.changed, PLAN, BUILD)).toEqual([]);
+  });
+
+  /** One save of one check, as the route runs it: merge, find the pings, record them. */
+  function save(stored: AnswersDoc, id: string, incoming: IncomingAnswer, at: string, by = "m@x.test", side: "answers" | "auto" = "answers") {
+    const now = new Date(at);
+    const merged = mergeAnswers(stored, { [id]: incoming }, PLAN, by, now, BUILD, side);
+    const pings = pingsFor(stored, merged.doc, merged.changed, PLAN, BUILD, side);
+    return { pings, recorded: markPinged(merged.doc, pings, now) };
+  }
+
+  test("its first note pings once, kind \"note\"; retyping pings nothing; emptying it (the clear) pings nothing; a note typed after that is a new one", () => {
+    const s1 = save(doc(), "maria-1", alone("Nupp on hall"), "2026-10-30T10:00:00.000Z");
+    expect(s1.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    expect(s1.recorded.answers["maria-1"]).toEqual({ status: "note", note: "Nupp on hall", at: "2026-10-30T10:00:00.000Z", by: "m@x.test", notePinged: true });
+    const s2 = save(s1.recorded, "maria-1", alone("Nupp on hall, ka telefonis"), "2026-10-30T10:01:00.000Z");
+    expect(s2.pings).toEqual([]);
+    expect(s2.recorded.answers["maria-1"].notePinged).toBe(true); // (carried: the same note entry)
+    const s3 = save(s2.recorded, "maria-1", alone(""), "2026-10-30T10:02:00.000Z");
+    expect(s3.pings).toEqual([]);
+    expect(s3.recorded.answers).toEqual({});
+    // (no memory of the cleared one, as for a clear: Dim 29.10)
+    expect(save(s3.recorded, "maria-1", alone("Uus märkus"), "2026-10-30T10:03:00.000Z").pings).toEqual([{ id: "maria-1", kind: "note" }]);
+  });
+
+  test("a Viga pressed over a note carries its text: it earns its Viga message (no note of its own yet), and that text is not sent again", () => {
+    const n = save(doc(), "maria-1", alone("Nupp ei tööta"), "2026-10-30T10:00:00.000Z");
+    expect(n.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    const bad = save(n.recorded, "maria-1", inc("bad", "Nupp ei tööta"), "2026-10-30T10:01:00.000Z");
+    expect(bad.pings).toEqual([{ id: "maria-1", kind: "bad", oldNote: true }]);
+    expect(bad.recorded.answers["maria-1"]).toEqual({ status: "bad", note: "Nupp ei tööta", at: "2026-10-30T10:01:00.000Z", by: "m@x.test", pinged: "2026-10-30T10:01:00.000Z" });
+    // the same failure saved again with the same text: nothing; the description typed next: the second message, once
+    const again = save(bad.recorded, "maria-1", inc("bad", "Nupp ei tööta"), "2026-10-30T10:02:00.000Z");
+    expect(again.pings).toEqual([]);
+    const typed = save(again.recorded, "maria-1", inc("bad", "Nupp ei tööta, ka telefonis"), "2026-10-30T10:03:00.000Z");
+    expect(typed.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+  });
+
+  test("a Läbitud pressed over a note carries its text and pings nothing; a note typed on it next is its first", () => {
+    const n = save(doc(), "koos-1", alone("Tahvlis korras"), "2026-10-30T10:00:00.000Z");
+    const ok = save(n.recorded, "koos-1", inc("ok", "Tahvlis korras"), "2026-10-30T10:01:00.000Z");
+    expect(ok.pings).toEqual([]);
+    expect(ok.recorded.answers["koos-1"]).toEqual({ status: "ok", note: "Tahvlis korras", at: "2026-10-30T10:01:00.000Z", by: "m@x.test" });
+    expect(save(ok.recorded, "koos-1", inc("ok", "Tahvlis ja telefonis korras"), "2026-10-30T10:02:00.000Z").pings).toEqual([{ id: "koos-1", kind: "note" }]);
+  });
+
+  test("Automaattest's note alone pings nothing (only its Viga pings); a note on an id outside the plan earns nothing", () => {
+    const auto = save(doc(), "maria-1", alone("Kõik sammud läbitud."), "2026-10-30T10:00:00.000Z", AUTO, "auto");
+    expect(auto.pings).toEqual([]);
+    expect(auto.recorded.auto!["maria-1"]).toEqual({ status: "note", note: "Kõik sammud läbitud.", at: "2026-10-30T10:00:00.000Z", by: AUTO });
+    expect(pingsFor(doc(), doc({ ghost: noted("x") }), ["ghost"], PLAN, BUILD)).toEqual([]);
+    expect(markPinged(doc({ "maria-1": noted("x") }), [{ id: "maria-1", kind: "note" }], NOW).answers["maria-1"]).toEqual({ ...noted("x"), notePinged: true });
+  });
+});

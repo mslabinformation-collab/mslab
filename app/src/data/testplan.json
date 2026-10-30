@@ -2345,7 +2345,7 @@
       "expect": [
         "Avatud kontrolli ees on tühi ring ja selle sammud, „Mida näed“ ja „Miks“ on kohe näha.",
         "Pärast „Viga“ on kontrolli ees punane ✕, sammud on alles ja kontroll jääb oma kohale.",
-        "Teine „Viga“ võtab vastuse tagasi: jälle tühi ring, ükski nupp pole vajutatud, märkuse kasti pole.",
+        "Teine „Viga“ võtab vastuse tagasi: jälle tühi ring, ükski nupp pole vajutatud, märkuse kast on tühi.",
         "Pärast „Läbitud“ on kontrolli ees roheline ✓, selle sammud peituvad ning ülaosa arvud ja ala riba muutuvad kohe.",
         "„Võta vastus tagasi“ teeb sama: kontrollil on jälle tühi ring ja sammud on lahti.",
         "Sinu „Viga“ saadab Telegrami tavalise teate; vastuse tagasivõtmine teadet ei saada.",
@@ -2354,8 +2354,40 @@
       "why": "Testija peab kohe nägema, mis on tehtud, ja kogemata antud vastuse saab tagasi võtta.",
       "risk": "med",
       "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "testimine-markus-ilma-vastuseta",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Testimise leht: märkus ilma vastuseta",
+      "href": "/admin/testimine",
+      "steps": [
+        "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
+        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida.",
+        "Kirjuta teise kontrolli märkuse kasti Proov, ühtegi nuppu vajutamata, ja klõpsa kastist välja.",
+        "Oota, kuni päises on „Salvestatud …“, ja laadi leht uuesti.",
+        "Kustuta teise kontrolli märkus, klõpsa kastist välja ja laadi leht uuesti.",
+        "Vali „Olek“ juures „Läbitud“ ja leia kolmas kontroll: roheline „Automaattest: Läbitud“, all vastuse rida pole.",
+        "Kui kolmas kontroll on olemas, kirjuta tema kasti Proov, klõpsa välja, siis kustuta märkus ja klõpsa välja.",
+        "Kui kõik oli nii, nagu all kirjas, vajuta selle kontrolli juures „Läbitud“."
+      ],
+      "expect": [
+        "Pärast kastist välja klõpsamist on päises „Salvestatud …“ ja kontrolli ees on ikka tühi ring.",
+        "Ükski nupp pole vajutatud ja kasti all on rida „Dim · … · Märkus“.",
+        "Selle rea lõpus pole „Võta vastus tagasi“: märkuse kustutamine võtab selle ära.",
+        "Pärast uuesti laadimist on märkus kastis alles ja kontroll on valiku „Avatud“ all.",
+        "Pärast kustutamist ja uuesti laadimist on kast tühi ja kasti all pole vastuse rida.",
+        "Kolmanda kontrolli ees jääb märkuse ajal roheline ✓ ja ülaosa arvud ei muutu.",
+        "Kumbki märkus saadab Telegrami ühe teate „Testimine — Märkus: … (Dim)“ tekstiga Proov; kustutamine teadet ei saada."
+      ],
+      "why": "Testija saab kirjutada märkuse ka vastamata, ilma et kontrolli olek muutuks.",
+      "risk": "med",
+      "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-30T02:29:49.820Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-sisselogimine-tagasi",

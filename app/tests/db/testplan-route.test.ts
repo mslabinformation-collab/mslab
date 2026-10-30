@@ -386,6 +386,37 @@ describe("PUT", () => {
     ]);
   });
 
+  // Dim 30.10: a note typed without pressing is saved on its own and its first note is announced, without an answer at the end
+  test("a note on its own: 200, stored as a note; its first note is one message without „· …“; retyped, nothing; emptied, gone and nothing sent", async () => {
+    await signIn();
+    const res = await put({ answers: { "maria-1": { status: "note", note: "Nupp on hall" } } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).answers["maria-1"]).toMatchObject({ status: "note", note: "Nupp on hall", byName: "Maria" });
+    await runLater();
+    await put({ answers: { "maria-1": { status: "note", note: "Nupp on hall, ka telefonis" } } });
+    await runLater();
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Märkus: Avaleht telefonis (Maria)\nNupp on hall\nhttps://site.example.test/admin/testimine#maria-1",
+    ]);
+    const emptied = await put({ answers: { "maria-1": { status: "note", note: "" } } });
+    expect((await emptied.json()).answers).toEqual({});
+    expect(state.later).toEqual([]);
+    expect((await stored())?.answers).toEqual({});
+  });
+
+  test("a Viga pressed over a note carries its text: the Viga's message says no note yet, the same text is not sent again, the next one is", async () => {
+    await signIn();
+    for (const [status, note] of [["note", "Nupp ei tööta"], ["bad", "Nupp ei tööta"], ["bad", "Nupp ei tööta"], ["bad", "Nupp ei tööta, ka telefonis"]]) {
+      await put({ answers: { "maria-1": { status, note } } });
+      await runLater();
+    }
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Märkus: Avaleht telefonis (Maria)\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nNupp ei tööta, ka telefonis\nhttps://site.example.test/admin/testimine#maria-1",
+    ]);
+  });
+
   test("several Vead in one save: one message each, in the order sent", async () => {
     await signIn();
     await put({ answers: { "dim-1": { status: "bad", note: "a" }, "maria-1": { status: "bad", note: "b" }, "maria-2": { status: "ok", note: "" } } });

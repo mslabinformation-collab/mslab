@@ -1205,10 +1205,11 @@ describe("Testimine says what is done (admin polish Part A, Dim 29.10)", () => {
     return found!;
   };
 
-  test("a new check in Haldus, Dim's, on a computer, right after the filters' one: the markers, the steps open, a row that stays, both ways to take an answer back, „Värskenda“", () => {
+  test("a check in Haldus, Dim's, on a computer, right after the filters' one: the markers, the steps open, a row that stays, both ways to take an answer back, „Värskenda“", () => {
     const check = find("testimine-tehtud-ja-tagasi");
     // (writes: its walk presses a real „Viga“ on another check, which is saved and sends the usual Telegram message: the sweep, Task 6, Task 5 re-review)
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "new", href: "/admin/testimine" });
+    // (new in Part A; a redo since Dim 30.10: an answer taken back leaves the note box there, empty — below)
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "redo", href: "/admin/testimine" });
     expect(markedSince(check.markedAt)).toBe(true);
     const text = [check.title, ...check.steps, ...check.expect].join("\n");
     for (const words of [
@@ -1256,6 +1257,63 @@ describe("Testimine says what is done (admin polish Part A, Dim 29.10)", () => {
     expect(markedSince(check.markedAt)).toBe(true);
     expect(check.expect.join("\n")).toContain(`„${t.steps} ▸“ peidab need, teine vajutus avab.`);
     expect(check.expect.join("\n")).not.toContain(`„${t.steps} ▸“ avab sammud`);
+  });
+});
+
+// Dim 30.10: a note box under every check, and a note typed without pressing is saved on its own, changing no state ("open stays open,
+// Automaattest's ✓ stays ✓"); its first note pings Telegram. The take-back's check is redone (the box stays, empty), and a new check walks the note.
+describe("a note box under every check (Dim 30.10)", () => {
+  const t = adminEt.testplan;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+
+  test("the take-back's check is a redo from the deploy: the answer taken back leaves the box there, empty, and no line says the box is gone", () => {
+    const check = find("testimine-tehtud-ja-tagasi");
+    expect(check.mark).toBe("redo");
+    expect(check.markedAt).toBe("deploy");
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-31T00:00:00.000Z")).not.toBeNull();
+    expect(check.expect.find((l) => l.startsWith(`Teine „${t.bad}“`))).toContain("märkuse kast on tühi");
+    expect(whole("testimine-tehtud-ja-tagasi")).not.toContain("kasti pole");
+  });
+
+  test("no Testimine check says a note box comes only with an answer", () => {
+    for (const c of plan.items.filter((i) => i.href === "/admin/testimine")) expect(whole(c.id), c.id).not.toMatch(/kasti pole|kast ilmub|kast tuleb/);
+  });
+
+  test("a new check right after the take-back's: Dim's, on a computer, in Haldus, writing (its first note sends a Telegram message), new from the deploy", () => {
+    const check = find("testimine-markus-ilma-vastuseta");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "new", markedAt: "deploy", href: "/admin/testimine" });
+    const ids = plan.items.map((c) => c.id);
+    expect(ids.indexOf("testimine-markus-ilma-vastuseta")).toBe(ids.indexOf("testimine-tehtud-ja-tagasi") + 1);
+  });
+
+  test("it walks a note typed on an open check without pressing, kept over a reload, emptied, and one on Automaattest's ✓; in the page's words", () => {
+    const check = find("testimine-markus-ilma-vastuseta");
+    const text = whole("testimine-markus-ilma-vastuseta");
+    for (const words of [
+      `„${t.who.all}“`,
+      `„${t.filter.open.replace(" {n}", "")}“`,
+      `„${t.filter.done.replace(" {n}", "")}“`,
+      `„${adminEt.autosave.saved.replace("{time}", "…")}“`,
+      `„${fill(t.last, { name: "Dim", when: "…", status: t.note })}“`,
+      `„${t.takeBack}“`,
+      `„${t.who.auto}: ${t.ok}“`,
+      `„${t.tg.note.split("\n")[0].replace(" · {status}", "").replace("{title}", "…").replace("{name}", "Dim")}“`,
+      "tühi ring",
+      "roheline ✓",
+      "ühtegi nuppu vajutamata",
+    ])
+      expect(text, words).toContain(words);
+    // (the other checks' notes are typed on checks with no answer line, and emptied again: no one's answer is touched; this one is answered last)
+    expect(check.steps.join("\n")).toContain("mille all pole ühtegi vastuse rida");
+    expect(check.steps.filter((s) => s.includes("selle kontrolli juures"))).toEqual([check.steps.at(-1)]);
+    expect(check.steps.at(-1)).toContain(`selle kontrolli juures „${t.ok}“`);
+    // the walk for a ✓ of Automaattest's says what to do when there is none
+    expect(check.steps.join("\n")).toMatch(/Kui kolmas kontroll on olemas/);
   });
 });
 

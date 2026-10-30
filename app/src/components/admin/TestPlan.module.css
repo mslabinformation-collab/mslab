@@ -447,6 +447,12 @@
   cursor: pointer;
 }
 
+/* a note's own last line (Dim 30.10: „… · Märkus“) has no „Võta vastus tagasi“, so no 44 px box to sit in: its words keep the distance from the
+   note box that a verdict's line has */
+.lastAlone {
+  margin: 4px 0 12px;
+}
+
 .overtaken {
   color: var(--warn);
   font-weight: 600;

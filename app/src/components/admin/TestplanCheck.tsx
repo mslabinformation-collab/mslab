@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type MutableRefObject } from "react";
-import { NOTE_MAX, type CheckState, type Status, type StoredAnswer, type TestItem } from "@/domain/testplan";
+import { NOTE_MAX, type CheckState, type Status, type StoredAnswer, type StoredStatus, type TestItem } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDayMonth, formatTime } from "@/i18n/format";
 import ui from "./ui.module.css";
@@ -14,23 +14,29 @@ import styles from "./TestPlan.module.css";
 // line names it, and a note typed on it keeps it.
 // Admin polish Part A (Dim 29.10: "clear which tests are done and which need doing"): a marker before the title (an empty ring, a green ✓, a red ✕,
 // with the state's word for a screen reader); the steps open on a check still to do and folded on a done or failed one; the pressed half pressed
-// again takes the answer back, and so does „Võta vastus tagasi“ at the end of the last-answer line (the note goes with the answer: no box is left to
-// type into); a double-click or double-tap on either half counts as its first click alone; Automaattest's result is a chip in the meta line. The state is TestPlan's (domain/testplan.ts sharedState): a check Automaattest
-// alone passed is done, with no half pressed.
+// again takes the answer back, and so does „Võta vastus tagasi“ at the end of the last-answer line (the note goes with the answer); a double-click
+// or double-tap on either half counts as its first click alone; Automaattest's result is a chip in the meta line. The state is TestPlan's
+// (domain/testplan.ts sharedState): a check Automaattest alone passed is done, with no half pressed.
+// Dim 30.10: the note box is under every check, answered or not (an answer taken back leaves it there, empty). A note typed on a check with no answer
+// of hers is a note on its own (`onType("note", …)`): it changes no state, its last line ends „· Märkus“ with no take-back (emptying the box removes
+// it), and no half is pressed. Automaattest's note alone is no result: no chip, only its „Automaattest: …“ line.
 
 type Texts = typeof adminEt.testplan;
 
-/** The two answers the row offers (spec §10: „Jäta vahele“ has no button any more). */
+/** The two answers the row offers (spec §10: „Jäta vahele“ has no button any more). A note on its own is never one. */
 const ANSWERS: readonly Status[] = ["ok", "bad"];
 /** The marker's glyph (not read: the state's word is): an open check's ring is empty. */
 const GLYPH: Record<CheckState["state"], string> = { open: "", done: "✓", failed: "✕" };
 
-/** An answer's word: „Läbitud“, „Viga“ or (stored before piece 4c) „Jäta vahele“. */
-const statusText = (t: Texts, status: Status): string => t[status];
+/** An answer's word: „Läbitud“, „Viga“, (stored before piece 4c) „Jäta vahele“, or (a note on its own, Dim 30.10) „Märkus“. */
+const statusText = (t: Texts, status: StoredStatus): string => t[status];
 /** A check's state in the page's words, for a screen reader: „Avatud“ (the „Olek“ pill's word without its number), „Läbitud“, „Viga“. */
 const stateText = (t: Texts, state: CheckState["state"]): string => (state === "open" ? t.filter.open.replace(" {n}", "") : state === "done" ? t.ok : t.bad);
 
-/** Automaattest's answer to a check, for its chip (Dim 25.10, 29.10); `overtaken`: a redo since then has made it one from before the change. */
+/**
+ * Automaattest's answer to a check, for its chip (Dim 25.10, 29.10) and its note line; `overtaken`: a redo since then has made it one from before
+ * the change. A note on its own (Dim 30.10) has no chip, only its line.
+ */
 export type AutoAnswer = { answer: StoredAnswer; overtaken: boolean };
 
 /** An answer's instant as the page shows it: "dd.mm HH:MM", Tallinn time. */
@@ -39,7 +45,7 @@ const whenOf = (at: string): string => `${formatDayMonth(new Date(at), "et")} ${
 type CheckProps = {
   t: Texts;
   item: TestItem;
-  /** The check's state (sharedState); `answer` and `overtaken` are a person's only. */
+  /** The check's state (sharedState); `answer` and `overtaken` are a person's only (`answer` may be her note on its own, Dim 30.10). */
   st: CheckState;
   /** Automaattest's answer to this check, shown as a chip (null: none, or this is Automaattest's own page). */
   auto: AutoAnswer | null;
@@ -51,7 +57,8 @@ type CheckProps = {
   onPress(status: Status): void;
   /** Takes the answer back (Dim 29.10): the pressed half pressed again, or „Võta vastus tagasi“. */
   onTakeBack(): void;
-  onType(status: Status, value: string): void;
+  /** A note typed: on her answer's status, or "note" where she has none (or her note on its own: Dim 30.10). */
+  onType(status: StoredStatus, value: string): void;
   onLeave(): void;
 };
 
@@ -69,6 +76,8 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
   const stepsOpen = stepsPicked ?? stepsFor.open;
   const halves = useRef<Partial<Record<Status, HTMLButtonElement | null>>>({});
   const answer = st.answer;
+  /** Her answer, a verdict (null: none, or her note on its own, which is no answer to take back). */
+  const verdict = answer && answer.status !== "note" ? answer : null;
   const titleId = `${uid}-title`;
   const stepsId = `${uid}-steps`;
   const when = answer && !unsent ? whenOf(answer.at) : "";
@@ -108,8 +117,9 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
                 {t.writes}
               </span>
             )}
-            {auto && (
-              // Automaattest's result (Dim 29.10): green, red or grey; one from before a redo is grey and in the page's words
+            {auto && auto.answer.status !== "note" && (
+              // Automaattest's result (Dim 29.10): green, red or grey; one from before a redo is grey and in the page's words (its note alone is
+              // no result: no chip, Dim 30.10)
               <span className={`${styles.chip} ${styles.autoChip}`} data-check-auto={auto.overtaken ? "overtaken" : auto.answer.status}>
                 {t.who.auto}: {auto.overtaken ? fill(t.overtaken, { status: statusText(t, auto.answer.status) }) : statusText(t, auto.answer.status)}
               </span>
@@ -176,35 +186,37 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
         <p className={styles.why}>{item.why}</p>
       </div>
 
-      {answer && (
-        // the note: open under every answer (Dim 22.10); a check with no answer of a person's has nothing to write a note on (an answer taken back
-        // takes its box with it, Dim 29.10). A Viga asks what went wrong, any other answer just says „Märkus“.
-        <div className={styles.noteBox}>
-          <textarea
-            ref={(el) => {
-              if (el && focusAfterRef.current === item.id) {
-                focusAfterRef.current = null;
-                el.focus();
-              }
-            }}
-            className={`${ui.textarea} ${styles.note}`}
-            aria-label={t.note}
-            placeholder={answer.status === "bad" ? t.notePrompt : t.note}
-            maxLength={NOTE_MAX}
-            value={typed ?? answer.note}
-            onChange={(e) => onType(answer.status, e.target.value)}
-            onBlur={onLeave}
-            data-check-note=""
-          />
-        </div>
-      )}
+      {/* the note: under every check, answered or not (Dim 30.10; under every answer since Dim 22.10). Her Viga asks what went wrong, anything
+          else just says „Märkus“. Typed on her answer it is that answer's note; typed where she has none (open, Automaattest's ✓, a redo's old
+          answer) or on her note it is a note on its own, which changes no state. */}
+      <div className={styles.noteBox}>
+        <textarea
+          ref={(el) => {
+            if (el && focusAfterRef.current === item.id) {
+              focusAfterRef.current = null;
+              el.focus();
+            }
+          }}
+          className={`${ui.textarea} ${styles.note}`}
+          aria-label={t.note}
+          placeholder={verdict?.status === "bad" ? t.notePrompt : t.note}
+          maxLength={NOTE_MAX}
+          value={typed ?? answer?.note ?? ""}
+          onChange={(e) => onType(verdict ? verdict.status : "note", e.target.value)}
+          onBlur={onLeave}
+          data-check-note=""
+        />
+      </div>
 
       {answer && !unsent && (
-        <p className={styles.last}>
+        <p className={verdict ? styles.last : `${styles.last} ${styles.lastAlone}`}>
+          {/* (a note on its own: „{name} · {when} · Märkus“, and no take-back: emptying the box removes it) */}
           <span data-check-last="">{fill(t.last, { name: answer.by, when, status: statusText(t, answer.status) })}</span>
-          <button type="button" className={`${ui.link} ${styles.takeBack}`} aria-describedby={titleId} onClick={takeBack} data-take-back="">
-            {t.takeBack}
-          </button>
+          {verdict && (
+            <button type="button" className={`${ui.link} ${styles.takeBack}`} aria-describedby={titleId} onClick={takeBack} data-take-back="">
+              {t.takeBack}
+            </button>
+          )}
         </p>
       )}
       {st.overtaken && (

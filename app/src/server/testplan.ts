@@ -5,7 +5,7 @@ import { settings } from "@/db/schema";
 import planFile from "@/data/testplan.json";
 import {
   answerOf, answersIn, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sideOf, testerOf,
-  type AnswersDoc, type IncomingAnswer, type Ping, type Status, type Tester, type TestPlan,
+  type AnswersDoc, type IncomingAnswer, type Ping, type StoredStatus, type Tester, type TestPlan,
 } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -27,8 +27,8 @@ const EMPTY: AnswersDoc = { v: 1, answers: {} };
 const MAX_IDS = 300;
 /** A Telegram message holds at most this many characters (code points) of the note. */
 const PING_NOTE_MAX = 300;
-/** The statuses a save may carry: the three that are stored, and (Dim 29.10) "clear", which takes the answer back. */
-const STATUSES: readonly string[] = ["ok", "bad", "skip", "clear"];
+/** The statuses a save may carry: the ones that are stored (a note on its own, "note", since Dim 30.10), and (Dim 29.10) "clear", which takes the answer back. */
+const STATUSES: readonly string[] = ["ok", "bad", "skip", "note", "clear"];
 
 /** The plan, from the committed file (spec D3): its shape is src/data/testplan.json's, which tests/unit/testplan-file.test.ts holds to checkPlan. */
 export const testPlan = planFile as unknown as TestPlan;
@@ -42,8 +42,11 @@ export function testplanBuildAt(): string {
   return process.env.TESTPLAN_BUILD_AT ?? new Date(0).toISOString();
 }
 
-/** What the browser gets of an answer: the answerer's first name, never `by` (the session's e-mail address) nor the ping bookkeeping. */
-export type PageAnswer = { status: Status; note: string; at: string; byName: string };
+/**
+ * What the browser gets of an answer: the answerer's first name, never `by` (the session's e-mail address) nor the ping bookkeeping. Its status
+ * may be "note" (Dim 30.10): a note on its own, which decides no state.
+ */
+export type PageAnswer = { status: StoredStatus; note: string; at: string; byName: string };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -88,10 +91,11 @@ export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefi
 
 /**
  * A request body as the answers it asks to save, or null when it is not one: an object whose `answers` is an object of at most MAX_IDS
- * `{ status: ok | bad | skip, note: text }` (one bad answer refuses the whole save). Only those two fields are taken over: `clientAt` (the
+ * `{ status: ok | bad | skip | note, note: text }` (one bad answer refuses the whole save). Only those two fields are taken over: `clientAt` (the
  * device's own press order, used in the browser only) and anything else a body carries are dropped here.
  * Dim 29.10: `{ status: "clear" }` takes an answer back; its note may be absent or any text and is read as "" (a note that is no text still
- * refuses the save, as it does on any answer).
+ * refuses the save, as it does on any answer). Dim 30.10: `{ status: "note", note }` is a note on its own, its note required like any answer's
+ * ("" is the clear: mergeAnswers).
  */
 function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
   if (!isObject(body) || !isObject(body.answers)) return null;
@@ -105,7 +109,7 @@ function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
       answers.push([id, { status: "clear", note: "" }]);
     } else {
       if (typeof raw.note !== "string") return null;
-      answers.push([id, { status: raw.status as Status, note: raw.note }]);
+      answers.push([id, { status: raw.status as StoredStatus, note: raw.note }]);
     }
   }
   return Object.fromEntries(answers);
@@ -117,7 +121,8 @@ function parseBody(body: unknown): Record<string, IncomingAnswer> | null {
  * once take turns and each merges into what the other wrote; the stored answers are read, the save merged in (`by` the session's e-mail, `at`
  * `now`), the Telegram messages it earns worked out and recorded as sent, and the row written back. The messages are returned, not sent: the caller
  * sends them once the transaction has committed, and a failed send never changes the answer.
- * A status "clear" (Dim 29.10) takes the check's answer back from the session's own side (merged in the same way, and it earns no message).
+ * A status "clear" (Dim 29.10) takes the check's answer back from the session's own side (merged in the same way, and it earns no message); a
+ * "note" (Dim 30.10) is a note on its own on that side, whose first note is announced as any answer's ("" is a clear).
  * `names` is ADMIN_NAMES (Dim 25.10): the session's admin named „Automaattest…“ there saves into the row's `auto`, never into `answers`; every
  * other admin's save goes into `answers` and leaves `auto` as it is.
  */
@@ -152,15 +157,16 @@ export async function saveAnswers(
  * keeps its word). The check's title, the answerer's first name (from ADMIN_NAMES, else "admin";
  * never the address), the note's first PING_NOTE_MAX characters (or `tg.noNote`, also for a failure whose note is the answer before it's:
  * `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`. A ping marked `auto` is of Automaattest's answer, read from the doc's
- * `auto` (Dim 25.10): its name in ADMIN_NAMES, „Automaattest“, is the name in the text.
+ * `auto` (Dim 25.10): its name in ADMIN_NAMES, „Automaattest“, is the name in the text. A note on its own (Dim 30.10) has no answer to show:
+ * its `tg.note` goes without the " · {status}" part (it would read „Märkus … · Märkus“).
  */
 export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: string | undefined, base: string): string {
   const t = adminEt.testplan;
   const item = plan.items.find((i) => i.id === ping.id);
   const stored = answerOf(answersIn(doc, ping.auto ? "auto" : "answers"), ping.id);
   const note = ping.oldNote ? "" : Array.from(stored?.note ?? "").slice(0, PING_NOTE_MAX).join("");
-  // (an id the doc does not hold has no answer to show: the message goes without the " · {status}" part)
-  const template = ping.kind === "bad" ? t.tg.bad : stored ? t.tg.note : t.tg.note.replace(" · {status}", "");
+  // (an id the doc does not hold, or a note on its own, has no answer to show: the message goes without the " · {status}" part)
+  const template = ping.kind === "bad" ? t.tg.bad : stored && stored.status !== "note" ? t.tg.note : t.tg.note.replace(" · {status}", "");
   return fill(template, {
     title: item?.title ?? ping.id,
     name: answererName(stored?.by ?? "", names),

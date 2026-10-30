@@ -59,17 +59,20 @@ let server: Record<string, PageAnswer> | null;
 /** Automaattest's answers as the API gives them, apart (Dim 25.10). */
 let autoServer: Record<string, PageAnswer>;
 let getReply: () => Response | Promise<Response>;
-/** A save's body: a press, a note, or (Dim 29.10) "clear", an answer taken back. */
+/** A save's body: a press, a note, a note on its own (Dim 30.10: "note"), or (Dim 29.10) "clear", an answer taken back. */
 type PutBody = { answers: Record<string, { status: PageAnswer["status"] | "clear"; note: string }> };
 let putReply: (body: PutBody) => Promise<Response>;
 const calls: { method: string; body?: PutBody }[] = [];
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-/** The API's PUT as the server answers it: each answer stored as Maria's at 12:00 UTC, a clear removing the check's answer; every answer back. */
+/**
+ * The API's PUT as the server answers it: each answer stored as Maria's at 12:00 UTC, a clear removing the check's answer (and so a note on its
+ * own of no text, Dim 30.10); every answer back.
+ */
 const saveOnServer = async (body: PutBody): Promise<Response> => {
   server = { ...(server ?? {}) };
   for (const [id, a] of Object.entries(body.answers))
-    if (a.status === "clear") delete server[id];
+    if (a.status === "clear" || (a.status === "note" && a.note.trim() === "")) delete server[id];
     else server[id] = { status: a.status, note: a.note, at: "2026-10-16T12:00:00.000Z", byName: "Maria" };
   return json({ ok: true, answers: server });
 };
@@ -422,7 +425,8 @@ describe("a check row (S4-45)", () => {
     expect(state("a1-plain")).toBe("open");
     expect(pressed("a1-plain")).toEqual([]);
     expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
-    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull(); // (no answer, nothing to write a note on)
+    // (no answer: an empty box all the same, Dim 30.10)
+    expect(check("a1-plain").querySelector<HTMLTextAreaElement>("[data-check-note]")!.value).toBe("");
     expect(state("a0-done")).toBe("done");
     expect(pressed("a0-done")).toEqual(["ok"]);
     expect(check("a0-done").querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 13:00 · Läbitud");
@@ -473,13 +477,14 @@ describe("a check row (S4-45)", () => {
     expect(pressed("a1-redo")).toEqual(["ok"]);
   });
 
-  test("„Viga“ opens the note field and focuses it, asking „Mis läks valesti?“, and sends the answer at once", async () => {
+  test("„Viga“ focuses the note field, asking „Mis läks valesti?“, and sends the answer at once", async () => {
     await showAll();
     const plain = check("a1-plain");
-    expect(plain.querySelector("[data-check-note]")).toBeNull();
+    const box = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect(box.placeholder).toBe("Märkus"); // (open, no answer: the box is there, Dim 30.10)
     await click(plain.querySelector('[data-answer="bad"]')!);
     const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
-    expect(note).not.toBeNull();
+    expect(note).toBe(box); // (the same box: it stays, and asks what went wrong now)
     expect(note.placeholder).toBe("Mis läks valesti?");
     expect(document.activeElement).toBe(note);
     expect(state("a1-plain")).toBe("failed");
@@ -488,8 +493,8 @@ describe("a check row (S4-45)", () => {
     expect(plain.querySelector("[data-check-last]")!.textContent).toBe("Maria · 16.10 15:00 · Viga");
   });
 
-  // Dim 22.10 (as on Rempire's test page): every answer has its note box open under it at once.
-  test("„Läbitud“ opens the note box at once, asking „Märkus“, without taking the focus; one box whatever the answer", async () => {
+  // Dim 22.10 (as on Rempire's test page): every answer has its note box open under it at once (and since Dim 30.10 every check has one).
+  test("„Läbitud“ keeps the note box, asking „Märkus“, without taking the focus; one box whatever the answer", async () => {
     await showAll();
     const plain = check("a1-plain");
     await click(plain.querySelector('[data-answer="ok"]')!);
@@ -630,7 +635,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect($("[data-list-empty]")!.textContent).toBe("Selle valikuga kontrolle pole.");
   });
 
-  test("the pressed half pressed again takes the answer back: a „clear“ is sent, the check is „Avatud“, no half is pressed, the note box and the last line go", async () => {
+  test("the pressed half pressed again takes the answer back: a „clear“ is sent, the check is „Avatud“, no half is pressed, the box is empty and the last line goes", async () => {
     await showAll();
     await openAll();
     expect(pressed("a0-done")).toEqual(["ok"]);
@@ -639,7 +644,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect(state("a0-done")).toBe("open");
     expect(word("a0-done")).toBe("Avatud");
     expect(pressed("a0-done")).toEqual([]);
-    expect(note("a0-done")).toBeNull();
+    expect(note("a0-done")!.value).toBe(""); // (the box stays, Dim 30.10)
     expect(check("a0-done").querySelector("[data-check-last]")).toBeNull();
     expect(server!["a0-done"]).toBeUndefined();
     expect(chip()).toBe("saved");
@@ -690,7 +695,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     await clickWith(2); // (the second click of the double-click: event.detail 2)
     expect(state("a1-fail")).toBe("open");
     expect(pressed("a1-fail")).toEqual([]);
-    expect(note("a1-fail")).toBeNull();
+    expect(note("a1-fail")!.value).toBe("");
     expect(puts()).toEqual([{ answers: { "a1-fail": { status: "clear", note: "" } } }]);
     expect(server!["a1-fail"]).toBeUndefined();
   });
@@ -711,7 +716,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     await click(link);
     expect(puts()).toEqual([{ answers: { "a1-fail": { status: "clear", note: "" } } }]);
     expect(state("a1-fail")).toBe("open");
-    expect(note("a1-fail")).toBeNull();
+    expect(note("a1-fail")!.value).toBe("");
     expect(takeBack("a1-fail")).toBeNull();
     expect(document.activeElement).toBe(check("a1-fail").querySelector('[data-answer="bad"]'));
     // no line, no link while an answer has not reached the server; a check with no answer has neither
@@ -723,7 +728,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
 
   // (happy-dom's click moves no focus, so here the note box keeps it through the press and its note is still waiting for its second: the outbox's
   // clear replaces it. A real browser blurs the box first, which sends the note: the next test.)
-  test("its note goes with the answer: the box is gone, a note still waiting in the outbox is replaced by the clear, and the next press carries no note (Task 4's open concern)", async () => {
+  test("its note goes with the answer: the box is emptied, a note still waiting in the outbox is replaced by the clear, and the next press carries no note (Task 4's open concern)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     try {
       await showAll();
@@ -731,7 +736,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
       await act(async () => box.focus());
       await typeInto(box, "Nupp ei tööta, ka teisel korral");
       await click(check("a1-fail").querySelector('[data-answer="bad"]')!); // (the pressed half, while the note waits for its second)
-      expect(note("a1-fail")).toBeNull();
+      expect(note("a1-fail")!.value).toBe("");
       await act(async () => vi.advanceTimersByTime(5000));
       await settle();
       expect(puts()).toEqual([{ answers: { "a1-fail": { status: "clear", note: "" } } }]);
@@ -745,7 +750,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
 
   // review Minor 3: in a real browser the press blurs the note box first, and the blur sends what she typed (a first note earns its Telegram
   // message); the clear follows it, so in the end the check has no answer and no note
-  test("a note blurred by the press (a real browser) is sent first, then the clear: the check ends with no answer, no note and no box", async () => {
+  test("a note blurred by the press (a real browser) is sent first, then the clear: the check ends with no answer and an empty box", async () => {
     await showAll();
     const box = note("a1-fail")!;
     await act(async () => box.focus());
@@ -758,7 +763,7 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
       { answers: { "a1-fail": { status: "clear", note: "" } } },
     ]);
     expect(server!["a1-fail"]).toBeUndefined();
-    expect([state("a1-fail"), note("a1-fail")]).toEqual(["open", null]);
+    expect([state("a1-fail"), note("a1-fail")!.value]).toEqual(["open", ""]);
     await click(check("a1-fail").querySelector('[data-answer="bad"]')!);
     expect(puts().at(-1)).toEqual({ answers: { "a1-fail": { status: "bad", note: "" } } }); // (the next press carries none of it)
   });
@@ -769,12 +774,149 @@ describe("what is done and what is to do (admin polish Part A, Dim 29.10)", () =
     expect(takeBack("a1-plain")!.textContent).toBe("Võta vastus tagasi");
     await click(takeBack("a1-plain")!);
     expect(puts()).toEqual([{ answers: { "a1-plain": { status: "clear", note: "" } } }]);
-    expect(note("a1-plain")).toBeNull();
+    expect(note("a1-plain")!.value).toBe("");
     expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
   });
 
   test("„Võta vastus tagasi“ is the page's one new text, in adminEt", () => {
     expect(adminEt.testplan.takeBack).toBe("Võta vastus tagasi");
+  });
+});
+
+// Dim 30.10: "Box on every check: a „Märkus“ (note) box under every check, answered or not. A note typed without pressing is saved on its own and
+// does not change the check's state: open stays open, Automaattest's ✓ stays ✓. The first note still pings Telegram." (The ping is the server's:
+// tests/db/testplan-route.test.ts.)
+describe("a note box under every check (Dim 30.10)", () => {
+  const puts = () => calls.filter((c) => c.method === "PUT").map((c) => c.body);
+  const note = (id: string) => check(id).querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+  const last = (id: string) => check(id).querySelector("[data-check-last]")?.textContent ?? null;
+  const takeBack = (id: string) => check(id).querySelector<HTMLButtonElement>("[data-take-back]");
+  const marker = (id: string) => check(id).querySelector("[data-check-marker]")!.getAttribute("data-check-marker");
+  const AUTO_OK: Record<string, PageAnswer> = { "a1-plain": answer("ok", "2026-10-16T12:05:00.000Z", "Automaattest", "Kõik sammud läbitud.") };
+  /** Types into a box and leaves it (the blur sends the note at once). */
+  const write = async (box: HTMLTextAreaElement, text: string) => {
+    await act(async () => box.focus());
+    await typeInto(box, text);
+    await act(async () => box.blur());
+    await settle();
+  };
+
+  test("every check has one box, whatever its state: „Mis läks valesti?“ under her Viga, „Märkus“ under anything else", async () => {
+    await showAll({ auto: AUTO_OK });
+    await openAll();
+    for (const { id } of PLAN.items) expect(check(id).querySelectorAll("[data-check-note]"), id).toHaveLength(1);
+    expect([note("a1-fail").placeholder, note("a1-fail").value]).toEqual(["Mis läks valesti?", "Nupp ei tööta"]);
+    // done, open again by a redo, Automaattest's ✓ alone, open
+    for (const id of ["a0-done", "a1-redo", "a1-plain", "a2-fresh"]) expect([note(id).placeholder, note(id).value, note(id).getAttribute("aria-label")], id).toEqual(["Märkus", "", "Märkus"]);
+  });
+
+  test("a note typed on an open check without pressing is saved on its own: still open, no half pressed, the line „… · Märkus“ with no take-back", async () => {
+    await showAll();
+    await openAll();
+    const before = [line(), pills("olek"), $('[data-area="a1"] [data-area-count]')!.textContent];
+    await write(note("a1-plain"), "Nupp on hall, aga töötab");
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "note", note: "Nupp on hall, aga töötab" } } }]);
+    expect([state("a1-plain"), marker("a1-plain"), pressed("a1-plain")]).toEqual(["open", "open", []]);
+    expect([line(), pills("olek"), $('[data-area="a1"] [data-area-count]')!.textContent]).toEqual(before);
+    expect(last("a1-plain")).toBe("Maria · 16.10 15:00 · Märkus");
+    expect(takeBack("a1-plain")).toBeNull(); // (emptying the box removes a note)
+    expect(check("a1-plain").querySelector<HTMLElement>("[data-steps]")!.hidden).toBe(false); // (still to do: its steps stay open)
+    expect(chip()).toBe("saved");
+    // the page loaded again shows it
+    const now = { ...server! };
+    await remount();
+    await showAll({ initial: now });
+    await openAll();
+    expect([note("a1-plain").value, state("a1-plain"), last("a1-plain"), pressed("a1-plain")]).toEqual(["Nupp on hall, aga töötab", "open", "Maria · 16.10 15:00 · Märkus", []]);
+    // retyped, it stays a note
+    await write(note("a1-plain"), "Nupp on hall");
+    expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "note", note: "Nupp on hall" } } });
+  });
+
+  test("on a check only Automaattest passed: the note is hers, the ✓ stays, and so do its chip, its note and its place under „Läbitud“", async () => {
+    await showAll({ auto: AUTO_OK });
+    await openAll();
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    await write(note("a1-plain"), "Minu märkus");
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "note", note: "Minu märkus" } } }]);
+    expect([state("a1-plain"), marker("a1-plain"), pressed("a1-plain")]).toEqual(["done", "done", []]);
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    expect(check("a1-plain").querySelector("[data-check-auto]")!.textContent).toBe("Automaattest: Läbitud");
+    expect(check("a1-plain").querySelector("[data-check-auto-note]")!.textContent).toBe("Kõik sammud läbitud.");
+    expect(last("a1-plain")).toBe("Maria · 16.10 15:00 · Märkus");
+    await click(olek("done"));
+    expect(ids()).toEqual(["a0-done", "a1-plain"]);
+  });
+
+  test("emptying the box takes the note away: the box stays, empty, and after a reload there is no note and no last line", async () => {
+    await showAll({ initial: { ...SERVER, "a1-plain": answer("note", "2026-10-16T10:30:00.000Z", "Maria", "Vana märkus") } });
+    await openAll();
+    expect([note("a1-plain").value, last("a1-plain"), state("a1-plain")]).toEqual(["Vana märkus", "Maria · 16.10 13:30 · Märkus", "open"]);
+    await write(note("a1-plain"), "");
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "note", note: "" } } }]);
+    expect(server!["a1-plain"]).toBeUndefined();
+    expect([note("a1-plain").value, last("a1-plain"), state("a1-plain")]).toEqual(["", null, "open"]);
+    const now = { ...server! };
+    await remount();
+    await showAll({ initial: now });
+    await openAll();
+    expect([note("a1-plain").value, last("a1-plain")]).toEqual(["", null]);
+  });
+
+  test("while an emptied note waits to be sent, the check already shows without it", async () => {
+    putReply = async () => json({ ok: false, error: "unavailable" }, 503);
+    await showAll({ initial: { ...SERVER, "a1-plain": answer("note", "2026-10-16T10:30:00.000Z", "Maria", "Vana märkus") } });
+    await openAll();
+    await write(note("a1-plain"), "   ");
+    expect(chip()).toBe("retry");
+    expect([last("a1-plain"), state("a1-plain"), pressed("a1-plain")]).toEqual([null, "open", []]);
+    // (the page holds no note for it any more: a press now carries none, not the white space)
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "ok", note: "" } } });
+  });
+
+  test("a half pressed on a note is an ordinary press carrying the box's text; that answer taken back leaves the box there, empty", async () => {
+    await showAll({ initial: { ...SERVER, "a1-plain": answer("note", "2026-10-16T10:30:00.000Z", "Maria", "Nupp ei tööta") } });
+    await openAll();
+    await click(check("a1-plain").querySelector('[data-answer="bad"]')!);
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "bad", note: "Nupp ei tööta" } } }]);
+    expect([state("a1-plain"), pressed("a1-plain"), note("a1-plain").placeholder, note("a1-plain").value]).toEqual(["failed", ["bad"], "Mis läks valesti?", "Nupp ei tööta"]);
+    expect(document.activeElement).toBe(note("a1-plain"));
+    expect(last("a1-plain")).toBe("Maria · 16.10 15:00 · Viga");
+    await click(takeBack("a1-plain")!);
+    expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "clear", note: "" } } });
+    expect([state("a1-plain"), note("a1-plain").value, last("a1-plain")]).toEqual(["open", "", null]);
+  });
+
+  test("on a check a redo opened again, a note is a note: the check stays open (the stored answer, a redo's „Varasem vastus“, makes way for it)", async () => {
+    await showAll();
+    await openAll();
+    expect(check("a1-redo").querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): Läbitud");
+    await write(note("a1-redo"), "Pärast muudatust veel vaatamata");
+    expect(puts()).toEqual([{ answers: { "a1-redo": { status: "note", note: "Pärast muudatust veel vaatamata" } } }]);
+    expect([state("a1-redo"), pressed("a1-redo"), last("a1-redo")]).toEqual(["open", [], "Maria · 16.10 15:00 · Märkus"]);
+    expect(check("a1-redo").querySelector("[data-overtaken]")).toBeNull();
+  });
+
+  test("Automaattest's note alone is no result: no chip, its note under the row, the check open, and not listed under „Kes: Automaattest“", async () => {
+    await showAll({ auto: { "a1-plain": answer("note", "2026-10-16T12:05:00.000Z", "Automaattest", "Sammud tehtud, tulemus ootab.") } });
+    await openAll();
+    expect(check("a1-plain").querySelector("[data-check-auto]")).toBeNull();
+    expect(check("a1-plain").querySelector("[data-check-auto-note]")!.parentElement!.textContent).toBe("Automaattest: Sammud tehtud, tulemus ootab.");
+    expect([state("a1-plain"), note("a1-plain").value]).toEqual(["open", ""]); // (its note is not hers)
+    await click(kes("auto"));
+    expect($("[data-list-empty]")!.textContent).toBe("Selle valikuga kontrolle pole.");
+  });
+
+  test("on Automaattest's own page its note on a check it has not answered is its own note: the check stays open, and is not one it answered", async () => {
+    await show({ initial: {}, auto: {}, you: { name: "Automaattest", tester: "auto" } });
+    await openAll();
+    await write(note("a1-plain"), "Sammud tehtud.");
+    expect(puts()).toEqual([{ answers: { "a1-plain": { status: "note", note: "Sammud tehtud." } } }]);
+    expect([state("a1-plain"), pressed("a1-plain")]).toEqual(["open", []]);
+    expect(line()).toBe("6 kontrolli · 0 läbitud · 0 viga");
+    await click(kes("auto"));
+    expect($("[data-list-empty]")!.textContent).toBe("Selle valikuga kontrolle pole.");
   });
 });
 
@@ -1127,13 +1269,14 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
   const autoNote = (id: string) => check(id).querySelector("[data-check-auto-note]")?.textContent ?? null;
   const word = (id: string) => check(id).querySelector("[data-check-state-word]")!.textContent;
   const puts = () => calls.filter((c) => c.method === "PUT").map((c) => c.body);
+  const note = (id: string) => check(id).querySelector<HTMLTextAreaElement>("[data-check-note]")!;
 
-  test("for Maria: a check only Automaattest passed is „Läbitud“ in the marker, the line, the pills and the bar, with no half pressed, no note box, no last line", async () => {
+  test("for Maria: a check only Automaattest passed is „Läbitud“ in the marker, the line, the pills and the bar, with no half pressed, an empty box of hers, no last line", async () => {
     await showAll({ auto: AUTO_ANSWERS });
     await openAll();
     expect([state("a1-plain"), word("a1-plain")]).toEqual(["done", "Läbitud"]);
     expect(pressed("a1-plain")).toEqual([]);
-    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull();
+    expect(check("a1-plain").querySelector<HTMLTextAreaElement>("[data-check-note]")!.value).toBe(""); // (Dim 30.10: a box under every check; its note is not hers)
     expect(check("a1-plain").querySelector("[data-check-last]")).toBeNull();
     expect(check("a1-plain").querySelector<HTMLElement>("[data-steps]")!.hidden).toBe(true); // (done: its steps are folded)
     // a0-done Maria's, a1-plain Automaattest's; a1-fail Dim's Viga (his answer wins over Automaattest's OK); a1-redo, a2-fresh, a2-dim open
@@ -1163,7 +1306,8 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
     expect(autoNote("a1-fail")).toBeNull();
     // its Viga is „Viga“ for us; its Jäta vahele leaves the check open
     expect([state("a2-fresh"), word("a2-fresh"), pressed("a2-fresh")]).toEqual(["failed", "Viga", []]);
-    expect(check("a2-fresh").querySelector("[data-check-note]")).toBeNull();
+    // (her box, empty, asks „Märkus“: the prompt for what went wrong follows her own Viga only)
+    expect([note("a2-fresh").value, note("a2-fresh").placeholder]).toEqual(["", "Märkus"]);
     expect(autoNote("a2-fresh")).toBe("Nupp puudub.");
     expect([state("a2-dim"), word("a2-dim")]).toEqual(["open", "Avatud"]);
     expect(line()).toBe("6 kontrolli · 2 läbitud · 2 viga");
@@ -1198,7 +1342,7 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
     await click(check("a1-plain").querySelector('[data-answer="bad"]')!); // (the pressed half again)
     expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "clear", note: "" } } });
     expect([state("a1-plain"), word("a1-plain"), pressed("a1-plain")]).toEqual(["done", "Läbitud", []]);
-    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull();
+    expect(note("a1-plain").value).toBe("");
     expect(autoText("a1-plain")).toBe("Automaattest: Läbitud");
     expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
     // and by „Võta vastus tagasi“: Dim's Viga on a1-fail, which Automaattest passed

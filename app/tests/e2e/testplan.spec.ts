@@ -8,7 +8,7 @@ import { smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
 // The test page (phase 4, piece 1, Task 3; redrawn by admin UX pass piece 4c, C7), followed through in a browser against the local database: two
-// checks answered („Läbitud“, „Viga“ with a note: the note box is open under every answer, Dim 22.10) and a third left open, kept over a reload,
+// checks answered („Läbitud“, „Viga“ with a note: the note box is open under every check, Dim 30.10) and a third left open, kept over a reload,
 // found again through „Olek“, an empty selection, and counted on Avaleht; a second admin session answering one of them, which the first reads after
 // „Värskenda“; a press made offline, kept and sent when the connection is back; a press made after the session ended, kept on the device with no
 // retries, and sent after signing in again (R-i, Review Focus 5); two saves at once of different checks, both of which land (the row lock and the
@@ -62,7 +62,8 @@ async function removeAnswers(ids: string[]): Promise<void> {
   );
 }
 
-type ApiAnswer = { status: "ok" | "bad" | "skip"; note: string; at: string; byName: string };
+/** An answer as the API gives it; "note" is a note on its own (Dim 30.10), which decides no state. */
+type ApiAnswer = { status: "ok" | "bad" | "skip" | "note"; note: string; at: string; byName: string };
 type Api = { plan: TestPlan; answers: Record<string, ApiAnswer>; auto: Record<string, ApiAnswer>; you: { name: string; tester: "maria" | "dim" | null } };
 
 const readApi = async (page: Page): Promise<Api> => {
@@ -81,6 +82,33 @@ async function pickChecks(page: Page): Promise<{ area: string; ids: [string, str
   for (const id of ids) answered.add(id);
   await removeAnswers(ids);
   return { area: area!.id, ids: ids as [string, string, string] };
+}
+
+/**
+ * Puts Automaattest's „Läbitud“ on a check into the row's own `auto` (Dim 25.10), as its run would (locally it has answered nothing). The function it
+ * returns takes exactly that entry out again, and the `auto` map with it when the row had none before.
+ */
+async function putAutoPass(id: string): Promise<() => Promise<void>> {
+  const pass = { status: "ok", note: "", at: new Date().toISOString(), by: "automaattest@example.test" };
+  const hadAuto = await onLocalDb(
+    async (sql) => {
+      await sql`insert into settings (key, value) values ('testplan_answers', ${sql.json({ v: 1, answers: {} })}) on conflict (key) do nothing`;
+      const [row] = await sql<{ had: boolean }[]>`select (value->'auto') is not null as had from settings where key = 'testplan_answers'`;
+      await sql`update settings set value = jsonb_set(value, '{auto}', coalesce(value->'auto', '{}'::jsonb) || jsonb_build_object(${id}::text, ${sql.json(pass)}::jsonb))
+        where key = 'testplan_answers'`;
+      return row.had;
+    },
+    { marksPages: false },
+  );
+  return () =>
+    onLocalDb(
+      async (sql) => {
+        await sql`update settings set value = jsonb_set(value, '{auto}', (value->'auto') - ${id}::text)
+          where key = 'testplan_answers' and jsonb_typeof(value->'auto') = 'object'`;
+        if (!hadAuto) await sql`update settings set value = value - 'auto' where key = 'testplan_answers' and value->'auto' = '{}'::jsonb`;
+      },
+      { marksPages: false },
+    );
 }
 
 /** The tester's own view („Mina“) is the default (Dim's hides Maria's checks); these tests look at everything. */
@@ -179,10 +207,11 @@ test("answers persist: „Läbitud“ and „Viga“ with their note boxes open,
   const [first, second, third] = ids.map((id) => check(page, id));
   await expect(first.locator('[data-answer="skip"]')).toHaveCount(0); // („Jäta vahele“ is gone, spec §10)
   await expect(first.locator("[data-answer]")).toHaveText(["Läbitud", "Viga"]);
-  await expect(first.locator("[data-check-note]")).toHaveCount(0); // (no answer, no box)
-  await first.locator('[data-answer="ok"]').click();
-  // Dim 22.10: the note box is open under every answer, asking „Märkus“ under a pass, „Mis läks valesti?“ under a Viga
+  // Dim 30.10: the note box is under every check, answered or not, asking „Märkus“, and „Mis läks valesti?“ under a Viga
   const firstNote = first.locator("[data-check-note]");
+  await expect(firstNote).toBeVisible();
+  await expect(firstNote).toHaveValue("");
+  await first.locator('[data-answer="ok"]').click();
   await expect(firstNote).toBeVisible();
   await expect(firstNote).toHaveAttribute("placeholder", "Märkus");
   await expect(firstNote).not.toBeFocused();
@@ -496,7 +525,7 @@ test("take back: under „Avatud“ a press keeps its row; the pressed half agai
   await expect(link).toHaveText("Võta vastus tagasi");
   await link.click();
   await expect(first).toHaveAttribute("data-check-state", "open");
-  await expect(first.locator("[data-check-note]")).toHaveCount(0);
+  await expect(first.locator("[data-check-note]")).toHaveValue(""); // (the box stays, empty: Dim 30.10)
   await expect(first.locator('[data-answer][aria-pressed="true"]')).toHaveCount(0);
   await expect(first.locator('[data-answer="ok"]')).toBeFocused();
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
@@ -509,7 +538,7 @@ test("take back: under „Avatud“ a press keeps its row; the pressed half agai
   await expect.poll(async () => (await readApi(page)).answers[ids[1]]?.status).toBe("bad");
   await second.locator('[data-answer="bad"]').click();
   await expect(second).toHaveAttribute("data-check-state", "open");
-  await expect(second.locator("[data-check-note]")).toHaveCount(0);
+  await expect(second.locator("[data-check-note]")).toHaveValue("");
   await expect.poll(async () => (await readApi(page)).answers[ids[1]]).toBeUndefined();
   // from the keyboard too: Enter presses „Viga“, and Enter on the pressed half (a click with detail 0) takes it back (review Minor 1)
   const bad = second.locator('[data-answer="bad"]');
@@ -549,4 +578,73 @@ test("take back: under „Avatud“ a press keeps its row; the pressed half agai
   await expect(third).toHaveCount(0);
   await expect(first).toBeVisible();
   await expect(second).toBeVisible();
+});
+
+// Dim 30.10: „Box on every check … A note typed without pressing is saved on its own and does not change the check's state: open stays open,
+// Automaattest's ✓ stays ✓.“ Through the page, on a real database: a note on an open check, kept over a reload with the check still open, then
+// emptied away; and a note on a check only Automaattest passed (its pass put into the row's `auto` here, and taken out again), which stays ✓.
+test("a note without an answer is saved on its own: open stays open, Automaattest's ✓ stays ✓, kept over a reload; emptying the box removes it", async ({ page, context, visitorIp }, info) => {
+  test.skip(!desktop(info), "writes answers: the desktop project only");
+  await seeEverything(context);
+  await signInAsAdmin(page, context, visitorIp, created);
+  const { area, ids } = await pickChecks(page);
+  const undo = await putAutoPass(ids[1]);
+  try {
+    await openPage(page);
+    await openArea(page, area);
+    const [open, passed] = [check(page, ids[0]), check(page, ids[1])];
+    await expect(open).toHaveAttribute("data-check-state", "open");
+    await expect(passed).toHaveAttribute("data-check-state", "done");
+    await expect(passed.locator("[data-check-auto]")).toHaveText("Automaattest: Läbitud");
+    const line = (await page.locator("[data-progress]").textContent())!;
+
+    // a note on the open check, no half pressed: saved, and the check is as it was
+    const box = open.locator("[data-check-note]");
+    await expect(box).toHaveAttribute("placeholder", "Märkus");
+    await box.fill("E2E: märkus ilma vastuseta");
+    await box.blur();
+    await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
+    await savedAt(page);
+    await expect(open).toHaveAttribute("data-check-state", "open");
+    await expect(open.locator("[data-check-marker]")).toHaveAttribute("data-check-marker", "open");
+    await expect(pressed(page, ids[0])).toHaveCount(0);
+    await expect(open.locator("[data-check-last]")).toHaveText(/^Dim · \d\d\.\d\d \d\d:\d\d · Märkus$/);
+    await expect(open.locator("[data-take-back]")).toHaveCount(0);
+    await expect(page.locator("[data-progress]")).toHaveText(line);
+    expect((await readApi(page)).answers[ids[0]]).toMatchObject({ status: "note", note: "E2E: märkus ilma vastuseta", byName: "Dim" });
+
+    // a note on the check Automaattest passed: its ✓ and its chip stay
+    const passedBox = passed.locator("[data-check-note]");
+    await passedBox.fill("E2E: märkus läbitud kontrollil");
+    await passedBox.blur();
+    await expect.poll(async () => (await readApi(page)).answers[ids[1]]?.status).toBe("note");
+    await expect(passed).toHaveAttribute("data-check-state", "done");
+    await expect(passed.locator("[data-check-marker]")).toHaveText("✓");
+    await expect(passed.locator("[data-check-auto]")).toHaveText("Automaattest: Läbitud");
+    await expect(pressed(page, ids[1])).toHaveCount(0);
+    await expect(page.locator("[data-progress]")).toHaveText(line);
+
+    // a reload keeps both notes, the states as they were
+    await page.reload();
+    await adminReady(page);
+    await openArea(page, area);
+    await expect(open.locator("[data-check-note]")).toHaveValue("E2E: märkus ilma vastuseta");
+    await expect(open).toHaveAttribute("data-check-state", "open");
+    await expect(passed.locator("[data-check-note]")).toHaveValue("E2E: märkus läbitud kontrollil");
+    await expect(passed).toHaveAttribute("data-check-state", "done");
+
+    // emptying the box takes the note away: no last line, and after a reload no note either
+    await open.locator("[data-check-note]").fill("");
+    await open.locator("[data-check-note]").blur();
+    await expect.poll(async () => (await readApi(page)).answers[ids[0]]).toBeUndefined();
+    await expect(open.locator("[data-check-last]")).toHaveCount(0);
+    await page.reload();
+    await adminReady(page);
+    await openArea(page, area);
+    await expect(open.locator("[data-check-note]")).toHaveValue("");
+    await expect(open.locator("[data-check-last]")).toHaveCount(0);
+    await expect(open).toHaveAttribute("data-check-state", "open");
+  } finally {
+    await undo();
+  }
 });

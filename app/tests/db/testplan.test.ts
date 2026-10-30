@@ -242,6 +242,43 @@ describe("saveAnswers: a clear takes an answer back (Dim 29.10)", () => {
   });
 });
 
+// Dim 30.10: a note typed without pressing is saved on its own, `{ status: "note", note }`, and decides no state; "" is the clear.
+describe("saveAnswers: a note on its own (Dim 30.10)", () => {
+  freshDb();
+  const noteBody = (id: string, note: string) => ({ answers: { [id]: { status: "note", note } } });
+
+  test("is stored as the session's note entry, its first note announced once; retyped, nothing more; emptied, the entry goes and nothing is sent", async () => {
+    const first = await saveAnswers(db, MARIA, noteBody("maria-1", "  Nupp on hall  "), T1, NAMES);
+    expect(first).toEqual({ ok: true, doc: doc({ "maria-1": { status: "note", note: "Nupp on hall", at: T1.toISOString(), by: MARIA, notePinged: true } }), pings: [{ id: "maria-1", kind: "note" }] });
+    const again = await saveAnswers(db, MARIA, noteBody("maria-1", "Nupp on hall, ka telefonis"), T2, NAMES);
+    expect(again.ok && again.pings).toEqual([]);
+    expect(await rowOf(db)).toEqual({ v: 1, answers: { "maria-1": { status: "note", note: "Nupp on hall, ka telefonis", at: T2.toISOString(), by: MARIA, notePinged: true } } });
+    vi.mocked(console.info).mockClear();
+    const emptied = await saveAnswers(db, MARIA, noteBody("maria-1", "  "), T3, NAMES);
+    expect(emptied).toEqual({ ok: true, doc: doc(), pings: [] });
+    expect(vi.mocked(console.info).mock.calls.flat().map(String)).toEqual(["[testplan] saved 1 answers, 0 messages"]);
+  });
+
+  test("a note counts as nothing on the card and the badge: open stays open, and Automaattest's pass stays a pass", async () => {
+    await saveAnswers(db, AUTO, body({ "koos-1": { status: "ok" } }), T1, NAMES);
+    expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 2, bad: 0 });
+    await saveAnswers(db, MARIA, { answers: { "maria-1": { status: "note", note: "a" }, "koos-1": { status: "note", note: "b" } } }, T2, NAMES);
+    expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 2, bad: 0 });
+    expect(await ownFaultCount(db, MARIA)).toBe(0);
+  });
+
+  test("Automaattest's note goes into `auto`, and sends nothing", async () => {
+    const saved = await saveAnswers(db, AUTO, noteBody("maria-1", "Kõik sammud läbitud."), T1, NAMES);
+    expect(saved.ok && saved.pings).toEqual([]);
+    expect(await rowOf(db)).toEqual({ v: 1, answers: {}, auto: { "maria-1": { status: "note", note: "Kõik sammud läbitud.", at: T1.toISOString(), by: AUTO } } });
+  });
+
+  test("the page gets it as an answer of status \"note\", with the name and never the address", async () => {
+    await saveAnswers(db, MARIA, noteBody("maria-1", "Nupp on hall"), T1, NAMES);
+    expect(toPageAnswers(await readAnswers(db), PLAN, NAMES)).toEqual({ "maria-1": { status: "note", note: "Nupp on hall", at: T1.toISOString(), byName: "Maria" } });
+  });
+});
+
 
 const TOO_MANY = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`id-${i}`, { status: "ok", note: "" }]));
 describe("saveAnswers: a bad body", () => {
@@ -268,6 +305,10 @@ describe("saveAnswers: a bad body", () => {
     { name: "a status that looks like clear but is not (Clear, clear )", value: { answers: { "maria-1": { status: "Clear" }, "maria-2": { status: "clear ", note: "" } } } },
     { name: "a clear with a note that is no text", value: { answers: { "maria-1": { status: "clear", note: 5 } } } },
     { name: "a good clear and a bad answer: nothing is saved", value: { answers: { "maria-1": { status: "clear" }, "maria-2": { status: "maybe", note: "" } } } },
+    // Dim 30.10: a note on its own carries its note as any answer does
+    { name: "a note on its own with no note", value: { answers: { "maria-1": { status: "note" } } } },
+    { name: "a note on its own whose note is no text", value: { answers: { "maria-1": { status: "note", note: null } } } },
+    { name: "a status that looks like note but is not (Note)", value: { answers: { "maria-1": { status: "Note", note: "x" } } } },
     { name: "more than 300 ids", value: { answers: TOO_MANY } },
   ])("is invalid and stores nothing: $name", async ({ value }) => {
     expect(await saveAnswers(db, MARIA, value, T1, NAMES)).toEqual({ ok: false, error: "invalid" });
@@ -365,6 +406,12 @@ describe("pingText", () => {
     expect(pingText({ id: "maria-1", kind: "note" }, PLAN, stored("skip", "Hiljem"), NAMES, BASE)).toBe(
       "Testimine — Märkus: Avaleht telefonis (Maria) · Jäta vahele\nHiljem\nhttps://mslab.ee/admin/testimine#maria-1",
     );
+  });
+
+  // Dim 30.10: a note on its own has no answer to show — the " · {status}" part would read „Märkus … · Märkus“
+  test("tg.note for a note on its own: the template without the answer", () => {
+    const noted = doc({ "maria-1": { status: "note", note: "Nupp on hall", at: T1.toISOString(), by: MARIA } });
+    expect(pingText({ id: "maria-1", kind: "note" }, PLAN, noted, NAMES, BASE)).toBe("Testimine — Märkus: Avaleht telefonis (Maria)\nNupp on hall\nhttps://mslab.ee/admin/testimine#maria-1");
   });
 
   test("tg.note for an id the doc does not hold has no answer to show (and no dangling separator)", () => {

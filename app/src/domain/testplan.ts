@@ -34,19 +34,25 @@ export type TestItem = {
   markedAt?: string;
 };
 export type TestPlan = { version: 1; marked: string; areas: TestArea[]; items: TestItem[] };
+/** A verdict: „Läbitud“, „Viga“, or a „Jäta vahele“ stored before that button went. The answer halves are ok | bad. */
 export type Status = "ok" | "bad" | "skip";
+/**
+ * A status as stored: a verdict, or (Dim 30.10) "note", a note typed on a check without pressing, kept on its own. A note decides no state (the
+ * check is open, or Automaattest's where it answered: checkState, sharedState), counts as nothing and is never an answer half.
+ */
+export type StoredStatus = Status | "note";
 /** An answer as stored (the `settings` key testplan_answers). `at` and `pinged` are server instants; `by` is the session's admin e-mail and never leaves the server. */
-export type StoredAnswer = { status: Status; note: string; at: string; by: string; pinged?: string; notePinged?: true };
+export type StoredAnswer = { status: StoredStatus; note: string; at: string; by: string; pinged?: string; notePinged?: true };
 /**
  * The stored answers. `answers` are Maria's and Dim's (and any other admin's), as they always were; `auto` (Dim 25.10, optional: a doc
  * written before it has none) holds Automaattest's answers, of the same shape, apart. A save goes into one map and leaves the other as it is.
  */
 export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer>; auto?: Record<string, StoredAnswer> };
 /**
- * A status as a save carries it (Dim 29.10): the three that are stored, or "clear", which takes the check's answer back and is never stored.
- * `Status` and `StoredAnswer` stay ok | bad | skip.
+ * A status as a save carries it (Dim 29.10): the ones that are stored (a note on its own, "note", since Dim 30.10), or "clear", which takes the
+ * check's answer back and is never stored. A "note" whose note cleans to "" (the box emptied) is a clear too (mergeAnswers).
  */
-export type IncomingStatus = Status | "clear";
+export type IncomingStatus = StoredStatus | "clear";
 /**
  * An answer as the device sends it. `clientAt` only orders several unsent presses of one check on the device; the server stamps `at` itself. The
  * note of a "clear" (Dim 29.10) is never used: the device sends "", and the server reads any other text, or none, as "".
@@ -54,8 +60,9 @@ export type IncomingStatus = Status | "clear";
 export type IncomingAnswer = { status: IncomingStatus; note: string; clientAt?: string };
 /**
  * `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both. An
- * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept). From
- * sharedState (Dim 29.10) both are a person's only: a check done or failed by Automaattest's answer alone has `answer` null.
+ * open check has no valid answer, but for a Jäta vahele stored before that button went (piece 4c, Dim 29.10: open, its answer kept) and a note on
+ * its own (Dim 30.10: open, the note its `answer`). From sharedState (Dim 29.10) both are a person's only: a check done or failed by Automaattest's
+ * answer alone has `answer` null, or the person's note.
  */
 export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnswer | null; overtaken: StoredAnswer | null };
 /**
@@ -73,7 +80,8 @@ const WHO: readonly string[] = ["maria", "dim", "koos"];
 const DEVICE: readonly string[] = ["telefon", "tahvel", "arvuti", "any"];
 const MARK: readonly string[] = ["redo", "reworded", "new"];
 const RISK: readonly string[] = ["high", "med", "low"];
-const STATUS: readonly string[] = ["ok", "bad", "skip"];
+/** The statuses an entry may be stored with (a verdict, or a note on its own, Dim 30.10). */
+const STORED: readonly string[] = ["ok", "bad", "skip", "note"];
 
 /** House style (spec §3): at most this many steps and expect lines per check, and words per line. */
 const MAX_LINES = 8;
@@ -87,7 +95,7 @@ const FREE_MAIL = /@(?:gmail|googlemail)\.com/i;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isInstant = (v: unknown): v is string => typeof v === "string" && INSTANT.test(v) && !Number.isNaN(Date.parse(v));
-const isStatus = (v: unknown): v is Status => typeof v === "string" && STATUS.includes(v);
+const isStored = (v: unknown): v is StoredStatus => typeof v === "string" && STORED.includes(v);
 const wordCount = (line: string): number => line.trim().split(/\s+/).length;
 /**
  * The answer of a check by its id, from the document's own keys. Never `answers[id]` alone: ids are kebab-case, so a check can be called
@@ -227,10 +235,12 @@ export function appliesAt(item: TestItem, plan: TestPlan, buildAt: string): stri
  * A check's state (spec §4): no answer, or an answer given before its redo's instant (`appliesAt`; an answer at that very instant stands):
  * open, the old answer in `overtaken` and `answer` null; else Viga is failed and OK is done. A Jäta vahele (admin UX pass piece 4c, Dim 29.10:
  * that button went, and such a check is still to be done) is open, with the stored answer kept as `answer`: the page shows its last line and its
- * note, and a note typed on it keeps it. Instants are compared as instants, not as text ("…:00Z" and "…:00.000Z" are the same moment).
+ * note, and a note typed on it keeps it. A note on its own (Dim 30.10) is open with the note as `answer`, whenever it was typed: it is no verdict,
+ * so no redo overtakes it. Instants are compared as instants, not as text ("…:00Z" and "…:00.000Z" are the same moment).
  */
 export function checkState(item: TestItem, answer: StoredAnswer | undefined, plan: TestPlan, buildAt: string): CheckState {
   if (!answer) return { state: "open", answer: null, overtaken: null };
+  if (answer.status === "note") return { state: "open", answer, overtaken: null };
   const since = appliesAt(item, plan, buildAt);
   if (since !== null && Date.parse(answer.at) < Date.parse(since)) return { state: "open", answer: null, overtaken: answer };
   return { state: answer.status === "bad" ? "failed" : answer.status === "skip" ? "open" : "done", answer, overtaken: null };
@@ -241,14 +251,16 @@ export function checkState(item: TestItem, answer: StoredAnswer | undefined, pla
  * D10's "never counts" of 25.10): a person's answer (`person`, from the doc's `answers`: Maria's, Dim's or another admin's) while it stands,
  * Jäta vahele included (open); else Automaattest's (`auto`) while it stands, its OK done and its Viga failed (its Jäta vahele leaves the check
  * open). An answer a redo has overtaken counts for neither. `answer` and `overtaken` stay the person's, as checkState gives them: the two answer
- * halves, the note box, the last line and „Varasem vastus“ are a person's only, so a check Automaattest alone passed is done with `answer` null.
+ * halves, the note in the box, the last line and „Varasem vastus“ are a person's only, so a check Automaattest alone passed is done with `answer` null.
+ * A person's note on its own (Dim 30.10: "open stays open, Automaattest's ✓ stays ✓") decides nothing: the state is Automaattest's as if no person
+ * had answered, with `answer` the person's note (her box shows it, no half is pressed). Automaattest's own note is open, as any note.
  * With no Automaattest answer it is checkState itself.
  */
 export function sharedState(item: TestItem, person: StoredAnswer | undefined, auto: StoredAnswer | undefined, plan: TestPlan, buildAt: string): CheckState {
   const own = checkState(item, person, plan, buildAt);
-  if (own.answer !== null) return own;
+  if (own.answer !== null && own.answer.status !== "note") return own;
   const theirs = checkState(item, auto, plan, buildAt).state;
-  return theirs === "open" ? own : { state: theirs, answer: null, overtaken: own.overtaken };
+  return theirs === "open" ? own : { state: theirs, answer: own.answer, overtaken: own.overtaken };
 }
 
 /**
@@ -272,8 +284,10 @@ export function cleanNote(raw: unknown): string {
 function readEntries(map: Record<string, unknown>): Record<string, StoredAnswer> {
   const entries: [string, StoredAnswer][] = [];
   for (const [id, raw] of Object.entries(map)) {
-    if (!isObject(raw) || !isStatus(raw.status) || !isInstant(raw.at)) continue;
+    if (!isObject(raw) || !isStored(raw.status) || !isInstant(raw.at)) continue;
     const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at: raw.at, by: typeof raw.by === "string" ? raw.by : "" };
+    // (a note on its own with no note is nothing: a save never stores one, Dim 30.10)
+    if (entry.status === "note" && entry.note === "") continue;
     if (isInstant(raw.pinged)) entry.pinged = raw.pinged;
     if (raw.notePinged === true) entry.notePinged = true;
     entries.push([id, entry]);
@@ -284,9 +298,10 @@ function readEntries(map: Record<string, unknown>): Record<string, StoredAnswer>
 
 /**
  * The stored `testplan_answers` value read defensively (jsonb: anything): a doc of version 1 with its good entries. An entry is kept when it
- * has a status and a valid `at`; its note is cleaned, a missing `by` is "", and a `pinged` that is no instant or a `notePinged` that is not
- * true is left out. Automaattest's `auto` (Dim 25.10) is read by the same rules when it is an object; a doc without one has none. Anything
- * else, the whole value of another version included, is an empty doc. Always a copy.
+ * has a status (ok, bad, skip, or since Dim 30.10 "note") and a valid `at`; its note is cleaned, a missing `by` is "", and a `pinged` that is no
+ * instant or a `notePinged` that is not true is left out; a "note" whose note cleans to "" is dropped. Automaattest's `auto` (Dim 25.10) is read
+ * by the same rules when it is an object; a doc without one has none. Anything else, the whole value of another version included, is an empty
+ * doc. Always a copy.
  */
 export function readAnswersDoc(value: unknown): AnswersDoc {
   if (!isObject(value) || value.v !== 1 || !isObject(value.answers)) return { v: 1, answers: {} };
@@ -297,14 +312,16 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
 /**
  * A save merged into the stored answers (spec D4, §5). Each incoming answer of a check in the plan becomes `{ status, note, at, by }` with the
  * note cleaned, `at` the server's `now` and `by` the session's: nothing else of the incoming object is used (not its `by`, not its `at`). An
- * id outside the plan, or a status that is none of ok / bad / skip / clear, is ignored; answers stored for ids outside the plan are kept untouched.
+ * id outside the plan, or a status that is none of ok / bad / skip / note / clear, is ignored; answers stored for ids outside the plan are kept
+ * untouched. A "note" (Dim 30.10) is a note on its own, stored as `{ status: "note", note, at, by }` like any answer and in the same map.
  * A "clear" (Dim 29.10: a save can take an answer back) removes the check's stored answer from the same map, its note and its `pinged` and
  * `notePinged` with it (the next Viga of that check is a new failure and earns its messages: no memory of the cleared one); a clear of a check
- * with no answer in that map does nothing. It earns no message (pingsFor finds no answer to announce).
+ * with no answer in that map does nothing. It earns no message (pingsFor finds no answer to announce). A "note" whose note cleans to "" (the box
+ * emptied, Dim 30.10) is exactly a clear.
  * `changed` lists the ids written, and the ids whose answer a clear removed, in the order sent. The stored entry's `pinged` and `notePinged`
  * carry over only while it stays the same answer: it had this status, it has it again, and no redo has overtaken it; otherwise the answer is a
  * new one and earns its own messages (D6; Dim 22.10: an OK and a Jäta vahele have a first note that is announced too, so they carry
- * `notePinged` the way a Viga does).
+ * `notePinged` the way a Viga does; so does a note on its own retyped, Dim 30.10, while a press over it is a new answer).
  * `buildAt` (required) is what a "deploy" mark reads as (appliesAt): pass the running build's instant, TESTPLAN_BUILD_AT. It has no default
  * on purpose. A guess such as `now` would make every stored failure of a check marked "deploy" older than its mark, so each save of the same
  * failure would count as a new one and send the first Telegram message again (a message per pause in typing a note). Pure: `stored` is not edited.
@@ -328,7 +345,8 @@ export function mergeAnswers(
   for (const [id, raw] of Object.entries(incoming)) {
     const item = items.get(id);
     if (!item || !isObject(raw)) continue;
-    if (raw.status === "clear") {
+    const note = cleanNote(raw.note);
+    if (raw.status === "clear" || (raw.status === "note" && note === "")) {
       // (this map's answer only: the other side's stays, and a check this side never answered is left as it is)
       if (answerOf(answers, id) !== undefined) {
         delete answers[id];
@@ -336,8 +354,8 @@ export function mergeAnswers(
       }
       continue;
     }
-    if (!isStatus(raw.status)) continue;
-    const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at, by };
+    if (!isStored(raw.status)) continue;
+    const entry: StoredAnswer = { status: raw.status, note, at, by };
     const prev = answerOf(before, id);
     if (prev && prev.status === entry.status && checkState(item, prev, plan, buildAt).overtaken === null) {
       if (prev.pinged !== undefined) entry.pinged = prev.pinged;
@@ -356,7 +374,8 @@ export function mergeAnswers(
  *   before it had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along);
  * - for every answer (Dim 22.10: each has a note box), the "note" message, once: when the answer has no `notePinged` (and, a Viga, has been
  *   announced) and this save brings it a note, one that differs from the note stored before (so an old note carried along by a press is never
- *   sent as this answer's, however often it is saved again). pingText shows the answer in it.
+ *   sent as this answer's, however often it is saved again). pingText shows the answer in it. A note on its own (Dim 30.10) is such an answer:
+ *   its first note is the one message, and a Viga pressed over it carries its text as an old note (`oldNote`), so that text is not sent again.
  * Nothing for an answer with no note, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
  * decided which answer is the same one, and `after` carries what it decided.
  * `side` (Dim 25.10) is the map the save went into. Automaattest's (`auto`) pings are marked `auto`, and only its Viga pings, the first
@@ -432,7 +451,8 @@ export function testerOf(email: string, adminNames: string | undefined): Tester 
  * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (an OK still valid), open (a
  * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry a person's
  * overtaken answer. A check's state is stateIn's (admin polish Part A, Dim 29.10): the person's answer in `answers`, else Automaattest's in
- * `auto`. Automaattest's own numbers are its map passed as `answers`, with no `auto`.
+ * `auto`; a note on its own counts as nothing (Dim 30.10: the check is what it would be without it). Automaattest's own numbers are its map
+ * passed as `answers`, with no `auto`.
  */
 export function planCounts(
   plan: TestPlan,

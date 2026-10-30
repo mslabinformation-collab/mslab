@@ -1,4 +1,4 @@
-import type { IncomingAnswer, IncomingStatus, Status } from "@/domain/testplan";
+import type { IncomingAnswer, IncomingStatus, Status, StoredStatus } from "@/domain/testplan";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build; this file runs on old iPads, no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
 
 // The test page's outbox (phase 4, piece 1, spec §4 "Saving"), without React: TestPlan.tsx renders what it holds and tells it what the tester
@@ -15,6 +15,8 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 //   the save that carried THAT press came back ok, never one made after it was sent.
 // - an answer taken back (Dim 29.10) is a press like the others, with the status "clear": the newest press of a check wins, so a clear replaces a
 //   press waiting here and a press replaces a clear; the server removes the check's answer from the tester's own side.
+// - a note typed on a check with no answer of hers (Dim 30.10: a box under every check) is a note with the status "note", sent like any note
+//   (1 s after the last keystroke, or at once on flush); the server keeps it on its own, and one of "" (the box emptied) is a clear there.
 // - and a stale press is never sent again over a newer answer: the server stamps every save as the newest (spec §5), so a press it has
 //   confirmed leaves the storage at once, even when the page was left while that save was on its way (stop()), and with it any older press of
 //   that check still stored there (one whose newer press could not be written). A press this tab wrote to the storage and finds gone from it
@@ -49,9 +51,10 @@ export type Outbox = {
   /**
    * A note typed: queued, sent 1 s after the last call. It goes with the status of the check's press waiting here, when there is one (the page
    * shows that press, and a page not redrawn since it was made passes the status before it); else `status`, the check's status as the page
-   * shows it; else the last press here; else it has nothing to attach to and is dropped. A clear waiting here is no press to go with.
+   * shows it ("note" for a check with no answer of hers, or her note on its own: Dim 30.10); else the last press here; else it has nothing to
+   * attach to and is dropped. A clear waiting here is no press to go with.
    */
-  note(id: string, note: string, status?: Status): void;
+  note(id: string, note: string, status?: StoredStatus): void;
   /** Sends what is queued now (a note waiting for its second included); resolves when that save is over, whatever came of it. */
   flush(): Promise<void>;
   status(): OutboxStatus;
@@ -74,7 +77,7 @@ export type OutboxDeps = {
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const isStatus = (v: unknown): v is IncomingStatus => v === "ok" || v === "bad" || v === "skip" || v === "clear";
+const isStatus = (v: unknown): v is IncomingStatus => v === "ok" || v === "bad" || v === "skip" || v === "note" || v === "clear";
 /** A `clientAt` as this file writes it (`toISOString`): such instants compare as text in time order. */
 const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 /** The instant of a stored entry without a usable one of its own: the oldest press there is (it is sent, and loses to any press made here). */
@@ -120,8 +123,11 @@ async function outcomeOf(res: Response): Promise<Record<string, PageAnswer> | "s
 export function createOutbox(deps: OutboxDeps): Outbox {
   const { storage } = deps;
   const queue = new Map<string, Entry>();
-  /** The last status pressed per check: what a note without a status of its own attaches to. A clear takes the check out of it (`remember`). */
-  const known = new Map<string, Status>();
+  /**
+   * The last status pressed per check (a note on its own's "note" too): what a note without a status of its own attaches to. A clear takes the
+   * check out of it (`remember`).
+   */
+  const known = new Map<string, StoredStatus>();
   /** The instant of the newest press of each check that a save has confirmed: the storage may still hold it (a write that failed), and it is not taken again. */
   const confirmed = new Map<string, string>();
   const listeners = new Set<() => void>();

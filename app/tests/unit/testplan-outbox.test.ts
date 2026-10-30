@@ -961,3 +961,63 @@ describe("a clear: an answer taken back (Dim 29.10)", () => {
     expect(outbox.unsent().size).toBe(0);
   });
 });
+
+// Dim 30.10: a note box under every check. A note typed on a check with no answer of hers (or on her note) goes as a press of its own,
+// `{ status: "note", note }`, with the debounce and the flush of any note; the server keeps it apart from a verdict, and an emptied one ("") is a clear.
+describe("a note on its own (Dim 30.10)", () => {
+  test("is a note with the status \"note\": sent 1 s after the last call, kept in the storage meanwhile, at once on flush()", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.note("a", "Nu", "note");
+    outbox.note("a", "Nupp on hall", "note");
+    expect(outbox.unsent().get("a")).toEqual({ status: "note", note: "Nupp on hall" });
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "note", note: "Nupp on hall" });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(put).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "note", note: "Nupp on hall" } } });
+    await settle();
+    expect(storage.dump()).toBeNull();
+    // flush (the box lost the focus) sends at once
+    outbox.note("b", "Teine", "note");
+    await outbox.flush();
+    expect(bodyOf(put, 1)).toEqual({ answers: { b: { status: "note", note: "Teine" } } });
+  });
+
+  test("the box emptied is a note of \"\" (the server takes it as the clear), with the same debounce", async () => {
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.note("a", "", "note");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "note", note: "" } } });
+  });
+
+  test("a press waiting here wins over the page's \"note\" (a page not redrawn since); a press after the note replaces it", async () => {
+    const put = vi.fn(() => new Promise<Response>(() => {}));
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "bad", "");
+    outbox.note("a", "Nupp ei tööta", "note");
+    expect(outbox.unsent().get("a")).toEqual({ status: "bad", note: "Nupp ei tööta" });
+    outbox.note("b", "Märkus", "note");
+    outbox.answer("b", "ok", "Märkus");
+    expect(outbox.unsent().get("b")).toEqual({ status: "ok", note: "Märkus" });
+    // a clear waiting is no press: the note goes on its own, in its place
+    outbox.clear("c");
+    outbox.note("c", "Pärast tagasivõtmist", "note");
+    expect(outbox.unsent().get("c")).toEqual({ status: "note", note: "Pärast tagasivõtmist" });
+  });
+
+  test("survives a reload: a stored note is read back and sent at once; a note with no status of its own then stays a note", async () => {
+    const storage = memoryStorage();
+    storage.setItem(OUTBOX_KEY, JSON.stringify({ a: { status: "note", note: "Jäi saatmata", clientAt: "2026-10-16T09:00:00.000Z" } }));
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "note", note: "Jäi saatmata" } } });
+    await settle();
+    expect(storage.dump()).toBeNull();
+    outbox.note("a", "Jäi saatmata, nüüd läks");
+    expect(outbox.unsent().get("a")).toEqual({ status: "note", note: "Jäi saatmata, nüüd läks" });
+  });
+});

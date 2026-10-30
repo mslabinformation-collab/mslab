@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
-import { answerOf, checkState, NOTE_MAX, planCounts, stateIn, type AnswersDoc, type CheckState, type Status, type StoredAnswer, type Tester, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
+import {
+  answerOf, checkState, cleanNote, NOTE_MAX, planCounts, stateIn,
+  type AnswersDoc, type CheckState, type Status, type StoredAnswer, type StoredStatus, type Tester, type TestItem, type TestPlan as Plan,
+} from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
@@ -14,16 +17,19 @@ import { TestplanCheck, type AutoAnswer } from "./TestplanCheck";
 import ui from "./ui.module.css";
 import styles from "./TestPlan.module.css";
 
-// The test page (phase 4, piece 1, spec §4, §7): the plan's checks, each answered with a note (its box is open under every answer, Dim 22.10), the
+// The test page (phase 4, piece 1, spec §4, §7): the plan's checks, each answered with a note (its box is open under every check, Dim 30.10), the
 // answers of both admins together. The plan comes with the page (the bundle's own file: it is there when the database is not); the answers come
 // with the page and are read again on every load and on „Värskenda“. What the tester presses or types is the outbox's (testplan-outbox.ts): it
 // shows over the server's answers until a save has carried it, so a press is never taken back by a read, a slow save or a lost connection.
 // Dim 25.10: a third tester, „Automaattest“, answers apart, and the „Kes“ choice „Automaattest“ shows the checks it answered. Automaattest's own page
 // sees every check and shows its answers as the checks' answers (the server sends them so). Admin polish Part A (Dim 29.10, reversing D10's "never
 // counts"): on Maria's and Dim's page its answer is a check's state where no person's answer stands (domain/testplan.ts sharedState), in the marker,
-// the line, the „Olek“ pills and the area bars, though never their answer (no half pressed, no note box); its result is a chip in the row.
+// the line, the „Olek“ pills and the area bars, though never their answer (no half pressed, its note not in their box); its result is a chip in the row.
 // Admin polish Part A besides: a check answered here (or taken back) keeps its row, in place and with its new state, until the „Olek“ or „Kes“ choice
 // is made again, „Värskenda“ is pressed or the page is loaded again (`kept`); the counts and the area bars follow at once.
+// Dim 30.10: a note box under every check. A note typed where she has no answer is a note on its own (outbox `note(…, "note")`, the debounce and the
+// flush of any note): it changes no state and so moves no row; the box emptied is the clear. Automaattest's note alone lists no check under „Kes:
+// Automaattest“ (`autoIds`: the checks it gave a result).
 // Admin UX pass piece 4c (C7, README §4; the Part 4 frame „C7 Testimine“; piece4-texts S4-42…S4-46, §4, §5; R-i): the header is the eyebrow, the
 // H1, the line „{n} kontrolli · {k} läbitud · {v} viga“, one SaveStatus in place of the outbox line and „Värskenda“; one filter row of two
 // labelled groups, „Olek“ (Kõik / Avatud n / Viga n / Läbitud n, counted under the „Kes“ choice) and „Kes“ (Mina / Kõik / Automaattest); area
@@ -111,22 +117,26 @@ function browserStorage(): Storage | null {
 
 /**
  * Does a check belong to the „Kes“ choice: „Kõik“; „Mina“, the tester's own and the shared ones (`mine` null: every check, for an admin who is
- * no tester and for Automaattest's own session); „Automaattest“, one Automaattest has answered (`autoIds`).
+ * no tester and for Automaattest's own session); „Automaattest“, one Automaattest has answered (`autoIds`, resultIds: its note alone is no answer).
  */
 const forWho = (who: WhoChoice, item: TestItem, mine: "maria" | "dim" | null, autoIds: ReadonlySet<string>): boolean =>
   who === "all" || (who === "auto" ? autoIds.has(item.id) : mine === null || item.who === mine || item.who === "koos");
 const passes = (filter: Filter, st: CheckState | undefined): boolean => filter === "all" || st?.state === STATE_OF[filter];
 /** The checks' states as the counts read them (Dim 29.10, domain/testplan.ts stateIn): a person's answer, else Automaattest's (none on its own page). */
 const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, CheckState> => new Map(plan.items.map((i) => [i.id, stateIn(doc, i, plan, buildAt)]));
+/** The checks a map gives a result (ok, bad, skip): what „Kes: Automaattest“ lists. A note on its own (Dim 30.10) lists none. */
+const resultIds = (answers: Record<string, { status: StoredStatus }>): Set<string> =>
+  new Set(Object.entries(answers).filter(([, a]) => a.status !== "note").map(([id]) => id));
 
 /**
  * The server's answers as the rules read them (the answerer's name stands where the e-mail address is in a stored answer), the unsent ones over
- * them. An unsent "clear" (Dim 29.10, an answer taken back) takes the check's answer out until the server has said so.
+ * them. An unsent "clear" (Dim 29.10, an answer taken back) takes the check's answer out until the server has said so, and so does an unsent note
+ * on its own of no text (Dim 30.10: the box emptied, which the server takes as the clear).
  */
 function docOf(answers: Record<string, PageAnswer> | null, unsent: ReadonlyMap<string, UnsentAnswer>): AnswersDoc {
   const entries = new Map<string, StoredAnswer>(Object.entries(answers ?? {}).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]));
   for (const [id, a] of unsent) {
-    if (a.status === "clear") entries.delete(id);
+    if (a.status === "clear" || (a.status === "note" && cleanNote(a.note) === "")) entries.delete(id);
     else entries.set(id, { status: a.status, note: a.note, at: UNSENT_AT, by: "" });
   }
   return { v: 1, answers: Object.fromEntries(entries) };
@@ -313,11 +323,14 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   }, [answers, outbox, version]);
   /** Automaattest's answers: its own session's are what it shows (`doc`, its presses included), anybody else's come apart (`auto`). */
   const autoDoc = useMemo(() => (own ? doc : docOf(auto, new Map())), [own, doc, auto]);
-  const autoIds = useMemo(() => new Set(Object.keys(autoDoc.answers)), [autoDoc]);
+  const autoIds = useMemo(() => resultIds(autoDoc.answers), [autoDoc]);
   /** What the states and the counts read (Dim 29.10): the person's answers, and Automaattest's under them; its own page, its own answers only. */
   const counted = useMemo<AnswersDoc>(() => (own ? doc : { ...doc, auto: autoDoc.answers }), [own, doc, autoDoc]);
   const states = useMemo(() => statesOf(plan, counted, buildAt), [plan, counted, buildAt]);
-  /** Automaattest's answer to each check it answered, for its chip on Maria's and Dim's page: the answer, and whether a redo has overtaken it. */
+  /**
+   * Automaattest's answer to each check it answered, for its chip and its note line on Maria's and Dim's page: the answer, and whether a redo has
+   * overtaken it (its note on its own, Dim 30.10, is here for the line; TestplanCheck draws it no chip).
+   */
   const autoAnswers = useMemo(() => {
     const chips = new Map<string, AutoAnswer>();
     if (own) return chips;
@@ -341,7 +354,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const firstOpen = useMemo(() => {
     const start = docOf(initial, new Map());
     const startStates = statesOf(plan, own ? start : { ...start, auto: docOf(initialAuto ?? null, new Map()).answers }, buildAt);
-    const startIds = new Set(Object.keys((own ? initial : initialAuto) ?? {}));
+    const startIds = resultIds((own ? initial : initialAuto) ?? {});
     return plan.items.find((i) => forWho(view.who, i, mine, startIds) && startStates.get(i.id)?.state === "open")?.area ?? null;
   }, [plan, initial, initialAuto, own, buildAt, view.who, mine]);
   const hashArea = plan.items.find((i) => i.id === hash)?.area;
@@ -365,15 +378,17 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   const line = fill(counts.total === 1 ? t.progress.one : t.progress.many, { n: counts.total, done: counts.done, bad: counts.bad });
 
   const press = (item: TestItem, status: Status) => {
+    // (her note on its own, Dim 30.10, becomes the note of the answer pressed)
     const note = typed.get(item.id) ?? states.get(item.id)?.answer?.note ?? "";
     ensureOutbox().answer(item.id, status, note);
     keep(item.id);
-    // (the note box is there under every answer; only a Viga takes the focus into it: a pass must not raise a phone's keyboard)
+    // (the note box is there under every check; only a Viga takes the focus into it: a pass must not raise a phone's keyboard)
     if (status === "bad") focusAfterRef.current = item.id;
   };
   /**
    * An answer taken back (Dim 29.10; outbox `clear`, Task 4): the check is as one never answered here (or Automaattest's again), and its note goes
-   * with it: what she typed is dropped, and the box is gone with the answer, so no note can answer the check again while the clear waits.
+   * with it: what she typed is dropped, and the box stays, empty (Dim 30.10). A note typed in it next is a note on its own, which replaces the
+   * clear still waiting (the server's note entry replaces the answer the same way).
    */
   const takeBack = (item: TestItem) => {
     setTyped((m) => withoutEntry(m, item.id));
@@ -381,7 +396,8 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
     ensureOutbox().clear(item.id);
     keep(item.id);
   };
-  const type = (item: TestItem, status: Status, value: string) => {
+  /** A note typed: on her answer's status, or (Dim 30.10) "note", a note on its own, where she has none or on her note. */
+  const type = (item: TestItem, status: StoredStatus, value: string) => {
     const text = clip(value);
     setTyped((m) => withEntry(m, item.id, text));
     ensureOutbox().note(item.id, text, status);
