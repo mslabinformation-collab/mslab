@@ -1124,6 +1124,19 @@ describe("the review tools' checks (22.10)", () => {
     expect(text).toContain("ei kata ühtegi lehe nuppu ka siis, kui lehte kerid");
     expect(text).not.toContain("sisselogimise lehel");
   });
+
+  // admin polish, the sweep (Task 6): on an admin phone the bubble is no pill above the bottom bar any more but the round button in the top bar beside ≡
+  // (F18), so Hindamine's phone check names it as haldus-kommentaar-nupp does; only the words moved (what it asks of the bar is the same)
+  test("Hindamine on the phone names the round comment button in the top bar, as the bubble's own check does; reworded from the deploy", () => {
+    const check = find("ekursus-hinda-praktiline-telefon");
+    expect(check).toMatchObject({ device: "telefon", mark: "reworded", writes: false });
+    expect(markedSince(check.markedAt)).toBe(true);
+    const line = check.expect.find((l) => l.includes("kommentaari nupp"));
+    expect(line).toBe("Ümmargune kommentaari nupp on ülaribal nupu ≡ kõrval ja ei kata nuppu „Saada hinnang“.");
+    expect(find("haldus-kommentaar-nupp").expect[0]).toContain("Ümmargune kommentaari nupp");
+    expect(find("haldus-kommentaar-nupp").expect[0]).toContain("telefonis ülaribal nupu ≡ kõrval");
+    expect(whole("ekursus-hinda-praktiline-telefon")).not.toContain("ribast kõrgemal");
+  });
 });
 
 // Dim 25.10: a third tester, „Automaattest“, whose answers stay apart from Maria's and Dim's. Admin polish Part A (Dim 29.10): its result is a chip
@@ -1166,6 +1179,20 @@ describe("the Automaattest check (Dim 25.10, 29.10)", () => {
     expect(find).toBeGreaterThan(-1);
     expect(steps[find + 1]).toMatch(/^Kui sellist kontrolli pole, .*jäta see kontroll avatuks\.$/);
   });
+
+  // the sweep (Task 6, Task 5 re-review): the row the fallback looks at may hold a person's answer (Maria's), which the press and the take-back after it
+  // would overwrite and then remove; so each branch that leaves this check open skips the steps after it, and only the main walk presses
+  test("a branch that leaves this check open skips the rest of the walk, so no press lands on a check that may hold a person's answer", () => {
+    const { steps } = plan.items.find((c) => c.id === "testimine-automaattest")!;
+    const open = steps.map((s, i) => [s, i] as const).filter(([s]) => s.includes("jäta see kontroll avatuks"));
+    expect(open.map(([, i]) => i)).toEqual([1, 3]);
+    for (const [s] of open) expect(s, s).toContain("jäta ülejäänud sammud vahele");
+    // the presses and the take-back come only after both branches, on the check the main walk found (passed by Automaattest, no person's answer)
+    const presses = steps.map((s, i) => [s, i] as const).filter(([s]) => s.startsWith("Vajuta selle"));
+    expect(presses.length).toBe(2);
+    for (const [, i] of presses) expect(i).toBeGreaterThan(3);
+    expect(steps[2]).toContain("inimene pole vastanud");
+  });
 });
 
 // Admin polish Part A (Dim 29.10): the test page says what is done (a marker before each title, a row that stays where it was answered, the steps open
@@ -1180,7 +1207,8 @@ describe("Testimine says what is done (admin polish Part A, Dim 29.10)", () => {
 
   test("a new check in Haldus, Dim's, on a computer, right after the filters' one: the markers, the steps open, a row that stays, both ways to take an answer back, „Värskenda“", () => {
     const check = find("testimine-tehtud-ja-tagasi");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: false, mark: "new", href: "/admin/testimine" });
+    // (writes: its walk presses a real „Viga“ on another check, which is saved and sends the usual Telegram message: the sweep, Task 6, Task 5 re-review)
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "arvuti", writes: true, mark: "new", href: "/admin/testimine" });
     expect(markedSince(check.markedAt)).toBe(true);
     const text = [check.title, ...check.steps, ...check.expect].join("\n");
     for (const words of [

@@ -2270,9 +2270,9 @@
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vajuta rea „Kes“ juures „Automaattest“.",
-        "Kui leht ütleb „Selle valikuga kontrolle pole.“, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
+        "Kui leht ütleb „Selle valikuga kontrolle pole.“, vali „Kes“ juures „Kõik“, jäta ülejäänud sammud vahele ja jäta see kontroll avatuks.",
         "Muidu ava mõni ala ja leia kontroll, millele automaattest vastas „Läbitud“ ja inimene pole vastanud.",
-        "Kui sellist kontrolli pole, vaata ühe automaattesti vastatud kontrolli rida, vali „Kes“ juures „Kõik“ ja jäta see kontroll avatuks.",
+        "Kui sellist kontrolli pole, vaata üht rida, vali „Kes“ juures „Kõik“, jäta ülejäänud sammud vahele ja jäta see kontroll avatuks.",
         "Vaata selle kontrolli rida ja lehe ülaosas olevaid arve.",
         "Vajuta selle kontrolli juures „Läbitud“ ja oota, kuni selle all on sinu vastuse rida.",
         "Vajuta selle rea lõpus „Võta vastus tagasi“.",
@@ -2353,7 +2353,7 @@
       ],
       "why": "Testija peab kohe nägema, mis on tehtud, ja kogemata antud vastuse saab tagasi võtta.",
       "risk": "med",
-      "writes": false,
+      "writes": true,
       "mark": "new",
       "markedAt": "deploy"
     },
@@ -4805,14 +4805,14 @@
       "expect": [
         "Nupu riba jääb keri ajal ekraani alumisse serva.",
         "Viimane punkt ja „Üldised märkused“ on kerimise lõpus täielikult riba kohal.",
-        "Nupp „Kommentaar“ on nupu ribast kõrgemal ja ei kata nuppu „Saada hinnang“.",
+        "Ümmargune kommentaari nupp on ülaribal nupu ≡ kõrval ja ei kata nuppu „Saada hinnang“.",
         "Riba kohal on rida „Vali hinnang ka punktidele: …“ ja esimese hindamata punkti „Kinnitatud“ on riba kohal."
       ],
       "why": "Telefonis ei tohi alumine nupp midagi katta.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-lopetatud",
