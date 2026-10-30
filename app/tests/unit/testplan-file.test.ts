@@ -1276,6 +1276,8 @@ describe("a note box under every check (Dim 30.10)", () => {
     expect(check.mark).toBe("redo");
     expect(check.markedAt).toBe("deploy");
     expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-31T00:00:00.000Z")).not.toBeNull();
+    // (its walk presses and takes back on another check: never one with a redo's old answer, which the take-back would erase; review Minor 3)
+    expect(check.steps[1]).toContain("ega „Varasem vastus“ rida");
     expect(check.expect.find((l) => l.startsWith(`Teine „${t.bad}“`))).toContain("märkuse kast on tühi");
     expect(whole("testimine-tehtud-ja-tagasi")).not.toContain("kasti pole");
   });
@@ -1308,8 +1310,10 @@ describe("a note box under every check (Dim 30.10)", () => {
       "ühtegi nuppu vajutamata",
     ])
       expect(text, words).toContain(words);
-    // (the other checks' notes are typed on checks with no answer line, and emptied again: no one's answer is touched; this one is answered last)
-    expect(check.steps.join("\n")).toContain("mille all pole ühtegi vastuse rida");
+    // (the other checks' notes are typed on checks with no answer line, and emptied again: no one's answer is touched; this one is answered last.
+    // Review Minor 3: nor a „Varasem vastus“ line, whose old answer a note would replace and its emptying erase)
+    expect(check.steps[1]).toContain("mille all pole ühtegi vastuse rida ega „Varasem vastus“ rida");
+    expect(check.steps.find((s) => s.includes("kolmas kontroll:"))).toContain("ega „Varasem vastus“ rida");
     expect(check.steps.filter((s) => s.includes("selle kontrolli juures"))).toEqual([check.steps.at(-1)]);
     expect(check.steps.at(-1)).toContain(`selle kontrolli juures „${t.ok}“`);
     // the walk for a ✓ of Automaattest's says what to do when there is none

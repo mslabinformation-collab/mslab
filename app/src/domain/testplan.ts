@@ -69,7 +69,8 @@ export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnsw
  * A Telegram message to send: the first for a new failure ("bad"), the second for the first note of an answer, a failure's or (Dim 22.10) an OK's
  * or a Jäta vahele's ("note"). `oldNote`: the new failure's note is the one the answer before it already had (the page sends a check's note as it
  * stands with a press, so a Viga pressed on an OK "Tahvlis korras" carries that note along). It is not this failure's: the first message says there
- * is no note yet, and the note typed next is the second. `auto`: the answer is Automaattest's, in the doc's `auto` (Dim 25.10).
+ * is no note yet, and the note typed next is the second. (A note on its own before the Viga, Dim 30.10, is never an `oldNote`: it is the failure's.)
+ * `auto`: the answer is Automaattest's, in the doc's `auto` (Dim 25.10).
  */
 export type Ping = { id: string; kind: "bad" | "note"; oldNote?: true; auto?: true };
 
@@ -313,11 +314,14 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
  * A save merged into the stored answers (spec D4, §5). Each incoming answer of a check in the plan becomes `{ status, note, at, by }` with the
  * note cleaned, `at` the server's `now` and `by` the session's: nothing else of the incoming object is used (not its `by`, not its `at`). An
  * id outside the plan, or a status that is none of ok / bad / skip / note / clear, is ignored; answers stored for ids outside the plan are kept
- * untouched. A "note" (Dim 30.10) is a note on its own, stored as `{ status: "note", note, at, by }` like any answer and in the same map.
+ * untouched. A "note" (Dim 30.10) is a note on its own, stored as `{ status: "note", note, at, by }` like any answer and in the same map:
+ * over nothing, over a note, or over an answer a redo has overtaken. Over a verdict that stands in that map (ok, bad, skip, not overtaken) it is
+ * that verdict's note (review Important 1: a page that has not read an answer given since, on another device or by the other admin, sends
+ * "note"): stored as `{ status: <the verdict's>, note, at, by }`, the same answer with its records carried, so the check keeps its state.
  * A "clear" (Dim 29.10: a save can take an answer back) removes the check's stored answer from the same map, its note and its `pinged` and
  * `notePinged` with it (the next Viga of that check is a new failure and earns its messages: no memory of the cleared one); a clear of a check
  * with no answer in that map does nothing. It earns no message (pingsFor finds no answer to announce). A "note" whose note cleans to "" (the box
- * emptied, Dim 30.10) is exactly a clear.
+ * emptied, Dim 30.10) is exactly a clear, but over a standing verdict, whose note it empties: a note never takes a verdict back.
  * `changed` lists the ids written, and the ids whose answer a clear removed, in the order sent. The stored entry's `pinged` and `notePinged`
  * carry over only while it stays the same answer: it had this status, it has it again, and no redo has overtaken it; otherwise the answer is a
  * new one and earns its own messages (D6; Dim 22.10: an OK and a Jäta vahele have a first note that is announced too, so they carry
@@ -346,7 +350,11 @@ export function mergeAnswers(
     const item = items.get(id);
     if (!item || !isObject(raw)) continue;
     const note = cleanNote(raw.note);
-    if (raw.status === "clear" || (raw.status === "note" && note === "")) {
+    const prev = answerOf(before, id);
+    const stands = prev !== undefined && checkState(item, prev, plan, buildAt).overtaken === null;
+    /** A note on a verdict that stands in this map: that verdict's note, never a note on its own over it (review Important 1). */
+    const verdict = raw.status === "note" && stands && prev.status !== "note" ? prev.status : null;
+    if (raw.status === "clear" || (raw.status === "note" && note === "" && verdict === null)) {
       // (this map's answer only: the other side's stays, and a check this side never answered is left as it is)
       if (answerOf(answers, id) !== undefined) {
         delete answers[id];
@@ -355,9 +363,8 @@ export function mergeAnswers(
       continue;
     }
     if (!isStored(raw.status)) continue;
-    const entry: StoredAnswer = { status: raw.status, note, at, by };
-    const prev = answerOf(before, id);
-    if (prev && prev.status === entry.status && checkState(item, prev, plan, buildAt).overtaken === null) {
+    const entry: StoredAnswer = { status: verdict ?? raw.status, note, at, by };
+    if (prev && prev.status === entry.status && stands) {
       if (prev.pinged !== undefined) entry.pinged = prev.pinged;
       if (prev.notePinged) entry.notePinged = true;
     }
@@ -371,11 +378,13 @@ export function mergeAnswers(
  * The Telegram messages a save earns (spec D6), for the ids it changed, against `before`, the answers as stored before the save:
  * - for a Viga, the first message when no `pinged` is recorded (the failure is new: mergeAnswers dropped the old one's). A new Viga that already
  *   has a note gets the first message only, which carries the note (markPinged marks the note sent too), unless that note is the one the answer
- *   before it had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along);
+ *   before it had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along).
+ *   A note on its own (Dim 30.10) is no answer before it in that sense: it is what she saw going wrong, so a Viga pressed over it has that text as
+ *   its own note, carried in its first message (review Minor 2, ruling of 30.10);
  * - for every answer (Dim 22.10: each has a note box), the "note" message, once: when the answer has no `notePinged` (and, a Viga, has been
  *   announced) and this save brings it a note, one that differs from the note stored before (so an old note carried along by a press is never
  *   sent as this answer's, however often it is saved again). pingText shows the answer in it. A note on its own (Dim 30.10) is such an answer:
- *   its first note is the one message, and a Viga pressed over it carries its text as an old note (`oldNote`), so that text is not sent again.
+ *   its first note is the one message.
  * Nothing for an answer with no note, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
  * decided which answer is the same one, and `after` carries what it decided.
  * `side` (Dim 25.10) is the map the save went into. Automaattest's (`auto`) pings are marked `auto`, and only its Viga pings, the first
@@ -391,9 +400,11 @@ export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[
     const answer = answerOf(now, id);
     if (!answer || !known.has(id)) continue;
     if (side === "auto" && answer.status !== "bad") continue;
-    const noteBefore = answerOf(was, id)?.note;
-    if (answer.status === "bad" && answer.pinged === undefined)
-      pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true, ...mark } : { id, kind: "bad", ...mark });
+    const previous = answerOf(was, id);
+    const noteBefore = previous?.note;
+    // (a note on its own before the Viga is the failure's own text: no `oldNote`, Minor 2)
+    const carried = answer.note !== "" && answer.note === noteBefore && previous?.status !== "note";
+    if (answer.status === "bad" && answer.pinged === undefined) pings.push(carried ? { id, kind: "bad", oldNote: true, ...mark } : { id, kind: "bad", ...mark });
     else if (!answer.notePinged && answer.note !== "" && answer.note !== noteBefore) pings.push({ id, kind: "note", ...mark });
   }
   return pings;

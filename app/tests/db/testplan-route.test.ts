@@ -404,7 +404,8 @@ describe("PUT", () => {
     expect((await stored())?.answers).toEqual({});
   });
 
-  test("a Viga pressed over a note carries its text: the Viga's message says no note yet, the same text is not sent again, the next one is", async () => {
+  // review Minor 2 (ruling of 30.10): the note on its own is the failure's own text, so the Viga's first message carries it and no note message follows
+  test("a Viga pressed over a note carries its text: the Viga's first message carries it, and nothing more is sent for that failure's note", async () => {
     await signIn();
     for (const [status, note] of [["note", "Nupp ei tööta"], ["bad", "Nupp ei tööta"], ["bad", "Nupp ei tööta"], ["bad", "Nupp ei tööta, ka telefonis"]]) {
       await put({ answers: { "maria-1": { status, note } } });
@@ -412,9 +413,25 @@ describe("PUT", () => {
     }
     expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
       "Testimine — Märkus: Avaleht telefonis (Maria)\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
-      "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
-      "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nNupp ei tööta, ka telefonis\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Viga: Avaleht telefonis (Maria)\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
     ]);
+    expect((await stored())?.answers["maria-1"]).toMatchObject({ status: "bad", note: "Nupp ei tööta, ka telefonis", notePinged: true });
+  });
+
+  // review Important 1: Dim answered on his phone; Maria's page, not read since, sends her note as "note" — it is a note on Dim's answer
+  test("a note from a page out of date over a standing answer: 200, the answer stays with her note, and only that answer's first-note message goes", async () => {
+    await signIn(DIM);
+    await put({ answers: { "dim-1": { status: "ok", note: "" } } });
+    await runLater();
+    await signIn(MARIA);
+    const res = await put({ answers: { "dim-1": { status: "note", note: "Tahvlis korras" } } });
+    expect((await res.json()).answers["dim-1"]).toMatchObject({ status: "ok", note: "Tahvlis korras", byName: "Maria" });
+    await runLater();
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Märkus: Maksed (Maria) · Läbitud\nTahvlis korras\nhttps://site.example.test/admin/testimine#dim-1",
+    ]);
+    await put({ answers: { "dim-1": { status: "note", note: "" } } });
+    expect((await stored())?.answers["dim-1"]).toMatchObject({ status: "ok", note: "" });
   });
 
   test("several Vead in one save: one message each, in the order sent", async () => {

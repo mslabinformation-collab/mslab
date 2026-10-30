@@ -267,6 +267,26 @@ describe("saveAnswers: a note on its own (Dim 30.10)", () => {
     expect(await ownFaultCount(db, MARIA)).toBe(0);
   });
 
+  // review Important 1: a page that has not read the answer given since (on another device, or by the other admin on a shared check) sends "note"
+  test("a note over a verdict that stands is that verdict's note: no answer lost, no state changed, and only what a note edit would send", async () => {
+    await saveAnswers(db, DIM, body({ "koos-1": { status: "ok" }, "maria-1": { status: "bad" } }), T1, NAMES);
+    const stale = await saveAnswers(db, MARIA, { answers: { "koos-1": { status: "note", note: "Telefonis korras" }, "maria-1": { status: "note", note: "Nupp ei tööta" } } }, T2, NAMES);
+    // (the OK's first note, and the Viga's first note: one message each, as a note typed on those answers; no second Viga message)
+    expect(stale.ok && stale.pings).toEqual([{ id: "koos-1", kind: "note" }, { id: "maria-1", kind: "note" }]);
+    expect(await rowOf(db)).toEqual({
+      v: 1,
+      answers: {
+        "koos-1": { status: "ok", note: "Telefonis korras", at: T2.toISOString(), by: MARIA, notePinged: true },
+        "maria-1": { status: "bad", note: "Nupp ei tööta", at: T2.toISOString(), by: MARIA, pinged: T1.toISOString(), notePinged: true },
+      },
+    });
+    expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 1, bad: 1 });
+    // the box emptied on that page empties the note, never the answer; nothing is sent
+    const emptied = await saveAnswers(db, MARIA, { answers: { "koos-1": { status: "note", note: "" } } }, T3, NAMES);
+    expect(emptied.ok && emptied.pings).toEqual([]);
+    expect((await readAnswers(db)).answers["koos-1"]).toEqual({ status: "ok", note: "", at: T3.toISOString(), by: MARIA, notePinged: true });
+  });
+
   test("Automaattest's note goes into `auto`, and sends nothing", async () => {
     const saved = await saveAnswers(db, AUTO, noteBody("maria-1", "Kõik sammud läbitud."), T1, NAMES);
     expect(saved.ok && saved.pings).toEqual([]);

@@ -2335,7 +2335,7 @@
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
-        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida, ja vaata selle märki.",
+        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida ega „Varasem vastus“ rida, ja vaata selle märki.",
         "Vajuta teise kontrolli juures „Viga“ ja vaata selle märki ja samme.",
         "Vajuta teise kontrolli juures uuesti „Viga“.",
         "Vajuta teise kontrolli juures „Läbitud“ ja oota, kuni selle all on rida „Dim · … · Läbitud“.",
@@ -2366,11 +2366,11 @@
       "href": "/admin/testimine",
       "steps": [
         "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
-        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida.",
+        "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida ega „Varasem vastus“ rida.",
         "Kirjuta teise kontrolli märkuse kasti Proov, ühtegi nuppu vajutamata, ja klõpsa kastist välja.",
         "Oota, kuni päises on „Salvestatud …“, ja laadi leht uuesti.",
         "Kustuta teise kontrolli märkus, klõpsa kastist välja ja laadi leht uuesti.",
-        "Vali „Olek“ juures „Läbitud“ ja leia kolmas kontroll: roheline „Automaattest: Läbitud“, all vastuse rida pole.",
+        "Vali „Olek“ juures „Läbitud“ ja leia kolmas kontroll: roheline „Automaattest: Läbitud“, all pole vastuse ega „Varasem vastus“ rida.",
         "Kui kolmas kontroll on olemas, kirjuta tema kasti Proov, klõpsa välja, siis kustuta märkus ja klõpsa välja.",
         "Kui kõik oli nii, nagu all kirjas, vajuta selle kontrolli juures „Läbitud“."
       ],

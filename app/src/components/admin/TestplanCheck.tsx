@@ -191,6 +191,8 @@ export function TestplanCheck({ t, item, st, auto, unsent, typed, focusAfterRef,
           answer) or on her note it is a note on its own, which changes no state. */}
       <div className={styles.noteBox}>
         <textarea
+          // (the box no longer mounts on a Viga press: the focus works because this inline ref is a new function on every render, so React runs
+          // it again after the press. Never wrap it in useCallback.)
           ref={(el) => {
             if (el && focusAfterRef.current === item.id) {
               focusAfterRef.current = null;

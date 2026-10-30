@@ -994,9 +994,10 @@ describe("a note on its own (Dim 30.10)", () => {
     expect(mergeAnswers(doc(), { ghost: alone("x") }, PLAN, "m@x.test", NOW, BUILD)).toEqual({ doc: doc(), changed: [] });
   });
 
-  test("a note whose text cleans to \"\" acts exactly as a clear: the entry of that map goes, whatever it was; with none, nothing changes", () => {
+  test("a note whose text cleans to \"\" acts exactly as a clear on a note, or on an answer a redo overtook; with none, nothing changes", () => {
+    // (dim-1 is a redo marked 20.10: its OK of 19.10 is overtaken, no answer that stands)
     const stored = withAuto(
-      { "maria-1": noted("Nupp on hall", "2026-10-21T10:00:00.000Z", { notePinged: true }), "dim-1": answer("ok", "2026-10-21T10:00:00.000Z", { by: "m@x.test" }) },
+      { "maria-1": noted("Nupp on hall", "2026-10-21T10:00:00.000Z", { notePinged: true }), "dim-1": answer("ok", "2026-10-19T10:00:00.000Z", { by: "m@x.test" }) },
       { "maria-1": A("ok") },
     );
     const emptied = mergeAnswers(stored, { "maria-1": alone("   "), "dim-1": alone(""), "koos-1": alone("") }, PLAN, "m@x.test", NOW, BUILD);
@@ -1004,6 +1005,51 @@ describe("a note on its own (Dim 30.10)", () => {
     expect(emptied.doc).toEqual(withAuto({}, stored.auto!));
     expect(emptied.doc).toEqual(mergeAnswers(stored, { "maria-1": clear(), "dim-1": clear(), "koos-1": clear() }, PLAN, "m@x.test", NOW, BUILD).doc);
     expect(pingsFor(stored, emptied.doc, emptied.changed, PLAN, BUILD)).toEqual([]);
+  });
+
+  // review Important 1 (ruling of 30.10): a page out of date sends "note" for a check that has since been answered in the same map (on her phone,
+  // or by Dim on a shared check). Over a verdict that stands, the note is that verdict's note: the answer and the state stay.
+  test("a note over a verdict that stands in the same map is that verdict's note: the answer and the state stay, the note changes", () => {
+    const ok = answer("ok", "2026-10-21T10:00:00.000Z", { by: "d@x.test", note: "Vana" });
+    const stored = doc({ "maria-1": ok });
+    const merged = mergeAnswers(stored, { "maria-1": alone("  Telefonis korras ") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(merged.changed).toEqual(["maria-1"]);
+    expect(merged.doc).toEqual(doc({ "maria-1": { status: "ok", note: "Telefonis korras", at: NOW.toISOString(), by: "m@x.test" } }));
+    expect(stateIn(merged.doc, PLAN.items[0], PLAN, BUILD).state).toBe("done");
+    // "" empties that verdict's note and never takes the verdict back
+    const emptied = mergeAnswers(stored, { "maria-1": alone("   ") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(emptied.changed).toEqual(["maria-1"]);
+    expect(emptied.doc).toEqual(doc({ "maria-1": { status: "ok", note: "", at: NOW.toISOString(), by: "m@x.test" } }));
+    // a stored Jäta vahele is a verdict too (open, its answer kept)
+    const skip = mergeAnswers(doc({ "koos-1": answer("skip", "2026-10-21T10:00:00.000Z", { note: "Hiljem" }) }), { "koos-1": alone("Hiljem, tahvlis") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(skip.doc.answers["koos-1"]).toEqual({ status: "skip", note: "Hiljem, tahvlis", at: NOW.toISOString(), by: "m@x.test" });
+  });
+
+  test("…and earns what a note edit of that answer earns: a Viga keeps its `pinged` (no second first message), its first text is one note message", () => {
+    const bad = save(doc(), "maria-1", inc("bad", ""), "2026-10-30T09:00:00.000Z");
+    expect(bad.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
+    const n = save(bad.recorded, "maria-1", alone("Nupp ei tööta"), "2026-10-30T10:00:00.000Z");
+    expect(n.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    expect(n.recorded.answers["maria-1"]).toEqual({ status: "bad", note: "Nupp ei tööta", at: "2026-10-30T10:00:00.000Z", by: "m@x.test", pinged: "2026-10-30T09:00:00.000Z", notePinged: true });
+    expect(stateIn(n.recorded, PLAN.items[0], PLAN, BUILD).state).toBe("failed");
+    expect(save(n.recorded, "maria-1", alone("Nupp ei tööta, ka telefonis"), "2026-10-30T10:01:00.000Z").pings).toEqual([]);
+    // an OK whose note was announced: carried, nothing sent
+    const ok = save(save(doc(), "koos-1", inc("ok", "Korras"), "2026-10-30T09:00:00.000Z").recorded, "koos-1", alone("Korras, tahvlis ka"), "2026-10-30T10:00:00.000Z");
+    expect(ok.pings).toEqual([]);
+    expect(ok.recorded.answers["koos-1"]).toMatchObject({ status: "ok", note: "Korras, tahvlis ka", notePinged: true });
+  });
+
+  test("over an answer a redo overtook, over a note or over nothing it is a note on its own as before; the other map is never looked at", () => {
+    // dim-1 is a redo marked 20.10: an OK of 19.10 is overtaken
+    const overtaken = mergeAnswers(doc({ "dim-1": answer("ok", "2026-10-19T10:00:00.000Z") }), { "dim-1": alone("x") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(overtaken.doc.answers["dim-1"]).toEqual({ status: "note", note: "x", at: NOW.toISOString(), by: "m@x.test" });
+    expect(mergeAnswers(doc({ "maria-1": noted("a") }), { "maria-1": alone("b") }, PLAN, "m@x.test", NOW, BUILD).doc.answers["maria-1"].status).toBe("note");
+    // Automaattest's OK in `auto` is not Maria's verdict: her note is a note on its own, and its OK stays its own
+    const both = mergeAnswers(withAuto({}, { "maria-1": A("ok") }), { "maria-1": alone("Minu märkus") }, PLAN, "m@x.test", NOW, BUILD);
+    expect(both.doc).toEqual(withAuto({ "maria-1": { status: "note", note: "Minu märkus", at: NOW.toISOString(), by: "m@x.test" } }, { "maria-1": A("ok") }));
+    // ...and on its own side its note over its own verdict is that verdict's note
+    const own = mergeAnswers(withAuto({}, { "maria-1": A("bad") }), { "maria-1": alone("Nupp puudub") }, PLAN, AUTO, NOW, BUILD, "auto");
+    expect(own.doc.auto!["maria-1"]).toEqual({ status: "bad", note: "Nupp puudub", at: NOW.toISOString(), by: AUTO });
   });
 
   /** One save of one check, as the route runs it: merge, find the pings, record them. */
@@ -1028,17 +1074,22 @@ describe("a note on its own (Dim 30.10)", () => {
     expect(save(s3.recorded, "maria-1", alone("Uus märkus"), "2026-10-30T10:03:00.000Z").pings).toEqual([{ id: "maria-1", kind: "note" }]);
   });
 
-  test("a Viga pressed over a note carries its text: it earns its Viga message (no note of its own yet), and that text is not sent again", () => {
+  // review Minor 2 (Dim's side, ruling of 30.10): the note on its own was what she saw going wrong, so it is the failure's own note — the Viga's
+  // first message carries it, and the note counts as sent with it (a brand-new Viga with a note, as ever)
+  test("a Viga pressed over a note carries its text as its own: the first message carries it, and no note message follows for that answer", () => {
     const n = save(doc(), "maria-1", alone("Nupp ei tööta"), "2026-10-30T10:00:00.000Z");
     expect(n.pings).toEqual([{ id: "maria-1", kind: "note" }]);
     const bad = save(n.recorded, "maria-1", inc("bad", "Nupp ei tööta"), "2026-10-30T10:01:00.000Z");
-    expect(bad.pings).toEqual([{ id: "maria-1", kind: "bad", oldNote: true }]);
-    expect(bad.recorded.answers["maria-1"]).toEqual({ status: "bad", note: "Nupp ei tööta", at: "2026-10-30T10:01:00.000Z", by: "m@x.test", pinged: "2026-10-30T10:01:00.000Z" });
-    // the same failure saved again with the same text: nothing; the description typed next: the second message, once
-    const again = save(bad.recorded, "maria-1", inc("bad", "Nupp ei tööta"), "2026-10-30T10:02:00.000Z");
-    expect(again.pings).toEqual([]);
-    const typed = save(again.recorded, "maria-1", inc("bad", "Nupp ei tööta, ka telefonis"), "2026-10-30T10:03:00.000Z");
-    expect(typed.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    expect(bad.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
+    expect(bad.recorded.answers["maria-1"]).toEqual({
+      status: "bad", note: "Nupp ei tööta", at: "2026-10-30T10:01:00.000Z", by: "m@x.test", pinged: "2026-10-30T10:01:00.000Z", notePinged: true,
+    });
+    // the same failure saved again, with the same text or a new one: nothing more
+    expect(save(bad.recorded, "maria-1", inc("bad", "Nupp ei tööta"), "2026-10-30T10:02:00.000Z").pings).toEqual([]);
+    expect(save(bad.recorded, "maria-1", inc("bad", "Nupp ei tööta, ka telefonis"), "2026-10-30T10:03:00.000Z").pings).toEqual([]);
+    // (a Viga pressed on a verdict's note still says it has none: that note was the answer before it's, not the failure's)
+    const ok = save(doc(), "koos-1", inc("ok", "Tahvlis korras"), "2026-10-30T10:00:00.000Z");
+    expect(save(ok.recorded, "koos-1", inc("bad", "Tahvlis korras"), "2026-10-30T10:01:00.000Z").pings).toEqual([{ id: "koos-1", kind: "bad", oldNote: true }]);
   });
 
   test("a Läbitud pressed over a note carries its text and pings nothing; a note typed on it next is its first", () => {
