@@ -88,9 +88,9 @@ test("a code by e-mail signs in and opens Minu konto; the header follows, and Lo
   await expect(page.locator("[data-login-wait]")).toHaveText(WAIT);
   await expect(page.getByRole("button", { name: "Saada uus kood" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Muuda e-posti" })).toBeVisible();
-  // big, readable digits in the site's number font (Jost)
+  // big, readable digits in the site's number font (Jost): 28 px since Dim 06.11 (the 40 px ones made the field look enormous)
   const digits = await field.evaluate((e) => ({ size: parseFloat(getComputedStyle(e).fontSize), font: getComputedStyle(e).fontFamily }));
-  expect(digits.size).toBeGreaterThanOrEqual(32);
+  expect(digits.size).toBeGreaterThanOrEqual(28);
   expect(digits.font).toMatch(/Jost/i);
 
   // the sixth digit signs in by itself
