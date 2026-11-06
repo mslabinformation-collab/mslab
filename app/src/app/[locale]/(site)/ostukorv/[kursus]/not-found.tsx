@@ -8,7 +8,7 @@ function texts(l: Locale): NotFoundTexts {
 }
 
 // /ostukorv?kursus=<a course that does not exist or is not published>: a 404 (never a cached 200 page per made-up
-// address) that says what the empty cart says.
+// address) that says what the empty cart says, where the empty cart says it (at the left edge, as the cart's own page).
 export default function CartNotFound() {
-  return <NotFoundView texts={{ et: texts("et"), ru: texts("ru") }} />;
+  return <NotFoundView texts={{ et: texts("et"), ru: texts("ru") }} align="start" />;
 }

@@ -46,7 +46,8 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
   if (slug && !course) notFound();
 
   if (!course || course.type !== "e_learning" || course.price == null) {
-    return <Notice title={d.cart.emptyTitle} text={d.cart.emptyText} links={[{ href: to("/koolitused?vorm=e"), label: d.formats.elearning.link }]} />;
+    // at the left edge on every screen, where the cart's own page starts (the other message pages are centred on a wide screen)
+    return <Notice title={d.cart.emptyTitle} text={d.cart.emptyText} links={[{ href: to("/koolitused?vorm=e"), label: d.formats.elearning.link }]} align="start" />;
   }
 
   const title = pick(course.title, locale);

@@ -1,7 +1,8 @@
-/* The login page (/konto/sisene), in the site's own parts: laid out as the site's message pages (Notice: the account
-   placeholder, "Sinu konto avati teises seadmes", 404), so the heading stays where it was when one leads to the other;
+/* The login page (/konto/sisene), in the site's own parts: laid out as the site's message pages (Notice: "Sinu konto avati
+   teises seadmes", "Ei õnnestunud laadida.", 404), so the heading stays where it was when one leads to the other;
    B .field inputs (as the course page's registration), B .notice for messages, ui.btn / ui.btnOutline buttons. Colours
-   from tokens.css only. Designed at 390 px first; the column stays 440 px wide on larger screens. */
+   from tokens.css only. Designed at 390 px first; the column stays 440 px wide on larger screens, and wider than 900 px
+   it stands in the middle of the page with its heading centred over it (Dim 06.11), as the message pages' heading. */
 
 .page {
   min-height: 52vh;
@@ -11,6 +12,18 @@
 .box {
   width: 100%;
   max-width: 440px;
+}
+
+/* Wider than 900 px: the column in the middle, the heading centred; the labels, fields, lines and buttons keep their left edge inside the
+   column (centred form labels read badly). At 900 px and less all stays at the page's left edge, as before. */
+@media (min-width: 901px) {
+  .box {
+    margin-inline: auto;
+  }
+
+  .title {
+    text-align: center;
+  }
 }
 
 /* Notice .title */

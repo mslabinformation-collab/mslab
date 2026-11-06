@@ -44,3 +44,23 @@
 .link:hover {
   border-bottom-color: var(--ink);
 }
+
+/* Wider than 900 px (align "center"): the heading centred on the page, as the login page's; the text and the buttons in the middle under it.
+   A text of more than one line keeps its left edge inside its own width (a centred paragraph reads badly). At 900 px and less all stays at
+   the page's left edge, as before. */
+@media (min-width: 901px) {
+  .centered .title {
+    margin-inline: auto;
+    text-align: center;
+    text-wrap: balance;
+  }
+
+  .centered .text {
+    width: fit-content;
+    margin-inline: auto;
+  }
+
+  .centered .links {
+    justify-content: center;
+  }
+}
