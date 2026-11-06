@@ -165,3 +165,8 @@ table.list .who {
     background: none;
   }
 }
+
+/* „Kontot pole“ (06.11 polish board 5): under the e-mail of a payment that opens nothing — no registration, no account with its address */
+.noAccount {
+  margin-top: 4px;
+}

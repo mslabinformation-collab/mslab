@@ -116,13 +116,17 @@
   border-top: 1px solid var(--line);
 }
 
+/* the row reaches 12 px into the card's padding on both sides, so the pointer's tint has room round the count and the arrow (06.11 polish board 4);
+   the dividers are the items' (above), at the content's width */
 .queueRow {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) 24px;
   align-items: center;
   gap: 14px;
   min-height: 64px;
-  padding: 8px 0;
+  margin: 0 -12px;
+  padding: 8px 12px;
+  border-radius: 12px;
   color: var(--ink);
   text-decoration: none;
 }
@@ -189,16 +193,29 @@
   list-style: none;
 }
 
+/* a row reaches 12 px into the card's padding (06.11 polish board 4), its divider drawn 12 px in, at the content's width */
 .upRow {
+  position: relative;
   display: grid;
   grid-template-columns: 90px minmax(0, 1fr) 70px;
   align-items: center;
   gap: 10px;
   min-height: 52px;
-  border-bottom: 1px solid var(--line);
+  margin: 0 -12px;
+  padding: 0 12px;
+  border-radius: 12px;
   color: var(--ink);
   font-size: 13px;
   text-decoration: none;
+}
+
+.upRow::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  border-bottom: 1px solid var(--line);
 }
 
 .upHead {

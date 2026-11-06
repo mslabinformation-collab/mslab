@@ -196,3 +196,19 @@ test("B14: % _ and a backslash in the search are letters, not wildcards; Cyrilli
   expect(await idsOf(db, "all", "a%b")).toEqual([]);
   expect(await idsOf(db, "all", "vera")).toEqual([rows.voided.id]);
 });
+
+test("pagePayments: an e-course attempt never paid (no client of its own) carries the student whose account has its e-mail, any case; none without one (06.11 polish board 5)", async () => {
+  const { db, kati } = await fixture();
+  const [course] = await db.select().from(courses).where(eq(courses.slug, "kulmumeistri-e-koolitus"));
+  const [failed] = await db
+    .insert(payments)
+    .values({ reference: "MSLAB-M901", kind: "ecourse", courseId: course.id, clientId: null, email: "KATI@example.com", name: "Kati Tamm", amountCents: 19000, status: "failed", createdAt: at(6) })
+    .returning();
+  const [stranger] = await db
+    .insert(payments)
+    .values({ reference: "MSLAB-M902", kind: "ecourse", courseId: course.id, clientId: null, email: "uus@example.com", name: "Uus", amountCents: 19000, status: "failed", createdAt: at(7) })
+    .returning();
+  const rows = (await pagePayments(db, { filter: "all" }, 1)).rows;
+  expect(rows.find((p) => p.id === failed.id)).toMatchObject({ clientId: null, emailClientId: kati.id });
+  expect(rows.find((p) => p.id === stranger.id)).toMatchObject({ clientId: null, emailClientId: null });
+});

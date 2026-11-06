@@ -159,3 +159,32 @@
     margin-bottom: 0;
   }
 }
+
+/* 06.11 polish board 4: in the table layout (wider than 760 px) the table reaches 12 px into the card's padding on both sides and its first and last
+   cells take those 12 px as room, so every text stays where it was and the row's tint under the pointer starts 12 px before the first column. The
+   dividers keep the content's width: the first and last cells draw theirs 12 px in (a line of their background), the others keep their border. */
+@container (min-width: 760.02px) {
+  .table {
+    width: calc(100% + 24px);
+    margin-right: -12px;
+    margin-left: -12px;
+  }
+
+  .table th:first-child,
+  .table td:first-child {
+    padding-left: 12px;
+    border-bottom-color: transparent;
+    background: linear-gradient(var(--line), var(--line)) no-repeat right bottom / calc(100% - 12px) 1px;
+  }
+
+  .table th:last-child,
+  .table td:last-child {
+    padding-right: 12px;
+    border-bottom-color: transparent;
+    background: linear-gradient(var(--line), var(--line)) no-repeat left bottom / calc(100% - 12px) 1px;
+  }
+
+  .table tbody tr:last-child td {
+    background: none;
+  }
+}

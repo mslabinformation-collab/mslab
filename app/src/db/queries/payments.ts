@@ -9,7 +9,7 @@ import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import { dbErrorCode } from "../safe-error";
 import * as schema from "../schema";
-import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
+import { clients, courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
 import { paged, type Paged } from "./paged";
 import { NEEDS_CHECK } from "./payment-checks";
 import { lockRegistration } from "./seats";
@@ -358,7 +358,12 @@ export async function holdsEnded(db: Db, since: Date, now: Date): Promise<number
 // ---------- the admin's lists (phase 2b, spec 8) ----------
 
 /** A payment with what it was for: the course's title and slug (null when the course is gone) and its registration's session day. */
-export type PaymentRow = Payment & { courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null };
+/**
+ * A payment as the lists show it: with its course's title and slug, its session's start, and `emailClientId`, the student whose account has the
+ * payment's e-mail address (06.11 polish board 5: an e-course attempt that was never paid carries no client of its own — the client is written when
+ * the payment succeeds — so Maksed finds her by the address the shop would find her by); null without such an account.
+ */
+export type PaymentRow = Payment & { courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null; emailClientId: number | null };
 
 /**
  * "Maksed"'s pills, as the words of the address (?staatus=): every payment, or one pill. Each payment is under exactly one pill (admin UX pass
@@ -390,7 +395,14 @@ function paymentSearch(search: string | undefined) {
   return or(ilike(payments.name, text), ilike(payments.email, text), ilike(payments.providerUuid, text), ilike(payments.reference, text));
 }
 
-const rowFields = { payment: payments, courseTitle: courses.title, courseSlug: courses.slug, startsAt: courseSessions.startsAt };
+const rowFields = {
+  payment: payments,
+  courseTitle: courses.title,
+  courseSlug: courses.slug,
+  startsAt: courseSessions.startsAt,
+  // (clients.email is stored lower-cased and unique, payments.email normalized the same way; lower() on both keeps an older row in step)
+  emailClientId: sql<number | null>`(select ${clients.id} from ${clients} where lower(${clients.email}) = lower(${payments.email}) limit 1)`.mapWith((v) => (v === null ? null : Number(v))),
+};
 
 function rowQuery(db: Db) {
   return db
@@ -401,7 +413,13 @@ function rowQuery(db: Db) {
     .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
 }
 
-const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null }): PaymentRow => ({ ...r.payment, courseTitle: r.courseTitle, courseSlug: r.courseSlug, startsAt: r.startsAt });
+const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null; emailClientId: number | null }): PaymentRow => ({
+  ...r.payment,
+  courseTitle: r.courseTitle,
+  courseSlug: r.courseSlug,
+  startsAt: r.startsAt,
+  emailClientId: r.emailClientId,
+});
 
 /**
  * The day "Maksed" shows and sorts a payment by (its "Kuupäev"): the day it was paid, else the day it was started (the owner's default of

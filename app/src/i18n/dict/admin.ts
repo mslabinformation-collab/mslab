@@ -533,6 +533,8 @@ export const adminEt = {
     // where a row leads, as the phone card says it (the Part 2 phone frame „Ava registreering →“; P-8 „Ava õpilane →“ for an e-course payment)
     openRegistration: "Ava registreering →",
     openStudent: "Ava õpilane →",
+    // a payment with no registration and no account with its e-mail (an e-course attempt never paid, 06.11 polish board 5): why its row opens nothing
+    noAccount: "Kontot pole",
     // the Montonio id as a link (Dim 22.10): „Montonios ↗“ (the arrow is the component's) opens the Partner System and copies the order id; the line says the copy was made
     montonio: "Montonios",
     montonioCopied: "Montonio id kopeeritud.",

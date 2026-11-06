@@ -56,13 +56,15 @@ function href(view: View): string {
 }
 
 /**
- * Where a payment's row leads (README A6, P-8): the drawer of its registration, else — an e-course payment has none — its student; a payment whose
- * registration and student are both gone (their rows were deleted) leads nowhere.
+ * Where a payment's row leads (README A6, P-8): the drawer of its registration, else — an e-course payment has none — its student, else the student
+ * whose account has the payment's e-mail address (06.11 polish board 5: an e-course attempt never paid has no student of its own). A payment with
+ * none of them leads nowhere, and its row says „Kontot pole“.
  */
 function leadsTo(p: PaymentRow): { href: string; text: string } | null {
   const t = adminEt.payments;
   if (p.registrationId !== null) return { href: `/admin/registreerimised?id=${p.registrationId}`, text: t.openRegistration };
-  if (p.clientId !== null) return { href: `/admin/opilased?id=${p.clientId}`, text: t.openStudent };
+  const student = p.clientId ?? p.emailClientId;
+  if (student !== null) return { href: `/admin/opilased?id=${student}`, text: t.openStudent };
   return null;
 }
 
@@ -162,6 +164,11 @@ export default async function PaymentsPage({ searchParams }: Props) {
                           <a className={`${ui.contactLink} ${styles.contact}`} href={`mailto:${p.email}`}>
                             {p.email}
                           </a>
+                          {!lead && (
+                            <span className={`${ui.tag} ${ui.muted} ${styles.noAccount}`} data-payment-no-account="">
+                              {t.noAccount}
+                            </span>
+                          )}
                         </div>
                         {/* the phone card (below 760 px of the card; the Part 2 phone frame): „19.10 · Lash Lift BOTOX · Pangalink“ under the name and the sum, and where the row leads */}
                         <span className={styles.meta} data-payment-meta="">

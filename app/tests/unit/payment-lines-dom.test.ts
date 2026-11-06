@@ -36,6 +36,7 @@ const row = (id: number, status: PaymentStatus, over: Partial<PaymentRow> = {}):
   courseTitle: { et: "Kulmumeistri baaskoolitus" },
   courseSlug: "kulmumeistri-baaskoolitus",
   startsAt: null,
+  emailClientId: null,
   ...over,
 });
 
