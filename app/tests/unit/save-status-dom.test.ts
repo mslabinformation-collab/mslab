@@ -280,3 +280,61 @@ describe("SaveStatus: signed out, „logi uuesti sisse“ is the way to sign in 
     }
   });
 });
+
+describe("SaveStatus follow (06.11 polish board 3): the page chip comes along when its title row is scrolled away", () => {
+  const copy = () => document.body.querySelector<HTMLElement>("[data-save-follow]");
+  /** The chip's box: `bottom` px from the window's top, 32 px tall, its right edge 1400 px from the left (a 1440 window). */
+  const at = (bottom: number) => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1440);
+    chip().getBoundingClientRect = () => ({ top: bottom - 32, bottom, height: 32, left: 1240, right: 1400, width: 160, x: 1240, y: bottom - 32, toJSON: () => ({}) }) as DOMRect;
+  };
+  const scroll = () =>
+    act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+  it("in view, there is no copy; scrolled up out of the window, a fixed copy at the chip's right edge, 16 px down, hidden from a screen reader", async () => {
+    await open({ status: { kind: "saved", at: NOON }, follow: true });
+    at(120);
+    await scroll();
+    expect(copy()).toBeNull();
+    at(-40);
+    await scroll();
+    const c = copy()!;
+    expect(c.getAttribute("aria-hidden")).toBe("true");
+    expect(c.style.top).toBe("16px");
+    expect(c.style.right).toBe("40px");
+    expect(c.textContent).toContain("Salvestatud 12:04");
+    expect(c.querySelector('[role="status"]')).toBeNull();
+    // the state changes: the copy says the new one
+    await act(async () => root.render(createElement(SaveStatus, { key: pages, status: { kind: "saving" }, follow: true })));
+    expect(copy()!.textContent).toContain("Salvestan…");
+    at(200);
+    await scroll();
+    expect(copy()).toBeNull();
+  });
+
+  it("„Näita“ in the copy still shows the invalid field, out of the tab order; without `follow` no copy ever shows", async () => {
+    const showInvalid = vi.fn();
+    await open({ status: { kind: "invalid", fields: ["a"] } as AutosaveStatus, follow: true, onShowInvalid: showInvalid });
+    at(-40);
+    await scroll();
+    const button = copy()!.querySelector("button")!;
+    expect(button.tabIndex).toBe(-1);
+    await click(button);
+    expect(showInvalid).toHaveBeenCalledTimes(1);
+    await open({ status: { kind: "saved", at: NOON } });
+    at(-40);
+    await scroll();
+    expect(copy()).toBeNull();
+  });
+
+  it("below 900 px the copy stands 8 px under the phone top bar, and a chip under the bar counts as gone", async () => {
+    await open({ status: { kind: "dirty" }, follow: true });
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(390);
+    chip().getBoundingClientRect = () => ({ top: 20, bottom: 52, height: 32, left: 16, right: 200, width: 184, x: 16, y: 20, toJSON: () => ({}) }) as DOMRect;
+    await scroll();
+    expect(copy()!.style.top).toBe("72px");
+  });
+});

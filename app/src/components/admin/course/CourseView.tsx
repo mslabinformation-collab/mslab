@@ -139,10 +139,9 @@ export function CourseView({
             <Fragment key={part}>{cards[part]}</Fragment>
           ))}
         </div>
-        {/* (from 1180 px the column scrolls with the page and „Avaldamine“ in its box stays at the top, CourseEditor.module.css .publish; sticky at the
-            top, not a bottom bar: no data-fab-avoid) */}
+        {/* (from 1180 px the column scrolls with the page as a whole, nothing in it sticks: 06.11 polish board 2, CourseEditor.module.css .side) */}
         <aside className={styles.side}>
-          <div className={styles.publish} data-side-publish="">
+          <div data-side-publish="">
             <PublishCard {...switches} />
           </div>
           <BadgeCard api={parts.badge} card={card} />

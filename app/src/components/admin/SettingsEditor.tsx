@@ -195,7 +195,7 @@ export function SettingsEditor(p: {
         </div>
         <div className={ui.headAside}>
           <LangSwitch />
-          <SaveStatus status={status} compact={phone} onShowInvalid={showInvalid} />
+          <SaveStatus status={status} compact={phone} onShowInvalid={showInvalid} follow />
         </div>
       </div>
 

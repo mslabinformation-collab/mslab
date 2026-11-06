@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import styles from "./SectionMap.module.css";
@@ -26,6 +26,74 @@ export type SectionEntry = {
  */
 export const sectionCard: string = styles.card;
 
+/** The reading line (06.11 polish board 1): the card whose top has passed this far below the window's top is the one being read; below 900 px the
+ * phone top bar's 64 px more. */
+const READ_LINE = 96;
+const PHONE_BAR = 64;
+/** A scroll is over when no scroll event came for this long (a click's smooth scroll, a flick). */
+const SCROLL_IDLE_MS = 150;
+
+/**
+ * The map follows the page (06.11 polish board 1): as the page scrolls, the entry of the last card whose top has passed the reading line is marked; at
+ * the very foot of a page that scrolls, the last card, however short. A card without layout (no height: hidden, not drawn yet) is passed over. The
+ * returned `hold` is called on a click or a choice: the entry chosen stays marked through its smooth scroll, and the map follows again from the next
+ * scroll after that one has settled.
+ */
+function useReadCard(sections: SectionEntry[], mark: (id: string) => void): () => void {
+  const list = useRef(sections);
+  list.current = sections;
+  const held = useRef<"no" | "moving" | "settled">("no");
+  const idle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const ids = sections.map((s) => s.id).join("|");
+
+  useEffect(() => {
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const line = READ_LINE + (window.innerWidth < 900 ? PHONE_BAR : 0);
+      let reading: string | undefined;
+      let last: string | undefined;
+      for (const s of list.current) {
+        const box = document.getElementById(s.id)?.getBoundingClientRect();
+        if (!box || box.height === 0) continue;
+        last = s.id;
+        if (box.top <= line) reading = s.id;
+      }
+      const page = document.documentElement;
+      if (last && page.scrollHeight > window.innerHeight && window.scrollY + window.innerHeight >= page.scrollHeight - 2) reading = last;
+      if (reading) mark(reading);
+    };
+    const onScroll = () => {
+      if (held.current !== "no") {
+        // a chosen entry's own scroll: wait for it to settle; the scroll after that is the reader's again
+        if (held.current === "settled") held.current = "no";
+        else {
+          clearTimeout(idle.current);
+          idle.current = setTimeout(() => (held.current = "settled"), SCROLL_IDLE_MS);
+          return;
+        }
+      }
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    read();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+      clearTimeout(idle.current);
+    };
+  }, [ids, mark]);
+
+  return () => {
+    held.current = "moving";
+    clearTimeout(idle.current);
+    // a card already in place scrolls nowhere: it settles all the same
+    idle.current = setTimeout(() => (held.current = "settled"), SCROLL_IDLE_MS);
+  };
+}
+
 /**
  * The map of a long editor page (README B2; the Part 3 and 4 prototypes): from 1180 px a 190 px sticky list of links to the page's cards, each with its
  * count, „RU puudub“ or „Kontrolli“ at the right; below that a select „Jaotised ▾“ (it shows „Jaotised · {the card}“) in its place. A tap or a choice
@@ -40,11 +108,14 @@ export const sectionCard: string = styles.card;
 export function SectionMap({ sections, width = 190 }: { sections: SectionEntry[]; width?: 170 | 190 }) {
   const t = adminEt.sectionMap;
   const [chosen, setChosen] = useState(sections[0]?.id);
-  // the entry that was chosen last, or the first one when it is not there any more (the card follows the draft „Õppevorm“)
+  // the entry of the card being read (useReadCard), else the one chosen last, or the first one when it is not there any more (the card follows the
+  // draft „Õppevorm“)
   const current = sections.find((s) => s.id === chosen) ?? sections[0];
+  const hold = useReadCard(sections, setChosen);
 
   const go = (id: string) => {
     setChosen(id);
+    hold();
     const card = document.getElementById(id);
     if (!card) return;
     const calm = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;

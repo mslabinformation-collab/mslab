@@ -400,7 +400,7 @@ function SavedForm({
         // the draft's words („Mustand salvestatud“) while something waits for „Avalda muudatused“; after the publish „Salvestatud {HH:MM}“ (§4)
         status={
           <span className={styles.statusSlot}>
-            <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} />
+            <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} follow />
           </span>
         }
         publicHref={published ? `/koolitused/${data.slug}` : null}

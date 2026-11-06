@@ -448,7 +448,7 @@ function DraftEditor({
           <h2 id={`${uid}-form`} className={styles.formTitle} data-campaign-title="">
             {values.name.trim() || t.newTitle}
           </h2>
-          <SaveStatus status={auto.status} compact={phone} thing={t.thing} onShowInvalid={showInvalid} />
+          <SaveStatus status={auto.status} compact={phone} thing={t.thing} onShowInvalid={showInvalid} follow />
         </div>
         <div className={styles.panes} role="group" aria-labelledby={`${uid}-form`} data-campaign-panes="">
           {(["edit", "preview"] as const).map((p) => (

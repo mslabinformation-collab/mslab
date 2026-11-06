@@ -190,6 +190,19 @@ function FbDock() {
 }
 
 /** „Sisse logitud“, the e-mail, „Logi välja“ (README §1.1); the phone menu adds „Vaata kodulehte ↗“ above „Logi välja“. `dock`: the bubble's place beside it. */
+/** The signed-in address with a break opportunity before its „@“ (06.11 polish board 8): a long one wraps there, never inside a word first. */
+export function breakAtSign(email: string) {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return email;
+  return (
+    <>
+      {email.slice(0, at)}
+      <wbr />
+      {email.slice(at)}
+    </>
+  );
+}
+
 function NavFoot({ email, t, withSite, dock = false }: { email: string; t: SidebarTexts; withSite: boolean; dock?: boolean }) {
   const logout = (
     <form method="post" action="/api/auth/logout">
@@ -201,7 +214,7 @@ function NavFoot({ email, t, withSite, dock = false }: { email: string; t: Sideb
   return (
     <div className={styles.foot} data-nav-foot="">
       <span className={styles.footLabel}>{t.signedIn}</span>
-      <span className={styles.footEmail}>{email}</span>
+      <span className={styles.footEmail}>{breakAtSign(email)}</span>
       {withSite && (
         // The home page through the coming-soon gate: api/admin/preview gives this admin the preview cookie, then opens "/" (a plain link:
         // it is an API route). Opener only: a Referer to the public site is harmless, and admin forms must keep sending Origin.

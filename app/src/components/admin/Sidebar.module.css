@@ -234,10 +234,11 @@
   font-size: 11px;
 }
 
+/* a long address breaks before „@“ (the <wbr> of breakAtSign, 06.11 polish board 8); inside a word only when a part alone is wider than the menu */
 .footEmail {
   color: #ccc0c8;
   font-size: 12px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .footLink {

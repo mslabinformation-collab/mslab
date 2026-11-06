@@ -52,7 +52,7 @@ describe("F7: the H1 row's right side — ET | RU, the chip's place, „Vaata le
   });
 });
 
-describe("F8: the course editor's side column scrolls with the page; only „Avaldamine“ sticks", () => {
+describe("F8 / 06.11 board 2: the course editor's side column scrolls with the page as a whole; nothing in it sticks", () => {
   const sheet = css("components", "admin", "CourseEditor.module.css");
   const wide = "@media (min-width: 1180px) {";
 
@@ -62,13 +62,9 @@ describe("F8: the course editor's side column scrolls with the page; only „Ava
     expect(side).toMatch(/align-self: stretch;\s*align-content: start;/);
   });
 
-  it("„Avaldamine“'s box sticks at the window's top, the page's colour 24 px over the card (the card at 24 px, as the section map), over the märgis card, which is a stacking context of its own", () => {
-    const box = rule(sheet, ".publish", wide);
-    expect(box).toMatch(/position: sticky;\s*top: 0;\s*z-index: 1;\s*margin-top: -24px;\s*padding-top: 24px;\s*background: var\(--canvas\);/);
-    expect(rule(sheet, ".publish + *", wide)).toMatch(/isolation: isolate;/);
-    // the 24 px at the top of the page: the PublishBar's 22 px gap and the columns' own 2 px
-    expect(rule(sheet, ".layout", wide)).toMatch(/padding-top: 2px;/);
-    expect(css("components", "admin", "PublishBar.module.css")).toMatch(/\.wrap \{\s*margin: 0 0 22px;/);
+  it("„Avaldamine“ no longer sticks over the märgis card; the section map still does", () => {
+    expect(sheet).not.toMatch(/\.publish\s*\{/);
+    expect(sheet).not.toMatch(/position: sticky;/);
     expect(css("components", "admin", "SectionMap.module.css")).toMatch(/position: sticky;\s*top: 24px;/);
   });
 });

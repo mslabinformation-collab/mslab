@@ -60,3 +60,15 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
+
+/* The following copy (`follow`, 06.11 polish board 3): fixed at the top of the window while the title row is scrolled away, at the chip's own right
+   edge (top and right are set inline: 16 px, or 8 px under the phone top bar). A ring of the page's colour and a soft shadow lift it off the cards.
+   It stands over the page and under the phone top bar (z-index 20) and every dialog (the top layer). */
+.follow {
+  position: fixed;
+  z-index: 19;
+  max-width: calc(100vw - 32px);
+  box-shadow:
+    0 0 0 3px var(--canvas),
+    0 4px 14px rgba(34, 34, 34, 0.14);
+}

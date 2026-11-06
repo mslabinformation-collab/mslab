@@ -287,3 +287,51 @@ describe("SectionMap: the stylesheet", () => {
     expect(css).toMatch(/\.select\s*>\s*select:focus-visible\s*\+\s*\.face\s*\{[^}]*outline:\s*2px solid var\(--rose\);/);
   });
 });
+
+describe("SectionMap follows the page (06.11 polish board 1)", () => {
+  /** A card at `top` px from the window's top, 300 px tall (the test DOM has no layout of its own). */
+  function placed(id: string, top: number) {
+    const el = card(id);
+    el.getBoundingClientRect = () => ({ top, bottom: top + 300, height: 300, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    return el;
+  }
+  const scroll = () =>
+    act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 40));
+    });
+  const marked = () => links().find((a) => a.getAttribute("aria-current") === "true")?.getAttribute("href");
+
+  it("marks the last card whose top has passed the reading line (96 px), as the page scrolls", async () => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1440);
+    const tops: Record<string, number> = { pohiinfo: -900, hind: -600, tulemused: -300, test: 60, tunnistus: 400, kkk: 800 };
+    for (const [id, top] of Object.entries(tops)) placed(id, top);
+    await draw();
+    await scroll();
+    expect(marked()).toBe("#test");
+    expect(select().value).toBe("test");
+  });
+
+  it("a card with no height (not drawn) is passed over; without any layout the first entry stays marked", async () => {
+    for (const s of SECTIONS) card(s.id);
+    await draw();
+    await scroll();
+    expect(marked()).toBe("#pohiinfo");
+  });
+
+  it("an entry clicked stays marked through its own scroll; the map follows again from the next scroll after that one settled", async () => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1440);
+    const els = Object.fromEntries(SECTIONS.map((s, i) => [s.id, placed(s.id, 200 + i * 400)]));
+    await draw();
+    await click(link("tunnistus"));
+    expect(marked()).toBe("#tunnistus");
+    // the smooth scroll passes „Õpiväljundid“: the click's entry stays
+    els.tulemused.getBoundingClientRect = () => ({ top: 10, bottom: 310, height: 300 }) as DOMRect;
+    await scroll();
+    expect(marked()).toBe("#tunnistus");
+    await act(async () => void (await new Promise((r) => setTimeout(r, 200))));
+    // the reader scrolls on: the map follows
+    await scroll();
+    expect(marked()).toBe("#tulemused");
+  });
+});

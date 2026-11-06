@@ -344,7 +344,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
         <div className={`${ui.headAside} ${styles.aside}`} data-site-aside="">
           <LangSwitch />
           <span ref={chipSlot} className={styles.statusSlot} data-site-chip="">
-            <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} />
+            <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} follow />
           </span>
           {viewHref !== null && (
             <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={viewHref} target="_blank" rel="noopener" data-site-view="">

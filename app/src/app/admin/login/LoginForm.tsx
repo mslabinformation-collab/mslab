@@ -163,10 +163,12 @@ export function LoginForm({ t, notice, tagasi }: { t: LoginTexts; notice?: strin
           void submit();
         }}
       >
-        <label className={styles.label} htmlFor={`${id}-email`}>
-          {t.emailLabel}
-        </label>
+        {/* the label, then the field; „Muu aadress“ comes after the field (the keyboard reaches it after the address) but stands at the label row's
+            right end (06.11 polish board 9), so the address has the field's whole width */}
         <div className={styles.field} data-remembered={remembered !== "" || undefined}>
+          <label className={styles.label} htmlFor={`${id}-email`}>
+            {t.emailLabel}
+          </label>
           <input
             ref={emailRef}
             id={`${id}-email`}

@@ -95,6 +95,10 @@ export const adminEt = {
     errorTitle: "Seda lehte ei saanud praegu laadida.",
     errorBody: "Sinu salvestatud andmed on alles. Proovi mõne hetke pärast uuesti.",
     errorRetry: "Proovi uuesti",
+    // (panel)/not-found.tsx (06.11 polish board 7): an admin address that is no page, or a record that is gone; the menu stays
+    notFoundTitle: "Sellist lehte halduses pole.",
+    notFoundBody: "Aadress võib olla vale või vana. Vali leht menüüst.",
+    notFoundHome: "Ülevaade",
   },
 
   // Prototype B admin shell: dark left sidebar, top line, main column. Below 900px a top bar with a menu drawer.

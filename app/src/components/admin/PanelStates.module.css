@@ -89,3 +89,27 @@
   max-width: 560px;
   margin: 0 auto;
 }
+
+/* Not found ((panel)/not-found.tsx, 06.11 polish board 7): the same white card without the error edge, 460 px at most, the title 16 px / 600, the
+   line 14 px in --ink-soft, then „Ülevaade“ (ui.btn) 6 px lower. */
+.notFound {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  max-width: 460px;
+  padding: 22px;
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font: 400 14px/1.6 var(--font-body);
+}
+
+.notFound .errorTitle {
+  font-size: 16px;
+}
+
+.notFound > a {
+  margin-top: 6px;
+}
