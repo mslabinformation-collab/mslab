@@ -3973,7 +3973,7 @@
         "Pealkiri „Logi sisse“ ja vorm on lehe keskel, mitte vasakul logo all.",
         "Välja nimi „E-post“ on vasakul, oma välja kohal.",
         "Väli „Kood“ on vaid veidi kõrgem kui „E-post“, numbrid on selle keskel.",
-        "Lehel „Lehte ei leitud“ on pealkiri, tekst ja lingid samuti keskel.",
+        "Lehel „Lehte ei leitud“ on pealkiri samal kõrgusel kui „Logi sisse“, tekst ja lingid keskel.",
         "Kitsas aknas on mõlemal lehel kõik vasakus servas nagu telefonis."
       ],
       "why": "Laial ekraanil ei jää sisselogimine nurka ja sõnumilehed on sellega ühes kohas.",

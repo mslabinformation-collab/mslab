@@ -1,5 +1,6 @@
 /* The login page (/konto/sisene), in the site's own parts: laid out as the site's message pages (Notice: "Sinu konto avati
-   teises seadmes", "Ei õnnestunud laadida.", 404), so the heading stays where it was when one leads to the other;
+   teises seadmes", "Ei õnnestunud laadida.", 404; the same padding and height, from the top), so the heading stays where it
+   was, at the same height and on the same line, when one leads to the other;
    B .field inputs (as the course page's registration), B .notice for messages, ui.btn / ui.btnOutline buttons. Colours
    from tokens.css only. Designed at 390 px first; the column stays 440 px wide on larger screens, and wider than 900 px
    it stands in the middle of the page with its heading centred over it (Dim 06.11), as the message pages' heading. */

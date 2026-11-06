@@ -624,13 +624,13 @@ test("no horizontal overflow on both login steps: this project's width, then 834
   }
 });
 
-/** The words of the page's heading on the screen (the h1's own box is wider than they are): their left edge and their middle. */
+/** The words of the page's heading on the screen (the h1's own box is wider than they are): their left edge and their middle; and the h1's top on the page. */
 const headingWords = (page: Page) =>
   page.locator("main h1").evaluate((h) => {
     const range = document.createRange();
     range.selectNodeContents(h);
     const box = range.getBoundingClientRect();
-    return { left: box.left, middle: (box.left + box.right) / 2 };
+    return { left: box.left, middle: (box.left + box.right) / 2, top: h.getBoundingClientRect().top + window.scrollY };
   });
 
 /** Where the page's content starts: the left padding of `selector` (the site's side padding, --page). */
@@ -642,9 +642,9 @@ const middleOf = async (page: Page, selector: string) => {
   return box.x + box.width / 2;
 };
 
-test("wider than 900 px the login page (both steps), Sinu konto avati teises seadmes and the 404 stand in the middle with their labels at the left; at 900 and 390 px at the left edge; the empty cart always at the left", async ({ page }) => {
+test("wider than 900 px the login page (both steps), Sinu konto avati teises seadmes and the 404 stand in the middle with their labels at the left; at 900 and 390 px at the left edge; every heading at the same height; the empty cart always at the left", async ({ page }) => {
   // Dim 06.11: the 440 px column stood under the logo on a wide screen. The heading of the login page and of the message pages it leads to
-  // and from share the page's middle, so it stays where it was when one leads to the other; the labels and fields keep their left edge.
+  // and from share the page's middle and its height, so it stays where it was when one leads to the other; the labels and fields keep their left edge.
   await page.route("**/api/konto/login", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
   await page.route("**/api/konto", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ ok: false, reason: "replaced" }) }));
   for (const width of [1440, 901, 900, 390]) {
@@ -670,6 +670,7 @@ test("wider than 900 px the login page (both steps), Sinu konto avati teises sea
     await expect(page.locator("[data-login-step='code']")).toBeVisible();
     const code = await headingWords(page);
     expect(Math.abs(code.left - login.left), `${at}: the code step's heading where the e-mail step's was`).toBeLessThanOrEqual(1);
+    expect(Math.abs(code.top - login.top), `${at}: … and at its height`).toBeLessThanOrEqual(1);
     // the code field a little taller than the e-mail field, never the block it was (Dim 06.11: about 80 px looked enormous)
     const codeHeight = (await codeField(page).boundingBox())!.height;
     expect(codeHeight, `${at}: „Kood“ is no lower than „E-post“`).toBeGreaterThanOrEqual(field.height);
@@ -681,16 +682,20 @@ test("wider than 900 px the login page (both steps), Sinu konto avati teises sea
     const replaced = await headingWords(page);
     if (wide) expect(Math.abs(replaced.middle - login.middle), `${at}: its heading shares the login heading's middle`).toBeLessThanOrEqual(1);
     else expect(Math.abs(replaced.left - login.left), `${at}: its heading starts where the login heading does`).toBeLessThanOrEqual(1);
+    expect(Math.abs(replaced.top - login.top), `${at}: its heading at the login heading's height`).toBeLessThanOrEqual(1);
 
     await page.goto("/olematu-leht");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Lehte ei leitud");
     const missing = await headingWords(page);
     if (wide) expect(Math.abs(missing.middle - width / 2), `${at}: the 404 heading in the middle`).toBeLessThanOrEqual(1);
     else expect(Math.abs(missing.left - edge), `${at}: the 404 heading at the left edge`).toBeLessThanOrEqual(1);
+    expect(Math.abs(missing.top - login.top), `${at}: the 404 heading at the login heading's height`).toBeLessThanOrEqual(1);
 
     await page.goto("/ostukorv");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ostukorv on tühi");
-    expect(Math.abs((await headingWords(page)).left - (await contentEdge(page, "[data-notice-align='start']"))), `${at}: the empty cart at the left edge`).toBeLessThanOrEqual(1);
+    const cart = await headingWords(page);
+    expect(Math.abs(cart.left - (await contentEdge(page, "[data-notice-align='start']"))), `${at}: the empty cart at the left edge`).toBeLessThanOrEqual(1);
+    expect(Math.abs(cart.top - login.top), `${at}: … at the login heading's height`).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), `${at}: no horizontal overflow`).toBe(false);
   }
 });
