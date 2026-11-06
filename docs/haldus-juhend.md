@@ -117,7 +117,7 @@ Menüü järjekord: „Ülevaade“; **Igapäevane töö**: Registreerimised, Pr
 
 ### Õpilased
 - **Teed:** otsid õpilase ja avad tema kaardi (koolitused, e-koolitused, lepingud, päringud). „Lisa õpilane +“ lisab õpilase e-posti järgi. „Vaata tema vaadet“ näitab tema kontot nii, nagu tema seda näeb (muuta ei saa).
-- **E-koolitus:** „Ava ligipääs e-koolitusele“ → „Ava ligipääs“; „Pikenda“ (+1 kuu, +3 kuud, +6 kuud või „Kuupäev…“); „Veel ▾“ all „Lõpeta ligipääs“ ja „Ava järgmine õppetund“; „Ava test uuesti“. Tunnistuse juures „Laada alla“ ja „Paranda nimi“.
+- **E-koolitus:** „Ava ligipääs e-koolitusele“ → „Ava ligipääs“; „Pikenda“ (+1 kuu, +3 kuud, +6 kuud või „Kuupäev…“); „Veel ▾“ all „Lõpeta ligipääs“ ja „Ava järgmine õppetund“; „Ava test uuesti“. Tunnistuse juures „Laadi alla (PDF)“ ja „Paranda nimi“.
 - **Salvestub:** iga nupp toimib kohe.
 - **Kiri: ei**, välja arvatud „Ava test uuesti“ („Test on sinu jaoks uuesti avatud“). Kui avad kellelegi e-koolituse, pikendad või lõpetad ligipääsu, **anna õpilasele ise teada**. „Paranda nimi“ ütleb ise: „Õpilasele kirja ei saadeta.“
 

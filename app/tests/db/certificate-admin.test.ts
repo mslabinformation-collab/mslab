@@ -97,7 +97,7 @@ test("the drawer: before she confirms, a line says so; after, the number and day
   expect(row).toContain("Tunnistus MS LAB 2026-03 · 19.10.2026");
   expect(row).toContain("Nimi tunnistusel: Kätlin Kask-Žukova");
   expect(row).toContain(`href="/api/admin/tunnistus/${c.id}"`);
-  expect(row).toContain("Laada alla");
+  expect(row).toContain("Laadi alla (PDF)");
   expect(row).toContain('data-reissue=""');
   expect(row).toContain("Paranda nimi");
   expect(row).not.toContain("ligipääs tühistatud");

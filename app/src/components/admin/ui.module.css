@@ -257,7 +257,7 @@
   font-weight: 600;
 }
 
-/* A text link in a cell (Tagasiside's course, Tunnistused' „Laada alla“): its 44 px target reaches 12 px into the cell's padding above and below, so
+/* A text link in a cell (Tagasiside's course, Tunnistused' „Laadi alla (PDF)“): its 44 px target reaches 12 px into the cell's padding above and below, so
    its words sit on the cell's first line, level with the text of the cells beside it, and the row is no taller for it (admin polish F3). Two
    longhands: Safari before 14.1 does not know `margin-block`. */
 .table td .link {

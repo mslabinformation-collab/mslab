@@ -216,7 +216,7 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - A deleted account takes its certificate with it, and its number is not reused: the series has a gap.
   - A student who never confirms her name has no certificate ("Tunnistus: õpilane pole veel nime kinnitanud" in the drawer); Maria cannot issue one for her.
   - The student cannot correct her own name once issued; she writes to Maria ("Kui nimes on viga, kirjuta meile"), who uses "Paranda nimi" (no mail goes; Maria tells her).
-  - The drawer's and the register's link says "Laada alla" (the spec's word); the student's says "Laadi tunnistus alla". Dim decides whether the admin's becomes "Laadi alla".
+  - The drawer's and the register's link says "Laadi alla (PDF)" since 06.11.2026 (the admin UX pass glossary, row G9; it said "Laada alla" before); the student's says "Laadi tunnistus alla (PDF)".
   - Contact courses stay on paper (Maria's answer of 12.10.2026).
 
 ## 14. The test page (Testimine) and its clean-up
@@ -469,7 +469,7 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - **Uudiskiri's tabs** stand at the right of the H1's row in both views (the B5 frame's place for Kirjad), while Maksed | Arved and Hindamine | Tunnistused stand under the lead.
   - **The course editor's right column**: only „Avaldamine“ stays at the top while the page scrolls (the frame draws the whole column sticky, which cannot fit the märgis card's preview).
   - **The overview's two cards** are stretched to one height (the A1 frame draws them `align-items: start`).
-  - **The student's drawer**: the certificate's „Laada alla“ and „Paranda nimi“ are one row, „Pikenda ▾“ (grey pill) and „Veel ▾“ (plain) the frame's second row. The download says „Laada alla“ (the dictionary's word), the glossary „Laadi alla (PDF)“.
+  - **The student's drawer**: the certificate's „Laadi alla (PDF)“ and „Paranda nimi“ are one row, „Pikenda ▾“ (grey pill) and „Veel ▾“ (plain) the frame's second row. The download says „Laadi alla (PDF)“, as the glossary has it (fixed 06.11.2026; it said „Laada alla“).
   - **Praktika at 1440** keeps the C5 frame's one-line points: in RU three seed points are longer than their 223 px field and scroll inside it (one value, a 532 px threshold, would make 1440 compact too).
   - **The gallery's description** stays a one-line field (alt text: no line breaks), 404 px at 1440, 212 px beside its thumbnail on a 390 px phone.
   - **Testimine**: pressing the „Olek“ or „Kes“ pill that is already chosen also lets the kept rows go; on a phone the steps come under the two answers (so a press never moves them); a person's stored „Jäta vahele“ wins over Automaattest's pass (the check is open); anyone can take back anyone's answer (Maria's Dim's and the other way round), as anyone could already answer over it; Automaattest's chip has no date.

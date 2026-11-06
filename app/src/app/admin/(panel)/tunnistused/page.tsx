@@ -24,7 +24,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 /**
  * Tunnistused (phase 3d, spec §6): every issued e-course certificate, newest first, 50 a page (?leht=) — its number, the name printed (a link
  * to her drawer in Õpilased), the course's title as printed, the issue day (and the re-issue day; "ligipääs tühistatud" for an access an admin
- * ended: Maria's download works all the same, Review Focus 5) and "Laada alla". The second tab of Hindamine (admin UX pass A4: the tabs „Ootab
+ * ended: Maria's download works all the same, Review Focus 5) and "Laadi alla (PDF)". The second tab of Hindamine (admin UX pass A4: the tabs „Ootab
  * hindamist {n}“ and „Tunnistused“ are on both pages), not in the menu: the shell marks Hindamine.
  */
 export default async function CertificateRegisterPage({ searchParams }: Props) {
@@ -32,7 +32,7 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
   const db = getDb();
   const [list, waiting] = await Promise.all([listCertificates(db, parsePage((await searchParams).leht)), assessmentCount(db)]);
   const t = adminEt.certificates.register;
-  // the register says "nimi parandatud", "ligipääs tühistatud" and "Laada alla" in the drawer's words: one set of texts
+  // the register says "nimi parandatud", "ligipääs tühistatud" and "Laadi alla (PDF)" in the drawer's words: one set of texts
   const d = adminEt.certificates.drawer;
 
   return (

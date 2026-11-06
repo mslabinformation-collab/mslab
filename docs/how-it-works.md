@@ -222,7 +222,7 @@ Not separate screens, but important to know what they do:
 | | „Märgi tasutuks“, „Võta tasumine tagasi“, „Tühista arve“, „Muuda saajat“ | Change the invoice record at once (under „Veel ▾“). No mail |
 | Registration drawer → contract | „Saada leping kinnitamiseks“ | **Sends a mail** „MS LAB leping kinnitamiseks“. The student confirms on their course card |
 | | „Saada koopia õpilasele“ | **Sends a mail** „MS LAB leping“ with the PDF |
-| Student drawer → certificate | „Laada alla“, „Paranda nimi“ (Fix the name) | Downloads, or reissues the certificate with the corrected name. No mail |
+| Student drawer → certificate | „Laadi alla (PDF)“, „Paranda nimi“ (Fix the name) | Downloads, or reissues the certificate with the corrected name. No mail |
 
 An invoice also goes out **automatically** attached to the payment confirmation when an online payment is settled (section 4.1).
 
