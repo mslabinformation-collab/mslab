@@ -246,7 +246,7 @@ function OfferCard({ api }: { api: SitePartApi<PopupOfferValue> }) {
           value={v.discountPercent}
           onChange={(x) => api.set("discountPercent", x)}
           inputMode="numeric"
-          maxLength={2}
+          maxLength={3}
           error={api.error("discountPercent")}
           unpublished={api.unpublished("discountPercent")}
         />

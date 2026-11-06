@@ -290,5 +290,27 @@ export function prepaymentDraft(value: unknown): PrepaymentDraft {
 /** An IBAN as typed → as stored: every space (also a non-breaking one, as copied from a bank page) taken out, upper case. */
 export const normalizeIban = (typed: string): string => compactIban(typed);
 
-/** The shape of a stored IBAN: country letters, two check digits, 10–30 letters and digits (no checksum test: a typo shows on the bank's side). */
-export const isIban = (iban: string): boolean => /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban);
+/** The IBAN lengths of the countries Maria's students bank in (ISO 13616's registry): a known country must have exactly its length. */
+const IBAN_LENGTHS: Readonly<Record<string, number>> = { EE: 20, LV: 21, LT: 20, FI: 18, SE: 24, DE: 22, PL: 28, NO: 15, DK: 18, GB: 22, IE: 22, NL: 18, BE: 16, FR: 27, ES: 24, IT: 27, AT: 20 };
+
+/** ISO 7064 mod 97-10 over the IBAN with its first four characters moved to the end, each letter as two digits (A = 10 … Z = 35): 1 for a real IBAN. */
+function ibanRemainder(iban: string): number {
+  const moved = iban.slice(4) + iban.slice(0, 4);
+  let rest = 0;
+  for (const ch of moved) {
+    const code = ch.charCodeAt(0);
+    const digits = code >= 65 ? String(code - 55) : ch;
+    for (const d of digits) rest = (rest * 10 + (d.charCodeAt(0) - 48)) % 97;
+  }
+  return rest;
+}
+
+/**
+ * A stored IBAN that can be one (05.11 test run: a typed typo passed the shape alone): country letters, two check digits, 10–30 letters and digits,
+ * the length of its country where this list knows it, and the checksum (mod 97 = 1). The message stays the one of the shape („Kontrolli IBANi …“).
+ */
+export const isIban = (iban: string): boolean => {
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  const length = IBAN_LENGTHS[iban.slice(0, 2)];
+  return (length === undefined || iban.length === length) && ibanRemainder(iban) === 1;
+};

@@ -198,7 +198,7 @@ function SessionFieldList({ view }: { view: FieldView }) {
       </div>
       <div className={styles.pair} data-pair="">
         {text("city", { list: `${uid}-cities`, maxLength: SESSION_LIMITS.city })}
-        {text("capacity", { inputMode: "numeric", maxLength: 2 })}
+        {text("capacity", { inputMode: "numeric", maxLength: 3 })}
       </div>
       <datalist id={`${uid}-cities`}>
         {CALENDAR_CITIES.map((c) => (
