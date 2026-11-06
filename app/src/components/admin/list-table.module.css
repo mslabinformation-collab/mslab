@@ -188,3 +188,9 @@
     background: none;
   }
 }
+
+/* a row pressed keeps the tint until its drawer or page is in (ListRows, 06.11 polish board 6) */
+.table tbody tr[data-pressed],
+.rows li[data-drag-row][data-pressed] {
+  background: var(--row-highlight);
+}

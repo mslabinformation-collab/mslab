@@ -7,6 +7,7 @@ import { Logo } from "@/components/site/Logo";
 import { fill } from "@/i18n/format";
 import { lockPageScroll } from "@/lib/modal";
 import { AdminIcon, type AdminIconName } from "./AdminIcon";
+import { NavProgress } from "./NavProgress";
 import { readMenuState, type MenuState, type NavBadge, type TodayCard } from "./menu-state";
 import { activeSection, GROUPS, sectionHref, type GroupId, type Section } from "./sections";
 import styles from "./Sidebar.module.css";
@@ -100,7 +101,7 @@ function reveal(nav: HTMLElement | null, first: Element | null | undefined, last
   else if (bottom > 0) nav.scrollTop += Math.min(bottom, top);
 }
 
-function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Section; t: SidebarTexts; fold: boolean }) {
+function NavContent({ items, active, t, fold, onPress }: { items: NavItem[]; active: Section; t: SidebarTexts; fold: boolean; onPress: (key: Section) => void }) {
   const ids = useId();
   const [choice, choose] = useFoldChoice();
   const byKey = new Map(items.map((item) => [item.key, item]));
@@ -161,7 +162,18 @@ function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Sect
             <ul id={listId} className={styles.nav} aria-labelledby={label ? labelId : undefined} hidden={!open} data-nav-items={group.id ?? "top"}>
               {rows.map((item) => (
                 <li key={item.key} data-nav-item={item.key}>
-                  <Link href={item.href} className={styles.link} aria-current={item.key === active ? "page" : undefined} data-nav={item.key}>
+                  {/* prefetch off (06.11 polish board 6): with it on, every move fetched each entry's page again in the background, some 18
+                      requests a click competing with the page asked for; the loading rows show after 400 ms anyway, later than the pages come */}
+                  <Link
+                    href={item.href}
+                    prefetch={false}
+                    className={styles.link}
+                    aria-current={item.key === active ? "page" : undefined}
+                    data-nav={item.key}
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) onPress(item.key);
+                    }}
+                  >
                     <AdminIcon name={item.icon} />
                     <span className={styles.text}>{item.label}</span>
                     {item.badge && (
@@ -328,9 +340,13 @@ type SidebarProps = {
 export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday, fbDock = false }: SidebarProps) {
   const pathname = usePathname();
   const search = useSearchParams();
-  const active = activeSection(pathname, search);
   // the whole address, query included: a move to another one closes the phone menu
   const route = `${pathname}?${search.toString()}`;
+  // the entry pressed is marked at once, while its page is on its way (06.11 polish board 6); the address it was pressed on no longer being this one,
+  // the address says again which entry is marked
+  const [pressed, setPressed] = useState<{ key: Section; on: string } | null>(null);
+  const active = pressed !== null && pressed.on === route ? pressed.key : activeSection(pathname, search);
+  const press = (key: Section) => setPressed({ key, on: route });
   // the badges follow the page (the pathname), not the query: see useLiveMenu
   const live = useLiveMenu(served, pathname);
   const items = live ? served.map((item) => ({ ...item, href: live.hrefs[item.key] ?? sectionHref(item.key), badge: live.badges[item.key] })) : served;
@@ -373,9 +389,10 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
       <aside className={styles.sidebar}>
         <Logo href="/admin" label={t.home} className={styles.logo} eager />
         <p className={styles.label}>{t.label}</p>
-        <NavContent items={items} active={active} t={t} fold />
+        <NavContent items={items} active={active} t={t} fold onPress={press} />
         <NavFoot email={email} t={t} withSite={false} dock={fbDock} />
       </aside>
+      <NavProgress />
 
       <header className={styles.bar}>
         <BarTitle title={title} t={t} />
@@ -423,7 +440,7 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
               <span className={styles.todayLine}>{fill(t.todayLine, { course: today.course })}</span>
             </Link>
           )}
-          <NavContent items={items} active={active} t={t} fold={false} />
+          <NavContent items={items} active={active} t={t} fold={false} onPress={press} />
           <NavFoot email={email} t={t} withSite />
         </div>
       </dialog>

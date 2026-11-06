@@ -1203,6 +1203,35 @@
       "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
+      "id": "haldus-pikk-leht",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Pikk leht: jaotiste loend, parem veerg ja salvestuse olek",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava laial arvutiekraanil „Koolitused“ ja mõni koolitus.",
+        "Keri lehte aeglaselt alla kuni lõpuni ja vaata vasakut jaotiste loendit ning paremat veergu.",
+        "Vajuta jaotiste loendis „Galerii“.",
+        "Lisa mõne välja teksti lõppu tühik, kustuta see ja liigu väljalt edasi; vaata ekraani ülaosa paremat serva.",
+        "Keri tagasi lehe algusesse.",
+        "Proovi sama lehel „Seaded“."
+      ],
+      "expect": [
+        "Kerides on jaotiste loendis esile tõstetud see jaotis, mida parajasti loed; lehe lõpus viimane.",
+        "„Galerii“ vajutus viib selle kaardini ja „Galerii“ jääb esile tõstetuks.",
+        "Parem veerg („Avaldamine“, „Koolituse märgis“) liigub koos lehega; ükski kaart ei libise teise alla ega jää poolikuks.",
+        "Kui pealkirja rida on ekraanilt läinud, on üleval paremal sama olek: „Salvestan…“, siis „Salvestatud …“ või „Mustand salvestatud …“.",
+        "Lehe algusesse kerides kaob ülemine olek ja sama olek on jälle pealkirja real.",
+        "„Seaded“ käitub samamoodi."
+      ],
+      "why": "Pikal lehel näeb Maria alati, kus ta on ja kas muudatus salvestus.",
+      "risk": "low",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-koolitus-hind",
       "area": "haldus",
       "who": "maria",
@@ -1792,8 +1821,8 @@
       "why": "Vale arvu korral ütleb väli, mis vahemikus arv olema peab.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -1859,12 +1888,13 @@
         "Täida „Saaja“, „IBAN“ ja „Pank“.",
         "Kirjuta „Selgituse algus“, näiteks MSLAB, ja liigu väljalt edasi.",
         "Kirjuta IBANi lõppu üks täht juurde ja liigu väljalt edasi.",
-        "Kustuta see täht ja liigu väljalt edasi."
+        "Kustuta see täht, muuda IBANi viimane number teiseks ja liigu väljalt edasi.",
+        "Pane õige number tagasi ja liigu väljalt edasi."
       ],
       "expect": [
         "Saaja ja IBANi all on vihje „Juhised on õpilasele näha ainult siis, …“.",
         "Muudatus salvestub ise ja päis ütleb „Salvestatud …“; nuppu „Salvesta“ pole.",
-        "Vigase IBANi korral näed välja all „Kontrolli IBANi: …“.",
+        "Täht IBANi lõpus ja vale number annavad mõlemad välja alla „Kontrolli IBANi: …“.",
         "Siis ütleb päis „Salvestamata — kontrolli märgitud välja“ ja vigast IBANi ei salvestata.",
         "Pärast parandamist ütleb päis jälle „Salvestatud …“."
       ],
@@ -1872,7 +1902,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-tingimused",
@@ -2142,6 +2172,53 @@
       "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
+      "id": "haldus-vale-aadress",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Vale aadress halduses",
+      "href": "/admin",
+      "steps": [
+        "Kirjuta aadressiribale mslab.ee/admin/kirjad ja ava see.",
+        "Vajuta lehel nuppu „Ülevaade“.",
+        "Logi välja ja ava sama aadress uuesti."
+      ],
+      "expect": [
+        "Menüü jääb alles ja lehel on „Sellist lehte halduses pole.“ ning „Aadress võib olla vale või vana. Vali leht menüüst.“.",
+        "„Ülevaade“ viib halduse ülevaatele.",
+        "Väljalogituna viib sama aadress kõigepealt sisselogimise lehele."
+      ],
+      "why": "Vigane või vana aadress ei vii haldusest välja ingliskeelsele veale.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-kiire-vastus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Vajutus annab kohe märku",
+      "href": "/admin",
+      "steps": [
+        "Vajuta menüüs järjest „Maksed ja arved“, „Õpilased“ ja „Koolitused“.",
+        "Ava „Õpilased“ ja vajuta mõne rea tühjale kohale.",
+        "Liiguta hiirt üle „Maksed ja arved“ loendi ridade."
+      ],
+      "expect": [
+        "Vajutatud menüürida on kohe esile tõstetud, juba enne kui uus leht on kohal.",
+        "Kui leht tuleb aeglasemalt, jookseb ekraani ülaservas õhuke roosa joon; see kaob, kui leht on kohal.",
+        "Vajutatud rida jääb esile tõstetuks, kuni paneel avaneb.",
+        "Hiire all olev rida on esile tõstetud ka veidi enne esimest ja pärast viimast veergu; tekst ei nihku."
+      ],
+      "why": "Maria näeb kohe, et vajutus läks kohale, ka siis, kui leht veel tuleb.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-menuu-grupid",
       "area": "haldus",
       "who": "dim",
@@ -2164,14 +2241,14 @@
         "„KODULEHT JA UUDISKIRI“ on algul kinni ja avaneb vajutusega: Avaleht, Koolitaja, Uudised, Hüpikaken, Uudiskiri.",
         "Rühm jääb lahti ka lehel „Kalender“; pärast uut vajutust ja värskendamist on see kinni.",
         "Lehel „Avaleht“ on rühm alati lahti ja „Avaleht“ on esile tõstetud.",
-        "Menüü all on „Sisse logitud“, sinu e-post ja „Logi välja“; „Vaata lehte“ seal enam ei ole.",
+        "Menüü all on „Sisse logitud“, e-post (pikk murdub enne „@“) ja „Logi välja“; „Vaata lehte“ pole.",
         "„Vaata kodulehte“ on ainult üleval paremal ja ringi peal ei ilmu kohtspikrit."
       ],
       "why": "Menüü peab olema rühmitatud nii, nagu disain seda näitab.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-menuu-telefon",
@@ -2400,22 +2477,22 @@
         "Ava halduses „Kalender“ ja mõne toimumise paneel; kopeeri aadressiribalt selle lehe aadress.",
         "Logi menüüst välja ja ava kopeeritud aadress samas brauseris.",
         "Kui väljal „E-post“ pole sinu aadressi, kirjuta see; vajuta „Saada sisselogimislink“ ja ava kirjas olev link.",
-        "Tee ülejäänud sammud kohe järjest: logi uuesti välja ja vajuta välja „E-post“ sees „Muu aadress“.",
+        "Tee ülejäänud sammud kohe järjest: logi uuesti välja ja vajuta välja „E-post“ kohal paremal „Muu aadress“.",
         "Kirjuta oma aadress ja vajuta „Saada sisselogimislink“.",
         "Laadi leht uuesti ja vajuta „Saada sisselogimislink“; tee seda kaks korda."
       ],
       "expect": [
         "Kopeeritud aadress avab halduse sisselogimise; pärast kirja lingi avamist on lahti sama toimumise paneel.",
         "Saatmise järel on lehel „Link on teel“ ja „Saatsime lingi aadressile …“ sinu aadressiga.",
-        "Väljalogimise järel on väljal „E-post“ sinu aadress; „Muu aadress“ tühjendab välja ja kursor jääb sinna.",
+        "Väljalogimise järel on väljal „E-post“ kogu sinu aadress; „Muu aadress“ nime real tühjendab välja ja kursor jääb sinna.",
         "Teine ja kolmas saatmine näitavad „Link on teel“.",
         "Neljas saatmine ütleb „Saatsid juba 3 linki. Proovi 10 minuti pärast uuesti.“ ja uut kirja ei tule."
       ],
       "why": "Maria jõuab pärast sisselogimist sinna, kust alustas, ja leht ei ütle kunagi, et saatis lingi, mida ei saatnud.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-lahkumine-salvestamata",
@@ -2588,13 +2665,14 @@
         "Rea nime all on hall vihje, näiteks „Vanim 15.10 · nimi“ või „2 kontakt · 1 muutmine“.",
         "Iga rida avab oma loendi: ettemaksu ootajad, Hindamine, Päringud, Arved, arvustused „Ootab kinnitust“ ja Maksed „Ootel kontrollil“.",
         "Rea „Päringut tegemata“ arv sisaldab ka „Muutmine“ päringuid, nagu menüü märk.",
-        "Tühja järjekorra asemel on „Järjekord on tühi.“ ja „Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.“."
+        "Tühja järjekorra asemel on „Järjekord on tühi.“ ja „Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.“.",
+        "Hiire all olev rida on esile tõstetud ümarate nurkadega ja esiletõst algab veidi enne numbrit, mitte numbri servast."
       ],
       "why": "Maria näeb ühest kohast, mis ootab teda, ja jõuab sinna ühe vajutusega.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-kommentaar-nupp",
@@ -2831,14 +2909,15 @@
         "Vajuta filtril „Makstud“ ja vaata Proov 1 rida.",
         "Vajuta rea tühjale kohale, mitte nimele ega lingile.",
         "Mine tagasi ja vajuta sama rea lingile „Montonios ↗“.",
-        "Kleebi kopeeritud tekst Montonio Partner Systemis tellimuste otsingusse."
+        "Kleebi kopeeritud tekst Montonio Partner Systemis tellimuste otsingusse.",
+        "Vajuta filtril „Ebaõnnestunud“ või „Pooleli“; kui seal on e-koolituse makse, vajuta selle rea tühjale kohale."
       ],
       "expect": [
         "Üleval on „Maksed“ (valitud) ja „Arved“; „Arved“ avab arvete lehe.",
         "Otsing leiab makse maksja nime, e-posti või Montonio id järgi.",
         "Iga filter näitab arvu, mitu makset selle all otsinguga on.",
         "Real on maksja Proov 1, koolitus, „Ettemaks“, summa, selle all makseviis, ja staatus „Makstud“.",
-        "Rea tühja koha vajutus avab selle registreeringu või õpilase paneeli.",
+        "Rea tühja koha vajutus avab registreeringu või õpilase; maksmata e-koolitus sama e-postiga õpilase, muidu on all „Kontot pole“.",
         "„Montonios ↗“ avab uues aknas Montonio Partner Systemi ja ütleb „Montonio id kopeeritud.“.",
         "Selle numbri kleepimine Montonio tellimuste otsingusse leiab sama makse.",
         "Uuemad maksed on eespool."
@@ -2847,7 +2926,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -3129,6 +3208,7 @@
         "Ava halduses „Kalender“ ja vajuta Proov 1 ja Proov 2 kuupäeva real.",
         "Vaata paneeli päist, välja „Koolitus“ ja paneeli lõppu.",
         "Kirjuta „Kohti“: 1 ja vajuta väljast välja.",
+        "Kirjuta „Kohti“: 100 ja vajuta väljast välja.",
         "Kirjuta „Kohti“ tagasi endine arv ja vajuta väljast välja.",
         "Vajuta „Tühistatud“, loe küsimus läbi ja vajuta „Katkesta“."
       ],
@@ -3138,15 +3218,15 @@
         "„Koolitus“ on lukus ja selle all on „Toimumisel on registreeringuid, seega koolitust muuta ei saa.“.",
         "Lõpus pole nuppu „Kustuta toimumine“, vaid „Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.“.",
         "„Kohti“ 1 juures on „Kinnitatud on 2 — kohti ei saa olla vähem.“ ja päises „Salvestamata — kontrolli märgitud välja“.",
-        "Endise arvuga kaob teade ja päises on „Salvestatud“.",
+        "„Kohti“ 100 juures on „Kohtade arv peab olema 1–99.“; endise arvuga kaob teade ja päises on „Salvestatud“.",
         "Küsimus on „Kas tühistan toimumise?“ ja „… registreeringut jäävad alles; teavita õpilasi ise.“.",
         "„Katkesta“ ei tühista midagi ja „Staatus“ jääb „Toimub“."
       ],
       "why": "Kinnitatud õpilase koht ega koolitus ei tohi muutuda tema teadmata.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-maksmiseks",

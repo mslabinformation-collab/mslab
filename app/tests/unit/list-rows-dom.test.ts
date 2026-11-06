@@ -159,7 +159,8 @@ describe("list tables (the stylesheet)", () => {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 
   it("a row becomes a block of label/value lines below a 760 px card, for every list: there is no other switch (Maksed's 980 px one went with A6)", () => {
-    expect(css.match(/@container[^{]*\{/g)).toEqual(["@container (max-width: 760px) {"]);
+    // the one switch at 760 px, and its other side: the table layout's 12 px of room round the row (06.11 polish board 4)
+    expect(css.match(/@container[^{]*\{/g)).toEqual(["@container (max-width: 760px) {", "@container (min-width: 760.02px) {"]);
     expect(css).not.toMatch(/stackAt980|980px/);
   });
 
@@ -367,5 +368,18 @@ describe("ListRows: a list of rows (DragList's li) as well as a table", () => {
     });
     for (const id of ["handle", "up", "nolink", "li2"]) await click($(id));
     expect(seen).toHaveLength(0);
+  });
+});
+
+describe("06.11 polish: the row's room and the pressed row", () => {
+  const sheet = readFileSync(join(process.cwd(), "src", "components", "admin", "list-table.module.css"), "utf8");
+  it("in the table layout the table reaches 12 px into the card's padding and its first and last cells take it as room (board 4)", () => {
+    const wide = sheet.slice(sheet.indexOf("@container (min-width: 760.02px) {"));
+    expect(wide).toMatch(/\.table \{\s*width: calc\(100% \+ 24px\);\s*margin-right: -12px;\s*margin-left: -12px;/);
+    expect(wide).toMatch(/\.table td:first-child \{\s*padding-left: 12px;/);
+    expect(wide).toMatch(/\.table td:last-child \{\s*padding-right: 12px;/);
+  });
+  it("a pressed row keeps the tint until the address changes (board 6)", () => {
+    expect(sheet).toMatch(/\.table tbody tr\[data-pressed\],\s*\.rows li\[data-drag-row\]\[data-pressed\] \{\s*background: var\(--row-highlight\);/);
   });
 });

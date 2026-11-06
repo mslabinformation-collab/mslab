@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import styles from "./list-table.module.css";
 
@@ -27,6 +28,15 @@ const ROW = "tbody tr, li[data-drag-row]";
  */
 export function ListRows({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
+  // (null outside the app router: the list's own DOM tests)
+  const path: string | null = usePathname();
+  const query: URLSearchParams | null = useSearchParams();
+  const route = `${path ?? ""}?${query?.toString() ?? ""}`;
+
+  // a row pressed keeps its tint until its drawer or page is in (06.11 polish board 6): the address changing ends it
+  useEffect(() => {
+    box.current?.querySelectorAll("[data-pressed]").forEach((row) => row.removeAttribute("data-pressed"));
+  }, [route]);
 
   // a native listener, not an onClick prop: the row is not a control (the Link is), so there is nothing here for the keyboard to do
   useEffect(() => {
@@ -37,11 +47,18 @@ export function ListRows({ children }: { children: ReactNode }) {
       if (!(e.target instanceof Element)) return;
       const row = e.target.closest(ROW);
       if (!row || !el.contains(row)) return;
+      const name = row.querySelector<HTMLElement>(`a.${styles.name}`);
       const control = e.target.closest(CONTROL);
-      if (control && row.contains(control)) return;
+      if (control && row.contains(control)) {
+        // the name link itself: it navigates on its own; the row keeps its tint meanwhile
+        if (control === name) row.setAttribute("data-pressed", "");
+        return;
+      }
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) return;
-      row.querySelector<HTMLElement>(`a.${styles.name}`)?.click();
+      if (!name) return;
+      row.setAttribute("data-pressed", "");
+      name.click();
     };
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);

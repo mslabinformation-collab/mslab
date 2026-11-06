@@ -1,0 +1,50 @@
+/* NavProgress (06.11 polish board 6): a 2 px rose line along the top of the work area — right of the 235 px sidebar from 900 px, under the 64 px phone
+   top bar below it — growing from nothing towards 90 % of the width over 6 s, slower as it goes. It stands over the page and under every dialog. */
+
+.line {
+  position: fixed;
+  top: 0;
+  left: 235px;
+  z-index: 21;
+  width: 0;
+  height: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--rose);
+  pointer-events: none;
+  animation: grow 6s cubic-bezier(0.1, 0.6, 0.2, 1) forwards;
+}
+
+@keyframes grow {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: calc((100vw - 235px) * 0.9);
+  }
+}
+
+@media (max-width: 899.98px) {
+  .line {
+    top: 64px;
+    left: 0;
+    animation-name: grow-phone;
+  }
+
+  @keyframes grow-phone {
+    from {
+      width: 0;
+    }
+
+    to {
+      width: 90vw;
+    }
+  }
+}
+
+/* Reduced motion: the line stands at a third of the width, without growing (globals.css switches animations off). */
+@media (prefers-reduced-motion: reduce) {
+  .line {
+    width: 33vw;
+  }
+}

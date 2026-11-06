@@ -1457,7 +1457,7 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
 
   test("haldus-hupikaken-numbrid (new, piece 4c Task 7): Dim's range words of 29.10 at the two numbers, and „Sisesta täisarv.“ for no whole number", () => {
     const check = item("haldus-hupikaken-numbrid");
-    expect(check).toMatchObject({ mark: "new", who: "dim", href: "/admin/kampaania", writes: false });
+    expect(check).toMatchObject({ mark: "redo", who: "dim", href: "/admin/kampaania", writes: false });
     expect(markedSince(check.markedAt)).toBe(true);
     expect(plan.items.findIndex((c) => c.id === "haldus-hupikaken-numbrid")).toBe(plan.items.findIndex((c) => c.id === "haldus-hupikaken") + 1);
     const errors = adminEt.courseEditor.errors;
@@ -1531,7 +1531,7 @@ describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
 
   test("a new check in Haldus, Dim's: the remembered address and „Muu aadress“, the way back to the page she opened, the 4th request's message", () => {
     const check = find("haldus-sisselogimine-tagasi");
-    expect(check).toMatchObject({ area: "haldus", who: "dim", mark: "new", writes: true, href: "/admin/kalender" });
+    expect(check).toMatchObject({ area: "haldus", who: "dim", mark: "reworded", writes: true, href: "/admin/kalender" });
     expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     const text = whole("haldus-sisselogimine-tagasi");
     for (const words of [`„${l.other}“`, `„${l.emailLabel}“`, `„${l.submit}“`, `„${l.sentTitle}“`, sentWords, `„${l.errorAddress}“`, "sama toimumise paneel", "Logi menüüst välja"])
