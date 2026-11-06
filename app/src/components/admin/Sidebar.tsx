@@ -342,9 +342,11 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
   const search = useSearchParams();
   // the whole address, query included: a move to another one closes the phone menu
   const route = `${pathname}?${search.toString()}`;
-  // the entry pressed is marked at once, while its page is on its way (06.11 polish board 6); the address it was pressed on no longer being this one,
-  // the address says again which entry is marked
+  // the entry pressed is marked at once, while its page is on its way (06.11 polish board 6); once the address moves on, the press is forgotten and
+  // the address says again which entry is marked. Forgotten, not only outranked: Back to the address it was pressed on must mark that address's
+  // entry, not the one pressed there (the state is reset during render, React's pattern for state that follows a prop)
   const [pressed, setPressed] = useState<{ key: Section; on: string } | null>(null);
+  if (pressed !== null && pressed.on !== route) setPressed(null);
   const active = pressed !== null && pressed.on === route ? pressed.key : activeSection(pathname, search);
   const press = (key: Section) => setPressed({ key, on: route });
   // the badges follow the page (the pathname), not the query: see useLiveMenu

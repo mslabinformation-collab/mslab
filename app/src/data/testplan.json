@@ -2203,12 +2203,14 @@
       "href": "/admin",
       "steps": [
         "Vajuta menüüs järjest „Maksed ja arved“, „Õpilased“ ja „Koolitused“.",
+        "Vajuta brauseri nuppu „Tagasi“ kaks korda.",
         "Ava „Õpilased“ ja vajuta mõne rea tühjale kohale.",
         "Liiguta hiirt üle „Maksed ja arved“ loendi ridade."
       ],
       "expect": [
         "Vajutatud menüürida on kohe esile tõstetud, juba enne kui uus leht on kohal.",
         "Kui leht tuleb aeglasemalt, jookseb ekraani ülaservas õhuke roosa joon; see kaob, kui leht on kohal.",
+        "Pärast „Tagasi“ on menüüs esile tõstetud selle lehe rida, kuhu tagasi jõudsid: „Õpilased“, siis „Maksed ja arved“.",
         "Vajutatud rida jääb esile tõstetuks, kuni paneel avaneb.",
         "Hiire all olev rida on esile tõstetud ka veidi enne esimest ja pärast viimast veergu; tekst ei nihku."
       ],
@@ -2216,7 +2218,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-11-06T07:47:30.496Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-menuu-grupid",

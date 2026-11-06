@@ -590,6 +590,23 @@ describe("the badges follow a client-side move", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("a pressed entry is marked at once; Back to the page it was pressed on marks that page's entry, not the pressed one (06.11 polish board 6)", async () => {
+    const marked = () => aside().querySelector('a[aria-current="page"]')?.getAttribute("data-nav");
+    // (the press only: the move itself is the test's, by the mocked address)
+    const stop = (e: Event) => e.preventDefault();
+    container.addEventListener("click", stop);
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/maksed");
+    expect(marked()).toBe("payments");
+    await click(aside().querySelector('a[data-nav="registrations"]'));
+    expect(marked()).toBe("registrations"); // before the page is in: the address is still Maksed
+    await moveTo("/admin/registreerimised");
+    expect(marked()).toBe("registrations");
+    await moveTo("/admin/maksed"); // Back
+    expect(marked()).toBe("payments");
+    container.removeEventListener("click", stop);
+  });
+
   it("the menu still follows the address in the query (the entry marked) while the badges are not asked for again", async () => {
     const marked = () => aside().querySelector('a[aria-current="page"]')?.getAttribute("data-nav");
     await serve({ badges: BADGES, total: 12 });

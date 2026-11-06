@@ -48,7 +48,10 @@ async function seedStudent(info: TestInfo, tag: string, name: string, certificat
   return { email, fx, registrationId, certificate };
 }
 
-/** Where a row's cells lie against the content box of its list's card, and what the table is. */
+/**
+ * Where a row's cells lie against the content box of its list's card, and what the table is. In the table layout the table reaches 12 px into the
+ * card's padding on each side (06.11 polish board 4: the row's tint has room before the first column), so the checks allow `reach` and no more.
+ */
 async function fit(page: Page, row: string) {
   return page.locator(row).evaluate((tr) => {
     const table = tr.closest("table")!;
@@ -68,6 +71,10 @@ async function fit(page: Page, row: string) {
       tableScroll: table.scrollWidth,
       cellsLeft: Math.min(...cells.map((c) => c.left)) - left,
       cellsRight: right - Math.max(...cells.map((c) => c.right)),
+      // how far the table reaches into the card's padding on each side (06.11 polish board 4: 12 px in the table layout, 0 in the stack of rows),
+      // and the padding it reaches into
+      reach: Math.max(0, -parseFloat(getComputedStyle(table).marginLeft)),
+      padding: parseFloat(css.paddingLeft),
     };
   });
 }
@@ -126,9 +133,10 @@ test("every list that uses the shared table keeps all its columns inside its car
       await expect(page.locator(list.row), `${list.url} at ${width} px: the seeded row`).toBeVisible();
       const f = await fit(page, list.row);
       const where = `${list.url} at ${width} px (${f.display}, card ${Math.round(f.inner)} px)`;
-      expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 1);
-      expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-1);
-      expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-1);
+      expect(f.reach, `${where}: the table reaches 12 px into the card's padding at most`).toBeLessThanOrEqual(Math.min(12, f.padding));
+      expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 2 * f.reach + 1);
+      expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-f.reach - 1);
+      expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-f.reach - 1);
       if (list.tableAt.includes(width)) {
         expect(f.display, `${where}: a table, not the stack of rows`).toBe("table");
         // the columns side by side: the cells of the row share one line each (no cell is stacked under another)
@@ -278,9 +286,10 @@ test("Kalender keeps its cells inside its card from 880 to 1440 px, and each ses
     await expect(page.locator(row), `${width} px: the seeded row`).toBeVisible();
     const f = await fit(page, row);
     const where = `/admin/kalender at ${width} px (${f.display}, card ${Math.round(f.inner)} px)`;
-    expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 1);
-    expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-1);
-    expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-1);
+    expect(f.reach, `${where}: the table reaches 12 px into the card's padding at most`).toBeLessThanOrEqual(Math.min(12, f.padding));
+    expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 2 * f.reach + 1);
+    expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-f.reach - 1);
+    expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-f.reach - 1);
     expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
     // above a phone the city select is the plain select above the pills, and the phone's copy in the pill row is not drawn: one combobox named „Linn“ in the
     // accessibility tree and the tab order, outside the pill row
