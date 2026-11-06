@@ -87,13 +87,15 @@
   border-color: var(--bad);
 }
 
-/* The 6-digit code: big Jost digits, evenly spaced (the trailing letter-spacing balanced on the left). */
+/* The 6-digit code: Jost digits, evenly spaced (the trailing letter-spacing balanced on the left). A little taller than the e-mail
+   field, not a block of its own (Dim 06.11: the field of 40 px digits, about 80 px tall, looked enormous). A field's text box is as
+   tall as the font's own ascent and descent (Jost's about 1.45 em, whatever the line-height says), so the padding is small. */
 .field .code {
-  min-height: 76px;
-  padding: 10px 16px 10px calc(16px + 0.35em);
-  font: 400 40px/1 var(--font-display);
+  min-height: 56px;
+  padding: 6px 16px 6px calc(16px + 0.3em);
+  font: 400 28px/1 var(--font-display);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.3em;
   text-align: center;
 }
 

@@ -670,6 +670,10 @@ test("wider than 900 px the login page (both steps), Sinu konto avati teises sea
     await expect(page.locator("[data-login-step='code']")).toBeVisible();
     const code = await headingWords(page);
     expect(Math.abs(code.left - login.left), `${at}: the code step's heading where the e-mail step's was`).toBeLessThanOrEqual(1);
+    // the code field a little taller than the e-mail field, never the block it was (Dim 06.11: about 80 px looked enormous)
+    const codeHeight = (await codeField(page).boundingBox())!.height;
+    expect(codeHeight, `${at}: „Kood“ is no lower than „E-post“`).toBeGreaterThanOrEqual(field.height);
+    expect(codeHeight, `${at}: „Kood“ is at most 60 px tall`).toBeLessThanOrEqual(60);
     await page.evaluate(() => sessionStorage.clear()); // the next width starts at the e-mail step, not the kept code step
 
     await page.goto("/konto");

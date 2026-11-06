@@ -3965,12 +3965,14 @@
       "steps": [
         "Kui arvutis on päises „Minu konto“, ava see, vajuta paremal ümmargust nuppu ja „Logi välja“.",
         "Ava laial arvutiekraanil lehe päisest „Logi sisse“.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov1, ja vajuta „Saada kood“.",
         "Ava aadress mslab.ee/koolitused/olematu-koolitus.",
         "Tee brauseri aken kitsaks nagu telefon ja ava mõlemad lehed uuesti."
       ],
       "expect": [
         "Pealkiri „Logi sisse“ ja vorm on lehe keskel, mitte vasakul logo all.",
         "Välja nimi „E-post“ on vasakul, oma välja kohal.",
+        "Väli „Kood“ on vaid veidi kõrgem kui „E-post“, numbrid on selle keskel.",
         "Lehel „Lehte ei leitud“ on pealkiri, tekst ja lingid samuti keskel.",
         "Kitsas aknas on mõlemal lehel kõik vasakus servas nagu telefonis."
       ],
