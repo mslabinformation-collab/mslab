@@ -1229,7 +1229,7 @@
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-koolitus-hind",
@@ -1822,7 +1822,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -1902,7 +1902,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-seaded-tingimused",
@@ -2192,7 +2192,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-kiire-vastus",
@@ -2216,7 +2216,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-menuu-grupid",
@@ -2248,7 +2248,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-menuu-telefon",
@@ -2492,7 +2492,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-lahkumine-salvestamata",
@@ -2672,7 +2672,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "haldus-kommentaar-nupp",
@@ -2926,7 +2926,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -3226,7 +3226,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-06T07:47:30.496Z"
     },
     {
       "id": "registreerimine-arve-maksmiseks",
