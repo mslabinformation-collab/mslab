@@ -2045,7 +2045,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-07T19:31:03.088Z"
     },
     {
       "id": "haldus-seaded-lepingud",
@@ -2109,7 +2109,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-07T19:31:03.088Z"
     },
     {
       "id": "haldus-seaded-privaatsus-avalda",
