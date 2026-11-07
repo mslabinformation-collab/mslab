@@ -5128,22 +5128,23 @@
       "steps": [
         "Ava tahvlis alla laaditud tunnistus; kui seda veel pole, vajuta Seaded → Tunnistus „Näidistunnistus (PDF)“.",
         "Ava sama tunnistus telefonis.",
-        "Võrdle seda oma paberil tunnistusega."
+        "Võrdle seda oma Canva tunnistusega (või paberil tunnistusega)."
       ],
       "expect": [
         "Tunnistus on laiuti, must, valge tekstiga.",
         "Õpilase nimi ja allkiri on käekirjas.",
         "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood.",
-        "Koolituse nimi on suurte hõredate tähtedega peaaegu üle lehe, nagu paberil.",
-        "Oskuste read, praktilise töö rida ja all olevad read algavad samast vasakust servast ja lõpevad samas paremas servas.",
+        "Kirjad on samad mis Canva tunnistusel: „TUNNISTUS“ ja kõik read ühes kirjas, koolituse nimi teises; logo on veebilehe oma.",
+        "Koolituse nimi on suurte hõredate tähtedega peaaegu üle lehe, nagu Canvas.",
+        "Oskuste ja alumised read algavad samast vasakust servast; maht ja all paremal olevad read lõpevad samas paremas servas.",
         "All paremal on Seadetes kirjutatud koolitaja nimi ja sõna „KOOLITAJA“.",
         "Mõlemas seadmes avaneb fail ilma veata."
       ],
-      "why": "Tunnistus peab välja nägema nagu Maria paberil tunnistus.",
+      "why": "Tunnistus peab välja nägema nagu Maria Canva ja paberil tunnistus.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-07T14:51:37.265Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-paranda-nimi",

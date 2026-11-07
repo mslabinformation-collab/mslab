@@ -113,25 +113,27 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 
 ## 7. The PDF
 
-- **Page and style:** A4 landscape (842 × 595 pt), black background (`#000`), white text. Laid out as Maria's sample. Amended 07.11.2026 (Dim): the sizes and places below the heading were measured off the photo of her paper certificate and matched in Jost. Every line below the name starts at 100 pt and ends at 743 pt, as there.
-  - "TUNNISTUS": the sans, about 54 pt, centred.
-  - **The course title:** upper case, letter-spaced about 0.54 em, 24 pt (about 640 pt wide for "KULMUMEISTRI BAASKOOLITUS", as on the paper), shrunk to fit 650 pt down to 18 pt.
+- **Page and style:** A4 landscape (842 × 595 pt), black background (`#000`), white text. Laid out as Maria's sample. Amended 07.11.2026 (Dim): first measured off the photo of her paper certificate; then, the same day, Dim asked for the fonts of her Canva certificate ("logo we keep ours, if others are free and can be used, then use them"), and the sizes, letter spacing and places were taken from that Canva design itself. Every line below the name starts at 97 pt; the volume and the bottom right lines end at 747 pt (a right-column skill may reach 751 pt, as Maria's longest does in Canva).
+  - "TUNNISTUS": the body font (Glacial Indifference), 71 pt, not letter-spaced, centred, baseline 468.5.
+  - **The course title:** Montserrat, upper case, letter-spaced 0.48 em, 23.8 pt (about 660 pt wide for "KULMUMEISTRI BAASKOOLITUS", as in Canva), shrunk to fit 680 pt down to 18 pt. It stands on 428 (Canva: 416), because the tallest names need the room under it.
   - **The student's name:**
     - in the script font, large and centred, above a white line 650 pt long and 1.2 pt thick; its capitals rise well above the line and the swashes cross below it, as on Maria's sample;
     - a long name shrinks to fit the line, then wraps to two lines. The sizes are tuned to the script font's tall capitals and small lowercase.
-  - **Skills:** two columns of "• line", 11 pt, letter-spaced 0.1 em, filled left column first. The right column starts 28 pt after the left column's widest line (at about 467 pt for Maria's own lines), never left of the centre. With more than 12 lines the font shrinks to 9.75 pt. Lines that do not fit even at 5 pt (the limit is 16 lines of 120 characters) get more room, and the practical line moves down.
-  - **The practical-work line:** upper case, 10 pt, not letter-spaced, at the left, right under the skills. The volume (upper case) ends at the right edge on the same baseline.
+  - **Skills:** two columns of "• line", the body font, 11.2 pt, letter-spaced 0.1 em, 15 pt apart, filled left column first. The right column starts 19 pt after the left column's widest line (at 468 pt for Maria's own lines, as in Canva), never left of the centre. With more than 12 lines the font shrinks to 9.75 pt. Lines that do not fit even at 5 pt (the limit is 16 lines of 120 characters) get more room, and the practical line moves down.
+  - **The practical-work line:** the body font, upper case, 10.7 pt, not letter-spaced, at the left, right under the skills. The volume (upper case, 10.7 pt) ends at the right edge on the same baseline.
   - **Bottom left:**
     - the MS LAB logo, drawn as vector shapes in white: a thin frame, "MS LAB" in Jost light and "KOOLITUSKESKUS" small and letter-spaced, as the site's `public/brand/logo.png` looks. That PNG is dark on transparent, so it cannot be placed on black.
-    - "REGISTRIKOOD: {code}" (10 pt);
-    - "Tunnistuse nr. {number}" (10 pt, letter-spaced).
+    - "REGISTRIKOOD: {code}" (the body font, 10.7 pt);
+    - "Tunnistuse nr. {number}" (11.2 pt, letter-spaced 0.1 em).
   - **Bottom right**, every line ending at the right edge:
     - Maria's signature: `trainerName` in the script font, small;
-    - "KOOLITAJA" (10 pt);
-    - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`, 10 pt, letter-spaced), fitted to its column.
-- **Fonts:** two files under `app/assets/fonts/`, checked by SHA-256 in the tests:
-  - Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) with its OFL text, embedded as a subset;
-  - Revive 80 Signature (`Revive80Signature.otf`, © Tom Chalky / Inspiration Hut), Maria's Canva font, embedded **whole**. pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), so the viewer draws a substitute; the whole font renders correctly, and the page stays under 300 KB (about 160–180 KB).
+    - "KOOLITAJA" (10.7 pt);
+    - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`, 11.2 pt, letter-spaced 0.1 em), fitted to its column.
+- **Fonts:** four files under `app/assets/fonts/`, checked by SHA-256 in the tests. Maria's Canva certificate uses Glacial Indifference, Montserrat, Cy Grotesk and Open Sauce One (its logo) and Revive 80 Signature; Cy Grotesk is a paid font, so the logo stays ours, in Jost (Dim, 07.11.2026):
+  - Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) with its OFL text, embedded as a subset: the logo, and any letter the body font lacks, letter by letter;
+  - Glacial Indifference (OFL, `GlacialIndifference-Regular.otf` version 1.01 from Font Squirrel, the same font Canva serves: its widths and metrics match the Canva design to 0.1 pt) with its OFL text, embedded whole (a CFF font, as below). It has no š, ž, „, € and none of the Latvian, Lithuanian, Polish or Hungarian letters: those are drawn in Jost;
+  - Montserrat (OFL, the static `Montserrat-Regular.ttf` from JulietaUla/Montserrat: the variable font's default weight is Thin) with its OFL text, embedded as a subset;
+  - Revive 80 Signature (`Revive80Signature.otf`, © Tom Chalky / Inspiration Hut), Maria's Canva font, embedded **whole**. pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), so the viewer draws a substitute; the whole font renders correctly, and the page stays under 300 KB (about 190–200 KB with all four fonts).
   - The font files are listed in `next.config.ts`'s `outputFileTracingIncludes`, so the Vercel functions that render have them.
 - **The script font's licence:** MS LAB holds the licence for this use (Dim, 15.10.2026). The font is not open source: it is never copied out of `app/assets/fonts/`, and the repository must be private before the deploy (§11).
 - **Generation:** on each download, from the frozen row, Seaded's `trainerName` and the logo, in a few tens of milliseconds. Nothing is stored. The answer is `private, no-store`.
@@ -143,7 +145,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 |---|---|
 | `src/domain/certificate.ts` | Pure: the name rules, the number format, the next-number rule (year rollover), the skills fallback and limits, the settings reader. |
 | `src/server/certificates.ts` | Issue (locks, number, frozen copy), re-issue, the student's and Maria's reads, settings read and write (the trainer's name under the name rules), the PDF of a row. |
-| `src/server/certificate-pdf.ts` | `renderCertificate(row, assets) → Uint8Array` (pdf-lib, fontkit, layout); `loadCertificateAssets()` reads the two fonts. |
+| `src/server/certificate-pdf.ts` | `renderCertificate(row, assets) → Uint8Array` (pdf-lib, fontkit, layout); `loadCertificateAssets()` reads the four fonts. |
 | `src/server/account-api.ts` | The two student routes. |
 | `src/app/api/admin/tunnistus/[id]/route.ts` | Maria's download (`withAdmin`). |
 | Admin | The course editor card, the Seaded card (the trainer's name is the signature), the drawer line with "Paranda nimi", the register page. |
@@ -159,7 +161,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 - **A name the font cannot write:** refused before anything is stored, for the student, for "Paranda nimi" and for "Koolitaja nimi" alike.
 - **Course renamed after issue:** the certificate keeps the old title (frozen).
 - **Year rollover at Tallinn midnight on 31.12:** covered by unit tests.
-- **Long course titles:** they wrap to two lines at 18 pt or smaller, so the wider line fits 650 pt.
+- **Long course titles:** they wrap to two lines at 18 pt or smaller (baselines 446 and 428), so the wider line fits 680 pt.
 
 ## 10. Testing
 
@@ -171,7 +173,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - the settings reader (a stored trainer's name the rules refuse reads as "Maria Sosnina").
 - **PDF:** render a fixture with pdf-lib and parse it back:
   - one page, 842 × 595;
-  - Jost embedded as a subset, Revive 80 Signature embedded whole, no image;
+  - Jost and Montserrat embedded as subsets, Glacial Indifference and Revive 80 Signature embedded whole, no image;
   - the text includes "TUNNISTUS", the name, the trainer's name, the number and the date;
   - it is under 300 KB.
 - **Database (PGlite):**
