@@ -113,22 +113,22 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 
 ## 7. The PDF
 
-- **Page and style:** A4 landscape (842 × 595 pt), black background (`#000`), white text. Laid out as Maria's sample:
+- **Page and style:** A4 landscape (842 × 595 pt), black background (`#000`), white text. Laid out as Maria's sample. Amended 07.11.2026 (Dim): the sizes and places below the heading were measured off the photo of her paper certificate and matched in Jost. Every line below the name starts at 100 pt and ends at 743 pt, as there.
   - "TUNNISTUS": the sans, about 54 pt, centred.
-  - **The course title:** upper case, letter-spaced about 0.35 em, about 18 pt.
+  - **The course title:** upper case, letter-spaced about 0.54 em, 24 pt (about 640 pt wide for "KULMUMEISTRI BAASKOOLITUS", as on the paper), shrunk to fit 650 pt down to 18 pt.
   - **The student's name:**
-    - in the script font, large and centred, above a thin white line about 70 % of the width; its capitals rise well above the line and the swashes cross below it, as on Maria's sample;
+    - in the script font, large and centred, above a white line 650 pt long and 1.2 pt thick; its capitals rise well above the line and the swashes cross below it, as on Maria's sample;
     - a long name shrinks to fit the line, then wraps to two lines. The sizes are tuned to the script font's tall capitals and small lowercase.
-  - **Skills:** two columns of "• line", about 9.5 pt, letter-spaced, filled left column first. With more than 12 lines the font shrinks to 8.5 pt.
-  - **The practical-work line:** upper case, about 8 pt, at the left. The volume (upper case) is at the right on the same baseline.
+  - **Skills:** two columns of "• line", 11 pt, letter-spaced 0.1 em, filled left column first. The right column starts 28 pt after the left column's widest line (at about 467 pt for Maria's own lines), never left of the centre. With more than 12 lines the font shrinks to 9.75 pt. Lines that do not fit even at 5 pt (the limit is 16 lines of 120 characters) get more room, and the practical line moves down.
+  - **The practical-work line:** upper case, 10 pt, not letter-spaced, at the left, right under the skills. The volume (upper case) ends at the right edge on the same baseline.
   - **Bottom left:**
     - the MS LAB logo, drawn as vector shapes in white: a thin frame, "MS LAB" in Jost light and "KOOLITUSKESKUS" small and letter-spaced, as the site's `public/brand/logo.png` looks. That PNG is dark on transparent, so it cannot be placed on black.
-    - "REGISTRIKOOD: {code}";
-    - "Tunnistuse nr. {number}".
-  - **Bottom right:**
+    - "REGISTRIKOOD: {code}" (10 pt);
+    - "Tunnistuse nr. {number}" (10 pt, letter-spaced).
+  - **Bottom right**, every line ending at the right edge:
     - Maria's signature: `trainerName` in the script font, small;
-    - "KOOLITAJA";
-    - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`), fitted to its column.
+    - "KOOLITAJA" (10 pt);
+    - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`, 10 pt, letter-spaced), fitted to its column.
 - **Fonts:** two files under `app/assets/fonts/`, checked by SHA-256 in the tests:
   - Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) with its OFL text, embedded as a subset;
   - Revive 80 Signature (`Revive80Signature.otf`, © Tom Chalky / Inspiration Hut), Maria's Canva font, embedded **whole**. pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), so the viewer draws a substitute; the whole font renders correctly, and the page stays under 300 KB (about 160–180 KB).
@@ -159,7 +159,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 - **A name the font cannot write:** refused before anything is stored, for the student, for "Paranda nimi" and for "Koolitaja nimi" alike.
 - **Course renamed after issue:** the certificate keeps the old title (frozen).
 - **Year rollover at Tallinn midnight on 31.12:** covered by unit tests.
-- **Long course titles:** they wrap to two lines and shrink to 14 pt.
+- **Long course titles:** they wrap to two lines at 18 pt or smaller, so the wider line fits 650 pt.
 
 ## 10. Testing
 

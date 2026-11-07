@@ -37,7 +37,7 @@ const FIXTURE: CertificateContent = {
 };
 const ASSETS: CertificateAssets = { sans: SANS, script: SCRIPT };
 
-/** The name's band: its ink stays under the course title (whose second line, when it wraps, stands on 428) and 6 pt over the first competency line (letters up to 297). */
+/** The name's band: its ink stays under the course title (which stands on 428) and well over the first competency line (letters up to 286). */
 const INK_BAND = { bottom: 303, top: 425 } as const;
 
 /** The names of the page's images (XObjects): pdf-lib leaves an empty dictionary when nothing is drawn. */
@@ -113,34 +113,50 @@ describe("renderCertificate: the page (spec §7)", () => {
     const heading = one(runs, "TUNNISTUS");
     expect([heading.font, heading.size, heading.y]).toEqual([SANS_FAMILY, 54, 478]);
     near(heading.x + widthOf(heading) / 2, 421);
+    // the title in capitals spaced 0.54 em on 428; this one is wider than 650 pt at 24 pt, so it is shrunk to fill 650 pt (still over 18 pt)
     const title = one(runs, "KULMUDE KUJUNDAMISE E-KOOLITUS");
-    expect([title.font, title.size, title.y]).toEqual([SANS_FAMILY, 18, 440]);
-    near(title.spacing, 0.35);
+    expect([title.font, title.y]).toEqual([SANS_FAMILY, 428]);
+    near(title.spacing, 0.54);
+    expect(title.size).toBeLessThan(24);
+    expect(title.size).toBeGreaterThan(18);
+    near(widthOf(title), 650);
     near(title.x + widthOf(title) / 2, 421);
     const name = one(runs, "Kertu Õunapuu");
     expect([name.font, name.size, name.y]).toEqual([SCRIPT_FAMILY, 88, 331]);
     near(name.x + widthOf(name) / 2, 421);
-    // the thin line under the name: 70 % of the width, centred
-    expect(ops).toMatch(/126\.3\d* 316 m\n715\.7 316 l\nS/);
-    // the practical line at the left and the volume at the right, on one baseline, in capitals
+    // the line under the name: 650 pt (96 to 746), centred, 1.2 pt thick
+    expect(ops).toMatch(/1\.2 w\n[^]*?96 316 m\n746 316 l\nS/);
+    // the practical line at the text block's left edge (100) and the volume ending at its right edge (743), on one baseline, capitals, 10 pt, not spaced
     const practical = one(runs, "PRAKTILINE TÖÖ FOTODEL, KOOLITAJA POOLT HINNATUD ISESEISEV PROTSEDUURI TEOSTAMINE");
-    expect([practical.font, practical.size, practical.x, practical.y]).toEqual([SANS_FAMILY, 8, 56, 148]);
+    expect([practical.font, practical.size, practical.x, practical.y, practical.spacing]).toEqual([SANS_FAMILY, 10, 100, 172, 0]);
     const volume = one(runs, "10 AKADEEMILIST TUNDI");
-    expect([volume.size, volume.y]).toEqual([8, 148]);
-    near(volume.x + widthOf(volume), 786);
-    // bottom left: the logo, then the registry code and the number
+    expect([volume.size, volume.y, volume.spacing]).toEqual([10, 172, 0]);
+    near(volume.x + widthOf(volume), 743);
+    // bottom left, at 100: the logo (146 pt wide), then the registry code and the number, 10 pt
     const logo = one(runs, "MS LAB");
-    near(logo.x + widthOf(logo) / 2, 131);
+    near(logo.x + widthOf(logo) / 2, 173);
     const small = one(runs, "KOOLITUSKESKUS");
-    near(small.x + widthOf(small) / 2, 131);
-    expect(one(runs, "REGISTRIKOOD: 16346048")).toMatchObject({ x: 56, y: 58, size: 7.5 });
-    expect(one(runs, "Tunnistuse nr. MS LAB 2026-03")).toMatchObject({ x: 56, y: 46, size: 7.5 });
-    // bottom right: "KOOLITAJA" and the place with the Tallinn date of the issue, centred under the trainer's name
-    for (const [text, y] of [["KOOLITAJA", 58], ["Pärnu linn 15.10.2026", 46]] as const) {
+    near(small.x + widthOf(small) / 2, 173);
+    expect(one(runs, "REGISTRIKOOD: 16346048")).toMatchObject({ x: 100, y: 64, size: 10, spacing: 0 });
+    const number = one(runs, "Tunnistuse nr. MS LAB 2026-03");
+    expect(number).toMatchObject({ x: 100, y: 49, size: 10 });
+    near(number.spacing, 0.16);
+    // bottom right: "KOOLITAJA" and the place with the Tallinn date of the issue, ending at 743 under the trainer's name
+    for (const [text, y, spacing] of [["KOOLITAJA", 64, 0], ["Pärnu linn 15.10.2026", 49, 0.135]] as const) {
       const run = one(runs, text);
-      expect([run.font, run.size, run.y]).toEqual([SANS_FAMILY, 8, y]);
-      near(run.x + widthOf(run) / 2, 706);
+      expect([run.font, run.size, run.y]).toEqual([SANS_FAMILY, 10, y]);
+      near(run.spacing, spacing);
+      near(run.x + widthOf(run), 743);
     }
+  });
+
+  test("Maria's own course title stands at 24 pt, about as wide as on her paper certificate (649 pt)", async () => {
+    const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, courseTitle: "Kulmumeistri baaskoolitus" }, ASSETS));
+    const title = one(runs, "KULMUMEISTRI BAASKOOLITUS");
+    expect([title.size, title.y]).toEqual([24, 428]);
+    expect(widthOf(title)).toBeGreaterThan(630);
+    expect(widthOf(title)).toBeLessThanOrEqual(650);
+    near(title.x + widthOf(title) / 2, 421);
   });
 
   test("the date is the issue's Tallinn date: 22:30 UTC on 31.12 prints 1 January", async () => {
@@ -150,18 +166,18 @@ describe("renderCertificate: the page (spec §7)", () => {
 
   test("no volume: nothing at the right of the practical line", async () => {
     const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, volume: "" }, ASSETS));
-    expect(runs.filter((r) => r.y === 148).map((r) => r.text)).toEqual(["PRAKTILINE TÖÖ FOTODEL, KOOLITAJA POOLT HINNATUD ISESEISEV PROTSEDUURI TEOSTAMINE"]);
+    expect(runs.filter((r) => r.y === 172).map((r) => r.text)).toEqual(["PRAKTILINE TÖÖ FOTODEL, KOOLITAJA POOLT HINNATUD ISESEISEV PROTSEDUURI TEOSTAMINE"]);
   });
 
   test("a long practical line shrinks, then takes two lines, and never runs into the volume", async () => {
     const practicalLine = "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine ning kliendi nõustamine ".repeat(2).slice(0, 200).trim();
     const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, practicalLine }, ASSETS));
     const volume = one(runs, "10 AKADEEMILIST TUNDI");
-    const lines = runs.filter((r) => r.x === 56 && r.y <= 148 && r.y > 130);
+    const lines = runs.filter((r) => r.x === 100 && r.y <= 172 && r.y > 150);
     expect(lines.map((r) => r.text).join(" ")).toBe(practicalLine.toLocaleUpperCase("et"));
-    expect(lines.map((r) => r.y)).toEqual([148, expect.closeTo(148 - lines[0].size * 1.35, 5)]);
+    expect(lines.map((r) => r.y)).toEqual([172, expect.closeTo(172 - lines[0].size * 1.3, 5)]);
     for (const r of lines) {
-      expect(r.size).toBeLessThanOrEqual(6.5);
+      expect(r.size).toBeLessThanOrEqual(8);
       expect(r.x + widthOf(r)).toBeLessThanOrEqual(volume.x - 24 + 0.01);
     }
   });
@@ -170,12 +186,12 @@ describe("renderCertificate: the page (spec §7)", () => {
     const { runs, page } = await readPdf(await renderCertificate(FIXTURE, ASSETS));
     expect(imagesOf(page)).toEqual([]);
     const trainer = one(runs, "Maria Sosnina");
-    expect([trainer.font, trainer.size, trainer.y]).toEqual([SCRIPT_FAMILY, 40, 96]);
-    near(trainer.x + widthOf(trainer) / 2, 706);
-    // its ink (the M's swash reaches below the baseline) stays clear of "KOOLITAJA" (capitals 5.6 pt high on baseline 58) and of the practical line (148)
+    expect([trainer.font, trainer.size, trainer.y]).toEqual([SCRIPT_FAMILY, 40, 105]);
+    near(trainer.x + widthOf(trainer), 743);
+    // its ink (the M's swash reaches below the baseline) stays clear of "KOOLITAJA" (capitals 7 pt high on baseline 64) and of the practical line (172)
     const ink = inkOf(trainer);
-    expect(ink.bottom).toBeGreaterThan(58 + 8 * 0.7 + 4);
-    expect(ink.top).toBeLessThan(148 - 6);
+    expect(ink.bottom).toBeGreaterThan(64 + 10 * 0.7 + 4);
+    expect(ink.top).toBeLessThan(172 - 6);
     // the name and the trainer's name are the only script texts
     expect(runsIn(runs, SCRIPT_FAMILY).map((r) => r.text).sort()).toEqual(["Kertu Õunapuu", "Maria Sosnina"]);
   });
@@ -188,8 +204,8 @@ describe("renderCertificate: the page (spec §7)", () => {
     const { runs } = await readPdf(await renderCertificate(content, ASSETS));
     expect(content.trainerName).toBe(trainerName); // nor the content the PDF was drawn from
     const signed = one(runs, "Maria D'Arcy");
-    expect([signed.font, signed.size, signed.y]).toEqual([SCRIPT_FAMILY, 40, 96]);
-    near(signed.x + widthOf(signed) / 2, 706);
+    expect([signed.font, signed.size, signed.y]).toEqual([SCRIPT_FAMILY, 40, 105]);
+    near(signed.x + widthOf(signed), 743);
     expect(runs.filter((r) => r.text.includes("’"))).toEqual([]); // the font has no ’: it would be an empty box
   });
 
@@ -198,9 +214,9 @@ describe("renderCertificate: the page (spec §7)", () => {
     const long = one((await readPdf(await renderCertificate({ ...FIXTURE, trainerName }, ASSETS))).runs, trainerName);
     expect(long.size).toBeLessThan(40);
     near(widthOf(long), 170);
-    near(long.x + widthOf(long) / 2, 706);
+    near(long.x + widthOf(long), 743);
     const worst = one((await readPdf(await renderCertificate({ ...FIXTURE, trainerName: "Yrjö Ÿvonne" }, ASSETS))).runs, "Yrjö Ÿvonne");
-    expect(inkOf(worst).bottom).toBeGreaterThan(58 + 8 * 0.7 + 1);
+    expect(inkOf(worst).bottom).toBeGreaterThan(64 + 10 * 0.7 + 1);
   });
 
   test("the place and the date are fitted to the signature column; a place of 60 characters stays inside the page", async () => {
@@ -209,58 +225,79 @@ describe("renderCertificate: the page (spec §7)", () => {
     for (const text of [place, "M".repeat(60)]) {
       const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, place: text }, ASSETS));
       const line = one(runs, `${text} 15.10.2026`);
-      expect(line.y).toBe(46);
-      expect(line.size).toBeLessThan(8);
+      expect(line.y).toBe(49);
+      expect(line.size).toBeLessThan(10);
       expect(line.size).toBeGreaterThan(3);
-      near(line.x + widthOf(line) / 2, 706);
-      expect(line.x).toBeGreaterThan(560);
-      expect(line.x + widthOf(line)).toBeLessThanOrEqual(806 + 0.01);
+      near(line.x + widthOf(line), 743);
+      expect(line.x).toBeGreaterThanOrEqual(543 - 0.01);
     }
     // down to a floor (5 pt) a place is fitted to the 170 pt column, a short one is not touched
     const medium = one((await readPdf(await renderCertificate({ ...FIXTURE, place: "Tallinn, Harju maakond, Eesti Vabariik, Euroopa" }, ASSETS))).runs, "Tallinn, Harju maakond, Eesti Vabariik, Euroopa 15.10.2026");
-    expect(medium.size).toBeLessThan(8);
+    expect(medium.size).toBeLessThan(10);
     expect(medium.size).toBeGreaterThanOrEqual(5);
     expect(widthOf(medium)).toBeLessThanOrEqual(170 + 0.01);
   });
 
-  test("a long course title wraps to two lines at 14 pt", async () => {
+  test("a long course title wraps to two lines at 18 pt or smaller", async () => {
     const courseTitle = "Kulmude ja ripsmete kujundamise, värvimise ning laminatsiooni põhjalik e-koolitus algajatele";
     const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, courseTitle }, ASSETS));
     const lines = runs.filter((r) => r.font === SANS_FAMILY && r.y > 400 && r.text !== "TUNNISTUS");
-    expect(lines.map((r) => [r.size, r.y])).toEqual([[14, 448], [14, 428]]);
+    expect(lines.map((r) => r.y)).toEqual([450, 428]);
+    expect(lines[0].size).toBe(lines[1].size);
+    expect(lines[0].size).toBeLessThanOrEqual(18);
     expect(lines.map((r) => r.text).join(" ")).toBe(courseTitle.toLocaleUpperCase("et"));
+    near(Math.max(...lines.map(widthOf)), 650);
     for (const line of lines) {
-      expect(widthOf(line)).toBeLessThanOrEqual(662 + 0.01);
+      expect(widthOf(line)).toBeLessThanOrEqual(650 + 0.01);
       near(line.x + widthOf(line) / 2, 421);
     }
   });
 
-  test("the competency lines: two columns of round bullets, the left one filled first, 9.5 pt; 8.5 pt above 12 lines; a long line wraps under its bullet", async () => {
+  test("the competency lines: two columns of round bullets, the left one filled first, 11 pt; 9.75 pt above 12 lines; a long line wraps under its bullet", async () => {
     const six = await readPdf(await renderCertificate(FIXTURE, ASSETS));
-    const rows = (runs: Run[]) => runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 160);
-    // a bullet is a filled white circle (Jost's "•" is a 1 pt dot set high): 0.275 em across (2.6 pt at 9.5 pt), its left edge at the column's x,
-    // its centre 0.25 em over the baseline (the middle of the lowercase letters, whose height is 0.46 em)
-    const bulletAt = (left: number, baseline: number, fontSize: number) => ({ x: left + (0.275 * fontSize) / 2, y: baseline + 0.25 * fontSize, diameter: 0.275 * fontSize, color: "1 1 1" });
+    const rows = (runs: Run[]) => runs.filter((r) => r.font === SANS_FAMILY && r.y <= 277 && r.y > 190);
+    // a bullet is a filled white circle (Jost's "•" is a 1 pt dot set high): 0.22 em across (2.4 pt at 11 pt), its left edge at the column's x,
+    // its centre 0.34 em over the baseline (the upper half of the lowercase letters, whose height is 0.46 em, as on the paper)
+    const bulletAt = (left: number, baseline: number, fontSize: number) => ({ x: left + (0.22 * fontSize) / 2, y: baseline + 0.34 * fontSize, diameter: 0.22 * fontSize, color: "1 1 1" });
     const bullets = (circles: { x: number; y: number; diameter: number; color: string }[]) => circles.map((c) => ({ x: expect.closeTo(c.x, 3), y: expect.closeTo(c.y, 3), diameter: expect.closeTo(c.diameter, 3), color: c.color }));
     expect(six.runs.filter((r) => r.text.includes("•"))).toEqual([]); // no bullet glyph is written
+    // short lines: the right column starts at the page's centre (421); the text 0.8 em after its column's x; rows 15.18 pt apart from 277
     expect(rows(six.runs).map((r) => [r.text, r.x, r.y, r.size])).toEqual([
-      ["Kulmude kuju analüüs", 107.4, 290, 9.5],
-      ["Värvi valik ja segamine", 107.4, 274.8, 9.5],
-      ["Kulmude värvimine", 107.4, 259.6, 9.5],
-      ["Laminatsioon", 445.4, 290, 9.5],
-      ["Hügieen ja ohutus", 445.4, 274.8, 9.5],
-      ["Kliendi nõustamine", 445.4, 259.6, 9.5],
+      ["Kulmude kuju analüüs", 108.8, 277, 11],
+      ["Värvi valik ja segamine", 108.8, 261.82, 11],
+      ["Kulmude värvimine", 108.8, 246.64, 11],
+      ["Laminatsioon", 429.8, 277, 11],
+      ["Hügieen ja ohutus", 429.8, 261.82, 11],
+      ["Kliendi nõustamine", 429.8, 246.64, 11],
     ].map(([text, x, y, size]) => [text, expect.closeTo(x as number, 5), expect.closeTo(y as number, 5), size]));
-    expect(six.circles).toEqual(bullets([[96, 290], [96, 274.8], [96, 259.6], [434, 290], [434, 274.8], [434, 259.6]].map(([x, y]) => bulletAt(x, y, 9.5))));
-    near(six.circles[0].diameter, 2.6); // "about 2.6 pt"
-    // the text gap is unchanged: the text starts 1.2 em after the bullet's origin (96 + 11.4), 8.8 pt after the circle's right edge
-    near(rows(six.runs)[0].x - (six.circles[0].x + six.circles[0].diameter / 2), 1.2 * 9.5 - 0.275 * 9.5);
+    for (const r of rows(six.runs)) near(r.spacing, 0.1);
+    expect(six.circles).toEqual(bullets([[100, 277], [100, 261.82], [100, 246.64], [421, 277], [421, 261.82], [421, 246.64]].map(([x, y]) => bulletAt(x, y, 11))));
+    near(six.circles[0].diameter, 2.4); // "about 2.4 pt", as on the paper
+    // the text starts 0.8 em after the bullet's origin (100 + 8.8), 6.4 pt after the circle's right edge
+    near(rows(six.runs)[0].x - (six.circles[0].x + six.circles[0].diameter / 2), 0.8 * 11 - 0.22 * 11);
+
+    // Maria's own twelve lines: the right column starts 28 pt after the left column's widest line, at about 467 as on her paper certificate
+    const marias = [
+      "järgib hügieeni- ja ohutusnõudeid", "mõistab kulmude rolli näo harmoonias", "analüüsib näokuju ja kujundab sobiva kulmumudeli", "leiab kulmude anatoomilised punktid",
+      "rakendab värviteooriat ja teostab värvimist (värv ja henna)", "kasutab ombre-tehnikat", "viib läbi allergiatesti", "korrigeerib kulme pintsettide ja vahaga",
+      "teostab protseduuri algusest lõpuni iseseisvalt", "kasutab töövahendeid ja -materjale õigesti", "annab kliendile koduhoolduse juhised", "rakendab professionaalset klienditeenindust",
+    ];
+    const paper = await readPdf(await renderCertificate({ ...FIXTURE, skills: marias }, ASSETS));
+    const paperRows = rows(paper.runs);
+    expect(paperRows.map((r) => r.text)).toEqual(marias); // no line wraps
+    expect(new Set(paperRows.map((r) => r.size))).toEqual(new Set([11]));
+    const widestLeft = Math.max(...paperRows.slice(0, 6).map(widthOf));
+    const rightX = paper.circles[6].x - paper.circles[6].diameter / 2;
+    near(rightX, 100 + 0.8 * 11 + widestLeft + 28);
+    expect(Math.abs(rightX - 467)).toBeLessThan(3);
+    for (const r of paperRows) expect(r.x + widthOf(r)).toBeLessThanOrEqual(743 + 0.01);
 
     const thirteen = await readPdf(await renderCertificate({ ...FIXTURE, skills: Array.from({ length: 13 }, (_, i) => `Oskus ${i + 1}`) }, ASSETS));
     expect(rows(thirteen.runs).map((r) => r.text)).toEqual(Array.from({ length: 13 }, (_, i) => `Oskus ${i + 1}`));
-    expect(new Set(rows(thirteen.runs).map((r) => r.size))).toEqual(new Set([8.5]));
+    expect(new Set(rows(thirteen.runs).map((r) => r.size))).toEqual(new Set([9.75]));
+    expect(Math.min(...rows(thirteen.runs).map((r) => r.y))).toBeGreaterThanOrEqual(196); // seven rows fit at 9.75 pt
     expect(thirteen.circles).toHaveLength(13);
-    for (const c of thirteen.circles) expect(c.diameter).toBeCloseTo(0.275 * 8.5, 2); // the bullets scale with the text
+    for (const c of thirteen.circles) expect(c.diameter).toBeCloseTo(0.22 * 9.75, 2); // the bullets scale with the text
     expect(rows(thirteen.runs).filter((r) => r.x > 400).map((r) => r.text)).toEqual(["Oskus 8", "Oskus 9", "Oskus 10", "Oskus 11", "Oskus 12", "Oskus 13"]);
 
     const long = "Kulmude kuju analüüs, mõõtmine ja kujundamine vastavalt näo proportsioonidele ning kliendi soovidele ja eelistustele";
@@ -269,14 +306,22 @@ describe("renderCertificate: the page (spec §7)", () => {
     expect(left.length).toBeGreaterThan(1);
     expect(left.map((r) => r.text).join(" ")).toBe(long);
     expect(wrapped.circles).toHaveLength(2); // one bullet per line, none on the wrapped rows
-    for (const r of left) expect(r.x + widthOf(r)).toBeLessThanOrEqual(96 + 312 + 0.01);
+    // the right column is pushed as far right as it may go (743 - 230 = 513), and the left rows end 28 pt before it
+    near(wrapped.circles[1].x - wrapped.circles[1].diameter / 2, 513);
+    for (const r of left) expect(r.x + widthOf(r)).toBeLessThanOrEqual(513 - 28 + 0.01);
   });
 
-  test("16 lines of 120 characters still stay above the practical line", async () => {
+  test("16 lines of 120 characters (the limit) get more room and still stay above the practical line, which moves down to 150", async () => {
     const skills = Array.from({ length: 16 }, (_, i) => `${i + 1}. ${"Kulmude kuju analüüs ja värvimine ".repeat(4)}`.slice(0, 120));
     const { runs, circles } = await readPdf(await renderCertificate({ ...FIXTURE, skills }, ASSETS));
-    const rows = runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 150);
-    expect(Math.min(...rows.map((r) => r.y))).toBeGreaterThanOrEqual(172);
+    const rows = runs.filter((r) => r.font === SANS_FAMILY && r.y <= 288 && r.y > 150);
+    expect(Math.max(...rows.map((r) => r.y))).toBe(288);
+    expect(Math.min(...rows.map((r) => r.y))).toBeGreaterThanOrEqual(174);
+    expect(Math.min(...rows.map((r) => r.size))).toBeGreaterThanOrEqual(5);
+    // the first row's letters (0.75 em over its baseline at most) stay under the name's ink floor
+    expect(288 + 0.75 * rows[0].size).toBeLessThan(INK_BAND.bottom);
+    expect(one(runs, "PRAKTILINE TÖÖ FOTODEL, KOOLITAJA POOLT HINNATUD ISESEISEV PROTSEDUURI TEOSTAMINE").y).toBe(150);
+    expect(one(runs, "10 AKADEEMILIST TUNDI").y).toBe(150);
     expect(circles).toHaveLength(16);
     expect(rows.map((r) => r.text).join(" ")).toBe(skills.map((s) => s.trim()).join(" "));
   });

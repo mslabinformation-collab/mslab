@@ -56,48 +56,69 @@ export async function loadCertificateAssets(): Promise<CertificateAssets> {
 }
 
 // ---------- the layout (842 × 595 pt) ----------
+// Dim 07.11: the sizes and places below the heading were measured off a photo of Maria's paper certificate (its width read at 842 pt, its height
+// at 595 pt: the photo is 3 % squashed, which the script name, the same font on both, shows) and fitted in Jost by the letters' height and the
+// line's width. The heading and the name were already as there.
 
 const PAGE = { width: 842, height: 595 } as const;
 const CENTRE = PAGE.width / 2;
 const WHITE = rgb(1, 1, 1);
 const BLACK = rgb(0, 0, 0);
+/** The text block's edges, as on the paper certificate: the competency lines, the foot and the bottom lines start at `left` and end at `right`. */
+const BOX = { left: 100, right: 743 } as const;
 
 /** "TUNNISTUS": the sans at 54 pt, slightly spaced, centred; its capitals reach about 80 pt below the top. */
 const HEADING = { size: 54, spacing: 0.08, baseline: 478 } as const;
-/** The course title: capitals spaced 0.35 em, 18 pt on one line, else two lines at 14 pt (or smaller, so the wider line fits). */
-const TITLE = { size: 18, twoLineSize: 14, spacing: 0.35, width: 662, baseline: 440, twoLineBaselines: [448, 428] } as const;
+/**
+ * The course title: capitals spaced 0.54 em, 24 pt on one line (Maria's "KULMUMEISTRI BAASKOOLITUS" then spans 640 pt, as on her certificate),
+ * shrunk to fit `width` down to 18 pt; else two lines at 18 pt (or smaller, so the wider line fits). One line stands on 428, two on 450 and 428.
+ */
+const TITLE = { size: 24, shrinkTo: 18, twoLineSize: 18, spacing: 0.54, width: 650, baseline: 428, twoLineBaselines: [450, 428] } as const;
 /**
  * The name, in Revive 80 Signature: tall capitals with long swashes and a tiny lowercase (x-height 0.18 em, cap height 0.71 em, the ink of a
  * capital reaching from 0.3 em below the baseline, 0.54 em for a Y, to 0.84 em above it), so it is drawn large, as on Maria's paper certificate:
- * 88 pt on baseline 331, which puts a K's swash across the thin line (316) as there. Shrunk to fit `width` (a little under the line's 589, the
+ * 88 pt on baseline 331, which puts a K's swash across the line (316) as there. Shrunk to fit `width` (a little under the line's 650, the
  * swashes reach past the letters' advances) down to 44 pt (lowercase 8 pt high); below that two lines (leading 1.1 em) at 44 pt or smaller.
- * The ink stays between `inkFloor` (6 pt above the first competency line, whose letters reach 297) and 425 (under the course title, whose
- * second line, when it wraps, stands on 428): a name whose capitals dip deeper than the baseline allows (Y, G, J, H) is lifted until its lowest
- * point is on `inkFloor`. At 88 pt even the tallest-and-deepest name (Å and Y: 1.38 em of ink, 121 pt) fits under 425 then.
+ * The ink stays between `inkFloor` (well above the first competency line, whose letters reach 286) and 425 (under the course title, which
+ * stands on 428): a name whose capitals dip deeper than the baseline allows (Y, G, J, H) is lifted until its lowest point is on `inkFloor`. At
+ * 88 pt even the tallest-and-deepest name (Å and Y: 1.38 em of ink, 121 pt) fits under 425 then.
  */
 const NAME = { size: 88, shrinkTo: 44, width: 540, baseline: 331, leading: 1.1, inkFloor: 303 } as const;
-const RULE = { y: 316, halfWidth: PAGE.width * 0.35, thickness: 0.75 } as const;
-/** The competency lines: two columns of lines, each after a drawn bullet (BULLET), the left one filled first; 9.5 pt, 8.5 pt above 12 lines, smaller still if they would reach the practical line. */
-const SKILLS = { size: 9.5, manySize: 8.5, many: 12, minSize: 5, spacing: 0.05, leading: 1.6, top: 290, bottom: 172, left: 96, width: 650, gap: 26 } as const;
+/** The line under the name: 650 pt long, centred (96 to 746, a little past the text block, as on the paper), 1.2 pt thick. */
+const RULE = { y: 316, halfWidth: 325, thickness: 1.2 } as const;
 /**
- * A competency bullet is a filled white circle, as on Maria's certificate (Jost's "•" is a 1 pt dot set high): `diameter` em across (2.6 pt at
- * 9.5 pt), its left edge at the column's x and its centre `centre` em over the baseline, the middle of the lowercase letters (0.46 em high).
- * The text starts 1.2 em after the column's x.
+ * The competency lines: two columns of lines, each after a drawn bullet (BULLET), the left one filled first; 11 pt spaced 0.1 em, 15.2 pt apart
+ * (leading 1.38), the first on 277; 9.75 pt above 12 lines (seven rows then still fit), smaller still if they would come below `bottom`.
+ * The left column starts at BOX.left; the right one `gap` after the left column's widest line (Maria's own lines then start it at 467, as on
+ * the paper), but never left of the page's centre, and never so far right that it is narrower than `rightWidth` (a longer left line then
+ * wraps). The text starts `indent` em after its column's x.
+ * Lines that do not fit between `top` and `bottom` even at `minSize` (the limit is 16 lines of 120 characters) get more room: they start on
+ * `roomyTop` (their letters still under the name's ink floor) and may come down to `roomyBottom`, the practical line then standing on
+ * FOOT.roomyBaseline.
  */
-const BULLET = { diameter: 0.275, centre: 0.25 } as const;
-/** The practical line at the left and the volume at the right, capitals, 8 pt on one baseline; a long practical line shrinks to 6.5 pt, then takes two lines. */
-const FOOT = { size: 8, shrinkTo: 6.5, spacing: 0.12, baseline: 148, left: 56, right: 786, gap: 24, leading: 1.35 } as const;
-/** Where the MS LAB logo stands (server/pdf-logo.ts draws it, here in white): the box of 150 × 50 pt, its lower left corner at the page's bottom left. */
-const LOGO = { x: 56, y: 80, width: 150, height: 50 } as const;
-/** Under the logo: "REGISTRIKOOD: …" and "Tunnistuse nr. …". */
-const LEFT_LINES = { x: 56, size: 7.5, spacing: 0.1, baselines: [58, 46] } as const;
+const SKILLS = { size: 11, manySize: 9.75, many: 12, minSize: 5, spacing: 0.1, leading: 1.38, top: 277, bottom: 196, roomyTop: 288, roomyBottom: 174, indent: 0.8, gap: 28, rightWidth: 230 } as const;
 /**
- * The bottom right block, centred on one axis: Maria's signature (the trainer's name in the script font, 40 pt as on her certificate, or smaller
- * to fit `width`; its M's swash dips 12 pt below the baseline, a Y's 22 pt, so the ink stays above "KOOLITAJA"), "KOOLITAJA", the place and
- * the date. The place line is fitted to `width` too, down to a 5 pt floor, and never wider than `placeMaxWidth` (a place of 60 characters stays
- * inside the page: 706 + 100 is 806).
+ * A competency bullet is a filled white circle, as on Maria's certificate (Jost's "•" is a 1 pt dot set high): `diameter` em across (2.4 pt at
+ * 11 pt, as on the paper), its left edge at the column's x and its centre `centre` em over the baseline, in the upper half of the lowercase
+ * letters (0.46 em high), where the paper has it.
  */
-const SIGN = { centre: 706, width: 170, nameSize: 40, nameBaseline: 96, size: 8, labelSpacing: 0.3, spacing: 0.06, baselines: [58, 46], placeFloor: 5, placeMaxWidth: 200 } as const;
+const BULLET = { diameter: 0.22, centre: 0.34 } as const;
+/**
+ * The practical line at BOX.left and the volume ending at BOX.right, capitals, 10 pt, not spaced, on one baseline (172, under the competency
+ * lines; 150 when they need more room, see SKILLS); a long practical line shrinks to 8 pt, then takes two lines.
+ */
+const FOOT = { size: 10, shrinkTo: 8, spacing: 0, baseline: 172, roomyBaseline: 150, gap: 24, leading: 1.3 } as const;
+/** Where the MS LAB logo stands (server/pdf-logo.ts draws it, here in white): the box of 146 × 52 pt, at BOX.left. */
+const LOGO = { x: BOX.left, y: 84, width: 146, height: 52 } as const;
+/** Under the logo, at BOX.left, 10 pt: "REGISTRIKOOD: …" (not spaced) and "Tunnistuse nr. …" (spaced 0.16 em), as on the paper. */
+const LEFT_LINES = { size: 10, registrySpacing: 0, numberSpacing: 0.16, baselines: [64, 49] } as const;
+/**
+ * The bottom right block, every line ending at BOX.right as on the paper: Maria's signature (the trainer's name in the script font, 40 pt as on
+ * her certificate, or smaller to fit `width`; its M's swash dips 12 pt below the baseline, a Y's 22 pt, so the ink stays above "KOOLITAJA"),
+ * "KOOLITAJA" (10 pt, not spaced), the place and the date (10 pt, spaced 0.135 em). The place line is fitted to `width` too, down to a 5 pt
+ * floor, and never wider than `placeMaxWidth` (it then starts at 543 or right of it).
+ */
+const SIGN = { width: 170, nameSize: 40, nameBaseline: 105, size: 10, labelSpacing: 0, spacing: 0.135, baselines: [64, 49], placeFloor: 5, placeMaxWidth: 200 } as const;
 
 /** A piece of text in one font, size and letter spacing (em). */
 type Style = { font: PDFFont; size: number; spacing: number };
@@ -177,21 +198,40 @@ function fitBlock(text: string, unit: (line: string) => number, o: { width: numb
   return { size: Math.min(o.twoLineSize, o.width / Math.max(unit(pair[0]), unit(pair[1]))), lines: pair };
 }
 
-/** The competency lines laid out: the size, the gap between baselines, the bullet's indent and each column's rows (a wrapped line's first row carries the bullet). */
-function layoutSkills(skills: readonly string[], font: PDFFont): { size: number; leading: number; indent: number; columns: { text: string; bullet: boolean }[][] } {
+/** The competency lines laid out (layoutSkills). */
+type SkillsLayout = { size: number; leading: number; indent: number; top: number; footBaseline: number; xs: [number, number]; columns: { text: string; bullet: boolean }[][] };
+
+/**
+ * The competency lines laid out: the size, the gap between baselines, the bullet's indent, the first baseline, where the practical line then
+ * stands, each column's x and each column's rows (a wrapped line's first row carries the bullet). The largest size that fits the usual room,
+ * else the largest that fits the roomy one (SKILLS), else `minSize` there.
+ */
+function layoutSkills(skills: readonly string[], font: PDFFont): SkillsLayout {
   const lines = skills.map(oneLine).filter(Boolean);
   const half = Math.ceil(lines.length / 2);
-  const columnWidth = (SKILLS.width - SKILLS.gap) / 2;
-  for (let size: number = lines.length > SKILLS.many ? SKILLS.manySize : SKILLS.size; ; size -= 0.25) {
-    const indent = size * 1.2;
-    const style = { font, size, spacing: SKILLS.spacing };
-    const columns = [lines.slice(0, half), lines.slice(half)].map((column) =>
-      column.flatMap((line) => wrap(line, (row) => widthOf(row, style) <= columnWidth - indent).map((text, i) => ({ text, bullet: i === 0 }))),
-    );
-    const rows = Math.max(columns[0].length, columns[1].length);
-    const leading = size * SKILLS.leading;
-    if (SKILLS.top - (rows - 1) * leading >= SKILLS.bottom || size <= SKILLS.minSize) return { size, leading, indent, columns };
+  const halves = [lines.slice(0, half), lines.slice(half)];
+  const rooms = [
+    { top: SKILLS.top, bottom: SKILLS.bottom, footBaseline: FOOT.baseline },
+    { top: SKILLS.roomyTop, bottom: SKILLS.roomyBottom, footBaseline: FOOT.roomyBaseline },
+  ];
+  let last: SkillsLayout | null = null;
+  for (const room of rooms) {
+    for (let size: number = lines.length > SKILLS.many ? SKILLS.manySize : SKILLS.size; size >= SKILLS.minSize; size -= 0.25) {
+      const indent = size * SKILLS.indent;
+      const style = { font, size, spacing: SKILLS.spacing };
+      const widestLeft = Math.max(0, ...halves[0].map((line) => widthOf(line, style)));
+      const rightX = Math.min(BOX.right - SKILLS.rightWidth, Math.max(CENTRE, BOX.left + indent + widestLeft + SKILLS.gap));
+      const widths = [rightX - SKILLS.gap - BOX.left, BOX.right - rightX];
+      const columns = halves.map((column, c) =>
+        column.flatMap((line) => wrap(line, (row) => widthOf(row, style) <= widths[c] - indent).map((text, i) => ({ text, bullet: i === 0 }))),
+      );
+      const rows = Math.max(columns[0].length, columns[1].length);
+      const leading = size * SKILLS.leading;
+      last = { size, leading, indent, top: room.top, footBaseline: room.footBaseline, xs: [BOX.left, rightX], columns };
+      if (room.top - (rows - 1) * leading >= room.bottom) return last;
+    }
   }
+  return last!;
 }
 
 /** A4 landscape (842 × 595), black, laid out as spec §7 (the constants above). */
@@ -217,7 +257,7 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   drawCentred(page, "TUNNISTUS", { font: sans, size: HEADING.size, spacing: HEADING.spacing }, CENTRE, HEADING.baseline);
 
   const title = upper(c.courseTitle);
-  const titleFit = fitBlock(title, (s) => unitWidth(s, sans, TITLE.spacing), { width: TITLE.width, size: TITLE.size, shrinkTo: TITLE.size, twoLineSize: TITLE.twoLineSize });
+  const titleFit = fitBlock(title, (s) => unitWidth(s, sans, TITLE.spacing), { width: TITLE.width, size: TITLE.size, shrinkTo: TITLE.shrinkTo, twoLineSize: TITLE.twoLineSize });
   const titleBaselines = titleFit.lines.length === 1 ? [TITLE.baseline] : TITLE.twoLineBaselines;
   titleFit.lines.forEach((line, i) => drawCentred(page, line, { font: sans, size: titleFit.size, spacing: TITLE.spacing }, CENTRE, titleBaselines[i]));
 
@@ -236,9 +276,9 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   const skills = layoutSkills(c.skills, sans);
   const skillStyle: Style = { font: sans, size: skills.size, spacing: SKILLS.spacing };
   skills.columns.forEach((rows, column) => {
-    const x = SKILLS.left + column * ((SKILLS.width + SKILLS.gap) / 2);
+    const x = skills.xs[column];
     rows.forEach((row, i) => {
-      const y = SKILLS.top - i * skills.leading;
+      const y = skills.top - i * skills.leading;
       if (row.bullet) {
         const radius = (BULLET.diameter * skills.size) / 2;
         page.drawCircle({ x: x + radius, y: y + BULLET.centre * skills.size, size: radius, color: WHITE });
@@ -251,28 +291,27 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   const volume = upper(c.volume);
   const volumeWidth = volume ? widthOf(volume, footStyle(FOOT.size)) + FOOT.gap : 0;
   const practical = fitBlock(upper(c.practicalLine), (s) => unitWidth(s, sans, FOOT.spacing), {
-    width: FOOT.right - FOOT.left - volumeWidth,
+    width: BOX.right - BOX.left - volumeWidth,
     size: FOOT.size,
     shrinkTo: FOOT.shrinkTo,
     twoLineSize: FOOT.shrinkTo,
   });
-  practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), FOOT.left, FOOT.baseline - i * practical.size * FOOT.leading));
-  if (volume) drawRight(page, volume, footStyle(FOOT.size), FOOT.right, FOOT.baseline);
+  practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), BOX.left, skills.footBaseline - i * practical.size * FOOT.leading));
+  if (volume) drawRight(page, volume, footStyle(FOOT.size), BOX.right, skills.footBaseline);
 
   drawLogo(page, sans, LOGO, WHITE);
-  const left: Style = { font: sans, size: LEFT_LINES.size, spacing: LEFT_LINES.spacing };
-  drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, left, LEFT_LINES.x, LEFT_LINES.baselines[0]);
-  drawAt(page, `Tunnistuse nr. ${c.number}`, left, LEFT_LINES.x, LEFT_LINES.baselines[1]);
+  drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, { font: sans, size: LEFT_LINES.size, spacing: LEFT_LINES.registrySpacing }, BOX.left, LEFT_LINES.baselines[0]);
+  drawAt(page, `Tunnistuse nr. ${c.number}`, { font: sans, size: LEFT_LINES.size, spacing: LEFT_LINES.numberSpacing }, BOX.left, LEFT_LINES.baselines[1]);
 
-  // Maria's signature: the trainer's name in the script font, fitted to the column
+  // Maria's signature: the trainer's name in the script font, fitted to the column; the block ends at the text block's right edge
   const trainer = scriptText(c.trainerName);
   const trainerSize = Math.min(SIGN.nameSize, SIGN.width / unitWidth(trainer, script, 0));
-  drawCentred(page, trainer, { font: script, size: trainerSize, spacing: 0 }, SIGN.centre, SIGN.nameBaseline);
-  drawCentred(page, "KOOLITAJA", { font: sans, size: SIGN.size, spacing: SIGN.labelSpacing }, SIGN.centre, SIGN.baselines[0]);
+  drawRight(page, trainer, { font: script, size: trainerSize, spacing: 0 }, BOX.right, SIGN.nameBaseline);
+  drawRight(page, "KOOLITAJA", { font: sans, size: SIGN.size, spacing: SIGN.labelSpacing }, BOX.right, SIGN.baselines[0]);
   const placeAndDate = `${oneLine(c.place)} ${tallinnDateText(c.issuedAt)}`;
   const placeUnit = unitWidth(placeAndDate, sans, SIGN.spacing);
   const placeSize = Math.min(SIGN.size, Math.max(SIGN.placeFloor, SIGN.width / placeUnit), SIGN.placeMaxWidth / placeUnit);
-  drawCentred(page, placeAndDate, { font: sans, size: placeSize, spacing: SIGN.spacing }, SIGN.centre, SIGN.baselines[1]);
+  drawRight(page, placeAndDate, { font: sans, size: placeSize, spacing: SIGN.spacing }, BOX.right, SIGN.baselines[1]);
 
   return doc.save();
 }
