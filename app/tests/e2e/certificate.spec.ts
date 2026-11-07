@@ -260,6 +260,16 @@ test("§6 Seaded → Tunnistus: the trainer's name is the signature (no picture 
   await expect(card.locator("[data-cert-preview]")).toHaveText(/^Järgmine tunnistus: MS LAB \d{4}-\d{2,}$/);
   const trainer = card.locator("[data-cert-trainer]");
   await expect(trainer).toHaveValue(readCertificateSettings(before, new Date()).trainerName);
+  // „Näidistunnistus (PDF)“ (Dim 07.11): a new tab's address with the values on the screen; the PDF comes, and nothing is stored
+  const sample = card.locator("[data-cert-sample]");
+  await expect(sample).toHaveText("Näidistunnistus (PDF)");
+  await expect(sample).toHaveAttribute("target", "_blank");
+  const pdf = await page.request.get((await sample.getAttribute("href"))!);
+  expect(pdf.status()).toBe(200);
+  expect(pdf.headers()["content-type"]).toBe("application/pdf");
+  expect(pdf.headers()["content-disposition"]).toBe('inline; filename="MS-LAB-naidistunnistus.pdf"');
+  expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  expect(await storedCertificateSetting()).toEqual(before);
   // the server refuses it before its lock and stores nothing, so no other test's number is touched
   const refused = await seadedAutosave(page, "certificate", async () => {
     await trainer.fill("Мария Соснина");

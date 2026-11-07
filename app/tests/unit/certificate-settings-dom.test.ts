@@ -117,6 +117,27 @@ describe("CertificateSettings", () => {
     expect(text($("[data-cert-last]"))).toBe("2026. aastal pole veel tunnistusi väljastatud.");
   });
 
+  test("„Näidistunnistus (PDF)“ (Dim 07.11) opens a new tab with the values on the screen, saved or not, and with its hint; drawing it sends nothing", async () => {
+    await show();
+    const link = $<HTMLAnchorElement>("[data-cert-sample]")!;
+    expect(text(link)).toBe("Näidistunnistus (PDF)");
+    expect([link.getAttribute("target"), link.getAttribute("rel")]).toEqual(["_blank", "noopener"]);
+    expect(text(link.nextElementSibling)).toBe("Näidis tehakse kaardi praegustest väärtustest. Midagi ei salvestata.");
+    const query = () => {
+      const url = new URL(link.getAttribute("href")!, "https://mslab.example");
+      expect(url.pathname).toBe("/api/admin/naidistunnistus");
+      return Object.fromEntries(url.searchParams);
+    };
+    expect(query()).toEqual({ place: "Pärnu linn", registryCode: "16346048", practicalLine: PRACTICAL, trainerName: "Maria Sosnina", nextYear: "2026", nextSeq: "15" });
+    // typed and not yet saved (the text waits 1.5 s; the number commits on blur): the address follows the screen at once
+    await type(input("place"), "Tartu & Co");
+    expect(query()).toMatchObject({ place: "Tartu & Co" });
+    expect(sent()).toEqual([]);
+    await type(input("next-seq"), "93"); // (leaving „Koht“ for it saves the place, as leaving any field does)
+    expect(query()).toMatchObject({ place: "Tartu & Co", nextSeq: "93" });
+    expect(sent().map((s) => s.patch)).toEqual([{ place: "Tartu & Co" }]);
+  });
+
   test("a text field saves 1.5 s after typing, only what changed, from the card's version; its status is told", async () => {
     await show();
     await type(input("place"), "Tallinn");

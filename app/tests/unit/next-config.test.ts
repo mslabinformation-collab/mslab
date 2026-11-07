@@ -90,6 +90,13 @@ describe("next.config.ts headers()", () => {
     for (const path of ["/api/admin/leping", "/api/admin/leping/12/x", "/api/admin/lepingud", "/api/admin/naidisleping/x", "/api/admin/naidislepingx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
   });
 
+  test("Seaded's sample certificate is private and never kept, as the other samples are; no other path near it is (Dim 07.11)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    expect(valueFor(rules, "/api/admin/naidistunnistus", "cache-control")).toBe("private, no-store");
+    expect(valueFor(rules, "/api/admin/naidistunnistus", "x-robots-tag")).toBe("noindex, nofollow");
+    for (const path of ["/api/admin/naidistunnistus/x", "/api/admin/naidistunnistusx", "/api/admin/tunnistus"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
+  });
+
   test("the campaign editor's preview is private and never kept, as the samples are; no other path near it is (newsletter campaigns Task 4)", async () => {
     const rules = (await (await config()).headers!()) as Rule[];
     expect(valueFor(rules, "/api/admin/kampaania-eelvaade", "cache-control")).toBe("private, no-store");
@@ -177,9 +184,9 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; t
   // nor "/[[]locale]/koolitused/**" nor the backslash-escaped form.
   const FONTS = ["./assets/fonts/**"];
 
-  test("the fonts go with the two functions that render the certificate, named by their folders", async () => {
+  test("the fonts go with the three functions that render the certificate, named by their folders: the account API, Maria's download and Seaded's sample", async () => {
     const include = (await config()).outputFileTracingIncludes!;
-    for (const key of ["/api/konto/**", "/api/admin/tunnistus/**"]) expect(include[key], key).toEqual(FONTS);
+    for (const key of ["/api/konto/**", "/api/admin/tunnistus/**", "/api/admin/naidistunnistus/**"]) expect(include[key], key).toEqual(FONTS);
   });
 
   test("...and with every function that renders an invoice: Maria's download and the sample, the payment routes, the cron and the admin pages", async () => {
@@ -200,12 +207,12 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; t
     for (const key of Object.keys(include)) expect(key, key).not.toMatch(/\[|\\/);
   });
 
-  test("nothing else is traced with the fonts: exactly these ten keys, each a route's folder and /** (a bracketed folder is *)", async () => {
+  test("nothing else is traced with the fonts: exactly these eleven keys, each a route's folder and /** (a bracketed folder is *)", async () => {
     const include = (await config()).outputFileTracingIncludes!;
     expect(Object.keys(include).sort()).toEqual(
       [
         "/*/koolitused/**", "/admin/**", "/api/admin/arve/**", "/api/admin/leping/**", "/api/admin/naidisarve/**", "/api/admin/naidisleping/**", "/api/admin/tunnistus/**",
-        "/api/cron/**", "/api/konto/**", "/api/payments/**",
+        "/api/admin/naidistunnistus/**", "/api/cron/**", "/api/konto/**", "/api/payments/**",
       ].sort(),
     );
     for (const [key, files] of Object.entries(include)) {

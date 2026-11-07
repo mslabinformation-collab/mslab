@@ -102,6 +102,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         // phase 3d: Maria's certificate download and the certificate's actions
         "app/api/admin/tunnistus/[id]/route.ts",
         "server/actions/admin-certificates.ts",
+        // Dim 07.11: Seaded's sample certificate
+        "app/api/admin/naidistunnistus/route.ts",
         // phase 3d, Task 6: the certificate register (from Hindamine)
         "app/admin/(panel)/tunnistused/page.tsx",
         // invoices, Task 5: Maria's invoice list, the PDF, the month's CSV, the sample and the invoice actions

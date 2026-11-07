@@ -35,3 +35,15 @@
 .restore {
   margin: 18px 0 0;
 }
+
+/* „Näidistunnistus (PDF)“ and its hint under the fields, as the invoice card's sample (InvoiceSettings.module.css .sampleBox) */
+.sampleBox {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  margin-top: 22px;
+}
+
+.sampleBox p {
+  margin: 0;
+}

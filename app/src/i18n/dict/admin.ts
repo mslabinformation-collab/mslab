@@ -1465,6 +1465,9 @@ export const adminEt = {
       lastNone: "{year}. aastal pole veel tunnistusi väljastatud.",
       // admin UX pass piece 3b, P-10: {number} e.g. MS LAB 2026-93 (formatCertificateNumber: two digits at least)
       preview: "Järgmine tunnistus: {number}",
+      // the sample (api/admin/naidistunnistus, Dim 07.11): the button and its hint, as the invoice card's „Näidisarve (PDF)“
+      sample: "Näidistunnistus (PDF)",
+      sampleHint: "Näidis tehakse kaardi praegustest väärtustest. Midagi ei salvestata.",
       // server/certificates.ts CertificateFieldError (`letters` and `length` are the name rules' refusals of the trainer's name); `other` for a
       // code this list does not know. "invalid" on the year (not this Tallinn year or the next) has its own words, `year`; on the number, `invalid`
       errors: {
@@ -1477,6 +1480,13 @@ export const adminEt = {
         length: "Nimi on liiga lühike.",
         other: "Kontrolli seda välja.",
       },
+    },
+    // the sample PDF's made-up student, course, competency lines and volume (server/certificate-sample.ts); Draft
+    sample: {
+      name: "Mari Maasikas",
+      course: "Näidiskoolitus",
+      skills: ["Kulmude kuju analüüs", "Värvi valik ja segamine", "Kulmude värvimine", "Hügieen ja ohutus"],
+      volume: "10 akadeemilist tundi",
     },
     // the Õpilased drawer's line about an access's certificate (components/admin/ClientDrawer.tsx); {date}: dd.mm.yyyy in Tallinn
     drawer: {

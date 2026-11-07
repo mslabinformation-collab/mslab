@@ -1963,6 +1963,32 @@
       "markedAt": "2026-10-26T11:12:35.436Z"
     },
     {
+      "id": "haldus-seaded-naidistunnistus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: näidistunnistus",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja vali jaotiste loendist „Tunnistus“.",
+        "Kirjuta „Koht“ lõppu X ja vajuta kohe „Näidistunnistus (PDF)“.",
+        "Pane „Koht“ tagasi endiseks ja liigu väljalt edasi."
+      ],
+      "expect": [
+        "PDF avaneb uues aknas: tunnistus on laiuti, must, valge tekstiga.",
+        "Tunnistusel on „NÄIDISKOOLITUS“ ja käekirjas nimi „Mari Maasikas“.",
+        "Kuupäeva ees on ekraanil olev koht koos X-iga.",
+        "Number on sama mis kaardi rida „Järgmine tunnistus: …“.",
+        "All paremal on käekirjas väljal „Koolitaja nimi“ olev nimi ja sõna „KOOLITAJA“.",
+        "Näidis ei võta numbrit: „Järgmine number“ jääb samaks."
+      ],
+      "why": "Maria näeb tunnistust enne, kui ükski õpilane selle saab.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-seaded-arve",
       "area": "haldus",
       "who": "maria",
@@ -5071,7 +5097,7 @@
       "title": "Tunnistus PDF-ina",
       "href": "/konto",
       "steps": [
-        "Ava alla laaditud tunnistus tahvlis.",
+        "Ava tahvlis alla laaditud tunnistus; kui seda veel pole, vajuta Seaded → Tunnistus „Näidistunnistus (PDF)“.",
         "Ava sama tunnistus telefonis.",
         "Võrdle seda oma paberil tunnistusega."
       ],
@@ -5084,7 +5110,9 @@
       ],
       "why": "Tunnistus peab välja nägema nagu Maria paberil tunnistus.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-paranda-nimi",

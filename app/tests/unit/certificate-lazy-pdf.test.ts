@@ -15,3 +15,9 @@ test("importing server/certificates.ts loads no PDF code", async () => {
   expect(typeof certificates.certificatePdf).toBe("function");
   expect(loaded.pdf).toBe(false);
 });
+
+test("importing the sample certificate's module (Seaded → „Näidistunnistus (PDF)“) loads no PDF code either: sampleCertificatePdf imports it when drawn", async () => {
+  const sample = await import("@/server/certificate-sample");
+  expect(typeof sample.sampleCertificatePdf).toBe("function");
+  expect(loaded.pdf).toBe(false);
+});

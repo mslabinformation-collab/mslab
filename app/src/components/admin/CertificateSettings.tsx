@@ -39,6 +39,14 @@ const NUMBER: FieldGroup = { name: "number", members: ON_BLUR };
 const whole = (typed: string): number | null => (/^\d{1,9}$/.test(typed.trim()) ? Number(typed.trim()) : null);
 
 /**
+ * The address of the sample certificate (api/admin/naidistunnistus): the card's values as they stand on the screen, saved or not. The query holds
+ * the fields by their names; the route reads them as defensively as the stored setting is read.
+ */
+function sampleHref(d: CertificateForm): string {
+  return `/api/admin/naidistunnistus?${new URLSearchParams(d).toString()}`;
+}
+
+/**
  * Seaded → "Tunnistus" (phase 3d, spec §6, §4; admin UX pass piece 3b, Task 4: README B4, P-10, spec D6): what every new e-course certificate prints
  * besides the student's name and her course — the place, the registry code, the practical work's line and the trainer's name, which the PDF writes in
  * the script font as Maria's signature (owner, 15.10: no picture) — and "Järgmine number" (its „Aasta“ and „Number“, D6: certificates unchanged) with
@@ -47,6 +55,8 @@ const whole = (typed: string): number | null => (/^\d{1,9}$/.test(typed.trim()) 
  * left (they commit on blur), always together (one patch with both: the server judges the pair as one); another year stored, the page is read
  * again for the year's last issued number. A refused field says why in its own words, in the field (Review Focus 4: a number at or below one already issued is
  * `taken`; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is "invalid" on the year).
+ * Under the fields „Näidistunnistus (PDF)“ (Dim 07.11.2026, as the invoice card's sample): a sample drawn from the values on the screen without
+ * saving anything or using a number.
  */
 export function CertificateSettings({ initial, onStatus }: { initial: CertificateSettingsInitial; onStatus?: StatusReport }) {
   const t = adminEt.certificates.settings;
@@ -149,6 +159,7 @@ export function CertificateSettings({ initial, onStatus }: { initial: Certificat
   const preview = year !== null && year >= 2000 && seq !== null && seq >= 1 ? fill(t.preview, { number: formatCertificateNumber(year, seq) }) : null;
   // the last issued number belongs to the year the page read it for (the card's year, as stored or as the page read it again)
   const lastLine = initial.last ? fill(t.last, { number: initial.last }) : fill(t.lastNone, { year: initial.nextYear });
+  const sample = Object.fromEntries((Object.keys(labels) as Field[]).map((f) => [f, value(f)])) as CertificateForm;
 
   /** Leaving a field: the numbers waiting to be left are committed, and what is typed goes at once. */
   const leave = () => {
@@ -193,6 +204,12 @@ export function CertificateSettings({ initial, onStatus }: { initial: Certificat
           </button>
         </p>
       )}
+      <div className={styles.sampleBox}>
+        <a className={`${ui.btn} ${ui.secondary}`} href={sampleHref(sample)} target="_blank" rel="noopener" data-cert-sample="">
+          {t.sample}
+        </a>
+        <p className={ui.hint}>{t.sampleHint}</p>
+      </div>
     </section>
   );
 }

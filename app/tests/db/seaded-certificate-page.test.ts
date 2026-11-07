@@ -87,6 +87,9 @@ test("without a setting: the defaults (Maria Sosnina signs), this year's number 
   expect(valueOf(html, "next-seq")).toBe("1");
   expect(html).toContain(NOT_YET(THIS()));
   expect(html.slice(card)).not.toMatch(/<img|type="file"/);
+  // „Näidistunnistus (PDF)“ (Dim 07.11): the sample of the values the card shows
+  expect(html.slice(card)).toContain('href="/api/admin/naidistunnistus?place=');
+  expect(html.slice(card)).toContain("Näidistunnistus (PDF)");
 });
 
 test("a stored setting: its values, the trainer's name as stored, and the year's last issued number beside the next", async () => {

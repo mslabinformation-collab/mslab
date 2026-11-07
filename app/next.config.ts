@@ -36,7 +36,8 @@ const nextConfig: NextConfig = {
   // The PDFs' fonts (the certificate, phase 3d; the invoices, phase 4; the contracts, phase 4 piece 3): server/certificate-pdf.ts reads
   // app/assets/fonts with fs on every download, and the invoice's and the contract's PDFs draw with its fonts, so `next build` must put the
   // folder into every function that renders a PDF:
-  // - the certificate: the account API (/api/konto/[[...path]]) and Maria's download (/api/admin/tunnistus/[id]);
+  // - the certificate: the account API (/api/konto/[[...path]]), Maria's download (/api/admin/tunnistus/[id]) and the sample of Seaded
+  //   (/api/admin/naidistunnistus);
   // - an invoice: the same account API (the student's download), Maria's download (/api/admin/arve), the sample of Seaded
   //   (/api/admin/naidisarve), the payment routes and the cron's sweep (each settles a payment, whose paid mail carries its invoice) and
   //   the admin pages, whose actions send an invoice by mail (/admin/**);
@@ -54,6 +55,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/konto/**": ["./assets/fonts/**"],
     "/api/admin/tunnistus/**": ["./assets/fonts/**"],
+    "/api/admin/naidistunnistus/**": ["./assets/fonts/**"],
     "/api/admin/arve/**": ["./assets/fonts/**"],
     "/api/admin/naidisarve/**": ["./assets/fonts/**"],
     "/api/admin/leping/**": ["./assets/fonts/**"],
@@ -89,9 +91,9 @@ const nextConfig: NextConfig = {
       { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/admin/:path*", headers: noStore },
       // Maria's invoice and contract downloads (invoices Task 5; contracts Task 5): the PDF, the month's CSV and the samples are private as well as never kept
-      // (the rule above would leave them at plain no-store: a header given here replaces the route's own); so is the campaign editor's preview (newsletter
-      // campaigns Task 4), the mail of a campaign not yet saved
-      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve", "/api/admin/leping/:id", "/api/admin/naidisleping", "/api/admin/kampaania-eelvaade"].map((source) => ({
+      // (the rule above would leave them at plain no-store: a header given here replaces the route's own); so are the campaign editor's preview (newsletter
+      // campaigns Task 4), the mail of a campaign not yet saved, and Seaded's sample certificate (Dim 07.11)
+      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve", "/api/admin/leping/:id", "/api/admin/naidisleping", "/api/admin/kampaania-eelvaade", "/api/admin/naidistunnistus"].map((source) => ({
         source,
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       })),
