@@ -2038,13 +2038,14 @@
         "Arvel on „Näidiskoolitus“, „Ettemaks 50%“ ja summa 175,00 €.",
         "Pangaandmed on samad mis kaardi väljadel „Saaja“, „IBAN“ ja „Pank“.",
         "Käibemaksuga näidisel on „Summa käibemaksuta“, „Käibemaks 24%“ ja „Kokku“.",
-        "Näidisarve ei võta numbrit: „Arve järgmine number“ jääb samaks."
+        "Näidisarve ei võta numbrit: „Arve järgmine number“ jääb samaks.",
+        "Arve ülal vasakul on must MS LAB logo, sama mis veebilehel ja tunnistusel."
       ],
       "why": "Maria näeb arvet enne, kui keegi seda saab.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-lepingud",
@@ -2101,13 +2102,14 @@
         "Venekeelsel näidisel on vene tekst ja sildid, näiteks „Стороны“.",
         "Pärast lehe uuesti laadimist on väljadel muudetud tekst ja kaardil „Avaldamata muudatus“.",
         "Kontaktkoolituse lehel on endine tekst: näidis ei avalda midagi.",
-        "Kui tekst on jälle endine, kaob „Avaldamata muudatus“."
+        "Kui tekst on jälle endine, kaob „Avaldamata muudatus“.",
+        "Lepingu esimesel lehel ülal vasakul on must MS LAB logo, sama mis veebilehel."
       ],
       "why": "Maria näeb lepingut enne, kui keegi seda kinnitab.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-privaatsus-avalda",

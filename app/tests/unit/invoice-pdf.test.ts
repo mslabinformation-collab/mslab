@@ -4,7 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName } from "pdf-lib";
 import { describe, expect, test } from "vitest";
 import { euro, INVOICE_LIMITS, vatSplit, type InvoiceBuyer, type InvoiceSeller } from "@/domain/invoice";
-import { CERT_FONT_DIR, CERT_FONTS } from "@/server/certificate-pdf";
+import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES } from "@/server/certificate-pdf";
 import { INVOICE_PAGE, renderInvoice, VAT_OFF_NOTE, type InvoiceContent } from "@/server/invoice-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
@@ -15,7 +15,7 @@ import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const jost = fontkit.create(SANS);
-const ASSETS = { sans: SANS };
+const ASSETS = { sans: SANS, logoBlack: new Uint8Array(readFileSync(LOGO_FILES.black)) };
 const NBSP = "\u00a0";
 /** The page's printable margin: the least that any ink keeps from every edge. */
 const MARGIN = 36;
@@ -111,7 +111,7 @@ describe("Jost and the euro text", () => {
 });
 
 describe("renderInvoice: the page", () => {
-  test("one A4 portrait page, white with black text, only Jost (a subset), no image, neutral metadata dated by the issue, under 100 KB", async () => {
+  test("one A4 portrait page, white with black text, only Jost (a subset), the logo the only image, neutral metadata dated by the issue, under 100 KB", async () => {
     const bytes = await renderInvoice(UNPAID, ASSETS);
     expect(bytes.length).toBeLessThan(100 * 1024);
     expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
@@ -120,15 +120,25 @@ describe("renderInvoice: the page", () => {
     expect(pages).toHaveLength(1);
     expect(page.getSize()).toEqual({ width: 595, height: 842 });
     expect(fontNames.map(family)).toEqual([family(jost.postscriptName)]);
-    // black on white: the page is not painted, nothing is drawn in white or in a colour but black (the text, the logo's lines, the rules)
+    // black on white: the page is not painted, nothing is drawn in white or in a colour but black (the text and the rules; the logo is a black image)
     expect(ops).not.toMatch(/ re\n/);
     expect(ops).toContain("0 0 0 rg");
     expect(ops).toContain("0 0 0 RG");
     const colours = [...ops.matchAll(/^([-\d. ]+) (rg|RG)$/gm)].map((m) => m[1]);
     expect(new Set(colours)).toEqual(new Set(["0 0 0"]));
-    // no image; the font's file is a subset, much smaller than the font
-    const xobjects = page.node.Resources()!.lookup(PDFName.of("XObject"));
-    expect(xobjects instanceof PDFDict ? xobjects.keys() : []).toEqual([]);
+    // one image, the logo: the site's in black (every pixel black, its shape in the soft mask), 40 pt high at the top left (48, 754)
+    const xobjects = page.node.Resources()!.lookup(PDFName.of("XObject"), PDFDict);
+    expect(xobjects.keys()).toHaveLength(1);
+    const image = rawStream(xobjects.lookup(xobjects.keys()[0]));
+    expect(decodePDFRawStream(image).decode().every((b) => b === 0)).toBe(true);
+    expect(image.dict.get(PDFName.of("SMask"))).toBeDefined();
+    const placed = [...ops.matchAll(/q\n1 0 0 1 ([\d.]+) ([\d.]+) cm\n1 0 0 1 0 0 cm\n([\d.]+) 0 0 ([\d.]+) 0 0 cm\n1 0 0 1 0 0 cm\n\/(\S+) Do\nQ/g)].map((m) => m.slice(1, 5).map(Number));
+    expect(placed).toHaveLength(1);
+    expect(placed[0][0]).toBe(48);
+    expect(placed[0][1]).toBe(754);
+    expect(placed[0][2]).toBeCloseTo((40 * 1280) / 464, 3);
+    expect(placed[0][3]).toBe(40);
+    // the font's file is a subset, much smaller than the font
     const fontDicts = doc.context.enumerateIndirectObjects().flatMap(([, o]) => (o instanceof PDFDict && o.get(PDFName.of("Subtype"))?.toString() === "/Type0" ? [o] : []));
     expect(fontDicts).toHaveLength(1);
     const cid = doc.context.lookup(fontDicts[0].lookup(PDFName.of("DescendantFonts"), PDFArray).get(0), PDFDict);

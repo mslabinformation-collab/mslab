@@ -45,6 +45,6 @@ export async function sampleContractPdf(db: Db, values: ContractSampleValues, no
   const assets = await loadCertificateAssets();
   return renderContract(
     { title: filled.title, body: filled.body, fields: { school, ...fields }, acceptedAt: now, acceptedVia: "form", locale, supersededAt: null },
-    { sans: assets.sans },
+    { sans: assets.sans, logoBlack: assets.logoBlack },
   );
 }

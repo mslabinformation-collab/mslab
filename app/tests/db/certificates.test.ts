@@ -596,7 +596,7 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     expect(Buffer.from(pdf.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
   });
 
-  test("certificatePdf: the renderer gets the four fonts and nothing else (no image, no store); a PDF under 300 KB; a stored trainer's name the script font cannot draw prints as Maria Sosnina", async () => {
+  test("certificatePdf: the renderer gets the four fonts and the two logos (no store); a PDF under 300 KB; a stored trainer's name the script font cannot draw prints as Maria Sosnina", async () => {
     const c = await ecourse();
     const kati = await student("kati@example.test", c.id);
     await issued(kati.client.id, "Kati Kask");
@@ -608,8 +608,8 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     await certificatePdf(db, k, NOW);
     const calls = vi.mocked(renderCertificate).mock.calls;
     expect(calls.map(([, assets]) => Object.keys(assets).sort())).toEqual([
-      ["body", "logo", "sans", "script", "title"],
-      ["body", "logo", "sans", "script", "title"],
+      ["body", "logoBlack", "logoWhite", "sans", "script", "title"],
+      ["body", "logoBlack", "logoWhite", "sans", "script", "title"],
     ]);
     expect(calls.map(([content]) => content.trainerName)).toEqual(["Maria Sosnina", "Maria Sosnina"]);
   });

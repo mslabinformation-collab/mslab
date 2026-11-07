@@ -37,7 +37,7 @@ export type InvoiceContent = Pick<
 const BLACK = rgb(0, 0, 0);
 /** The ink's edges: 48 pt in from the left, right and bottom, and the top of the first line 48 pt under the page's top. */
 const EDGE = { left: 48, right: INVOICE_PAGE.width - 48, top: INVOICE_PAGE.height - 48, bottom: 48 } as const;
-/** The logo's box at the top left (drawn as designed, 3 : 1). */
+/** The logo's box at the top left: the logo image fills its height (40 pt, about 110 pt wide), from its lower left corner. */
 const LOGO = { x: EDGE.left, y: EDGE.top - 40, width: 120, height: 40 } as const;
 /** The distance between two lines' baselines, in sizes. */
 const LEADING = 1.3;
@@ -219,7 +219,7 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
 }
 
 /** A4 portrait (595 × 842), white with black text, laid out as spec §7 (the constants above). */
-export async function renderInvoice(c: InvoiceContent, assets: { sans: Uint8Array }): Promise<Uint8Array> {
+export async function renderInvoice(c: InvoiceContent, assets: { sans: Uint8Array; logoBlack: Uint8Array }): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   // neutral metadata; the dates are the issue's, so the same row gives the same file
@@ -238,7 +238,7 @@ export async function renderInvoice(c: InvoiceContent, assets: { sans: Uint8Arra
   let composed = compose(c, measure, chars, 1);
   for (let k = 1 - SCALE.step; composed.bottom < composed.limit && k >= SCALE.min - 1e-9; k -= SCALE.step) composed = compose(c, measure, chars, k);
 
-  drawLogo(page, sans, LOGO, BLACK);
+  drawLogo(page, await doc.embedPng(assets.logoBlack), LOGO);
   for (const op of composed.ops) {
     if ("text" in op) page.drawText(op.text, { x: op.x, y: op.y, size: op.size, font: sans, color: BLACK });
     else page.drawLine({ start: { x: op.x1, y: op.y }, end: { x: op.x2, y: op.y }, thickness: op.thickness, color: BLACK });

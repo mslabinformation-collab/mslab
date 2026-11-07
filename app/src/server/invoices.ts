@@ -1178,6 +1178,6 @@ export async function invoicePdf(inv: Invoice): Promise<Uint8Array> {
       paidMethod: inv.paidMethod,
       footer: inv.footer,
     },
-    { sans: fonts.sans },
+    { sans: fonts.sans, logoBlack: fonts.logoBlack },
   );
 }

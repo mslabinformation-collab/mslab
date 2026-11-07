@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { expect, test } from "vitest";
-import { CERT_FONTS, CERT_LOGO } from "@/server/certificate-pdf";
+import { CERT_FONTS, LOGO_FILES } from "@/server/certificate-pdf";
 
 // The certificate's fonts (phase 3d, spec §7) are committed exactly as obtained, byte for byte, so a changed or truncated file, or a checkout
 // that converted line endings, fails here and not in a student's PDF; the root .gitattributes keeps git from converting them.
@@ -65,15 +65,20 @@ test("pdf-lib and its fontkit are pinned exactly (no range), in package.json and
   expect([lock.packages["node_modules/pdf-lib"].version, lock.packages["node_modules/@pdf-lib/fontkit"].version]).toEqual(["1.17.1", "1.1.1"]);
 });
 
-// The certificate's logo (Dim 07.11.2026: "needs to be same as on original") is made from the site's own logo, public/brand/logo.png (the same
-// design as the Canva certificate's, dark on transparent): every pixel white with the logo's alpha, cropped to its ink (320 × 116) and enlarged
-// 4× with Lanczos (Pillow), a gray-and-alpha PNG. Both are pinned: a new site logo fails here, and the certificate's is then made again from it.
-test("the certificate's logo is the site's logo.png made white, 1280 × 464, gray and alpha, byte for byte as made", () => {
+// The PDFs' logo (Dim 07.11.2026: the certificate's "needs to be same as on original"; then "The canva logo that we use should be used
+// everywhere where we have a logo, so on invoices and contracts as well") is made from the site's own logo, public/brand/logo.png (the same
+// design as the Canva certificate's, dark grey on transparent): every pixel white (the certificate) or black (the invoice and the contract)
+// with the logo's alpha, cropped to its ink (320 × 116) and enlarged 4× with Lanczos (Pillow), a gray-and-alpha PNG. All three are pinned: a
+// new site logo fails here, and the two are then made again from it.
+test("the PDFs' logos are the site's logo.png made white and black, 1280 × 464, gray and alpha, byte for byte as made", () => {
   const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
-  expect(readdirSync(join(process.cwd(), "assets", "brand"))).toEqual(["certificate-logo.png"]);
-  const logo = readFileSync(CERT_LOGO);
-  expect(sha(logo)).toBe("68707414bfef421bf1a0d16f14a590989e7fdbc12832a51f117f1336e780c914");
+  expect(readdirSync(join(process.cwd(), "assets", "brand")).sort()).toEqual(["logo-black.png", "logo-white.png"]);
   expect(sha(readFileSync(join(process.cwd(), "public", "brand", "logo.png")))).toBe("17fb299c2ec9307040c37d75d6fbd10c3a795a830a75ba635d5517536e38acf6");
-  // the PNG's header: width, height, 8 bits, colour type 4 (gray with alpha)
-  expect([logo.readUInt32BE(16), logo.readUInt32BE(20), logo[24], logo[25]]).toEqual([1280, 464, 8, 4]);
+  for (const [file, hash, gray] of [[LOGO_FILES.white, "68707414bfef421bf1a0d16f14a590989e7fdbc12832a51f117f1336e780c914", 255], [LOGO_FILES.black, "05d9b4620873108c49a715b040069ee4533fa33d50e36cd2c18e4308a9f34555", 0]] as const) {
+    const logo = readFileSync(file);
+    expect(sha(logo), file).toBe(hash);
+    // the PNG's header: width, height, 8 bits, colour type 4 (gray with alpha)
+    expect([logo.readUInt32BE(16), logo.readUInt32BE(20), logo[24], logo[25]], file).toEqual([1280, 464, 8, 4]);
+    expect(gray).toBe(file === LOGO_FILES.white ? 255 : 0);
+  }
 });

@@ -87,7 +87,7 @@ const BLACK = rgb(0, 0, 0);
 /** The ink's edges: 48 pt in from the left and right and the first page's top; the body ends 72 pt up from the bottom, above the foot. */
 const EDGE = { left: 48, right: CONTRACT_PAGE.width - 48, top: CONTRACT_PAGE.height - 48, bottom: 72 } as const;
 const WIDTH = EDGE.right - EDGE.left;
-/** The logo's box at the top left of the first page (drawn as designed, 3 : 1), as the invoice's. */
+/** The logo's box at the top left of the first page, as the invoice's: the logo image fills its height (40 pt, about 110 pt wide). */
 const LOGO = { x: EDGE.left, y: EDGE.top - 40, width: 120, height: 40 } as const;
 /** Font sizes; the lines' thickness. */
 const SIZE = { title: 20, superseded: 11, section: 11, name: 12, body: 10, small: 9.5, label: 8, running: 8, foot: 8 } as const;
@@ -268,7 +268,7 @@ function compose(c: ContractContent, measure: (text: string, size: number) => nu
 }
 
 /** A4 portrait (595 × 842), as many pages as the text takes, white with black text, laid out as spec §5 (the constants above). */
-export async function renderContract(c: ContractContent, assets: { sans: Uint8Array }): Promise<Uint8Array> {
+export async function renderContract(c: ContractContent, assets: { sans: Uint8Array; logoBlack: Uint8Array }): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   // neutral metadata; the dates are the acceptance's, so the same row gives the same file
@@ -281,10 +281,11 @@ export async function renderContract(c: ContractContent, assets: { sans: Uint8Ar
   const sans = await doc.embedFont(assets.sans, { subset: true });
   const chars = new Set(sans.getCharacterSet());
   const measure = (t: string, size: number) => sans.widthOfTextAtSize(t, size);
+  const logo = await doc.embedPng(assets.logoBlack);
 
   compose(c, measure, chars).forEach((ops, i) => {
     const page = doc.addPage([CONTRACT_PAGE.width, CONTRACT_PAGE.height]);
-    if (i === 0) drawLogo(page, sans, LOGO, BLACK);
+    if (i === 0) drawLogo(page, logo, LOGO);
     for (const op of ops) {
       if ("text" in op) page.drawText(op.text, { x: op.x, y: op.y, size: op.size, font: sans, color: BLACK });
       else page.drawLine({ start: { x: op.x1, y: op.y }, end: { x: op.x2, y: op.y }, thickness: op.thickness, color: BLACK });

@@ -4,7 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber } from "pdf-lib";
 import { describe, expect, test } from "vitest";
 import { checkCertificateName, readCertificateSettings } from "@/domain/certificate";
-import { CERT_FONT_DIR, CERT_FONTS, CERT_LOGO, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
+import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
@@ -16,13 +16,14 @@ import { family, rawStream, readPdf, type Run } from "../pdf-read";
 // tiny lowercase: its ink (the glyphs' bounding box, not the advance widths) is checked against the title above the name and the competency
 // lines below it. The fonts are Maria's Canva certificate's (Dim 07.11): Glacial Indifference (BODY) for the heading and the lines of text,
 // Montserrat (TITLE) for the course title; Jost (SANS) draws the letters Glacial Indifference lacks. The logo is the site's own, an image
-// (CERT_LOGO, Dim 07.11).
+// (LOGO_FILES.white, Dim 07.11).
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const BODY = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.body)));
 const TITLE = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.title)));
 const SCRIPT = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.script)));
-const LOGO = new Uint8Array(readFileSync(CERT_LOGO));
+const LOGO = new Uint8Array(readFileSync(LOGO_FILES.white));
+const LOGO_BLACK = new Uint8Array(readFileSync(LOGO_FILES.black));
 const jost = fontkit.create(SANS);
 const glacial = fontkit.create(BODY);
 const montserrat = fontkit.create(TITLE);
@@ -44,7 +45,7 @@ const FIXTURE: CertificateContent = {
   issuedAt: new Date("2026-10-15T09:00:00Z"),
   trainerName: "Maria Sosnina",
 };
-const ASSETS: CertificateAssets = { sans: SANS, body: BODY, title: TITLE, script: SCRIPT, logo: LOGO };
+const ASSETS: CertificateAssets = { sans: SANS, body: BODY, title: TITLE, script: SCRIPT, logoWhite: LOGO, logoBlack: LOGO_BLACK };
 
 /** The name's band: its ink stays under the course title (which stands on 428) and well over the first competency line (letters up to 284). */
 const INK_BAND = { bottom: 303, top: 425 } as const;
@@ -496,10 +497,11 @@ describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
 });
 
 describe("loadCertificateAssets", () => {
-  test("the four fonts from app/assets/fonts and the logo from app/assets/brand, read once per process", async () => {
+  test("the four fonts from app/assets/fonts and the two logos from app/assets/brand, read once per process", async () => {
     const a = await loadCertificateAssets();
-    expect(Object.keys(a).sort()).toEqual(["body", "logo", "sans", "script", "title"]);
-    expect(Buffer.from(a.logo).equals(Buffer.from(LOGO))).toBe(true);
+    expect(Object.keys(a).sort()).toEqual(["body", "logoBlack", "logoWhite", "sans", "script", "title"]);
+    expect(Buffer.from(a.logoWhite).equals(Buffer.from(LOGO))).toBe(true);
+    expect(Buffer.from(a.logoBlack).equals(Buffer.from(LOGO_BLACK))).toBe(true);
     expect(Buffer.from(a.sans).equals(Buffer.from(SANS))).toBe(true);
     expect(Buffer.from(a.body).equals(Buffer.from(BODY))).toBe(true);
     expect(Buffer.from(a.title).equals(Buffer.from(TITLE))).toBe(true);

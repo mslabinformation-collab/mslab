@@ -124,7 +124,7 @@ The settings key `contractContactVersion` mirrors `courseTermsVersion`. `registr
 
 ## 5. The PDF
 
-A4 portrait, white, Jost, the MS LAB logo (reusing `pdf-logo.ts`). Multi-page, with paragraphs wrapped and pages broken as needed. A shared text helper is extracted from `invoice-pdf.ts`.
+A4 portrait, white, Jost, the MS LAB logo (reusing `pdf-logo.ts`; amended 07.11.2026, Dim: the site's own logo image in black, as on the invoice, `app/assets/brand/logo-black.png`, 40 pt high at the top left of the first page; it was drawn as vector shapes in Jost before). Multi-page, with paragraphs wrapped and pages broken as needed. A shared text helper is extracted from `invoice-pdf.ts`.
 
 Blocks, in order:
 1. The title.

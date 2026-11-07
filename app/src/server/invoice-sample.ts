@@ -81,6 +81,6 @@ export async function sampleInvoicePdf(db: Db, values: SampleValues, now: Date):
       paidMethod: null,
       footer: settings.footer,
     },
-    { sans: fonts.sans },
+    { sans: fonts.sans, logoBlack: fonts.logoBlack },
   );
 }

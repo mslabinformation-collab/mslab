@@ -4,7 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName } from "pdf-lib";
 import { describe, expect, test, vi } from "vitest";
 import type { AcceptedVia, ContractFields } from "@/domain/contract";
-import { CERT_FONT_DIR, CERT_FONTS } from "@/server/certificate-pdf";
+import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES } from "@/server/certificate-pdf";
 import { CONTRACT_PAGE, renderContract, type ContractContent } from "@/server/contract-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
@@ -19,7 +19,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const jost = fontkit.create(SANS);
-const ASSETS = { sans: SANS };
+const ASSETS = { sans: SANS, logoBlack: new Uint8Array(readFileSync(LOGO_FILES.black)) };
 const NBSP = "\xa0";
 /** The page's printable margin: the least that any ink keeps from every edge. */
 const MARGIN = 36;
@@ -118,22 +118,22 @@ function misfits(pages: Page[]): string[] {
 }
 
 describe("renderContract: the pages", () => {
-  test("A4 portrait pages (595 × 842), white with black text, only Jost (one subset for all of them), no image, neutral metadata dated by the acceptance, under 100 KB", async () => {
+  test("A4 portrait pages (595 × 842), white with black text, only Jost (one subset for all of them), the logo the only image, neutral metadata dated by the acceptance, under 100 KB", async () => {
     const { bytes, doc, pages } = await read(CONTACT);
     expect(bytes.length).toBeLessThan(100 * 1024);
     expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
     expect(CONTRACT_PAGE).toEqual({ width: 595, height: 842 });
     expect(pages.length).toBeGreaterThanOrEqual(2);
-    for (const p of pages) {
+    for (const [i, p] of pages.entries()) {
       expect(p.page.getSize()).toEqual({ width: 595, height: 842 });
       expect(p.fontNames.map(family)).toEqual([family(jost.postscriptName)]);
-      // black on white: the page is not painted, nothing is drawn in white or in a colour but black (the text, the logo's lines, the rules)
+      // black on white: the page is not painted, nothing is drawn in white or in a colour but black (the text and the rules; the logo is a black image)
       expect(p.ops).not.toMatch(/ re\n/);
       const colours = [...p.ops.matchAll(/^([-\d. ]+) (rg|RG)$/gm)].map((m) => m[1]);
       expect(new Set(colours).size, "one colour").toBe(1);
       expect(colours[0]).toBe("0 0 0");
       const xobjects = p.page.node.Resources()!.lookup(PDFName.of("XObject"));
-      expect(xobjects instanceof PDFDict ? xobjects.keys() : []).toEqual([]);
+      expect(xobjects instanceof PDFDict ? xobjects.keys() : [], `page ${i + 1}`).toHaveLength(i === 0 ? 1 : 0);
     }
     // the font is one subset, much smaller than the font
     const fontDicts = doc.context.enumerateIndirectObjects().flatMap(([, o]) => (o instanceof PDFDict && o.get(PDFName.of("Subtype"))?.toString() === "/Type0" ? [o] : []));
@@ -146,12 +146,18 @@ describe("renderContract: the pages", () => {
     expect(doc.getModificationDate()).toEqual(ACCEPTED);
   });
 
-  test("the logo is on the first page only; the later pages carry the title small at the top instead", async () => {
+  test("the logo is on the first page only, the site's logo in black at the top left (40 pt high from 48, 754); the later pages carry the title small at the top instead", async () => {
     const { pages } = await read(CONTACT);
     expect(pages.length).toBeGreaterThanOrEqual(2);
-    expect(pages[0].runs.map((r) => r.text)).toEqual(expect.arrayContaining(["MS LAB", "KOOLITUSKESKUS"]));
+    const placed = [...pages[0].ops.matchAll(/q\n1 0 0 1 ([\d.]+) ([\d.]+) cm\n1 0 0 1 0 0 cm\n([\d.]+) 0 0 ([\d.]+) 0 0 cm\n1 0 0 1 0 0 cm\n\/(\S+) Do\nQ/g)].map((m) => m.slice(1, 5).map(Number));
+    expect(placed).toHaveLength(1);
+    expect(placed[0][0]).toBe(48);
+    expect(placed[0][1]).toBe(754);
+    expect(placed[0][2]).toBeCloseTo((40 * 1280) / 464, 3);
+    expect(placed[0][3]).toBe(40);
+    for (const p of pages) expect(p.runs.map((r) => r.text)).not.toContain("KOOLITUSKESKUS"); // the logo is an image, not text
     for (const p of pages.slice(1)) {
-      expect(p.runs.map((r) => r.text)).not.toContain("KOOLITUSKESKUS");
+      expect(p.ops).not.toMatch(/ Do\n/);
       const running = p.runs.filter((r) => r.text === "Kontaktkoolituse leping");
       expect(running).toHaveLength(1);
       expect(running[0].size).toBeLessThan(10);

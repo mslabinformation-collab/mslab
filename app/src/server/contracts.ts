@@ -472,7 +472,7 @@ export async function saveContractTexts(db: Q, raw: unknown, now: Date = new Dat
 export async function contractPdf(c: Contract): Promise<Uint8Array> {
   const [{ renderContract }, { loadCertificateAssets }] = await Promise.all([import("./contract-pdf"), import("./certificate-pdf")]);
   const fonts = await loadCertificateAssets();
-  return renderContract(c, { sans: fonts.sans });
+  return renderContract(c, { sans: fonts.sans, logoBlack: fonts.logoBlack });
 }
 
 // ---------- the mails (D7) ----------

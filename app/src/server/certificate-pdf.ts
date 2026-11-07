@@ -4,6 +4,7 @@ import fontkit, { type Font } from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, setCharacterSpacing, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Certificate } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
+import { drawLogo } from "./pdf-logo";
 
 // The e-course certificate as a PDF (phase 3d, spec §7): drawn on every download from the certificate's frozen row, the trainer's name and
 // the committed fonts, with pdf-lib and its fontkit. A4 landscape, white on black, laid out as Maria's paper certificate: "TUNNISTUS",
@@ -13,7 +14,7 @@ import { tallinnDateText } from "@/domain/certificate";
 // bottom right. Every position below is in PDF points from the bottom left corner.
 // The fonts are her Canva certificate's (Dim 07.11): Glacial Indifference for the heading and every line of text, Montserrat for the course
 // title, Revive 80 Signature for the names. The logo is the site's own (public/brand/logo.png, the same design as on the Canva certificate)
-// in white: CERT_LOGO (Dim 07.11). A letter Glacial Indifference lacks (š, ž, €, „, the other languages' letters) is drawn in Jost, letter by
+// in white: LOGO_FILES (Dim 07.11). A letter Glacial Indifference lacks (š, ž, €, „, the other languages' letters) is drawn in Jost, letter by
 // letter (Face). Jost and Montserrat are embedded as subsets (only the letters drawn); Glacial Indifference and Revive 80 Signature, both CFF
 // fonts, whole (see renderCertificate). The page is about 250 KB; tests/unit/certificate-pdf.test.ts holds it under 300 KB.
 
@@ -33,32 +34,37 @@ export const CERT_FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 export const CERT_FONTS = { sans: "Jost[wght].ttf", body: "GlacialIndifference-Regular.otf", title: "Montserrat-Regular.ttf", script: "Revive80Signature.otf" } as const;
 
 /**
- * The certificate's logo: the site's public/brand/logo.png (dark on transparent, 332 × 128) made white for the black page, every pixel
- * white with the logo's own alpha, cropped to its ink (320 × 116) and enlarged 4× with Lanczos (1280 × 464), so its edges stay smooth in
- * print. app/assets/brand, next to the fonts; next.config.ts traces the whole of app/assets for every function that renders a PDF.
+ * The PDFs' logo (server/pdf-logo.ts): the site's public/brand/logo.png (dark grey on transparent, 332 × 128) in one colour, every pixel
+ * white (the certificate's black page) or black (the invoice and the contract) with the logo's own alpha, cropped to its ink (320 × 116) and
+ * enlarged 4× with Lanczos (1280 × 464), so its edges stay smooth in print. app/assets/brand, next to the fonts; next.config.ts traces the
+ * whole of app/assets for every function that renders a PDF.
  */
-export const CERT_LOGO = path.join(process.cwd(), "assets", "brand", "certificate-logo.png");
+export const LOGO_FILES = {
+  white: path.join(process.cwd(), "assets", "brand", "logo-white.png"),
+  black: path.join(process.cwd(), "assets", "brand", "logo-black.png"),
+} as const;
 
-/** The fonts' bytes and the logo's (a PNG). */
-export type CertificateAssets = { sans: Uint8Array; body: Uint8Array; title: Uint8Array; script: Uint8Array; logo: Uint8Array };
+/** The fonts' bytes and the two logos' (PNGs): every PDF's assets, read once (the invoice and the contract use `sans` and `logoBlack`). */
+export type CertificateAssets = { sans: Uint8Array; body: Uint8Array; title: Uint8Array; script: Uint8Array; logoWhite: Uint8Array; logoBlack: Uint8Array };
 
 /** What the PDF prints: the certificate's frozen copy, and the trainer's name from Seaded (Maria's signature, typed in the script font). */
 export type CertificateContent = Pick<Certificate, "number" | "name" | "courseTitle" | "skills" | "volume" | "practicalLine" | "place" | "registryCode" | "issuedAt"> & {
   trainerName: string;
 };
 
-/** The fonts' and the logo's bytes, read once per process; a failed read is tried again on the next download. */
+/** The fonts' and the logos' bytes, read once per process; a failed read is tried again on the next download. */
 let fontFiles: Promise<CertificateAssets> | null = null;
 
 function readFonts(): Promise<CertificateAssets> {
   const keys = ["sans", "body", "title", "script"] as const;
-  fontFiles ??= Promise.all([...keys.map((k) => readFile(path.join(CERT_FONT_DIR, CERT_FONTS[k]))), readFile(CERT_LOGO)]).then(
-    ([sans, body, title, script, logo]) => ({
+  fontFiles ??= Promise.all([...keys.map((k) => readFile(path.join(CERT_FONT_DIR, CERT_FONTS[k]))), readFile(LOGO_FILES.white), readFile(LOGO_FILES.black)]).then(
+    ([sans, body, title, script, logoWhite, logoBlack]) => ({
       sans: new Uint8Array(sans),
       body: new Uint8Array(body),
       title: new Uint8Array(title),
       script: new Uint8Array(script),
-      logo: new Uint8Array(logo),
+      logoWhite: new Uint8Array(logoWhite),
+      logoBlack: new Uint8Array(logoBlack),
     }),
     (e: unknown) => {
       fontFiles = null;
@@ -68,7 +74,7 @@ function readFonts(): Promise<CertificateAssets> {
   return fontFiles;
 }
 
-/** The fonts and the logo from disk (once per process). A read that fails throws: the download then fails and is tried again. */
+/** The fonts and the logos from disk (once per process). A read that fails throws: the download then fails and is tried again. */
 export async function loadCertificateAssets(): Promise<CertificateAssets> {
   return readFonts();
 }
@@ -131,10 +137,10 @@ const BULLET = { diameter: 0.228, centre: 0.342 } as const;
  */
 const FOOT = { size: 10.7, shrinkTo: 8, spacing: 0, baseline: 172, roomyBaseline: 150, gap: 24, leading: 1.3 } as const;
 /**
- * The logo (CERT_LOGO), where it stands on the Canva certificate: its ink 148.4 pt wide from BOX.left, its foot on 84.4 (Canva: 97.3 to
- * 245.7 across, 84.4 to 137.2 up); the height follows the image's proportions (53.8 pt).
+ * The logo (LOGO_FILES.white), where it stands on the Canva certificate: its ink 148.4 pt wide from BOX.left, its foot on 84.4 (Canva: 97.3
+ * to 245.7 across, 84.4 to 137.2 up). The box is a little taller than the logo at that width (53.8 pt), so the width sets its size.
  */
-const LOGO = { x: BOX.left, y: 84.4, width: 148.4 } as const;
+const LOGO = { x: BOX.left, y: 84.4, width: 148.4, height: 54 } as const;
 /**
  * Under the logo, at BOX.left, as on the Canva certificate: "REGISTRIKOOD: …" (10.7 pt, not spaced) on 67 and "Tunnistuse nr. …" (11.2 pt,
  * spaced 0.1 em) on 52.
@@ -366,8 +372,7 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), BOX.left, skills.footBaseline - i * practical.size * FOOT.leading));
   if (volume) drawRight(page, volume, footStyle(FOOT.size), BOX.right, skills.footBaseline);
 
-  const logo = await doc.embedPng(assets.logo);
-  page.drawImage(logo, { x: LOGO.x, y: LOGO.y, width: LOGO.width, height: (LOGO.width * logo.height) / logo.width });
+  drawLogo(page, await doc.embedPng(assets.logoWhite), LOGO);
   drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, { face: body, size: LEFT_LINES.registrySize, spacing: LEFT_LINES.registrySpacing }, BOX.left, LEFT_LINES.baselines[0]);
   drawAt(page, `Tunnistuse nr. ${c.number}`, { face: body, size: LEFT_LINES.numberSize, spacing: LEFT_LINES.numberSpacing }, BOX.left, LEFT_LINES.baselines[1]);
 
