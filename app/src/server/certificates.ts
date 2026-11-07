@@ -371,7 +371,7 @@ export async function certificateCard(db: Db, now: Date): Promise<{ settings: Ce
 /**
  * The PDF of a certificate row, rendered on each download (spec §7). It uses the row's frozen copy, and from Seaded as it is now the trainer's
  * name, which the renderer writes in the script font as Maria's signature (one the font cannot draw reads as "Maria Sosnina":
- * readCertificateSettings). The fonts come from assets/fonts (certificate-pdf.ts loadCertificateAssets); no store, no image. Nothing is stored.
+ * readCertificateSettings). The fonts and the logo come from app/assets (certificate-pdf.ts loadCertificateAssets); no store. Nothing is stored.
  * certificate-pdf.ts (pdf-lib and its fontkit) is imported here, when a certificate is rendered: this module comes with every account API
  * request, the payment routes and the admin pages, which then never load the PDF stack at a cold start.
  */

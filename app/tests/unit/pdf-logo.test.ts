@@ -7,9 +7,9 @@ import { CERT_FONT_DIR, CERT_FONTS } from "@/server/certificate-pdf";
 import { drawLogo } from "@/server/pdf-logo";
 import { readPdf, type Run } from "../pdf-read";
 
-// The MS LAB logo (server/pdf-logo.ts), shared by the certificate (white, in its 150 × 50 box) and the invoice (black, smaller): drawn at the
-// place, size and colour it is given. The certificate must not move by a point (its own test, and the golden numbers here, which are what
-// the certificate's private drawLogo drew before the move).
+// The MS LAB logo (server/pdf-logo.ts), drawn by the invoice and the contract (black, smaller) and, until 07.11.2026, the certificate (white,
+// in its 150 × 50 box; it now carries the site's logo image): drawn at the place, size and colour it is given. The golden numbers here are
+// what the certificate's private drawLogo drew before the move, which the shared shapes keep.
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const jost = fontkit.create(SANS);

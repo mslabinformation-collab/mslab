@@ -122,19 +122,19 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - **Skills:** two columns of "• line", the body font, 11.2 pt, letter-spaced 0.1 em, 15 pt apart, filled left column first. The right column starts 19 pt after the left column's widest line (at 468 pt for Maria's own lines, as in Canva), never left of the centre. With more than 12 lines the font shrinks to 9.75 pt. Lines that do not fit even at 5 pt (the limit is 16 lines of 120 characters) get more room, and the practical line moves down.
   - **The practical-work line:** the body font, upper case, 10.7 pt, not letter-spaced, at the left, right under the skills. The volume (upper case, 10.7 pt) ends at the right edge on the same baseline.
   - **Bottom left:**
-    - the MS LAB logo, drawn as vector shapes in white: a thin frame, "MS LAB" in Jost light and "KOOLITUSKESKUS" small and letter-spaced, as the site's `public/brand/logo.png` looks. That PNG is dark on transparent, so it cannot be placed on black.
+    - the MS LAB logo, an image, where it stands in Canva: its ink 148.4 pt wide from 97 pt, its foot on 84.4 pt (about 54 pt high). Amended 07.11.2026 (Dim: "Our logo is bad and needs to be same as on original"; he chose the site's own logo over a download from Canva): it is the site's `public/brand/logo.png`, the same design as the Canva certificate's logo, made white for the black page (every pixel white with the logo's own alpha), cropped to its ink and enlarged 4× with Lanczos so its edges stay smooth in print: `app/assets/brand/certificate-logo.png`, 1280 × 464, checked by SHA-256 with the site's logo it was made from. The source is 320 × 116 px of ink, about 155 dpi at this size: sharp on screen, a little soft up close on paper. Before this, the logo was drawn as vector shapes in Jost.
     - "REGISTRIKOOD: {code}" (the body font, 10.7 pt);
     - "Tunnistuse nr. {number}" (11.2 pt, letter-spaced 0.1 em).
   - **Bottom right**, every line ending at the right edge:
     - Maria's signature: `trainerName` in the script font, small;
     - "KOOLITAJA" (10.7 pt);
     - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`, 11.2 pt, letter-spaced 0.1 em), fitted to its column.
-- **Fonts:** four files under `app/assets/fonts/`, checked by SHA-256 in the tests. Maria's Canva certificate uses Glacial Indifference, Montserrat, Cy Grotesk and Open Sauce One (its logo) and Revive 80 Signature; Cy Grotesk is a paid font, so the logo stays ours, in Jost (Dim, 07.11.2026):
-  - Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) with its OFL text, embedded as a subset: the logo, and any letter the body font lacks, letter by letter;
+- **Fonts:** four files under `app/assets/fonts/`, checked by SHA-256 in the tests. Maria's Canva certificate uses Glacial Indifference, Montserrat, Cy Grotesk and Open Sauce One (its logo) and Revive 80 Signature; Cy Grotesk is a paid font, so the logo is not set in fonts: it is the site's logo image (above):
+  - Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) with its OFL text, embedded as a subset: any letter the body font lacks, letter by letter;
   - Glacial Indifference (OFL, `GlacialIndifference-Regular.otf` version 1.01 from Font Squirrel, the same font Canva serves: its widths and metrics match the Canva design to 0.1 pt) with its OFL text, embedded whole (a CFF font, as below). It has no š, ž, „, € and none of the Latvian, Lithuanian, Polish or Hungarian letters: those are drawn in Jost;
   - Montserrat (OFL, the static `Montserrat-Regular.ttf` from JulietaUla/Montserrat: the variable font's default weight is Thin) with its OFL text, embedded as a subset;
-  - Revive 80 Signature (`Revive80Signature.otf`, © Tom Chalky / Inspiration Hut), Maria's Canva font, embedded **whole**. pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), so the viewer draws a substitute; the whole font renders correctly, and the page stays under 300 KB (about 190–200 KB with all four fonts).
-  - The font files are listed in `next.config.ts`'s `outputFileTracingIncludes`, so the Vercel functions that render have them.
+  - Revive 80 Signature (`Revive80Signature.otf`, © Tom Chalky / Inspiration Hut), Maria's Canva font, embedded **whole**. pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), so the viewer draws a substitute; the whole font renders correctly, and the page stays under 300 KB (about 250 KB with the four fonts and the logo).
+  - The font files and the logo (all of `app/assets`) are listed in `next.config.ts`'s `outputFileTracingIncludes`, so the Vercel functions that render have them.
 - **The script font's licence:** MS LAB holds the licence for this use (Dim, 15.10.2026). The font is not open source: it is never copied out of `app/assets/fonts/`, and the repository must be private before the deploy (§11).
 - **Generation:** on each download, from the frozen row, Seaded's `trainerName` and the logo, in a few tens of milliseconds. Nothing is stored. The answer is `private, no-store`.
 - **Old Safari:** the PDF is generated on the server only, so the browser bundles nothing new.
@@ -173,7 +173,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - the settings reader (a stored trainer's name the rules refuse reads as "Maria Sosnina").
 - **PDF:** render a fixture with pdf-lib and parse it back:
   - one page, 842 × 595;
-  - Jost and Montserrat embedded as subsets, Glacial Indifference and Revive 80 Signature embedded whole, no image;
+  - Jost and Montserrat embedded as subsets, Glacial Indifference and Revive 80 Signature embedded whole, one image (the logo, white, at its place; no signature image);
   - the text includes "TUNNISTUS", the name, the trainer's name, the number and the date;
   - it is under 300 KB.
 - **Database (PGlite):**

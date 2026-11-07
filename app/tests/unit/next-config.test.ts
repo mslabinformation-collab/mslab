@@ -176,38 +176,38 @@ describe("next.config.ts headers()", () => {
 });
 
 describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; the invoices, phase 4; the contracts, phase 4)", () => {
-  // The PDFs are drawn in the functions that serve them, from fonts read with fs (server/certificate-pdf.ts, server/invoice-pdf.ts,
-  // server/contract-pdf.ts), so the folder goes with each of them. The keys are globs matched against each route's name. Turbopack (Next
+  // The PDFs are drawn in the functions that serve them, from fonts (and the certificate's logo, 07.11.2026) read with fs out of app/assets
+  // (server/certificate-pdf.ts, server/invoice-pdf.ts, server/contract-pdf.ts), so the folder goes with each of them. The keys are globs matched against each route's name. Turbopack (Next
   // 16.3.8, `next build`'s bundler) matches "/api/konto/**", but neither the literal "/api/konto/[[...path]]" nor a backslash-escaped one:
   // checked with a build on 15.10.2026. A bracketed folder is "*" in a key: a build on 17.10.2026 (a marker file per candidate key, looked
   // for in the course page's .nft.json) reached the page's function with "/*/koolitused/**", and with neither "/[locale]/koolitused/[slug]"
   // nor "/[[]locale]/koolitused/**" nor the backslash-escaped form.
-  const FONTS = ["./assets/fonts/**"];
+  const ASSETS = ["./assets/**"];
 
-  test("the fonts go with the three functions that render the certificate, named by their folders: the account API, Maria's download and Seaded's sample", async () => {
+  test("the fonts and the logo go with the three functions that render the certificate, named by their folders: the account API, Maria's download and Seaded's sample", async () => {
     const include = (await config()).outputFileTracingIncludes!;
-    for (const key of ["/api/konto/**", "/api/admin/tunnistus/**", "/api/admin/naidistunnistus/**"]) expect(include[key], key).toEqual(FONTS);
+    for (const key of ["/api/konto/**", "/api/admin/tunnistus/**", "/api/admin/naidistunnistus/**"]) expect(include[key], key).toEqual(ASSETS);
   });
 
   test("...and with every function that renders an invoice: Maria's download and the sample, the payment routes, the cron and the admin pages", async () => {
     const include = (await config()).outputFileTracingIncludes!;
-    for (const key of ["/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/payments/**", "/api/cron/**", "/admin/**"]) expect(include[key], key).toEqual(FONTS);
+    for (const key of ["/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/payments/**", "/api/cron/**", "/admin/**"]) expect(include[key], key).toEqual(ASSETS);
   });
 
   test("...and with Maria's two contract routes, named by their folders and not by the bracketed route (contracts Task 5): the download and Seaded's sample", async () => {
     const include = (await config()).outputFileTracingIncludes!;
-    for (const key of ["/api/admin/leping/**", "/api/admin/naidisleping/**"]) expect(include[key], key).toEqual(FONTS);
+    for (const key of ["/api/admin/leping/**", "/api/admin/naidisleping/**"]) expect(include[key], key).toEqual(ASSETS);
     expect(Object.keys(include)).not.toContain("/api/admin/leping/[id]");
   });
 
   test("...and with the public course page's function, where the registration form's action runs and mails the contract's PDF: the key has no brackets, \"*\" stands for the locale's folder (contracts, Task 2)", async () => {
     const include = (await config()).outputFileTracingIncludes!;
-    expect(include["/*/koolitused/**"]).toEqual(FONTS);
+    expect(include["/*/koolitused/**"]).toEqual(ASSETS);
     // the literal route and its bracket-escaped forms trace nothing under Turbopack (the build's marker check): none of them is the key
     for (const key of Object.keys(include)) expect(key, key).not.toMatch(/\[|\\/);
   });
 
-  test("nothing else is traced with the fonts: exactly these eleven keys, each a route's folder and /** (a bracketed folder is *)", async () => {
+  test("nothing else is traced with the assets: exactly these eleven keys, each a route's folder and /** (a bracketed folder is *)", async () => {
     const include = (await config()).outputFileTracingIncludes!;
     expect(Object.keys(include).sort()).toEqual(
       [
@@ -217,7 +217,7 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; t
     );
     for (const [key, files] of Object.entries(include)) {
       expect(key, key).toMatch(/^\/[a-z*/]+\/\*\*$/);
-      expect(files, key).toEqual(FONTS);
+      expect(files, key).toEqual(ASSETS);
     }
   });
 });

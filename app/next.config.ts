@@ -33,9 +33,9 @@ const nextConfig: NextConfig = {
     TESTPLAN_BUILD_AT: new Date().toISOString(),
   },
   ...e2ePageCache,
-  // The PDFs' fonts (the certificate, phase 3d; the invoices, phase 4; the contracts, phase 4 piece 3): server/certificate-pdf.ts reads
-  // app/assets/fonts with fs on every download, and the invoice's and the contract's PDFs draw with its fonts, so `next build` must put the
-  // folder into every function that renders a PDF:
+  // The PDFs' fonts and the certificate's logo (the certificate, phase 3d; the invoices, phase 4; the contracts, phase 4 piece 3):
+  // server/certificate-pdf.ts reads app/assets (the fonts in assets/fonts, the logo in assets/brand, 07.11.2026) with fs on every download,
+  // and the invoice's and the contract's PDFs draw with its fonts, so `next build` must put the folder into every function that renders a PDF:
   // - the certificate: the account API (/api/konto/[[...path]]), Maria's download (/api/admin/tunnistus/[id]) and the sample of Seaded
   //   (/api/admin/naidistunnistus);
   // - an invoice: the same account API (the student's download), Maria's download (/api/admin/arve), the sample of Seaded
@@ -53,17 +53,17 @@ const nextConfig: NextConfig = {
   // reached nothing. Turbopack's own file trace had already put the folder there (the action's code reaches the fonts' read), but a key
   // does not hang on that.
   outputFileTracingIncludes: {
-    "/api/konto/**": ["./assets/fonts/**"],
-    "/api/admin/tunnistus/**": ["./assets/fonts/**"],
-    "/api/admin/naidistunnistus/**": ["./assets/fonts/**"],
-    "/api/admin/arve/**": ["./assets/fonts/**"],
-    "/api/admin/naidisarve/**": ["./assets/fonts/**"],
-    "/api/admin/leping/**": ["./assets/fonts/**"],
-    "/api/admin/naidisleping/**": ["./assets/fonts/**"],
-    "/api/payments/**": ["./assets/fonts/**"],
-    "/api/cron/**": ["./assets/fonts/**"],
-    "/admin/**": ["./assets/fonts/**"],
-    "/*/koolitused/**": ["./assets/fonts/**"],
+    "/api/konto/**": ["./assets/**"],
+    "/api/admin/tunnistus/**": ["./assets/**"],
+    "/api/admin/naidistunnistus/**": ["./assets/**"],
+    "/api/admin/arve/**": ["./assets/**"],
+    "/api/admin/naidisarve/**": ["./assets/**"],
+    "/api/admin/leping/**": ["./assets/**"],
+    "/api/admin/naidisleping/**": ["./assets/**"],
+    "/api/payments/**": ["./assets/**"],
+    "/api/cron/**": ["./assets/**"],
+    "/admin/**": ["./assets/**"],
+    "/*/koolitused/**": ["./assets/**"],
   },
   // Every answer (pages, API, /media and the static files of public/, the hub included):
   // - the whole host stays out of search engines until launch on mslab.ee;

@@ -4,7 +4,6 @@ import fontkit, { type Font } from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, setCharacterSpacing, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Certificate } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
-import { drawLogo } from "./pdf-logo";
 
 // The e-course certificate as a PDF (phase 3d, spec §7): drawn on every download from the certificate's frozen row, the trainer's name and
 // the committed fonts, with pdf-lib and its fontkit. A4 landscape, white on black, laid out as Maria's paper certificate: "TUNNISTUS",
@@ -13,10 +12,10 @@ import { drawLogo } from "./pdf-logo";
 // (her name typed in the script font, as on her Canva certificates: there is no signature image), "KOOLITAJA" and the place and date at the
 // bottom right. Every position below is in PDF points from the bottom left corner.
 // The fonts are her Canva certificate's (Dim 07.11): Glacial Indifference for the heading and every line of text, Montserrat for the course
-// title, Revive 80 Signature for the names; the logo is ours, in Jost (server/pdf-logo.ts). A letter Glacial Indifference lacks (š, ž, €, „,
-// the other languages' letters) is drawn in Jost, letter by letter (Face). Jost and Montserrat are embedded as subsets (only the letters
-// drawn); Glacial Indifference and Revive 80 Signature, both CFF fonts, whole (see renderCertificate). The page is about 200 KB;
-// tests/unit/certificate-pdf.test.ts holds it under 300 KB.
+// title, Revive 80 Signature for the names. The logo is the site's own (public/brand/logo.png, the same design as on the Canva certificate)
+// in white: CERT_LOGO (Dim 07.11). A letter Glacial Indifference lacks (š, ž, €, „, the other languages' letters) is drawn in Jost, letter by
+// letter (Face). Jost and Montserrat are embedded as subsets (only the letters drawn); Glacial Indifference and Revive 80 Signature, both CFF
+// fonts, whole (see renderCertificate). The page is about 250 KB; tests/unit/certificate-pdf.test.ts holds it under 300 KB.
 
 /**
  * app/assets/fonts, next to package.json (`next dev`, `next start` and the tests run in app/; on Vercel the function's working directory is
@@ -33,21 +32,34 @@ export const CERT_FONT_DIR = path.join(process.cwd(), "assets", "fonts");
  */
 export const CERT_FONTS = { sans: "Jost[wght].ttf", body: "GlacialIndifference-Regular.otf", title: "Montserrat-Regular.ttf", script: "Revive80Signature.otf" } as const;
 
-/** The fonts' bytes. */
-export type CertificateAssets = { sans: Uint8Array; body: Uint8Array; title: Uint8Array; script: Uint8Array };
+/**
+ * The certificate's logo: the site's public/brand/logo.png (dark on transparent, 332 × 128) made white for the black page, every pixel
+ * white with the logo's own alpha, cropped to its ink (320 × 116) and enlarged 4× with Lanczos (1280 × 464), so its edges stay smooth in
+ * print. app/assets/brand, next to the fonts; next.config.ts traces the whole of app/assets for every function that renders a PDF.
+ */
+export const CERT_LOGO = path.join(process.cwd(), "assets", "brand", "certificate-logo.png");
+
+/** The fonts' bytes and the logo's (a PNG). */
+export type CertificateAssets = { sans: Uint8Array; body: Uint8Array; title: Uint8Array; script: Uint8Array; logo: Uint8Array };
 
 /** What the PDF prints: the certificate's frozen copy, and the trainer's name from Seaded (Maria's signature, typed in the script font). */
 export type CertificateContent = Pick<Certificate, "number" | "name" | "courseTitle" | "skills" | "volume" | "practicalLine" | "place" | "registryCode" | "issuedAt"> & {
   trainerName: string;
 };
 
-/** The fonts' bytes, read once per process; a failed read is tried again on the next download. */
+/** The fonts' and the logo's bytes, read once per process; a failed read is tried again on the next download. */
 let fontFiles: Promise<CertificateAssets> | null = null;
 
 function readFonts(): Promise<CertificateAssets> {
   const keys = ["sans", "body", "title", "script"] as const;
-  fontFiles ??= Promise.all(keys.map((k) => readFile(path.join(CERT_FONT_DIR, CERT_FONTS[k])))).then(
-    ([sans, body, title, script]) => ({ sans: new Uint8Array(sans), body: new Uint8Array(body), title: new Uint8Array(title), script: new Uint8Array(script) }),
+  fontFiles ??= Promise.all([...keys.map((k) => readFile(path.join(CERT_FONT_DIR, CERT_FONTS[k]))), readFile(CERT_LOGO)]).then(
+    ([sans, body, title, script, logo]) => ({
+      sans: new Uint8Array(sans),
+      body: new Uint8Array(body),
+      title: new Uint8Array(title),
+      script: new Uint8Array(script),
+      logo: new Uint8Array(logo),
+    }),
     (e: unknown) => {
       fontFiles = null;
       throw e;
@@ -56,7 +68,7 @@ function readFonts(): Promise<CertificateAssets> {
   return fontFiles;
 }
 
-/** The fonts from disk (once per process). A read that fails throws: the download then fails and is tried again. */
+/** The fonts and the logo from disk (once per process). A read that fails throws: the download then fails and is tried again. */
 export async function loadCertificateAssets(): Promise<CertificateAssets> {
   return readFonts();
 }
@@ -64,8 +76,8 @@ export async function loadCertificateAssets(): Promise<CertificateAssets> {
 // ---------- the layout (842 × 595 pt) ----------
 // Dim 07.11: the sizes, letter spacings and places are those of Maria's Canva certificate (read off the design itself: every text box's font,
 // size, spacing and edges, its baseline from the font's ascent and descent), from which her paper certificate was printed. Three places stay
-// ours: the course title stands higher (428, not 416: the tallest names need the room under it), and the name, its line, the logo and the
-// trainer's name are as they were.
+// ours: the course title stands higher (428, not 416: the tallest names need the room under it), and the name, its line and the trainer's
+// name are as they were.
 
 const PAGE = { width: 842, height: 595 } as const;
 const CENTRE = PAGE.width / 2;
@@ -118,8 +130,11 @@ const BULLET = { diameter: 0.228, centre: 0.342 } as const;
  * competency lines; 150 when they need more room, see SKILLS); a long practical line shrinks to 8 pt, then takes two lines.
  */
 const FOOT = { size: 10.7, shrinkTo: 8, spacing: 0, baseline: 172, roomyBaseline: 150, gap: 24, leading: 1.3 } as const;
-/** Where the MS LAB logo stands (server/pdf-logo.ts draws it, here in white): the box of 146 × 52 pt, at BOX.left. */
-const LOGO = { x: BOX.left, y: 84, width: 146, height: 52 } as const;
+/**
+ * The logo (CERT_LOGO), where it stands on the Canva certificate: its ink 148.4 pt wide from BOX.left, its foot on 84.4 (Canva: 97.3 to
+ * 245.7 across, 84.4 to 137.2 up); the height follows the image's proportions (53.8 pt).
+ */
+const LOGO = { x: BOX.left, y: 84.4, width: 148.4 } as const;
 /**
  * Under the logo, at BOX.left, as on the Canva certificate: "REGISTRIKOOD: …" (10.7 pt, not spaced) on 67 and "Tunnistuse nr. …" (11.2 pt,
  * spaced 0.1 em) on 52.
@@ -351,7 +366,8 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), BOX.left, skills.footBaseline - i * practical.size * FOOT.leading));
   if (volume) drawRight(page, volume, footStyle(FOOT.size), BOX.right, skills.footBaseline);
 
-  drawLogo(page, sans, LOGO, WHITE);
+  const logo = await doc.embedPng(assets.logo);
+  page.drawImage(logo, { x: LOGO.x, y: LOGO.y, width: LOGO.width, height: (LOGO.width * logo.height) / logo.width });
   drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, { face: body, size: LEFT_LINES.registrySize, spacing: LEFT_LINES.registrySpacing }, BOX.left, LEFT_LINES.baselines[0]);
   drawAt(page, `Tunnistuse nr. ${c.number}`, { face: body, size: LEFT_LINES.numberSize, spacing: LEFT_LINES.numberSpacing }, BOX.left, LEFT_LINES.baselines[1]);
 

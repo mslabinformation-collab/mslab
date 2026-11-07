@@ -608,8 +608,8 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     await certificatePdf(db, k, NOW);
     const calls = vi.mocked(renderCertificate).mock.calls;
     expect(calls.map(([, assets]) => Object.keys(assets).sort())).toEqual([
-      ["body", "sans", "script", "title"],
-      ["body", "sans", "script", "title"],
+      ["body", "logo", "sans", "script", "title"],
+      ["body", "logo", "sans", "script", "title"],
     ]);
     expect(calls.map(([content]) => content.trainerName)).toEqual(["Maria Sosnina", "Maria Sosnina"]);
   });

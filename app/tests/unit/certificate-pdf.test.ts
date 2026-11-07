@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import { decodePDFRawStream, PDFArray, PDFDict, PDFName } from "pdf-lib";
+import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber } from "pdf-lib";
 import { describe, expect, test } from "vitest";
 import { checkCertificateName, readCertificateSettings } from "@/domain/certificate";
-import { CERT_FONT_DIR, CERT_FONTS, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
+import { CERT_FONT_DIR, CERT_FONTS, CERT_LOGO, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
@@ -15,12 +15,14 @@ import { family, rawStream, readPdf, type Run } from "../pdf-read";
 // are PDF points from the bottom left of the 842 × 595 page. The script font, Revive 80 Signature, has tall capitals with long swashes and a
 // tiny lowercase: its ink (the glyphs' bounding box, not the advance widths) is checked against the title above the name and the competency
 // lines below it. The fonts are Maria's Canva certificate's (Dim 07.11): Glacial Indifference (BODY) for the heading and the lines of text,
-// Montserrat (TITLE) for the course title; Jost (SANS) draws the logo and the letters Glacial Indifference lacks.
+// Montserrat (TITLE) for the course title; Jost (SANS) draws the letters Glacial Indifference lacks. The logo is the site's own, an image
+// (CERT_LOGO, Dim 07.11).
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const BODY = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.body)));
 const TITLE = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.title)));
 const SCRIPT = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.script)));
+const LOGO = new Uint8Array(readFileSync(CERT_LOGO));
 const jost = fontkit.create(SANS);
 const glacial = fontkit.create(BODY);
 const montserrat = fontkit.create(TITLE);
@@ -42,7 +44,7 @@ const FIXTURE: CertificateContent = {
   issuedAt: new Date("2026-10-15T09:00:00Z"),
   trainerName: "Maria Sosnina",
 };
-const ASSETS: CertificateAssets = { sans: SANS, body: BODY, title: TITLE, script: SCRIPT };
+const ASSETS: CertificateAssets = { sans: SANS, body: BODY, title: TITLE, script: SCRIPT, logo: LOGO };
 
 /** The name's band: its ink stays under the course title (which stands on 428) and well over the first competency line (letters up to 284). */
 const INK_BAND = { bottom: 303, top: 425 } as const;
@@ -75,21 +77,22 @@ const one = (runs: Run[], text: string): Run => {
 const near = (actual: number, expected: number) => expect(actual).toBeCloseTo(expected, 1);
 
 describe("renderCertificate: the page (spec §7)", () => {
-  test("one A4 landscape page, black, Jost and Montserrat subsets, Glacial Indifference and the script font whole, no image, under 300 KB", async () => {
+  test("one A4 landscape page, black, Jost and Montserrat subsets, Glacial Indifference and the script font whole, the logo the one image, under 300 KB", async () => {
     const bytes = await renderCertificate(FIXTURE, ASSETS);
     expect(bytes.length).toBeLessThan(300 * 1024);
     expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
     const { doc, pages, page, fontNames, ops } = await readPdf(bytes);
     expect(pages).toHaveLength(1);
     expect(page.getSize()).toEqual({ width: 842, height: 595 });
-    expect(fontNames.map(family)).toEqual([SANS_FAMILY, BODY_FAMILY, TITLE_FAMILY, SCRIPT_FAMILY].sort());
+    // the page uses three fonts; Jost only when a letter needs it (none of this certificate's: see the fallback's test below)
+    expect(fontNames.map(family)).toEqual([BODY_FAMILY, TITLE_FAMILY, SCRIPT_FAMILY].sort());
     // the whole page is filled black first; the texts and the lines are white
     expect(ops.trimStart().startsWith("q\n0 0 0 rg")).toBe(true);
     expect(ops).toContain("0 0 m\n0 595 l\n842 595 l\n842 0 l\nh\nf");
     expect(ops).toContain("1 1 1 rg");
     expect(ops).toContain("1 1 1 RG");
-    // no signature image (the trainer's name is typed in the script font), nothing but the four fonts as resources
-    expect(imagesOf(page)).toEqual([]);
+    // one image, the logo (no signature image: the trainer's name is typed in the script font)
+    expect(imagesOf(page)).toHaveLength(1);
     // each font's file is in the PDF (Type0 font → its CID font → the descriptor → FontFile2 for TrueType, FontFile3 for CFF): Jost and
     // Montserrat subsets, much smaller than the fonts; the two CFF fonts whole (pdf-lib's subset of Revive 80 Signature is a file MuPDF
     // rejects, so the viewer would draw a substitute sans), each stream about its font file's size
@@ -112,6 +115,29 @@ describe("renderCertificate: the page (spec §7)", () => {
     expect([doc.getTitle(), doc.getAuthor(), doc.getProducer(), doc.getCreator()]).toEqual(["Tunnistus MS LAB 2026-03", "MS LAB", "MS LAB", "MS LAB"]);
     expect(doc.getCreationDate()).toEqual(FIXTURE.issuedAt);
     expect(doc.getModificationDate()).toEqual(FIXTURE.issuedAt);
+  });
+
+  test("the logo is the site's, in white, where it stands on the Canva certificate: 148.4 pt wide from 97, its foot on 84.4", async () => {
+    const { doc, page, ops } = await readPdf(await renderCertificate(FIXTURE, ASSETS));
+    const [name] = imagesOf(page);
+    // drawn once, its lower left corner at (97, 84.4), scaled to 148.4 pt wide and kept in proportion (1280 × 464 px: 53.8 pt high); pdf-lib
+    // writes the move, a rotation of 0, the scale and a skew of 0 as four matrices
+    const drawn = [...ops.matchAll(/q\n1 0 0 1 ([\d.]+) ([\d.]+) cm\n1 0 0 1 0 0 cm\n([\d.]+) 0 0 ([\d.]+) 0 0 cm\n1 0 0 1 0 0 cm\n\/(\S+) Do\nQ/g)];
+    expect(drawn.map((m) => m[5])).toEqual([name]);
+    const [, x, y, w, h] = drawn[0].map(Number);
+    expect([x, y, w]).toEqual([97, 84.4, 148.4]);
+    near(h, (148.4 * 464) / 1280);
+    // the image: 1280 × 464, every pixel white, its shape in the soft mask (the logo's alpha)
+    const xobjects = page.node.Resources()!.lookup(PDFName.of("XObject"), PDFDict);
+    const image = rawStream(xobjects.lookup(PDFName.of(name)));
+    const num = (d: PDFDict, key: string) => d.lookup(PDFName.of(key), PDFNumber).asNumber();
+    expect([num(image.dict, "Width"), num(image.dict, "Height")]).toEqual([1280, 464]);
+    expect(decodePDFRawStream(image).decode().every((b) => b === 255)).toBe(true);
+    const mask = rawStream(doc.context.lookup(image.dict.get(PDFName.of("SMask"))));
+    const alpha = decodePDFRawStream(mask).decode();
+    expect(alpha.length).toBe(1280 * 464);
+    expect(alpha.includes(255)).toBe(true); // the letters are solid
+    expect(alpha.filter((a) => a === 0).length).toBeGreaterThan(alpha.length / 3); // the letters' insides and the gaps are see-through
   });
 
   test("the same certificate gives the same file on every download", async () => {
@@ -142,13 +168,8 @@ describe("renderCertificate: the page (spec §7)", () => {
     const volume = one(runs, "10 AKADEEMILIST TUNDI");
     expect([volume.font, volume.size, volume.y, volume.spacing]).toEqual([BODY_FAMILY, 10.7, 172, 0]);
     near(volume.x + widthOf(volume), 747);
-    // bottom left, at 97: our logo in Jost (146 pt wide), then the registry code (10.7 pt, not spaced) and the number (11.2 pt, spaced 0.1 em)
-    const logo = one(runs, "MS LAB");
-    expect(logo.font).toBe(SANS_FAMILY);
-    near(logo.x + widthOf(logo) / 2, 170);
-    const small = one(runs, "KOOLITUSKESKUS");
-    expect(small.font).toBe(SANS_FAMILY);
-    near(small.x + widthOf(small) / 2, 170);
+    // bottom left, at 97: the logo, an image (no text), then the registry code (10.7 pt, not spaced) and the number (11.2 pt, spaced 0.1 em)
+    expect(runs.filter((r) => /MS LAB$|KOOLITUSKESKUS/.test(r.text)).map((r) => r.text)).toEqual([]);
     expect(one(runs, "REGISTRIKOOD: 16346048")).toMatchObject({ font: BODY_FAMILY, x: 97, y: 67, size: 10.7, spacing: 0 });
     const number = one(runs, "Tunnistuse nr. MS LAB 2026-03");
     expect(number).toMatchObject({ font: BODY_FAMILY, x: 97, y: 52, size: 11.2 });
@@ -213,9 +234,9 @@ describe("renderCertificate: the page (spec §7)", () => {
     }
   });
 
-  test("Maria's signature is the trainer's name typed in the script font at the bottom right, above KOOLITAJA, and there is never an image", async () => {
+  test("Maria's signature is the trainer's name typed in the script font at the bottom right, above KOOLITAJA, and never an image (the logo is the only one)", async () => {
     const { runs, page } = await readPdf(await renderCertificate(FIXTURE, ASSETS));
-    expect(imagesOf(page)).toEqual([]);
+    expect(imagesOf(page)).toHaveLength(1);
     const trainer = one(runs, "Maria Sosnina");
     expect([trainer.font, trainer.size, trainer.y]).toEqual([SCRIPT_FAMILY, 40, 105]);
     near(trainer.x + widthOf(trainer), 747);
@@ -475,9 +496,10 @@ describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
 });
 
 describe("loadCertificateAssets", () => {
-  test("the four fonts from app/assets/fonts, read once per process", async () => {
+  test("the four fonts from app/assets/fonts and the logo from app/assets/brand, read once per process", async () => {
     const a = await loadCertificateAssets();
-    expect(Object.keys(a).sort()).toEqual(["body", "sans", "script", "title"]);
+    expect(Object.keys(a).sort()).toEqual(["body", "logo", "sans", "script", "title"]);
+    expect(Buffer.from(a.logo).equals(Buffer.from(LOGO))).toBe(true);
     expect(Buffer.from(a.sans).equals(Buffer.from(SANS))).toBe(true);
     expect(Buffer.from(a.body).equals(Buffer.from(BODY))).toBe(true);
     expect(Buffer.from(a.title).equals(Buffer.from(TITLE))).toBe(true);

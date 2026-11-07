@@ -1,7 +1,8 @@
 import { setCharacterSpacing, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 
-// The MS LAB logo as vector shapes (public/brand/logo.png is dark on transparent), shared by the PDFs that carry it: the e-course
-// certificate (white on black, server/certificate-pdf.ts) and the invoice (black on white, server/invoice-pdf.ts). A thin frame, "MS LAB" in
+// The MS LAB logo as vector shapes, shared by the PDFs that carry it: the invoice and the contract (black on white, server/invoice-pdf.ts,
+// server/contract-pdf.ts). The e-course certificate drew it too (white on black) until 07.11.2026; it now carries the site's own logo image,
+// made white (server/certificate-pdf.ts CERT_LOGO), as on Maria's Canva certificate. A thin frame, "MS LAB" in
 // it, "KOOLITUSKESKUS" on its lower edge, the edge open under the small word. It is drawn in the sans (Jost) the caller has embedded, at the
 // place, size and colour the caller gives.
 
