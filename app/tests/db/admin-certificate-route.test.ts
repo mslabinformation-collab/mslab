@@ -15,6 +15,13 @@ import { readPdf } from "../pdf-read";
 // in the script font as the signature (no image), as a download named after its number, private and never kept. The database is PGlite and
 // the session cookie (next/headers) is faked, as in tests/db/admin-photo-route.test.ts.
 
+/** The PDF's only images are the logo (the site's, white, 1280 × 464: Dim 07.11.2026) and its alpha mask; there is no signature image. */
+const onlyTheLogo = (pdf: Buffer) => {
+  const text = pdf.toString("latin1");
+  expect(text.match(/\/Subtype \/Image\b/g) ?? []).toHaveLength(2);
+  expect(text.match(/\/Width 1280\b/g) ?? []).toHaveLength(2);
+};
+
 const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -89,7 +96,7 @@ describe("GET /api/admin/tunnistus/<id>", () => {
     expect([res.status, await res.json()]).toEqual([401, { ok: false, error: "unauthorized" }]);
   });
 
-  test("the PDF as a download named after its number, private and never kept, nosniff; no image in it (the signature is typed)", async () => {
+  test("the PDF as a download named after its number, private and never kept, nosniff; no signature image in it (the signature is typed; the logo is the one image)", async () => {
     await signIn();
     const res = await download(String(certId));
     expect(res.status).toBe(200);
@@ -100,10 +107,10 @@ describe("GET /api/admin/tunnistus/<id>", () => {
     const pdf = await bytesOf(res);
     expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(pdf.length).toBeLessThan(300 * 1024);
-    expect(pdf.includes("/Subtype /Image")).toBe(false);
+    onlyTheLogo(pdf);
   });
 
-  test("Review Focus 4: the trainer's name is read from Seaded on every download — the same row and Seaded give the same bytes, another name another PDF; never an image", async () => {
+  test("Review Focus 4: the trainer's name is read from Seaded on every download — the same row and Seaded give the same bytes, another name another PDF; never a signature image", async () => {
     await signIn();
     const before = await bytesOf(await download(String(certId)));
     expect((await bytesOf(await download(String(certId)))).equals(before)).toBe(true); // the PDF is deterministic (Task 2)
@@ -111,7 +118,7 @@ describe("GET /api/admin/tunnistus/<id>", () => {
     try {
       const after = await bytesOf(await download(String(certId)));
       expect(after.equals(before)).toBe(false);
-      expect(after.includes("/Subtype /Image")).toBe(false);
+      onlyTheLogo(after);
     } finally {
       await db.delete(settings).where(eq(settings.key, "certificate"));
     }
@@ -169,7 +176,7 @@ describe("GET /api/admin/naidistunnistus: the sample from the card's values", ()
     expect(sampleCertificatePdf).not.toHaveBeenCalled();
   });
 
-  test("an inline PDF, private, never kept, nosniff, no image, that reads the card's values from the query — saved or not — with the made-up student and course", async () => {
+  test("an inline PDF, private, never kept, nosniff, no signature image (the logo is the one image), that reads the card's values from the query — saved or not — with the made-up student and course", async () => {
     await signIn();
     const query = new URLSearchParams({ place: "Tartu linn", registryCode: "99887766", practicalLine: "Praktiline töö modellil", trainerName: "Maria S.", nextYear: String(YEAR), nextSeq: "93" });
     const res = await sample(`?${query}`);
@@ -181,7 +188,7 @@ describe("GET /api/admin/naidistunnistus: the sample from the card's values", ()
     const bytes = Buffer.from(await res.clone().arrayBuffer());
     expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(bytes.length).toBeLessThan(300 * 1024);
-    expect(bytes.includes("/Subtype /Image")).toBe(false);
+    onlyTheLogo(bytes);
     const text = await textOf(res);
     for (const part of ["Tartu linn", "99887766", "PRAKTILINE TÖÖ MODELLIL", "Maria S.", formatCertificateNumber(YEAR, 93), "Mari Maasikas", "NÄIDISKOOLITUS", "Kulmude kuju analüüs", "10 AKADEEMILIST TUNDI"]) expect(text, part).toContain(part);
     expect(text).not.toContain("Pärnu linn");
