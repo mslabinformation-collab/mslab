@@ -235,7 +235,7 @@ test("Maksed: the Montonio id is „Montonios ↗“ — a link to the Partner S
   const html = await render(PaymentsPage);
   const link = (reference: string) => /<a [^>]*data-montonio-link[^>]*>/.exec(row(html, reference))![0];
   const prepayment = link(refsOf.prepayment);
-  expect(prepayment).toContain('href="https://sandbox-partner.montonio.com"'); // (no live keys here)
+  expect(prepayment).toContain('href="https://partner.montonio.com"'); // (the one Partner System, the sandbox's orders too: Dim 07.11)
   expect(prepayment).toContain('target="_blank"');
   expect(prepayment).toContain('rel="noopener"');
   expect(prepayment).toContain('title="uuid-prepayment-0001"');
@@ -252,7 +252,7 @@ test("Maksed: the Montonio id is „Montonios ↗“ — a link to the Partner S
   expect(html).not.toContain("kopeeritud"); // (said by the browser after a press, never drawn before)
 });
 
-test("Maksed: while the live keys are in use the link is to the live Partner System", async () => {
+test("Maksed: while the live keys are in use the link is to the same Partner System (there is no sandbox-partner host)", async () => {
   vi.stubEnv("MONTONIO_ENV", "live");
   try {
     const html = await render(PaymentsPage);

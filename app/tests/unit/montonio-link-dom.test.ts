@@ -17,7 +17,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const PARTNER = "https://sandbox-partner.montonio.com";
+const PARTNER = "https://partner.montonio.com";
 const UUID = "9c1f6d1a-6a53-4c0e-8f1e-4f0b0f3a1b2c";
 
 let container: HTMLDivElement;

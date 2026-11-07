@@ -33,12 +33,12 @@ import { JwtError, signHs256, verifyHs256 } from "./jwt";
 export const LIVE_BASE = "https://stargate.montonio.com/api";
 export const SANDBOX_BASE = "https://sandbox-stargate.montonio.com/api";
 /**
- * Montonio's Partner System (where Maria finds an order, checks it and refunds it) of the live store and of the sandbox. Montonio has no page for one
- * order — only Orders, searched by the id (Rempire's finding, 24.09.2026) — so admin Maksed links to the system's home (montonioPartnerUrl) and
- * copies the order id for her to paste into that search.
+ * Montonio's Partner System (where Maria finds an order, checks it and refunds it), one address for the live store and the sandbox: the sandbox's
+ * orders are in the same system (Dim 07.11.2026 found them there; "sandbox-partner.montonio.com", used until then, does not exist — no DNS name).
+ * Montonio has no page for one order — only Orders, searched by the id (Rempire's finding, 24.09.2026) — so admin Maksed links to the system's
+ * home (montonioPartnerUrl) and copies the order id for her to paste into that search.
  */
-export const LIVE_PARTNER = "https://partner.montonio.com";
-export const SANDBOX_PARTNER = "https://sandbox-partner.montonio.com";
+export const PARTNER_URL = "https://partner.montonio.com";
 /** Montonio has 15 s to answer, headers and body together. */
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** The lifetime of a POST's token (10 minutes) and of a GET's Bearer token (an hour), as Montonio's reference asks. */
@@ -145,19 +145,15 @@ function off(why: string): null {
 
 /**
  * Is the store in use Montonio's live one? Only the real Montonio (PAYMENT_PROVIDER unset or exactly "montonio") with the exact MONTONIO_ENV "live"
- * is; anything else is the sandbox, and the mock is no live store. The one rule montonioConfig (the API's address) and montonioPartnerUrl (the
- * Partner System's) share.
+ * is; anything else is the sandbox, and the mock is no live store (montonioConfig: the API's address).
  */
 function isLiveStore(env: PaymentsEnv): boolean {
   const provider = env.PAYMENT_PROVIDER;
   return (provider === undefined || provider === "montonio") && env.MONTONIO_ENV === "live";
 }
 
-/**
- * The Partner System of the store in use (LIVE_PARTNER while the live keys are in use, SANDBOX_PARTNER otherwise: isLiveStore, as montonioConfig
- * reads it). The settings alone decide, not whether both keys are there: the address of an old payment's order does not depend on that.
- */
-export const montonioPartnerUrl = (env: PaymentsEnv = paymentsEnv()): string => (isLiveStore(env) ? LIVE_PARTNER : SANDBOX_PARTNER);
+/** The Partner System of the store in use: PARTNER_URL for the live store and the sandbox alike (Dim 07.11.2026). */
+export const montonioPartnerUrl = (): string => PARTNER_URL;
 
 /**
  * The store, the address and the reference prefix (referencePrefixOf; one that is no prefix turns payments off, noted once by name), or null:

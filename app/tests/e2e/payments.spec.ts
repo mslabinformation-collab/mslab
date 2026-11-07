@@ -270,9 +270,9 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   const f = await insertAccountFixtures(email, { cards: ["awaiting"], name: "E2E Partner" });
   const own = { email, name: "E2E Partner", registrationId: f.registrations.awaiting!, courseId: f.course.id, clientId: f.clientId, amountCents: 17500, method: "paymentInitiation", bank: "Testpank" };
   const paid = await insertStoredPayment({ ...own, kind: "prepayment", status: "paid", paid: true, minutesAgo: 5 });
-  // (the sandbox's Partner System is not visited from a test: the new tab gets a stand-in page)
+  // (the Partner System is not visited from a test: the new tab gets a stand-in page)
   let opened = 0;
-  await context.route("https://sandbox-partner.montonio.com/**", (route) => {
+  await context.route("https://partner.montonio.com/**", (route) => {
     opened++;
     return route.fulfill({ status: 200, contentType: "text/html", body: "<title>Partner</title><p>Partner System</p>" });
   });
@@ -281,7 +281,7 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   await page.goto(`/admin/maksed?otsi=${encodeURIComponent(email)}`);
   const link = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-link]`);
   await expect(link).toHaveText("Montonios ↗");
-  await expect(link).toHaveAttribute("href", "https://sandbox-partner.montonio.com");
+  await expect(link).toHaveAttribute("href", "https://partner.montonio.com");
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("rel", "noopener");
   await expect(link).toHaveAttribute("title", paid.providerUuid); // (the id stays readable where the clipboard is refused)
@@ -292,7 +292,7 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
 
   const [tab] = await Promise.all([context.waitForEvent("page"), link.click()]);
   await tab.waitForLoadState();
-  expect(tab.url()).toBe("https://sandbox-partner.montonio.com/");
+  expect(tab.url()).toBe("https://partner.montonio.com/");
   expect(opened).toBe(1);
   await expect(line).toHaveText("Montonio id kopeeritud.");
   await page.bringToFront();
@@ -316,7 +316,7 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("NotAllowedError")) } }));
   const [again] = await Promise.all([context.waitForEvent("page"), link.click()]);
   await again.waitForLoadState();
-  expect(again.url()).toBe("https://sandbox-partner.montonio.com/");
+  expect(again.url()).toBe("https://partner.montonio.com/");
   await page.bringToFront();
   await page.waitForTimeout(300);
   await expect(line).toHaveText("");

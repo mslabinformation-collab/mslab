@@ -791,7 +791,7 @@ test.describe("signed in", () => {
     const longName = "Pneumonoultramicroscopicsilicovolcanoconiosis";
     await onLocalDb((sql) => sql`update payments set check_reason = 'double', name = ${longName} where reference = ${p.held}`, { marksPages: false });
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await context.route("https://sandbox-partner.montonio.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Partner</title><p>Partner System</p>" }));
+    await context.route("https://partner.montonio.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Partner</title><p>Partner System</p>" }));
     await signIn(page, context, visitorIp);
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`/admin/maksed?otsi=${encodeURIComponent(f.registration.email)}`);
