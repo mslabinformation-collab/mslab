@@ -163,6 +163,18 @@ describe("Automaattest", () => {
     });
     expect(Object.keys((JSON.parse(text) as { answers: object }).answers)).toEqual(["maria-1"]);
     expect(text).not.toContain("@");
+    expect(JSON.parse(text)).not.toHaveProperty("people");
+
+    // (Dim 07.11) its own GET: its answers as `answers`, and Maria's apart as `people`, for its states and numbers
+    await signIn(AUTO);
+    const own = await (await get()).text();
+    expect(JSON.parse(own)).toMatchObject({
+      answers: { "maria-1": { status: "skip", byName: "Automaattest" }, "dim-1": { status: "ok", byName: "Automaattest" } },
+      people: { "maria-1": { status: "ok", byName: "Maria" } },
+      you: { name: "Automaattest", tester: "auto" },
+    });
+    expect(Object.keys((JSON.parse(own) as { people: object }).people)).toEqual(["maria-1"]);
+    expect(own).not.toContain("@");
   });
 
   test("its clear removes its own answer from `auto` and leaves Maria's; Maria's clear leaves its answer, which her GET then shows apart", async () => {

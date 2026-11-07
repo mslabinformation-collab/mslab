@@ -45,7 +45,10 @@ const whenOf = (at: string): string => `${formatDayMonth(new Date(at), "et")} ${
 type CheckProps = {
   t: Texts;
   item: TestItem;
-  /** The check's state (sharedState); `answer` and `overtaken` are a person's only (`answer` may be her note on its own, Dim 30.10). */
+  /**
+   * The check's state (sharedState); `answer` and `overtaken` are a person's only (`answer` may be her note on its own, Dim 30.10), and on
+   * Automaattest's own page (Dim 07.11) its own.
+   */
   st: CheckState;
   /** Automaattest's answer to this check, shown as a chip (null: none, or this is Automaattest's own page). */
   auto: AutoAnswer | null;

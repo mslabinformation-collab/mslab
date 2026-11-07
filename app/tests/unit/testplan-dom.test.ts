@@ -58,6 +58,8 @@ let root: Root;
 let server: Record<string, PageAnswer> | null;
 /** Automaattest's answers as the API gives them, apart (Dim 25.10). */
 let autoServer: Record<string, PageAnswer>;
+/** The people's answers as the API gives them to Automaattest's own session, apart (Dim 07.11; undefined: the body has none). */
+let peopleServer: Record<string, PageAnswer> | undefined;
 let getReply: () => Response | Promise<Response>;
 /** A save's body: a press, a note, a note on its own (Dim 30.10: "note"), or (Dim 29.10) "clear", an answer taken back. */
 type PutBody = { answers: Record<string, { status: PageAnswer["status"] | "clear"; note: string }> };
@@ -108,11 +110,18 @@ const pills = (group: "olek" | "kes") => $$(`[data-filter-group="${group}"] butt
 const olek = (f: "all" | "open" | "bad" | "done") => $(`[data-filter="${f}"]`)!;
 const kes = (w: "mina" | "all" | "auto") => $(`[data-who="${w}"]`)!;
 
-type Props = { initial?: Record<string, PageAnswer> | null; auto?: Record<string, PageAnswer>; you?: { name: string; tester: "maria" | "dim" | "auto" | null }; plan?: Plan };
-const show = async ({ initial = SERVER, auto, you = MARIA, plan = PLAN }: Props = {}) => {
+type Props = {
+  initial?: Record<string, PageAnswer> | null;
+  auto?: Record<string, PageAnswer>;
+  people?: Record<string, PageAnswer>;
+  you?: { name: string; tester: "maria" | "dim" | "auto" | null };
+  plan?: Plan;
+};
+const show = async ({ initial = SERVER, auto, people, you = MARIA, plan = PLAN }: Props = {}) => {
   server = initial === null ? null : { ...initial };
   autoServer = { ...(auto ?? {}) };
-  await act(async () => root.render(createElement(TestPlan, { plan, initial, auto, you, buildAt: BUILD_AT })));
+  peopleServer = people === undefined ? undefined : { ...people };
+  await act(async () => root.render(createElement(TestPlan, { plan, initial, auto, people, you, buildAt: BUILD_AT })));
   await settle();
 };
 /** The view the device remembers (`who` is what the „Kes“ group shows). */
@@ -134,8 +143,11 @@ beforeEach(() => {
   calls.length = 0;
   server = { ...SERVER };
   autoServer = {};
+  peopleServer = undefined;
   getReply = () =>
-    server ? json({ ok: true, plan: PLAN, answers: server, auto: autoServer, you: MARIA }) : json({ ok: false, error: "unavailable", plan: PLAN, answers: null, you: MARIA }, 503);
+    server
+      ? json({ ok: true, plan: PLAN, answers: server, auto: autoServer, ...(peopleServer ? { people: peopleServer } : {}), you: MARIA })
+      : json({ ok: false, error: "unavailable", plan: PLAN, answers: null, you: MARIA }, 503);
   putReply = saveOnServer;
   vi.stubGlobal(
     "fetch",
@@ -1363,7 +1375,7 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
     expect(JSON.parse(localStorage.getItem("mslab-testplan-view")!)).toEqual({ filter: "all", who: "auto" });
   });
 
-  test("the Automaattest session sees every check under „Mina“, its own answers as the checks' answers and no quiet line; a press saves its answer", async () => {
+  test("the Automaattest session sees every check under „Mina“, its own answers as the checks' answers and no chip; a press saves its answer", async () => {
     await show({ initial: AUTO_ANSWERS, auto: AUTO_ANSWERS, you: AUTO_YOU });
     expect(kes("mina").getAttribute("aria-pressed")).toBe("true");
     await openAll();
@@ -1387,6 +1399,59 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
     await click(kes("mina"));
     await click(kes("auto"));
     expect(ids()).toEqual(["a1-redo", "a1-fail"]);
+  });
+
+  // Dim 07.11: on 07.11 Automaattest's own page said 20 open where Dim's said 1; its states and numbers are now Maria's and Dim's
+  test("Dim 07.11: the Automaattest session's line, pills, markers and bars are Maria's and Dim's (a person's answer, else its own), its own answer still the row's", async () => {
+    await show({ initial: AUTO_ANSWERS, auto: AUTO_ANSWERS, people: SERVER, you: AUTO_YOU });
+    await openAll();
+    // a0-done Maria's OK, a1-plain its own OK; a1-fail Dim's Viga (his answer wins over its OK); a1-redo, a2-fresh, a2-dim open: as Maria's „Kõik“
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    expect(pills("olek")).toEqual(["Kõik", "Avatud 3", "Viga 1", "Läbitud 2"]);
+    expect($('[data-area="a0"] [data-area-count]')!.textContent).toBe("1 / 1");
+    expect($('[data-area="a1"] [data-area-count]')!.textContent).toBe("1 / 3");
+    // a check only Maria passed: „Läbitud“, with no half of its own pressed and no last line (her answer is not its)
+    expect([state("a0-done"), word("a0-done"), pressed("a0-done")]).toEqual(["done", "Läbitud", []]);
+    expect(check("a0-done").querySelector("[data-check-last]")).toBeNull();
+    expect(note("a0-done").value).toBe("");
+    // Dim's Viga is the state; its own OK stays pressed, with its own last line; no chip of anybody's
+    expect([state("a1-fail"), word("a1-fail"), pressed("a1-fail")]).toEqual(["failed", "Viga", ["ok"]]);
+    expect(check("a1-fail").querySelector("[data-check-last]")!.textContent).toBe("Automaattest · 16.10 15:06 · Läbitud");
+    expect(note("a1-fail").value).toBe("");
+    expect($$("[data-check-auto]")).toEqual([]);
+    // the redo: its own overtaken Viga is the „Varasem vastus“ (Dim's overtaken OK is his)
+    expect(state("a1-redo")).toBe("open");
+    expect(check("a1-redo").querySelector("[data-overtaken]")!.textContent).toBe("Varasem vastus (enne muudatust): Viga");
+    await click(olek("done"));
+    expect(ids()).toEqual(["a0-done", "a1-plain"]);
+    await click(olek("bad"));
+    expect(ids()).toEqual(["a1-fail"]);
+    await click(olek("all"));
+    await openAll();
+
+    // its Viga on a check Maria passed saves into its own map and leaves the check Maria's „Läbitud“
+    await click(check("a0-done").querySelector('[data-answer="bad"]')!);
+    expect(puts()).toEqual([{ answers: { "a0-done": { status: "bad", note: "" } } }]);
+    expect([state("a0-done"), pressed("a0-done")]).toEqual(["done", ["bad"]]);
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+    // its own OK taken back where no person answered: open
+    await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+    expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "clear", note: "" } } });
+    expect([state("a1-plain"), pressed("a1-plain")]).toEqual(["open", []]);
+    expect(line()).toBe("6 kontrolli · 1 läbitud · 1 viga");
+    // the people's answers are read again with the rest: Dim's OK on a2-dim since
+    peopleServer = { ...SERVER, "a2-dim": answer("ok", "2026-10-16T13:00:00.000Z", "Dim") };
+    await click($("[data-refresh]")!);
+    await openAll();
+    expect([state("a2-dim"), pressed("a2-dim")]).toEqual(["done", []]);
+    expect(line()).toBe("6 kontrolli · 2 läbitud · 1 viga");
+  });
+
+  test("Dim 07.11: the area that starts open on the Automaattest session is the first with a check open by the shared state", async () => {
+    // (a0's only check is Maria's OK: a0 is not open by the people's answers, though Automaattest has none there)
+    await show({ initial: {}, auto: {}, people: SERVER, you: AUTO_YOU });
+    expect($('[data-area="a0"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("false");
+    expect($('[data-area="a1"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("true");
   });
 });
 

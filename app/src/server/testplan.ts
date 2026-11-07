@@ -16,7 +16,8 @@ import { adminFirstName } from "./auth";
 // pure domain/testplan.ts. The admin session is checked by the callers (app/api/admin/testplan withAdmin, the admin pages).
 // Dim 25.10: the automatic tester „Automaattest“ (its name in ADMIN_NAMES) answers into the same row's own map `auto`, never into `answers`:
 // Maria and Dim see its answers apart, and they are never theirs (since Dim 29.10 its answer is a check's state where no person's answer
-// stands: domain/testplan.ts sharedState, in the page and on the Avaleht card).
+// stands: domain/testplan.ts sharedState, in the page and on the Avaleht card). Dim 07.11: Automaattest's own page and card read the checks' states
+// the same way (its saves still go into `auto`): its numbers are Maria's and Dim's.
 // Logs carry counts and ids only: never a note, an e-mail address or a name.
 
 /** The `settings` key of the answers. */
@@ -78,15 +79,21 @@ export function toPageAnswers(doc: AnswersDoc, plan: TestPlan, names: string | u
   return Object.fromEntries(entries);
 }
 
+/** What the page of a tester gets (pageView). */
+export type PageView = { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer>; people?: Record<string, PageAnswer> };
+
 /**
  * The answers the page of `tester` gets (Dim 25.10): `answers`, the ones it shows as the checks' answers and edits (Automaattest's own `auto` for
  * Automaattest; the shared `answers` for Maria, Dim and any other admin), and `auto`, Automaattest's, which Maria's and Dim's page shows as a
  * chip in each check's row (and, Dim 29.10, as the check's state where no person's answer stands) and its „Kes“ choice „Automaattest“ filters by.
- * Both in the page's form (toPageAnswers).
+ * Dim 07.11: Automaattest's own page gets `people` too, the shared `answers` (Maria's, Dim's, any other admin's), so its states and numbers are
+ * the ones Maria and Dim see (a person's answer, else its own); the other pages have them as `answers` and get no `people`.
+ * All in the page's form (toPageAnswers).
  */
-export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefined, tester: Tester | null): { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer> } {
+export function pageView(doc: AnswersDoc, plan: TestPlan, names: string | undefined, tester: Tester | null): PageView {
   const auto = toPageAnswers({ v: 1, answers: answersIn(doc, "auto") }, plan, names);
-  return { answers: tester === "auto" ? auto : toPageAnswers(doc, plan, names), auto };
+  const shared = toPageAnswers(doc, plan, names);
+  return tester === "auto" ? { answers: auto, auto, people: shared } : { answers: shared, auto };
 }
 
 /**
@@ -178,17 +185,13 @@ export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: str
 
 /**
  * The Avaleht card's numbers (spec §5): the open and failed checks of the signed-in admin's own tester (Maria: hers and the shared ones; Dim:
- * his and the shared ones; any other admin: all), or null when none is open or failed (the card is then not shown). Maria's, Dim's and any
- * other admin's count the shared answers, and Automaattest's where no person's answer stands (planCounts, admin polish Part A, Dim 29.10);
- * Automaattest's own (Dim 25.10) counts its own answers over the whole plan.
+ * his and the shared ones; Automaattest and any other admin: all), or null when none is open or failed (the card is then not shown). Every
+ * admin's count the shared answers, and Automaattest's where no person's answer stands (planCounts, admin polish Part A, Dim 29.10; for
+ * Automaattest's own card too since Dim 07.11, which counted its own answers alone before).
  */
 export async function testplanCard(db: Db, email: string, names: string | undefined): Promise<{ open: number; bad: number } | null> {
   const tester = testerOf(email, names);
-  const doc = await readAnswers(db);
-  const { open, bad } =
-    tester === "auto"
-      ? planCounts(testPlan, { v: 1, answers: answersIn(doc, "auto") }, testplanBuildAt(), null)
-      : planCounts(testPlan, doc, testplanBuildAt(), tester);
+  const { open, bad } = planCounts(testPlan, await readAnswers(db), testplanBuildAt(), tester === "auto" ? null : tester);
   return open + bad === 0 ? null : { open, bad };
 }
 

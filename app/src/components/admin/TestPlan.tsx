@@ -30,6 +30,9 @@ import styles from "./TestPlan.module.css";
 // Dim 30.10: a note box under every check. A note typed where she has no answer is a note on its own (outbox `note(…, "note")`, the debounce and the
 // flush of any note): it changes no state and so moves no row; the box emptied is the clear. Automaattest's note alone lists no check under „Kes:
 // Automaattest“ (`autoIds`: the checks it gave a result).
+// Dim 07.11: Automaattest's own page reads the checks' states as Maria's and Dim's does (the people's answers, `people`, else its own): its line,
+// its „Olek“ pills, its markers and its area bars are theirs, while its own answer is still the row's answer (its halves, its note, its last
+// line) and its presses still save into its own map.
 // Admin UX pass piece 4c (C7, README §4; the Part 4 frame „C7 Testimine“; piece4-texts S4-42…S4-46, §4, §5; R-i): the header is the eyebrow, the
 // H1, the line „{n} kontrolli · {k} läbitud · {v} viga“, one SaveStatus in place of the outbox line and „Värskenda“; one filter row of two
 // labelled groups, „Olek“ (Kõik / Avatud n / Viga n / Läbitud n, counted under the „Kes“ choice) and „Kes“ (Mina / Kõik / Automaattest); area
@@ -91,10 +94,11 @@ function readHash(): string {
     return "";
   }
 }
-type Read = { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer> };
+type Read = { answers: Record<string, PageAnswer>; auto: Record<string, PageAnswer>; people: Record<string, PageAnswer> };
 /**
- * GET /api/admin/testplan: the answers by check and Automaattest's apart (none when the body has no `auto` object); "signedOut" for a 401 (the
- * session ended, R-i); or null when the server cannot give them: a 503, a 500 page (the session lookup failed), no connection.
+ * GET /api/admin/testplan: the answers by check, Automaattest's apart (none when the body has no `auto` object) and, for Automaattest's own
+ * session (Dim 07.11), the people's apart (none when the body has no `people` object); "signedOut" for a 401 (the session ended, R-i); or null
+ * when the server cannot give them: a 503, a 500 page (the session lookup failed), no connection.
  */
 async function readServer(): Promise<Read | "signedOut" | null> {
   try {
@@ -102,7 +106,11 @@ async function readServer(): Promise<Read | "signedOut" | null> {
     if (res.status === 401) return "signedOut";
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok || !isObject(body) || body.ok !== true || !isObject(body.answers)) return null;
-    return { answers: body.answers as Record<string, PageAnswer>, auto: isObject(body.auto) ? (body.auto as Record<string, PageAnswer>) : {} };
+    return {
+      answers: body.answers as Record<string, PageAnswer>,
+      auto: isObject(body.auto) ? (body.auto as Record<string, PageAnswer>) : {},
+      people: isObject(body.people) ? (body.people as Record<string, PageAnswer>) : {},
+    };
   } catch {
     return null;
   }
@@ -122,7 +130,7 @@ function browserStorage(): Storage | null {
 const forWho = (who: WhoChoice, item: TestItem, mine: "maria" | "dim" | null, autoIds: ReadonlySet<string>): boolean =>
   who === "all" || (who === "auto" ? autoIds.has(item.id) : mine === null || item.who === mine || item.who === "koos");
 const passes = (filter: Filter, st: CheckState | undefined): boolean => filter === "all" || st?.state === STATE_OF[filter];
-/** The checks' states as the counts read them (Dim 29.10, domain/testplan.ts stateIn): a person's answer, else Automaattest's (none on its own page). */
+/** The checks' states as the counts read them (Dim 29.10, domain/testplan.ts stateIn): a person's answer, else Automaattest's (on its own page too, Dim 07.11). */
 const statesOf = (plan: Plan, doc: AnswersDoc, buildAt: string): Map<string, CheckState> => new Map(plan.items.map((i) => [i.id, stateIn(doc, i, plan, buildAt)]));
 /** The checks a map gives a result (ok, bad, skip): what „Kes: Automaattest“ lists. A note on its own (Dim 30.10) lists none. */
 const resultIds = (answers: Record<string, { status: StoredStatus }>): Set<string> =>
@@ -172,20 +180,27 @@ export type TestPlanProps = {
   initial: Record<string, PageAnswer> | null;
   /** Automaattest's answers when the page was made, apart (Dim 25.10): a chip in each check's row (Dim 29.10), and the „Kes“ choice „Automaattest“. */
   auto?: Record<string, PageAnswer> | null;
+  /** For Automaattest's own session (Dim 07.11): the people's answers when the page was made, apart, which its states read first. */
+  people?: Record<string, PageAnswer> | null;
   /** The signed-in admin: the tester („Mina“ is Maria's or Dim's checks; "auto", Automaattest, and null, any other admin, see every check). */
   you: { name: string; tester: Tester | null };
   /** What a "deploy" mark of the plan reads as (server/testplan.ts testplanBuildAt). */
   buildAt: string;
 };
 
-export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: TestPlanProps) {
+export function TestPlan({ plan, initial, auto: initialAuto, people: initialPeople, you, buildAt }: TestPlanProps) {
   const t = adminEt.testplan;
   const uid = useId();
   const phone = usePhoneChip();
   const [answers, setAnswers] = useState(initial);
   /** Automaattest's answers as last read (never written by this page: its own session's are `answers`). */
   const [auto, setAuto] = useState<Record<string, PageAnswer>>(initialAuto ?? {});
-  /** This is Automaattest's own session: its answers are `answers` (the halves, the counts), and no chip repeats them. */
+  /** The people's answers as last read, for Automaattest's own session (Dim 07.11; never written by this page: its saves go into its own map). */
+  const [people, setPeople] = useState<Record<string, PageAnswer>>(initialPeople ?? {});
+  /**
+   * This is Automaattest's own session: its answers are `answers` (the halves, the note, the last line), and no chip repeats them; the states
+   * and the counts read the people's answers over them (Dim 07.11).
+   */
   const own = you.tester === "auto";
   const mine = you.tester === "maria" || you.tester === "dim" ? you.tester : null;
   const [reading, setReading] = useState(false);
@@ -231,8 +246,8 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
 
   /**
    * What a read made of: the server's answers (a read that began before a save came back is older than that save and is not taken), the session
-   * ended (the chip says so), or nothing could be read (what was read before stays on the page, without its numbers). Automaattest's answers are
-   * always taken: no save of this page changes them.
+   * ended (the chip says so), or nothing could be read (what was read before stays on the page, without its numbers). Automaattest's answers (and
+   * on its own page the people's, Dim 07.11) are always taken: no save of this page changes them.
    */
   const apply = useCallback((fresh: Read | "signedOut" | null, before: number) => {
     if (fresh === null) {
@@ -250,6 +265,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
     setUnread(false);
     if (writes.current === before) setAnswers(fresh.answers);
     setAuto(fresh.auto);
+    setPeople(fresh.people);
   }, []);
   /**
    * „Värskenda“: reads again, with the button and the chip saying it is busy. A read that went through sends what waits here too (she may have
@@ -324,9 +340,28 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   /** Automaattest's answers: its own session's are what it shows (`doc`, its presses included), anybody else's come apart (`auto`). */
   const autoDoc = useMemo(() => (own ? doc : docOf(auto, new Map())), [own, doc, auto]);
   const autoIds = useMemo(() => resultIds(autoDoc.answers), [autoDoc]);
-  /** What the states and the counts read (Dim 29.10): the person's answers, and Automaattest's under them; its own page, its own answers only. */
-  const counted = useMemo<AnswersDoc>(() => (own ? doc : { ...doc, auto: autoDoc.answers }), [own, doc, autoDoc]);
+  /**
+   * What the states and the counts read (Dim 29.10): the person's answers, and Automaattest's under them. On its own page (Dim 07.11) the same:
+   * the people's answers as read, and its own (its presses included) under them.
+   */
+  const counted = useMemo<AnswersDoc>(
+    () => (own ? { v: 1, answers: docOf(people, new Map()).answers, auto: doc.answers } : { ...doc, auto: autoDoc.answers }),
+    [own, people, doc, autoDoc],
+  );
   const states = useMemo(() => statesOf(plan, counted, buildAt), [plan, counted, buildAt]);
+  /**
+   * What each row shows: its state, and the answer its halves, its note, its last line and „Varasem vastus“ are of. On Maria's and Dim's page
+   * the shared state as it is (its answer a person's); on Automaattest's own page (Dim 07.11) the shared state with its own answer.
+   */
+  const rows = useMemo<ReadonlyMap<string, CheckState>>(() => {
+    if (!own) return states;
+    return new Map(
+      plan.items.map((item) => {
+        const its = checkState(item, answerOf(doc.answers, item.id), plan, buildAt);
+        return [item.id, { state: states.get(item.id)!.state, answer: its.answer, overtaken: its.overtaken }];
+      }),
+    );
+  }, [own, states, plan, doc, buildAt]);
   /**
    * Automaattest's answer to each check it answered, for its chip and its note line on Maria's and Dim's page: the answer, and whether a redo has
    * overtaken it (its note on its own, Dim 30.10, is here for the line; TestplanCheck draws it no chip).
@@ -353,10 +388,13 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
   /** The area that starts open: the first with a check still open when the page was made (it does not move as the tester answers). */
   const firstOpen = useMemo(() => {
     const start = docOf(initial, new Map());
-    const startStates = statesOf(plan, own ? start : { ...start, auto: docOf(initialAuto ?? null, new Map()).answers }, buildAt);
+    const startDoc: AnswersDoc = own
+      ? { v: 1, answers: docOf(initialPeople ?? null, new Map()).answers, auto: start.answers }
+      : { ...start, auto: docOf(initialAuto ?? null, new Map()).answers };
+    const startStates = statesOf(plan, startDoc, buildAt);
     const startIds = resultIds((own ? initial : initialAuto) ?? {});
     return plan.items.find((i) => forWho(view.who, i, mine, startIds) && startStates.get(i.id)?.state === "open")?.area ?? null;
-  }, [plan, initial, initialAuto, own, buildAt, view.who, mine]);
+  }, [plan, initial, initialAuto, initialPeople, own, buildAt, view.who, mine]);
   const hashArea = plan.items.find((i) => i.id === hash)?.area;
 
   /**
@@ -379,7 +417,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
 
   const press = (item: TestItem, status: Status) => {
     // (her note on its own, Dim 30.10, becomes the note of the answer pressed)
-    const note = typed.get(item.id) ?? states.get(item.id)?.answer?.note ?? "";
+    const note = typed.get(item.id) ?? rows.get(item.id)?.answer?.note ?? "";
     ensureOutbox().answer(item.id, status, note);
     keep(item.id);
     // (the note box is there under every check; only a Viga takes the focus into it: a pass must not raise a phone's keyboard)
@@ -541,7 +579,7 @@ export function TestPlan({ plan, initial, auto: initialAuto, you, buildAt }: Tes
                         key={item.id}
                         t={t}
                         item={item}
-                        st={states.get(item.id)!}
+                        st={rows.get(item.id)!}
                         auto={autoAnswers.get(item.id) ?? null}
                         unsent={local.has(item.id)}
                         typed={typed.get(item.id)}

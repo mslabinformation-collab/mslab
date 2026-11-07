@@ -557,10 +557,12 @@ describe("Automaattest's answers stay apart (Dim 25.10)", () => {
 
   // admin polish Part A (Dim 29.10, reversing D10's "never counts"): Automaattest's answer counts on the card where no person's answer stands; the
   // menu badges (ownFaults) are as they were
-  test("Maria's and Dim's Ülevaade cards take Automaattest's answer where no person's stands; their menu badges are as without it; its own card counts its answers over the plan", async () => {
+  test("Maria's and Dim's Ülevaade cards take Automaattest's answer where no person's stands; their menu badges are as without it; its own card counts the same over the plan (Dim 07.11)", async () => {
     await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "koos-1": { status: "bad" } }), T1, NAMES);
     const badges = [await ownFaultCount(db, MARIA), await ownFaultCount(db, DIM)];
     expect([await testplanCard(db, MARIA, NAMES), await testplanCard(db, DIM, NAMES), ...badges]).toEqual([{ open: 1, bad: 1 }, { open: 1, bad: 1 }, 1, 0]);
+    // (Dim 07.11) Automaattest's own card, with no answer of its own: Maria's OK and Viga count for it too (maria-2 and dim-1 open)
+    expect(await testplanCard(db, AUTO, NAMES)).toEqual({ open: 2, bad: 1 });
     await saveAnswers(db, AUTO, body({ "maria-1": { status: "bad" }, "maria-2": { status: "ok" }, "dim-1": { status: "bad" }, "koos-1": { status: "ok" } }), T2, NAMES);
     // Maria: maria-1 her OK (it wins), maria-2 Automaattest's OK, koos-1 her Viga (it wins); Dim: dim-1 Automaattest's Viga, koos-1 Maria's Viga
     expect(await testplanCard(db, MARIA, NAMES)).toEqual({ open: 0, bad: 1 });
@@ -572,6 +574,9 @@ describe("Automaattest's answers stay apart (Dim 25.10)", () => {
     await saveAnswers(db, MARIA, body({ "koos-1": { status: "clear" } }), T3, NAMES);
     expect(await testplanCard(db, MARIA, NAMES)).toBeNull();
     expect(await ownFaultCount(db, MARIA)).toBe(0);
+    // Automaattest's card: Maria's OK of maria-1 wins over its Viga, and dim-1's Viga is the one failed left; its badge still counts its own two
+    expect(await testplanCard(db, AUTO, NAMES)).toEqual({ open: 0, bad: 1 });
+    expect(await ownFaultCount(db, AUTO)).toBe(2);
   });
 
   test("its OK or Jäta vahele sends nothing, even with a note; its Viga's first note is the second message, once", async () => {
@@ -596,7 +601,7 @@ describe("Automaattest's answers stay apart (Dim 25.10)", () => {
     );
   });
 
-  test("pageView: Maria, Dim and any other admin get the shared answers, with Automaattest's apart in `auto`; Automaattest gets its own as its answers", () => {
+  test("pageView: Maria, Dim and any other admin get the shared answers, with Automaattest's apart in `auto`; Automaattest gets its own as its answers and (Dim 07.11) the shared ones apart in `people`", () => {
     const both: AnswersDoc = {
       v: 1,
       answers: { "maria-1": answer("ok", { note: "hea" }) },
@@ -605,9 +610,10 @@ describe("Automaattest's answers stay apart (Dim 25.10)", () => {
     const shared = { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), byName: "Maria" } };
     const auto = { "maria-1": { status: "bad", note: "nupp puudub", at: T1.toISOString(), byName: "Automaattest" } };
     for (const tester of ["maria", "dim", null] as const) expect(pageView(both, PLAN, NAMES, tester), String(tester)).toEqual({ answers: shared, auto });
-    expect(pageView(both, PLAN, NAMES, "auto")).toEqual({ answers: auto, auto });
+    expect(pageView(both, PLAN, NAMES, "auto")).toEqual({ answers: auto, auto, people: shared });
     expect(pageView(doc(), PLAN, NAMES, "maria")).toEqual({ answers: {}, auto: {} });
-    expect(JSON.stringify(pageView(both, PLAN, NAMES, "maria"))).not.toContain("@");
+    expect(pageView(doc(), PLAN, NAMES, "auto")).toEqual({ answers: {}, auto: {}, people: {} });
+    for (const tester of ["maria", "auto"] as const) expect(JSON.stringify(pageView(both, PLAN, NAMES, tester)), tester).not.toContain("@");
   });
 });
 

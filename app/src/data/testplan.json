@@ -2495,6 +2495,35 @@
       "markedAt": "2026-10-30T08:09:10.347Z"
     },
     {
+      "id": "testimine-automaattest-sama-seis",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Testimise leht automaattesti kontoga näitab sama seisu",
+      "href": "/admin/testimine",
+      "steps": [
+        "Ava oma kontoga halduses „Testimine“, vali „Kes“ juures „Kõik“ ja jäta meelde pealkirja all olev rida.",
+        "Jäta meelde ka „Olek“ nuppude arvud: „Avatud …“, „Viga …“ ja „Läbitud …“.",
+        "Logi teises brauseris sisse automaattesti kontoga ja ava halduses „Testimine“.",
+        "Vali seal „Kes“ juures „Mina“ ja võrdle rida ning „Olek“ arve enda omadega.",
+        "Ava mõni ala ja leia kontroll, mille on läbinud sina või Maria, aga millele automaattest pole vastanud.",
+        "Leia ka kontroll, millele automaattest ise vastas, ja vaata selle rida.",
+        "Ava automaattesti kontoga halduse avaleht ja vaata testimise kaarti."
+      ],
+      "expect": [
+        "Automaattesti rida ja „Olek“ arvud on samad mis sinu valikul „Kõik“.",
+        "Sinu või Maria läbitud kontrollil on roheline ✓, kuigi automaattesti ükski nupp pole vajutatud.",
+        "Automaattesti enda vastus on vajutatud ja kasti all on rida „Automaattest · … · …“.",
+        "Kui inimene vastas teisiti, näitab kontrolli ees olev märk inimese vastust.",
+        "Avalehe kaardil on sama palju avatud ja vigu kui sinu valikul „Kõik“."
+      ],
+      "why": "Automaattest peab nägema sama seisu kui Maria ja Dim, et ta ei kordaks juba läbitud kontrolle.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-sisselogimine-tagasi",
       "area": "haldus",
       "who": "dim",

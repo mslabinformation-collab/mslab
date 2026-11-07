@@ -249,7 +249,7 @@ export function checkState(item: TestItem, answer: StoredAnswer | undefined, pla
 
 /**
  * A check's state on Maria's and Dim's page and in their counts (admin polish Part A, Dim 29.10: „Automaattest counts for us“, which reverses
- * D10's "never counts" of 25.10): a person's answer (`person`, from the doc's `answers`: Maria's, Dim's or another admin's) while it stands,
+ * D10's "never counts" of 25.10), and since Dim 07.11 on Automaattest's own page and in its counts too: a person's answer (`person`, from the doc's `answers`: Maria's, Dim's or another admin's) while it stands,
  * Jäta vahele included (open); else Automaattest's (`auto`) while it stands, its OK done and its Viga failed (its Jäta vahele leaves the check
  * open). An answer a redo has overtaken counts for neither. `answer` and `overtaken` stay the person's, as checkState gives them: the two answer
  * halves, the note in the box, the last line and „Varasem vastus“ are a person's only, so a check Automaattest alone passed is done with `answer` null.
@@ -266,7 +266,7 @@ export function sharedState(item: TestItem, person: StoredAnswer | undefined, au
 
 /**
  * A check's state in a doc (Dim 29.10): sharedState of the person's answer in its `answers` and Automaattest's in its `auto` (none when the doc
- * has no `auto`: Automaattest's own numbers pass its map as `answers`). The one reading the page's states and planCounts share.
+ * has no `auto`). The one reading the page's states and planCounts share, for every tester's page and card (Automaattest's too, Dim 07.11).
  */
 export function stateIn(doc: AnswersDoc, item: TestItem, plan: TestPlan, buildAt: string): CheckState {
   return sharedState(item, answerOf(doc.answers, item.id), doc.auto ? answerOf(doc.auto, item.id) : undefined, plan, buildAt);
@@ -462,8 +462,8 @@ export function testerOf(email: string, adminNames: string | undefined): Tester 
  * to the checks of that tester and the shared ones ("koos"); null counts all. Each check is exactly one of done (an OK still valid), open (a
  * Jäta vahele too, piece 4c, Dim 29.10) or bad (a standing Viga), so done + open + bad = total; `redo` is the open ones that carry a person's
  * overtaken answer. A check's state is stateIn's (admin polish Part A, Dim 29.10): the person's answer in `answers`, else Automaattest's in
- * `auto`; a note on its own counts as nothing (Dim 30.10: the check is what it would be without it). Automaattest's own numbers are its map
- * passed as `answers`, with no `auto`.
+ * `auto`; a note on its own counts as nothing (Dim 30.10: the check is what it would be without it). Automaattest's own numbers are the same
+ * doc's, over the whole plan (`who` null; Dim 07.11: before, they were its map alone).
  */
 export function planCounts(
   plan: TestPlan,

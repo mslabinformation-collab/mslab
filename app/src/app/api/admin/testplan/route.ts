@@ -23,7 +23,8 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
  * (never the answerer's e-mail address), `you` is `{ name, tester }`, whose tester the page's „Kes“ choice „Mina“ follows (server/testplan.ts
  * testplanYou; the page's own copy comes with its HTML). A 401 is the page's signed-out state (admin UX pass piece 4c, R-i). Dim 25.10: `auto`
  * is Automaattest's answers, kept apart (a chip in each check's row, and since Dim 29.10 the check's state where no person's answer stands); for
- * Automaattest's own session `answers` are its own (server/testplan.ts pageView). When the answers cannot be read, 503 `{ ok: false, error:
+ * Automaattest's own session `answers` are its own, and (Dim 07.11) `people` the shared ones, for its states and numbers (server/testplan.ts
+ * pageView). When the answers cannot be read, 503 `{ ok: false, error:
  * "unavailable", plan, answers: null, you }`: the page still shows the plan and keeps its answers on the device. Never cached.
  */
 export const GET = withAdmin(async (_request, _ctx, { email }) => {
