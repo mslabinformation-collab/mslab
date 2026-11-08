@@ -23,8 +23,10 @@ const phone = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 84
  * admin-eelvaade.spec.ts (the draft preview, piece 3a Task 6) writes a draft of a seed course's title, which the admin course list calls „Avaldamata muudatused“ meanwhile.
  * And newsletter-campaigns.spec.ts (the simple newsletter, Task 5): its real send mails every confirmed subscriber there is (the ones other specs leave in the
  * database until the run's teardown among them), so it runs after them. (newsletter-race.spec.ts is not: it has a scratch database of its own.)
+ * So does admin-invoices-batch.spec.ts („Koosta {n} arvet“, admin UX pass B11): its press bills every paid payment without an invoice there is, and
+ * while the other specs run, theirs come and go under it (made after it counted them, removed with their invoices by their own clean-up).
  */
-const EDITS = /(admin-(edit|site|eelvaade)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts|[\\/]newsletter-campaigns\.spec\.ts)$/;
+const EDITS = /(admin-(edit|site|eelvaade|invoices-batch)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts|[\\/]newsletter-campaigns\.spec\.ts)$/;
 const ORDER = /order\.setup\.ts$/;
 /** The visual suite has its own config: playwright.visual.config.ts (npm run visual). */
 const VISUAL = /[\\/]visual[\\/]/;
