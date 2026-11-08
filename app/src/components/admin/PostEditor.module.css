@@ -46,8 +46,10 @@
   }
 }
 
+/* one column as wide as the card, never wider: its fields are not allowed to widen it (the empty cover below) */
 .post {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -57,6 +59,12 @@
   max-width: none;
   height: 220px;
   border-radius: 16px;
+}
+
+/* the empty area keeps SingleImage's 16:9, which at 220 px tall asks for 391 px of width: on a phone it takes the card's width instead (full test 08.11:
+   a new post, which has no cover yet, scrolled sideways at 390 px) */
+.cover [data-no-image] {
+  min-width: 0;
 }
 
 .body textarea {

@@ -1417,10 +1417,19 @@ test.describe("every editor at phone width", () => {
   test("no sideways scrolling, every control at least 44 px tall, no 'Tulekul'", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "390 px");
     await signIn(page, context, visitorIp);
-    // (a post's editor: the seed's first post; a new post is made at once now, piece 4b)
-    const post = await one((sql) => sql<{ id: number }[]>`select id from posts order by published_at desc, id desc limit 1`);
-    for (const path of ["/admin/avaleht", "/admin/praktika", "/admin/koolitaja", "/admin/uudised", `/admin/uudised/${post.id}`, "/admin/kampaania", "/admin/seaded"]) {
+    // a post's editor twice: a published post with its cover, and a new draft without one — „Lisa postitus +“ makes it at once (piece 4b), so its empty
+    // 220 px cover box is what a phone shows first (its 16:9 must not widen the card past the screen: full test 08.11). The draft's address names this
+    // project (`e2e-uudis-<project>-…`), so the afterEach removes it.
+    const post = await one((sql) => sql<{ id: number }[]>`select id from posts where published and cover_key <> '' order by published_at desc, id desc limit 1`);
+    const draftSlug = `${POST_SLUG_PREFIX}${info.project.name}-${unique()}`;
+    const draft = await one((sql) =>
+      sql<{ id: number }[]>`insert into posts (slug, title, excerpt, body, category, cover_key, published_at, published)
+        values (${draftSlug}, ${sql.json({ et: "Uus postitus" })}, ${sql.json({ et: "" })}, ${sql.json({ et: "" })}, ${sql.json({ et: "" })}, '', now(), false) returning id`,
+    );
+    for (const path of ["/admin/avaleht", "/admin/praktika", "/admin/koolitaja", "/admin/uudised", `/admin/uudised/${post.id}`, `/admin/uudised/${draft.id}`, "/admin/kampaania", "/admin/seaded"]) {
       await page.goto(path);
+      // (measured on the page as it stays, not on the first paint: the coverless draft's box widened the card only once the page was ready)
+      await adminReady(page);
       if (path === "/admin/avaleht") await page.locator("[data-slide]").first().getByRole("button", { name: /^Slaid 1/ }).click();
       expect(await noOverflow(page), path).toBe(true);
       await expect(page.getByText("Tulekul", { exact: true })).toHaveCount(0);

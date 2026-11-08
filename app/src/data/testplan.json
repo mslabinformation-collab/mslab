@@ -1644,6 +1644,29 @@
       "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
+      "id": "haldus-uudised-postitus-telefon",
+      "area": "haldus",
+      "who": "dim",
+      "device": "telefon",
+      "title": "Uus postitus telefonis",
+      "href": "/admin/uudised",
+      "steps": [
+        "Ava telefonis „Uudised“ ja vajuta „Lisa postitus +“.",
+        "Oota, kuni leht on laetud, ja libista postituse kaarti sõrmega vasakule ja paremale.",
+        "Vajuta kaardi all „Kustuta postitus“ ja „Jah, kustuta“."
+      ],
+      "expect": [
+        "Kaanepildi tühi ala „Pilti pole veel valitud.“ on kaardi laiune.",
+        "Leht ei liigu külgsuunas ja väljade paremad servad on ekraanil.",
+        "Pärast kustutamist näed „Postitus kustutatud.“."
+      ],
+      "why": "Uus postitus on alguses ilma kaanepildita ja Maria võib seda alustada telefonis.",
+      "risk": "low",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-uudised-mustand-eelvaade",
       "area": "haldus",
       "who": "maria",
