@@ -1,5 +1,6 @@
 import type { PaymentRow } from "@/db/queries/payments";
 import type { PaymentStatus } from "@/db/schema";
+import { paymentPartKind } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { isCheckReason, needsCheck, paymentMethodLabel, type CheckReason } from "@/domain/payments";
 import { adminEt } from "@/i18n/dict/admin";
@@ -62,7 +63,7 @@ export function PaymentLines({ rows, withWhat = false }: { rows: PaymentRow[]; w
             </span>
             <strong>{formatEUR(p.amountCents, "et")}</strong>
             <span>
-              {t.kind[p.kind]}
+              {t.kind[paymentPartKind(p)]}
               {withWhat ? ` · ${p.courseTitle ? pick(p.courseTitle, "et") : t.courseGone}` : ""}
             </span>
             {method && <span data-payment-method="">{method}</span>}

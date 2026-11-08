@@ -37,6 +37,8 @@ const row = (id: number, status: PaymentStatus, over: Partial<PaymentRow> = {}):
   courseSlug: "kulmumeistri-baaskoolitus",
   startsAt: null,
   emailClientId: null,
+  invoiceKind: null,
+  paymentChoice: "half",
   ...over,
 });
 
@@ -78,5 +80,24 @@ describe("a replaced order and a held payment's reason", () => {
     expect(tag[0].classList.contains(ui.muted)).toBe(true);
     expect(line(c, "MSLAB-M5").querySelector("[data-payment-check]")).toBeNull();
     expect(line(c, "MSLAB-M5").dataset.paymentStatus).toBe("replaced");
+  });
+});
+
+describe("what a payment paid (full test 08.11)", () => {
+  test("a whole sum is „Kogu summa“, as its invoice says: by its invoice's kind, else by its registration's choice; a half is „Ettemaks“", () => {
+    const c = lines([
+      row(6, "paid"),
+      row(7, "paid", { paymentChoice: "full" }),
+      row(8, "pending", { paymentChoice: "financing" }),
+      // a half registration's 100% invoice paid online (its payment is stored as a prepayment): the invoice's kind wins
+      row(9, "paid", { invoiceKind: "full" }),
+      row(10, "paid", { kind: "balance" }),
+      row(11, "paid", { kind: "ecourse", registrationId: null, paymentChoice: null }),
+      // a registration since deleted: no choice to go by
+      row(12, "paid", { registrationId: null, paymentChoice: null }),
+    ]);
+    // (the line: when, the sum, then the kind)
+    const kind = (n: number) => text(line(c, `MSLAB-M${n}`).children[2]);
+    expect([6, 7, 8, 9, 10, 11, 12].map(kind)).toEqual(["Ettemaks", "Kogu summa", "Kogu summa", "Kogu summa", "Ülejäänud", "E-koolitus", "Ettemaks"]);
   });
 });

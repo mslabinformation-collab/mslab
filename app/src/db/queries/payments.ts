@@ -2,8 +2,10 @@ import { and, asc, count, desc, eq, gt, ilike, inArray, isNotNull, isNull, lte, 
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { ContractSnapshot } from "@/domain/contract";
 import { FINANCING_ATTEMPT_MS, isHirePurchase } from "@/domain/financing";
+import type { InvoiceKind } from "@/domain/invoice";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
+import type { PaymentChoice } from "@/domain/registration";
 import { SEAT_HOLD_MS } from "@/domain/sessions";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
@@ -361,9 +363,19 @@ export async function holdsEnded(db: Db, since: Date, now: Date): Promise<number
 /**
  * A payment as the lists show it: with its course's title and slug, its session's start, and `emailClientId`, the student whose account has the
  * payment's e-mail address (06.11 polish board 5: an e-course attempt that was never paid carries no client of its own — the client is written when
- * the payment succeeds — so Maksed finds her by the address the shop would find her by); null without such an account.
+ * the payment succeeds — so Maksed finds her by the address the shop would find her by); null without such an account. `invoiceKind`: the kind
+ * of the invoice it made or paid (invoices.payment_id), else of the unpaid one it was started for when that is its registration's and of its sum
+ * (server/invoices.ts linkedKind's rule), else null; `paymentChoice` its registration's (null without one). Together they name what it paid
+ * (domain/invoice.ts paymentPartKind: a whole sum is „Kogu summa“, full test 08.11).
  */
-export type PaymentRow = Payment & { courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null; emailClientId: number | null };
+export type PaymentRow = Payment & {
+  courseTitle: I18n | null;
+  courseSlug: string | null;
+  startsAt: Date | null;
+  emailClientId: number | null;
+  invoiceKind: InvoiceKind | null;
+  paymentChoice: PaymentChoice | null;
+};
 
 /**
  * "Maksed"'s pills, as the words of the address (?staatus=): every payment, or one pill. Each payment is under exactly one pill (admin UX pass
@@ -402,6 +414,12 @@ const rowFields = {
   startsAt: courseSessions.startsAt,
   // (clients.email is stored lower-cased and unique, payments.email normalized the same way; lower() on both keeps an older row in step)
   emailClientId: sql<number | null>`(select ${clients.id} from ${clients} where lower(${clients.email}) = lower(${payments.email}) limit 1)`.mapWith((v) => (v === null ? null : Number(v))),
+  // (invoices_payment is unique: one invoice a payment at most)
+  invoiceKind: sql<InvoiceKind | null>`coalesce(
+    (select i.kind from invoices i where i.payment_id = ${payments.id}),
+    (select i.kind from invoices i where i.id = ${payments.invoiceId} and i.registration_id is not distinct from ${payments.registrationId} and i.amount_cents = ${payments.amountCents})
+  )`,
+  paymentChoice: registrations.paymentChoice,
 };
 
 function rowQuery(db: Db) {
@@ -413,12 +431,14 @@ function rowQuery(db: Db) {
     .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
 }
 
-const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null; emailClientId: number | null }): PaymentRow => ({
+const toRow = (r: Omit<PaymentRow, keyof Payment> & { payment: Payment }): PaymentRow => ({
   ...r.payment,
   courseTitle: r.courseTitle,
   courseSlug: r.courseSlug,
   startsAt: r.startsAt,
   emailClientId: r.emailClientId,
+  invoiceKind: r.invoiceKind,
+  paymentChoice: r.paymentChoice,
 });
 
 /**

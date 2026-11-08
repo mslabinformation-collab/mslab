@@ -376,6 +376,15 @@ export function invoiceKindOfPayment(p: { kind: "prepayment" | "balance" | "ecou
 }
 
 /**
+ * What an online payment paid, as Maksed and the drawers name it (full test 08.11: a whole sum paid online said „Ettemaks“ while its invoice says
+ * „Kogu summa (100%)“): the kind of its invoice (db/queries/payments.ts PaymentRow's invoiceKind), else the kind the invoice it makes when paid
+ * will have (invoiceKindOfPayment, by its registration's payment choice; none: a registration since deleted, or an e-course).
+ */
+export function paymentPartKind(p: { kind: "prepayment" | "balance" | "ecourse"; invoiceKind: InvoiceKind | null; paymentChoice: PaymentChoice | null }): InvoiceKind {
+  return p.invoiceKind ?? invoiceKindOfPayment(p, p.paymentChoice === null ? null : { paymentChoice: p.paymentChoice });
+}
+
+/**
  * "MS-LAB-arve-MSL2026-001.pdf": the download's file name (Content-Disposition). The prefix is Maria's free text, so a character outside
  * letters, digits, dot, underscore and hyphen (a quote, a line break, a letter a header cannot carry) becomes a hyphen.
  */

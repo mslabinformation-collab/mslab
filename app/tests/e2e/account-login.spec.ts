@@ -599,7 +599,12 @@ test("in Russian: the page speaks Russian, the code opens /ru/konto and a first 
   const [client] = await onLocalDb((sql) => sql<{ locale: string }[]>`select locale from clients where email = ${email}`);
   expect(client.locale, "the account speaks the language of the page it was made on").toBe("ru");
 
-  // the button of a Russian e-mail (l=ru), used already or too old: the Russian login page says so
+  // the button of a Russian e-mail (l=ru), used already or too old, in this signed-in browser: on to the account, no notice (full test 08.11)
+  await page.goto(`/api/konto/verify?t=${"e2e".repeat(15)}&l=ru`);
+  await expect(page).toHaveURL(/\/ru\/konto$/);
+  await expect(page.locator(DASHBOARD)).toBeVisible();
+  // signed out (the client cookie gone): the Russian login page says so
+  await page.context().clearCookies({ name: "__Host-mslab_client" });
   await page.goto(`/api/konto/verify?t=${"e2e".repeat(15)}&l=ru`);
   await expect(page).toHaveURL(/\/ru\/konto\/sisene$/);
   await expect(page.locator("[data-login-banner='link']")).toHaveText("Ссылка устарела или уже использована. Отправьте новый код.");

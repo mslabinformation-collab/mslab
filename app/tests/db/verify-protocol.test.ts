@@ -45,3 +45,11 @@ test("without a protocol, or with a p that is no id, it opens Minu koolitused; a
   expect((await open(verifyLink(SITE, token, "et", 42))).headers.get("location")).toBe(`${SITE}/konto/sisene#viga=link`);
   expect((await open(verifyLink(SITE, await login(), "et", 0))).headers.get("location")).toBe(`${SITE}/konto#sisse`);
 });
+
+test("a used protocol link in a browser that is signed in opens the protocol, the id without the login mark (full test 08.11)", async () => {
+  const token = await login();
+  const res = await open(verifyLink(SITE, token, "et", 42));
+  const cookie = res.headers.getSetCookie().find((c) => c.startsWith("__Host-mslab_client="))!.split(";")[0];
+  const again = (await handleAccountApi(new Request(verifyLink(SITE, token, "et", 42), { headers: { cookie } }), deps()))!;
+  expect(again.headers.get("location")).toBe(`${SITE}/konto/protokoll#id=42`);
+});

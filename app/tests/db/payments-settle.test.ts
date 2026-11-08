@@ -79,6 +79,19 @@ describe("PAID", () => {
     expect(m.mails()[0].text).not.toContain("Sinu koht on kinnitatud");
     expect(m.mails()[0].text).toContain("Kogu summa on tasutud.");
     expect(m.mails()[1].text).toContain("Registreering on kinnitatud ja täielikult tasutud.");
+    expect(m.mails()[1].text).toContain("Makse: Ülejäänud");
+  });
+
+  test("Maria's „Makse“ line is what it paid (full test 08.11): a whole-sum registration's payment is „Kogu summa“, a half one's „Ettemaks“", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const whole = await pendingPayment(db, await registrationOn(db, c, { paymentChoice: "full" }), { amountCents: 35000 });
+    const half = await pendingPayment(db, await registrationOn(db, c, { email: "mari@example.test" }));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    for (const p of [whole, half]) await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    const maria = m.mails().filter((x) => x.subject.startsWith("Uus makse"));
+    expect(maria.map((x) => x.text.match(/^Makse: .*$/m)?.[0])).toEqual(["Makse: Kogu summa", "Makse: Ettemaks"]);
   });
 
   test("two paid rows of one registration whose sum is over its price: both are recorded as today, and Maria gets ONE 'Ülemakse' alert (the backstop of the double-payment rule)", async () => {

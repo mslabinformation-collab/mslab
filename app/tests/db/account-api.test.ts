@@ -454,6 +454,23 @@ describe("verify", () => {
     expect(again.headers.get("location")).toBe(`${SITE}/konto/sisene#viga=link`);
   });
 
+  test("a used link in a browser that is signed in goes on to the account, without the login mark and without new cookies (full test 08.11)", async () => {
+    const { deps } = setup();
+    const { devLink } = await (await call(deps, "/login", { body: { email: EMAIL } })).json();
+    const t = tokenOf(devLink);
+    const cookie = sessionCookie(await call(deps, `/verify?t=${t}`))!;
+    const again = await call(deps, `/verify?t=${t}`, { cookie });
+    expect(again.status).toBe(303);
+    expect(again.headers.get("location")).toBe(`${SITE}/konto`);
+    expect(again.headers.getSetCookie()).toEqual([]);
+    // the signed-in client's language, not the link's
+    await db.update(clients).set({ locale: "ru" });
+    expect((await call(deps, `/verify?t=${t}&l=et`, { cookie })).headers.get("location")).toBe(`${SITE}/ru/konto`);
+    // signed out (or a session another login ended): the login page's notice, as before
+    expect((await call(deps, "/logout", { method: "POST", cookie })).status).toBe(200);
+    expect((await call(deps, `/verify?t=${t}`, { cookie })).headers.get("location")).toBe(`${SITE}/konto/sisene#viga=link`);
+  });
+
   test("a client who uses Russian lands on /ru/konto", async () => {
     const { deps } = setup();
     await db.insert(clients).values({ email: EMAIL, locale: "ru" });

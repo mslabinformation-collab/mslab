@@ -520,7 +520,8 @@ export const adminEt = {
     status: { pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil", replaced: "Asendatud" },
     // a payment the bank took back after it was paid (stored as failed, with its paid_at): the owner's word for a bank reversal
     statusVoided: "Tühistatud pangas",
-    kind: { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" },
+    // what a payment paid (domain/invoice.ts paymentPartKind): the kind of its invoice — a whole sum is „Kogu summa“, as its invoice says (full test 08.11)
+    kind: { prepayment: "Ettemaks", full: "Kogu summa", balance: "Ülejäänud", ecourse: "E-koolitus" },
     // a held payment, or one the bank voided after it was paid
     check: "Kontrolli Montonios",
     // a held payment's check reason (payments.check_reason, domain/payments.ts CheckReason), said in place of `check` (B22, README §5; P-8)

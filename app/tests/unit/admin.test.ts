@@ -195,7 +195,8 @@ describe("Maksed (phase 2b, spec 8): Maria's words", () => {
     // replaced (B22, README §5): „Asendatud“, with no filter of its own (P-8: under „Kõik“ only)
     expect(t.status).toEqual({ pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil", replaced: "Asendatud" });
     expect(t.statusVoided).toBe("Tühistatud pangas");
-    expect(t.kind).toEqual({ prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" });
+    // a whole sum is „Kogu summa“, as its invoice says (domain/invoice.ts paymentPartKind; full test 08.11)
+    expect(t.kind).toEqual({ prepayment: "Ettemaks", full: "Kogu summa", balance: "Ülejäänud", ecourse: "E-koolitus" });
     expect(t.check).toBe("Kontrolli Montonios");
     // a held payment's check reason, said in place of „Kontrolli Montonios“ (B22, README §5)
     expect(t.reason).toEqual({ double: "Topeltmakse — tagasta" });

@@ -12,6 +12,7 @@ import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { pagePayments, paymentCounts, type PaymentFilter, type PaymentRow } from "@/db/queries/payments";
+import { paymentPartKind } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { parsePage, parseSearch } from "@/domain/paging";
 import { needsCheck } from "@/domain/payments";
@@ -183,7 +184,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
                       <td data-label={t.col.what} className={styles.whatCell}>
                         <span className={styles.course}>{course}</span>
                         <span className={`${ui.muted} ${styles.sub}`}>
-                          <span data-payment-kind="">{t.kind[p.kind]}</span>
+                          <span data-payment-kind="">{t.kind[paymentPartKind(p)]}</span>
                           {p.startsAt && ` · ${formatDate(p.startsAt, "et")}`}
                         </span>
                       </td>

@@ -2,6 +2,7 @@
 // They are written in Estonian for Maria and never shown to visitors, so they are not in the site dictionaries.
 
 import type { PaymentKind } from "@/db/schema";
+import type { InvoiceKind } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { euroBare } from "@/domain/money-text";
 import { paymentMethodLabel } from "@/domain/payments";
@@ -185,7 +186,8 @@ export function changeRequestSummary(
 // Maria's texts carry no English Montonio code (the owner's decision of 09.10): the way of paying is domain/payments.ts paymentMethodLabel, a
 // refund and a void are told in words, and the money that has arrived is "Laekunud summa" (the payer's own mail says "Tasutud").
 
-const PAYMENT_KIND: Record<PaymentKind, string> = { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" };
+// (a whole sum is „Kogu summa“, as its invoice and Maksed say: PaymentNotice.part, full test 08.11)
+const PAYMENT_KIND: Record<InvoiceKind, string> = { prepayment: "Ettemaks", full: "Kogu summa", balance: "Ülejäänud", ecourse: "E-koolitus" };
 
 /**
  * What a payment was for, the {mis} of "Uus makse: {nimi}, {mis}, {summa}": "Kulmumeistri baaskoolitus, 14.11.2026" (a registration's session
@@ -198,6 +200,8 @@ const paidFor = (kind: PaymentKind, course: string, startsAt: Date | null): stri
 /** A paid payment, for Maria's notice. `outcome`: what it did (settle.ts). `restCents`: left to pay on the registration afterwards. */
 export type PaymentNotice = {
   kind: PaymentKind;
+  /** What it paid, as its invoice names it (domain/invoice.ts paymentPartKind): a whole sum is „Kogu summa“. Left out: its kind's word. */
+  part?: InvoiceKind;
   name: string;
   email: string;
   amountCents: number;
@@ -240,7 +244,7 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
     text: body(
       subject,
       [
-        ["Makse", PAYMENT_KIND[p.kind]],
+        ["Makse", PAYMENT_KIND[p.part ?? p.kind]],
         ["Summa", amount],
         ["Koolitus", ecourse ? p.course : what],
         ["Maksja", p.name],

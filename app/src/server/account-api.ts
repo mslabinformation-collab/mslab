@@ -420,20 +420,30 @@ function redirect(url: URL, target: string, cookies: string[] = []): Response {
  * `l` is the language of the page the login was asked from
  * (absent: Estonian; anything but "et" / "ru" is ignored): an account this link creates gets it, and the login page of that
  * language is where the link goes when it fails. A token that is unknown, used, expired or dead goes to
- * /konto/sisene#viga=link (/ru/konto/sisene#viga=link); a database failure to #viga=server (the link is still usable then,
+ * /konto/sisene#viga=link (/ru/konto/sisene#viga=link) — unless this browser is signed in already (the link opened a second time, or after
+ * a login with the code): then it goes on to the account (or the protocol) in the signed-in client's language, without the login mark, as
+ * the session is the one this browser has (full test 08.11). A database failure goes to #viga=server (the link is still usable then,
  * as for the admin). A prefetch or prerender goes to the login page without touching the token.
  */
 async function verify(request: Request, url: URL, deps: AccountDeps): Promise<Response> {
   const page = pageLocaleOf(url.searchParams.get("l"));
   const login = page === "ru" ? "/ru/konto/sisene" : "/konto/sisene";
   if (isPrefetch(request.headers)) return redirect(url, login);
+  // the protocol mail's button: its protocol, the id after the login mark (components/account/useAccount.ts takes the mark and keeps the id)
+  const protocolId = parseRowId(url.searchParams.get("p") ?? "");
+  const target = (locale: string, mark: boolean) => {
+    const home = locale === "ru" ? "/ru/konto" : "/konto";
+    const fragment = [mark ? LOGIN_MARK : "", protocolId === null ? "" : `id=${protocolId}`].filter(Boolean).join("&");
+    return `${home}${protocolId === null ? "" : "/protokoll"}${fragment ? `#${fragment}` : ""}`;
+  };
   try {
     const session = await redeemClientLink(deps.db, url.searchParams.get("t") ?? "", deps.now, page);
-    if (!session) return redirect(url, `${login}#viga=link`);
-    const home = session.locale === "ru" ? "/ru/konto" : "/konto";
-    // the protocol mail's button: its protocol, the id after the login mark (components/account/useAccount.ts takes the mark and keeps the id)
-    const protocolId = parseRowId(url.searchParams.get("p") ?? "");
-    return redirect(url, protocolId === null ? `${home}#${LOGIN_MARK}` : `${home}/protokoll#${LOGIN_MARK}&id=${protocolId}`, sessionCookies(session.sessionRaw));
+    if (session) return redirect(url, target(session.locale, true), sessionCookies(session.sessionRaw));
+    const raw = cookieValue(request.headers.get("cookie"), CLIENT_COOKIE);
+    const signedIn = await getClientSession(deps.db, raw, deps.now);
+    if (!signedIn || signedIn.ended) return redirect(url, `${login}#viga=link`);
+    const [client] = await deps.db.select({ locale: clients.locale }).from(clients).where(eq(clients.id, signedIn.clientId)).limit(1);
+    return redirect(url, target(client?.locale ?? page, false), signedIn.renewed && raw ? sessionCookies(raw) : []);
   } catch (e) {
     logFailure("[account] verify failed", e); // never the message: it holds the token hash and the e-mail
     return redirect(url, `${login}#viga=server`);

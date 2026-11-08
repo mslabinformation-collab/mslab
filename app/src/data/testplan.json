@@ -2998,7 +2998,7 @@
         "Üleval on „Maksed“ (valitud) ja „Arved“; „Arved“ avab arvete lehe.",
         "Otsing leiab makse maksja nime, e-posti või Montonio id järgi.",
         "Iga filter näitab arvu, mitu makset selle all otsinguga on.",
-        "Real on maksja Proov 1, koolitus, „Ettemaks“, summa, selle all makseviis, ja staatus „Makstud“.",
+        "Real on maksja Proov 1, koolitus, „Ettemaks“ (50%) või „Kogu summa“ (100%), summa, makseviis ja „Makstud“.",
         "Rea tühja koha vajutus avab registreeringu või õpilase; maksmata e-koolitus sama e-postiga õpilase, muidu on all „Kontot pole“.",
         "„Montonios ↗“ avab uues aknas Montonio Partner Systemi ja ütleb „Montonio id kopeeritud.“.",
         "Selle numbri kleepimine Montonio tellimuste otsingusse leiab sama makse.",
@@ -3007,8 +3007,32 @@
       "why": "Maksete loend näitab iga Montonio makset ja viib makse juurde.",
       "risk": "high",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-11-07T11:32:35.242Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-maksed-kogu-summa",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Kogu summa makse nimi",
+      "href": "/admin/arved",
+      "steps": [
+        "Ava „Arved“ ja leia makstud arve, mille real on „Kogu summa (100%)“ ja makseviis Montonio.",
+        "Ava „Maksed“ ja otsi sama maksja nime järgi.",
+        "Vajuta selle makse rea tühjale kohale ja vaata registreeringu aknas „Laekunud“ all.",
+        "Otsi ka üks 50% makse, mille arvel on „Ettemaks 50%“."
+      ],
+      "expect": [
+        "Selle makse real on koolituse all „Kogu summa“, mitte „Ettemaks“.",
+        "Registreeringu aknas „Laekunud“ all on sama sõna „Kogu summa“.",
+        "50% makse real on endiselt „Ettemaks“."
+      ],
+      "why": "Makse nimi peab olema sama mis arvel, et Maria ei arvaks täismakset ettemaksuks.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -4098,7 +4122,7 @@
         "Vajuta konto ümmargust menüünuppu ja „Logi välja“.",
         "Küsi lehel „Logi sisse“ uus kood; „E-post“ on oma aadress, kuhu lisad enne @-märki +proov1.",
         "Vajuta kirjas nuppu „Logi sisse“.",
-        "Vajuta sama nuppu kirjas teist korda."
+        "Logi uuesti välja ja vajuta sama nuppu kirjas teist korda."
       ],
       "expect": [
         "Esimene vajutus avab „Minu koolitused“ ilma koodita.",
@@ -4106,7 +4130,32 @@
       ],
       "why": "Paljud õpilased vajutavad koodi asemel nuppu.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "konto-link-sisse-logituna",
+      "area": "konto",
+      "who": "dim",
+      "device": "any",
+      "title": "Kasutatud link sisse logituna",
+      "href": "/konto/sisene",
+      "steps": [
+        "Küsi lehel „Logi sisse“ Proov 1 aadressile uus kood ja vajuta kirjas nuppu „Logi sisse“.",
+        "Vajuta samas brauseris sama nuppu kirjas teist korda.",
+        "Vajuta konto ümmargust menüünuppu ja „Logi välja“, siis vajuta sama nuppu kirjas kolmandat korda."
+      ],
+      "expect": [
+        "Esimene vajutus avab „Minu koolitused“.",
+        "Teine vajutus avab kohe „Minu koolitused“, ilma sisselogimise lehe ja teateta.",
+        "Välja logituna ütleb kolmas vajutus „Link on aegunud või juba kasutatud. Saada uus kood.“."
+      ],
+      "why": "Sisse logitud õpilane ei pea nägema sisselogimise lehte, kui ta vajutab vana kirja nuppu.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-kood-vale",

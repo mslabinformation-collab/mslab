@@ -35,6 +35,12 @@ describe("Maria's notice of a payment", () => {
     expect(s.text).toContain("Admin: https://mslab.example/admin");
   });
 
+  test("„Makse“ is what it paid: a whole sum is „Kogu summa“ (its invoice's kind, full test 08.11); without one, the kind's word", () => {
+    expect(paymentSummary({ ...NOTICE, part: "full" }, ADMIN).text).toContain("Makse: Kogu summa");
+    expect(paymentSummary({ ...NOTICE, part: "prepayment" }, ADMIN).text).toContain("Makse: Ettemaks");
+    expect(paymentSummary({ ...NOTICE, kind: "balance" }, ADMIN).text).toContain("Makse: Ülejäänud");
+  });
+
   test("the outcomes: fully paid, the money only recorded, the course full (D2), an e-course opened, or not", () => {
     const note = (over: Partial<PaymentNotice>) => paymentSummary({ ...NOTICE, ...over }, ADMIN);
     expect(note({ kind: "balance", restCents: 0 }).text).toContain("Registreering on kinnitatud ja täielikult tasutud.");

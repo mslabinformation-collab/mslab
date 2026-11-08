@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
 import { attachOrder, failPayment, insertPayment, isConnectionError, listPaymentsOf, paymentByReference, paymentContext, releaseHold, releaseHoldLocked, replaceOlderOrders } from "@/db/queries/payments";
-import { clients, courses, payments, registrations } from "@/db/schema";
+import { clients, courses, invoices, payments, registrations } from "@/db/schema";
 import { contactCourse, pendingPayment, registrationOn, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -155,6 +155,44 @@ describe("listPaymentsOf: the drawers' online payments (replaced orders hidden, 
     expect(ids(await listPaymentsOf(db, { clientId: client.id }))).toEqual([open.id]);
     expect(ids(await listPaymentsOf(db, { registrationId: r.id, includeReplaced: true }))).toEqual([open.id, replaced.id]);
     expect(ids(await listPaymentsOf(db, { clientId: client.id, includeReplaced: true }))).toEqual([open.id, replaced.id]);
+  });
+
+  test("each row carries its invoice's kind and its registration's payment choice, what its „Liik“ is named by (full test 08.11)", async () => {
+    const c = await contactCourse(db);
+    const half = await registrationOn(db, c);
+    const whole = await registrationOn(db, c, { paymentChoice: "full", email: "mari@example.test" });
+    const AT = new Date(NOW.getTime() - 30 * MIN);
+    const invoice = async (n: number, kind: "prepayment" | "full", registrationId: number, amountCents: number, link: { paymentId?: number }) =>
+      (
+        await db
+          .insert(invoices)
+          .values({
+            number: `MSL2026-00${n}`, prefix: "MSL", year: 2026, seq: n, kind, registrationId, courseId: c.course.id, amountCents, vatRate: null, status: link.paymentId ? "paid" : "unpaid", ...link,
+            line: { course: "K", session: "", part: "" },
+            seller: { company: "MS LAB OÜ", registryCode: "12345678", address: "", vatNumber: "", receiver: "MS LAB OÜ", iban: "EE000000000000000000", bank: "Pank" },
+            buyer: { name: "Kati Tamm", email: "kati@example.test", address: "", company: "", companyCode: "", companyAddress: "" },
+            issuedAt: AT,
+          })
+          .returning()
+      )[0];
+    // the born-paid invoice of a paid payment (invoices.payment_id)
+    const paid = await pendingPayment(db, half, {}, AT);
+    await invoice(1, "prepayment", half.id, 17500, { paymentId: paid.id });
+    // a 100% invoice of the half registration, its payment started for it (payments.invoice_id) and still open
+    const forFull = await invoice(2, "full", half.id, 35000, {});
+    const started = await pendingPayment(db, half, { amountCents: 35000 }, new Date(AT.getTime() + MIN));
+    await db.update(payments).set({ invoiceId: forFull.id }).where(eq(payments.id, started.id));
+    // started for an invoice of another sum: not that invoice's
+    const other = await pendingPayment(db, half, { amountCents: 100 }, new Date(AT.getTime() + 2 * MIN));
+    await db.update(payments).set({ invoiceId: forFull.id }).where(eq(payments.id, other.id));
+    // no invoice yet: the whole-sum registration's choice
+    const plain = await pendingPayment(db, whole, { amountCents: 35000 }, new Date(AT.getTime() + 3 * MIN));
+    const rows = new Map([...(await listPaymentsOf(db, { registrationId: half.id })), ...(await listPaymentsOf(db, { registrationId: whole.id }))].map((p) => [p.id, p]));
+    const of = (id: number) => ({ invoiceKind: rows.get(id)!.invoiceKind, paymentChoice: rows.get(id)!.paymentChoice });
+    expect(of(paid.id)).toEqual({ invoiceKind: "prepayment", paymentChoice: "half" });
+    expect(of(started.id)).toEqual({ invoiceKind: "full", paymentChoice: "half" });
+    expect(of(other.id)).toEqual({ invoiceKind: null, paymentChoice: "half" });
+    expect(of(plain.id)).toEqual({ invoiceKind: null, paymentChoice: "full" });
   });
 });
 

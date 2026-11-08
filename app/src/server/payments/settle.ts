@@ -8,7 +8,7 @@ import { courses, payments, registrations, type Contract, type Invoice, type Pay
 import { contractStudent } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { isHirePurchase } from "@/domain/financing";
-import { invoiceFileName } from "@/domain/invoice";
+import { invoiceFileName, invoiceKindOfPayment } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
@@ -351,7 +351,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration, won.invoice);
     if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant, won.invoice, won.contract);
     try {
-      await tellMaria(deps, won.payment, outcomeOf(won));
+      await tellMaria(deps, won.payment, { ...outcomeOf(won), part: won.invoice?.kind ?? invoiceKindOfPayment(won.payment, won.registration?.registration ?? null) });
     } finally {
       // the cart's "Soovin MS LABi uudiseid ja pakkumisi": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
       // and a failing notice to Maria does not skip it
@@ -709,8 +709,8 @@ async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
   }
 }
 
-/** Maria's "Uus makse: …" (mail and Telegram). */
-async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until">): Promise<void> {
+/** Maria's "Uus makse: …" (mail and Telegram); its „Makse“ line is what the payment paid (`part`: its invoice's kind, else the one it would have). */
+async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until" | "part">): Promise<void> {
   const ctx = await contextOf(deps, p.id);
   const s = paymentSummary(
     { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
