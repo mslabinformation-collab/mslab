@@ -41,7 +41,10 @@ const SCROLL_IDLE_MS = 150;
  */
 function useReadCard(sections: SectionEntry[], mark: (id: string) => void): () => void {
   const list = useRef(sections);
-  list.current = sections;
+  // the latest entries for the scroll handler, kept after each render (not during it); declared before the effect that reads them
+  useEffect(() => {
+    list.current = sections;
+  });
   const held = useRef<"no" | "moving" | "settled">("no");
   const idle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ids = sections.map((s) => s.id).join("|");

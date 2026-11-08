@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "./NavProgress.module.css";
 
 /** The line shows only for a page that takes longer than this: a quick answer shows nothing (06.11 polish board 6). */
@@ -35,36 +35,33 @@ export function movesTo(link: HTMLAnchorElement, e: Pick<MouseEvent, "button" | 
 export function NavProgress() {
   const pathname = usePathname();
   const search = useSearchParams();
-  const route = `${pathname}?${search.toString()}`;
+  // the new address is in: the line goes at once (a new key starts the line afresh, its timers cleared as the old one unmounts)
+  return <ProgressLine key={`${pathname}?${search.toString()}`} />;
+}
+
+/** The line for one address: it waits for a click on a link that moves this tab, shows after PROGRESS_AFTER_MS and gives up after GIVE_UP_MS. */
+function ProgressLine() {
   const [shown, setShown] = useState(false);
-  const timers = useRef<{ show?: ReturnType<typeof setTimeout>; stop?: ReturnType<typeof setTimeout> }>({});
 
   useEffect(() => {
-    const t = timers.current;
+    let show: ReturnType<typeof setTimeout> | undefined;
+    let stop: ReturnType<typeof setTimeout> | undefined;
     const onClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       const link = e.target.closest("a");
       if (!link || movesTo(link, e, window.location) === null) return;
-      clearTimeout(t.show);
-      clearTimeout(t.stop);
-      t.show = setTimeout(() => setShown(true), PROGRESS_AFTER_MS);
-      t.stop = setTimeout(() => setShown(false), GIVE_UP_MS);
+      clearTimeout(show);
+      clearTimeout(stop);
+      show = setTimeout(() => setShown(true), PROGRESS_AFTER_MS);
+      stop = setTimeout(() => setShown(false), GIVE_UP_MS);
     };
     document.addEventListener("click", onClick);
     return () => {
       document.removeEventListener("click", onClick);
-      clearTimeout(t.show);
-      clearTimeout(t.stop);
+      clearTimeout(show);
+      clearTimeout(stop);
     };
   }, []);
-
-  // the new address is in: the line goes at once
-  useEffect(() => {
-    const t = timers.current;
-    clearTimeout(t.show);
-    clearTimeout(t.stop);
-    setShown(false);
-  }, [route]);
 
   return shown ? <span className={styles.line} aria-hidden="true" data-nav-progress="" /> : null;
 }
