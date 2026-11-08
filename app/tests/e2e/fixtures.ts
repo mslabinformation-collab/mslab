@@ -2,11 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { test } from "@playwright/test";
 import postgres from "postgres";
 import { courseSeeds, pageSeeds } from "../../src/db/seed-data";
 import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
+import { answeredSocket } from "./db-socket";
 import { assertLocalDatabases, isLocalDbUrl } from "./local-db";
 import { localStore } from "../../src/server/media-local";
 import { PROD_BUILD, TARGET } from "./target";
@@ -26,6 +28,33 @@ export const LOCAL_FIXTURES = !baseURL || /^https?:\/\/(localhost|127\.0\.0\.1|\
 
 export const FIXTURE_NOTE = "e2e-fixture:seats";
 const DB_URL = process.env.E2E_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/mslab";
+/** Where DB_URL's server is, for the socket connect() opens itself (an IPv6 address without its brackets). */
+const DB_HOST = new URL(DB_URL).hostname.replace(/^\[(.*)\]$/, "$1");
+const DB_PORT = Number(new URL(DB_URL).port || 5432);
+/**
+ * A try that heard nothing from the database is not the running test's own time, as the wait for a lock is not (holdLocalLock's callers): the test's
+ * timeout grows by it. Outside a test (global setup and teardown) there is no timeout to grow; a test without one keeps none.
+ */
+function notTheTestsTime(waitedMs: number): void {
+  let info;
+  try {
+    info = test.info();
+  } catch {
+    return;
+  }
+  if (info.timeout > 0) info.setTimeout(info.timeout + waitedMs);
+}
+
+/**
+ * connect()'s options: one connection, and its socket from answeredSocket (postgres.js takes a `socket` function and starts its protocol on what it
+ * returns, `host` and `port` for its error messages; its types do not name the option, so the options are a value of their own, not a literal).
+ */
+const ANSWERED = {
+  max: 1,
+  connect_timeout: 20,
+  onnotice: () => {},
+  socket: async () => Object.assign(await answeredSocket(DB_HOST, DB_PORT, { onRetry: notTheTestsTime }), { host: DB_HOST, port: DB_PORT }),
+};
 
 export const FIXTURES = {
   full: { slug: "kulmude-lami", city: "Pärnu", leave: 0 },
@@ -37,11 +66,12 @@ export const FIXTURES = {
  * Against the local production build, closing a connection also marks the cached pages stale (prod-build.ts): what
  * was written here must show on the next page view, as it does under `next dev`. `marksPages: false` for rows no public page
  * shows (the account tests' clients, access, terms): a mark makes every page render again, which the cache tests running
- * beside them have to wait out, so it is not made for nothing.
+ * beside them have to wait out, so it is not made for nothing. Its socket is one the database has answered (db-socket.ts answeredSocket: a connection
+ * the machine's relay takes and leaves unanswered is tried again with a new one, and the wait is added to the test's time).
  */
 const connect = (marksPages = true) => {
   if (!isLocalDbUrl(DB_URL)) assertLocalDatabases([{ source: "E2E_DATABASE_URL", url: DB_URL }]);
-  const sql = postgres(DB_URL, { max: 1, connect_timeout: 20, onnotice: () => {} });
+  const sql = postgres(DB_URL, ANSWERED);
   if (!PROD_BUILD || !marksPages) return sql;
   const end = sql.end.bind(sql);
   return Object.assign(sql, { end: async (...args: Parameters<typeof end>) => { await end(...args); revalidateLocalPages(); } });

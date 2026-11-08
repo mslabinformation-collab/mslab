@@ -265,6 +265,9 @@ test("the admin's Maksed: tabs, search, pills with counts, the row link, „Mont
   await expect(lines).not.toContainText("paymentInitiation");
 });
 
+/** How long „Montonio id kopeeritud.“ stays on the screen (components/admin/MontonioLink.tsx COPIED_MS). */
+const COPIED_MS = 4_000;
+
 test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copies the order id at the same press; a refused clipboard changes nothing but the line (Dim 22.10)", async ({ page, context, visitorIp }, info) => {
   const email = await fresh("partner", info);
   const f = await insertAccountFixtures(email, { cards: ["awaiting"], name: "E2E Partner" });
@@ -278,6 +281,10 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   });
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await signInAsAdmin(page, context, visitorIp, created);
+  // „Montonio id kopeeritud.“ goes by itself after COPIED_MS, and on a busy machine the new tab can take longer than that to open and load (the line
+  // was gone once before the test looked). So the page's clock is the test's: installed before the page loads, held still from the first press on,
+  // and run on by COPIED_MS to see the line go.
+  await page.clock.install();
   await page.goto(`/admin/maksed?otsi=${encodeURIComponent(email)}`);
   const link = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-link]`);
   await expect(link).toHaveText("Montonios ↗");
@@ -289,6 +296,7 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   const line = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-copied]`);
   await expect(line).toHaveText("");
   await adminReady(page);
+  await page.clock.pauseAt(Date.now() + 1_000);
 
   const [tab] = await Promise.all([context.waitForEvent("page"), link.click()]);
   await tab.waitForLoadState();
@@ -299,7 +307,8 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(paid.providerUuid);
   expect(page.url()).toContain("/admin/maksed"); // (the press did not also open the row)
   await tab.close();
-  await expect(line).toHaveText("", { timeout: 10_000 }); // (the line goes by itself)
+  await page.clock.runFor(COPIED_MS);
+  await expect(line).toHaveText(""); // (the line goes by itself)
 
   // a middle-click opens the tab too, and copies as well
   await page.bringToFront();
@@ -310,7 +319,8 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   await page.bringToFront();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(paid.providerUuid);
   await middle.close();
-  await expect(line).toHaveText("", { timeout: 10_000 });
+  await page.clock.runFor(COPIED_MS);
+  await expect(line).toHaveText("");
 
   // a clipboard that refuses: the tab still opens, and no line says what did not happen
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("NotAllowedError")) } }));

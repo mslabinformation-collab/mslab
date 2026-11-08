@@ -3,11 +3,17 @@ import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, snapshotRows } from "./fixtures
 import { expect } from "./test";
 
 // What the invoice specs share (invoices Tasks 5 and 7): the seller card and the bank details a test writes into the shared settings, the
-// registration drawer's „Arved" block and the checks of a screen's width. admin-invoices.spec.ts (Maria's screens one by one), invoices.spec.ts
-// (the whole path, Maria → the student → Maria) and invoices-race.spec.ts (real Postgres) use them.
+// registration drawer's „Arved" block and the checks of a screen's width. admin-invoices.spec.ts (Maria's screens one by one),
+// admin-invoices-batch.spec.ts („Koosta {n} arvet“), invoices.spec.ts (the whole path, Maria → the student → Maria) and invoices-race.spec.ts
+// (real Postgres) use them.
 
 /** The seller of every test invoice: `seller->>'company'` finds the invoices of a test that died before its clean-up. */
 export const INVOICE_COMPANY = "E2E Arvete OÜ";
+
+/** The invoices the test's seller card made (seller E2E Arvete OÜ), in the order of their numbers, as stored. */
+export const madeInvoices = () =>
+  onLocalDb((sql) => sql<{ number: string; paymentId: number | null; status: string; paidMethod: string | null; sentAt: Date | null }[]>`
+    select number, payment_id as "paymentId", status, paid_method as "paidMethod", sent_at as "sentAt" from invoices where seller->>'company' = ${INVOICE_COMPANY} order by seq`, { marksPages: false });
 /** The numbers the tests' seller card gives (prefix E2E: the tests' own series, never MSL; three digits or more: the account specs write high ones). */
 export const INVOICE_NUMBER = /^E2E\d{4}-\d{3,}$/;
 /** The bank fields of Seaded → Maksmine (the prepayment setting) a test writes. */
