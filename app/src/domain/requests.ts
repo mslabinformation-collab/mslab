@@ -56,7 +56,7 @@ function telOf(phone: string): string | null {
  * `city` are the session's, or the registration's session. A change request has no `locale` of its own: the page puts the registration's there.
  *
  * - Individuaal: telefon · koolitus · Soovitud periood: … · Vajab abi modelli leidmisel · Soovib kontot
- * - Praktika: telefon · Pakett: … · Läbitud koolitus: … · Sobivad ajad: …
+ * - Praktika: telefon · Pakett: … · Linn: … · Läbitud koolitus: … · Sobivad ajad: …
  * - Ootenimekiri: koolitus · Toimumine: 14.11.2026 10:00, Pärnu
  * - Muutmine: Soovib tühistada | Soovib muuta aega · koolitus, 14.11.2026 Pärnu
  * - Kontakt: nothing; the e-learning interest: Ostu ei lõpetanud · ostukorvist
@@ -88,6 +88,7 @@ export function requestFactParts(kind: RequestKind, payload: RequestPayload): Fa
       parts = [
         phone(),
         labelled(t.fields.package, line(payload.package)),
+        labelled(t.fields.city, city),
         labelled(t.fields.completedCourse, line(payload.course)),
         labelled(t.fields.times, line(payload.times)),
       ];

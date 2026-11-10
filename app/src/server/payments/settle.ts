@@ -353,7 +353,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     try {
       await tellMaria(deps, won.payment, { ...outcomeOf(won), part: won.invoice?.kind ?? invoiceKindOfPayment(won.payment, won.registration?.registration ?? null) });
     } finally {
-      // the cart's "Soovin MS LABi uudiseid ja pakkumisi": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
+      // the cart's "Soovin MS LABi sooduspakkumisi ja uudiskirju saada": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
       // and a failing notice to Maria does not skip it
       if (won.payment.kind === "ecourse" && won.payment.newsletter)
         await subscribeLater({ db: deps.db, env: deps.env, ip: null, siteUrl: deps.siteUrl, now: deps.now, later: deps.later }, "ecourse", { email: won.payment.email, locale: won.payment.locale });

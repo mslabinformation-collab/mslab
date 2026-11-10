@@ -97,8 +97,8 @@ export default async function ContactPage({ params }: Props) {
         person={{ name: trainer.name, photo: mediaUrl(trainer.contactPhotoKey) }}
         t={{
           eyebrow: d.home.contactEyebrow,
-          title: d.home.contactTitle,
-          lead: d.home.contactLead,
+          title: d.forms.contactBlockTitle,
+          lead: d.forms.contactBlockLead,
           reply: d.home.contactReply,
           name: d.forms.name,
           email: d.forms.email,

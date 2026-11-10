@@ -57,7 +57,7 @@ test("the newsletter consent ticked on a group registration: a subscriber follow
   await page.locator("[data-session]:not([aria-disabled='true'])").first().click();
   await page.getByLabel("Nimi").fill("Test Õpilane"); await page.getByLabel("E-post", { exact: true }).fill(addr); await page.getByLabel("Telefon").fill("+3725555555");
   await page.getByRole("radio", { name: /100%/ }).check(); await page.getByLabel(/tingimustega/).check();
-  await page.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
+  await page.getByLabel("Soovin MS LABi sooduspakkumisi ja uudiskirju saada").check();
   await page.getByLabel(/Sõnum/).fill("Kood E2E");
   await page.getByRole("button", { name: "Registreeru" }).click();
   await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
@@ -268,7 +268,7 @@ test.describe("contact page", () => {
     await expect(form).not.toContainText("tulekul");
     await expect(form.getByRole("radio", { name: "100% kohe" })).toBeChecked();
     await expect(form.getByLabel("Loo mulle kohe konto MS LAB keskkonda")).toBeVisible();
-    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked(); // phase 2c: unticked
+    await expect(form.getByLabel("Soovin MS LABi sooduspakkumisi ja uudiskirju saada")).not.toBeChecked(); // phase 2c: unticked
     await expect(form.getByLabel(/Sõnum/)).toBeVisible(); // the optional message, for the group too (the welcome code goes there)
     await expect(form.getByText("Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist.")).toBeVisible();
     // Submitting without a date and fields shows errors instead of a success screen, and keeps what was chosen.
@@ -503,7 +503,7 @@ test.describe("cart (/ostukorv)", () => {
     await expect(form.getByLabel("Nimi")).toHaveAttribute("aria-invalid", "true");
     await form.getByLabel("Nimi").fill("Test Ostja");
     await form.getByLabel("E-post").fill(addr);
-    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked();
+    await expect(form.getByLabel("Soovin MS LABi sooduspakkumisi ja uudiskirju saada")).not.toBeChecked();
     await form.getByLabel(/tingimustega/).check();
     await form.getByRole("button", { name: "Maksa 190 €" }).click();
     await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);

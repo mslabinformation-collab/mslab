@@ -6,7 +6,7 @@ import { smallTargets } from "./targets";
 import { submitsForms, test, expect } from "./test";
 
 // Phase 2a Task 8: "Minu andmed" (/konto/andmed). Name and phone (both optional) and the language with one "Salvesta" ("Salvestatud."
-// in a live region; a language change saves, then opens the same tab in that language); "Saada mulle uudiskirja", a switch that saves
+// in a live region; a language change saves, then opens the same tab in that language); "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", a switch that saves
 // at once (a confirmed subscriber, or none); at the very bottom "Kustuta konto" with one inline confirmation step: the account goes,
 // the registrations stay with Maria (the admin still sees them), the browser is signed out and forgets the account, and the home page
 // says "Konto on kustutatud.". Every client is a sample address (`e2e-client-details-…@example.test`, never mailed), written straight
@@ -114,7 +114,7 @@ test("Minu andmed: the e-mail, name and phone (optional) and the language with o
   }
 });
 
-test("Saada mulle uudiskirja: a switch that saves at once with its own line — on is a confirmed subscriber, off removes it; a failure is put back", async ({ page }, info) => {
+test("Soovin MS LABi sooduspakkumisi ja uudiskirju saada: a switch that saves at once with its own line — on is a confirmed subscriber, off removes it; a failure is put back", async ({ page }, info) => {
   submitsForms();
   const email = address("newsletter", info.project.name);
   await removeClientRows(email);
@@ -122,13 +122,13 @@ test("Saada mulle uudiskirja: a switch that saves at once with its own line — 
   await signInAsClient(page, email);
   await page.goto("/konto/andmed");
 
-  const sw = page.getByRole("switch", { name: "Saada mulle uudiskirja" });
+  const sw = page.getByRole("switch", { name: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" });
   const line = page.locator("[data-details-newsletter-status]");
   await expect(sw).not.toBeChecked();
   // the whole row is the target
   const row = page.locator("label", { has: sw });
   expect(await height(row)).toBeGreaterThanOrEqual(44);
-  await row.getByText("Saada mulle uudiskirja").click();
+  await row.getByText("Soovin MS LABi sooduspakkumisi ja uudiskirju saada").click();
   await expect(sw).toBeChecked();
   await expect(line).toHaveText("Salvestatud.");
   await expect.poll(() => storedNewsletter(email)).toEqual({ email, confirmed: true, clientId });
@@ -165,7 +165,7 @@ test("Kustuta konto: quiet, at the very bottom; an inline step (Tühista gives t
   await expect.poll(() => kept(page)).toMatchObject({ email, favourites: "[]" });
   await page.goto("/konto/andmed");
   // the newsletter on: a subscriber row the deletion must take away
-  await page.getByRole("switch", { name: "Saada mulle uudiskirja" }).click();
+  await page.getByRole("switch", { name: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" }).click();
   await expect.poll(() => storedNewsletter(email)).toMatchObject({ email, confirmed: true });
 
   // quiet text at the very bottom: the last control of the page's content

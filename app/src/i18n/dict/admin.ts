@@ -1297,6 +1297,7 @@ export const adminEt = {
     fields: {
       completedCourse: "Läbitud koolitus",
       package: "Pakett",
+      city: "Linn",
       times: "Sobivad ajad",
       period: "Soovitud periood",
       session: "Toimumine",

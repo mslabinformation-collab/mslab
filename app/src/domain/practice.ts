@@ -5,3 +5,6 @@ export function parsePackage(value: string | string[] | null | undefined, codes:
   const v = (Array.isArray(value) ? (value[0] ?? "") : (value ?? "")).trim().toUpperCase();
   return v ? (codes.find((c) => c.toUpperCase() === v) ?? null) : null;
 }
+
+/** The cities where practice is offered; the student picks one in the request (stored and shown as written here). */
+export const PRACTICE_CITIES = ["Pärnu", "Tallinn"] as const;

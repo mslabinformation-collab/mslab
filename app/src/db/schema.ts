@@ -368,7 +368,7 @@ export const payments = pgTable(
     providerUuid: text("provider_uuid"),
     method: text("method").notNull().default(""),
     bank: text("bank").notNull().default(""),
-    /** E-course: "Soovin MS LABi uudiseid ja pakkumisi" was ticked in the cart; acted on when paid. */
+    /** E-course: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" was ticked in the cart; acted on when paid. */
     newsletter: boolean("newsletter").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     paidAt: timestamp("paid_at", { withTimezone: true }),

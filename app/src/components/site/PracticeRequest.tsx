@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
-import { parsePackage } from "@/domain/practice";
+import { PRACTICE_CITIES, parsePackage } from "@/domain/practice";
 import { fill } from "@/i18n/format";
 import type { Locale } from "@/i18n/locales";
 import { useUrlQuery } from "@/lib/url-query";
@@ -17,6 +17,10 @@ export type PracticeRequestTexts = {
   packageLabel: string;
   packageRequired: string;
   durationLabel: string;
+  cityLabel: string;
+  cityRequired: string;
+  /** The label of each of PRACTICE_CITIES (the stored value is the key). */
+  cities: Record<string, string>;
   name: string;
   email: string;
   phone: string;
@@ -36,15 +40,15 @@ export type PracticeRequestTexts = {
 };
 
 type Text = "name" | "email" | "phone" | "course" | "times";
-type Field = "package" | Text | "form";
+type Field = "package" | "city" | Text | "form";
 type Errors = Partial<Record<Field, string>>;
 type State = { status: "idle" } | { status: "sent" } | { status: "error"; errors: Errors };
 
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
-const FIELD_ORDER: Field[] = ["package", "name", "email", "phone", "course", "times"];
+const FIELD_ORDER: Field[] = ["package", "city", "name", "email", "phone", "course", "times"];
 
 /**
- * Practice request (prototype B `#registration`, R1): package, name, e-mail, phone, completed course, preferred times
+ * Practice request (prototype B `#registration`, R1): package, city (Pärnu or Tallinn, the student picks), name, e-mail, phone, completed course, preferred times
  * → submitPractice (stored as a `practice` request). It asks for a time; Maria confirms it, nothing is booked.
  *
  * The package follows ?pakett (the home and panel "Registreeru" links, Back/Forward); picking one here writes it
@@ -61,6 +65,7 @@ export function PracticeRequest({ packages, locale, t }: { packages: PracticeOpt
     setSeen(fromUrl);
     setPkg(fromUrl);
   }
+  const [city, setCity] = useState<string | null>(null);
   const [values, setValues] = useState({ name: "", email: "", phone: "", course: "", times: "" });
   const sentRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +78,7 @@ export function PracticeRequest({ packages, locale, t }: { packages: PracticeOpt
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
         else if (f === "email") errors.email = t.errorEmail;
         else if (f === "package") errors.package = t.packageRequired;
+        else if (f === "city") errors.city = t.cityRequired;
         else errors[f as Field] = t.errorRequired;
       }
       if (Object.keys(errors).length === 0) errors.form = t.errorGeneric;
@@ -116,6 +122,7 @@ export function PracticeRequest({ packages, locale, t }: { packages: PracticeOpt
 
   const errors: Errors = state.status === "error" ? { ...state.errors } : {};
   if (pkg) delete errors.package;
+  if (city) delete errors.city;
   const err = (f: Field) =>
     errors[f] ? (
       <span id={`${id}-${f}-error`} className={styles.error}>
@@ -182,6 +189,28 @@ export function PracticeRequest({ packages, locale, t }: { packages: PracticeOpt
             ))}
           </div>
           {err("package")}
+        </fieldset>
+
+        <fieldset
+          className={`${styles.packages} ${styles.wide}`}
+          role="radiogroup"
+          aria-labelledby={`${id}-city-label`}
+          aria-required="true"
+          aria-invalid={errors.city ? true : undefined}
+          aria-describedby={errors.city ? `${id}-city-error` : undefined}
+        >
+          <legend id={`${id}-city-label`} className={styles.legend}>
+            {t.cityLabel}
+          </legend>
+          <div className={styles.options}>
+            {PRACTICE_CITIES.map((c, i) => (
+              <label key={c} className={styles.option}>
+                <input id={i === 0 ? `${id}-city` : undefined} type="radio" name="city" value={c} checked={city === c} onChange={() => setCity(c)} />
+                <span className={styles.optionName}>{t.cities[c] ?? c}</span>
+              </label>
+            ))}
+          </div>
+          {err("city")}
         </fieldset>
 
         <div className={styles.field}>

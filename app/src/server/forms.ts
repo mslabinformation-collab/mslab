@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PRACTICE_CITIES } from "@/domain/practice";
 
 // Public form schemas (zod) and their FormData parsing. Every form posts FormData to a server action in
 // actions/public.ts; the action parses it here first, so nothing reaches rate limiting or the database unchecked.
@@ -74,7 +75,7 @@ export const groupRegistrationFormSchema = z.object({
   courseSessionId: id,
   ...contactCourseFields,
   paymentChoice,
-  /** "Soovin MS LABi uudiseid ja pakkumisi" (phase 2c): ticked, the newsletter's own sign-up follows the registration. */
+  /** "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" (phase 2c): ticked, the newsletter's own sign-up follows the registration. */
   wantsNewsletter: flag,
   /** The optional "Sõnum" (phase 2c): the welcome code is written there. */
   message: z.string().trim().max(MAX.message).default(""),
@@ -117,6 +118,7 @@ export const practiceSchema = z.object({
   name: line(MAX.name),
   email,
   phone,
+  city: z.enum(PRACTICE_CITIES),
   course: optionalLine(MAX.period),
   times: text(MAX.message),
   locale,
@@ -195,12 +197,12 @@ export const parseIndividual = (fd: FormData) =>
     preferredPeriod: ["period", "required"],
   });
 
-/** Cart "let me know". Fields: course (slug), email, newsletter ("Soovin MS LABi uudiseid ja pakkumisi", phase 2c), locale. */
+/** Cart "let me know". Fields: course (slug), email, newsletter ("Soovin MS LABi sooduspakkumisi ja uudiskirju saada", phase 2c), locale. */
 export const parsePurchaseInterest = (fd: FormData) =>
   parseForm(purchaseInterestSchema, fd, { ...same("course", "email", "locale"), wantsNewsletter: "newsletter" }, slugPlacement);
 
 /**
- * The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi uudiseid ja pakkumisi"),
+ * The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi sooduspakkumisi ja uudiskirju saada"),
  * contractVersion (the e-course contract's version the cart showed, contracts R6), method (the way to pay, instalments §4: a value the cart
  * cannot send is form "invalid"), locale.
  */
@@ -211,9 +213,9 @@ export const parseEcoursePurchase = (fd: FormData) =>
     method: ["form", "invalid"],
   });
 
-/** Practice request. Fields: package, name, email, phone, course (optional), times, locale. */
-export const parsePractice = (fd: FormData) => parseForm(practiceSchema, fd, same("package", "name", "email", "phone", "course", "times", "locale"));
+/** Practice request. Fields: package, name, email, phone, city (Pärnu or Tallinn), course (optional), times, locale. */
+export const parsePractice = (fd: FormData) => parseForm(practiceSchema, fd, same("package", "name", "email", "phone", "city", "course", "times", "locale"));
 
-/** Waitlist for a full session. Fields: session, name, email, newsletter ("Soovin MS LABi uudiseid ja pakkumisi", phase 2c), locale. */
+/** Waitlist for a full session. Fields: session, name, email, newsletter ("Soovin MS LABi sooduspakkumisi ja uudiskirju saada", phase 2c), locale. */
 export const parseWaitlist = (fd: FormData) =>
   parseForm(waitlistSchema, fd, { ...same("session", "name", "email", "locale"), wantsNewsletter: "newsletter" }, { session: ["form", "invalid"] });
