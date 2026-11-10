@@ -105,9 +105,3 @@
   transform: scale(1.04);
 }
 
-@media (max-width: 860px) {
-  .track {
-    --visible: 2;
-  }
-}
-

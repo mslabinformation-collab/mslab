@@ -102,6 +102,22 @@ test.describe("e-learning page", () => {
     await expect(page.locator("[data-trainer-card]").getByRole("link")).toHaveAttribute("href", "/koolitaja");
   });
 
+  test("trainer card: on a phone the portrait stands in the middle of the card, not at its left (Maria 10.11)", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "the phone's one-column card");
+    await page.goto("/koolitused/kulmude-lami");
+    const card = page.locator("[data-trainer-card]");
+    await card.scrollIntoViewIfNeeded();
+    const { card: c, photo: p } = await card.evaluate((el) => {
+      const box = (e: Element) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.x, w: r.width };
+      };
+      return { card: box(el), photo: box(el.firstElementChild!) };
+    });
+    expect(p.w).toBeGreaterThan(200);
+    expect(Math.abs(p.x - c.x - (c.x + c.w - (p.x + p.w)))).toBeLessThan(2);
+  });
+
   test("includes list and modules visible but locked, not openable (P8)", async ({ page }) => {
     await page.goto("/koolitused/kulmumeistri-e-koolitus");
     const inc = page.locator("[data-includes]");
@@ -307,22 +323,37 @@ test.describe("contact page", () => {
 });
 
 test.describe("both types", () => {
-  test("share: Web Share API when present, otherwise copy link + toast (P4)", async ({ page, context }) => {
+  test("share: a computer copies the link + toast; a touch device opens the share sheet, a refused share copies (P4, Maria 10.11)", async ({ page, context, isMobile }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.addInitScript(() => { Object.defineProperty(navigator, "share", { value: undefined, configurable: true }); });
-    await page.goto("/koolitused/kulmude-lami");
-    await page.getByRole("button", { name: "Jaga koolitust" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Koolituse link kopeeritud." })).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/koolitused\/kulmude-lami$/);
-
+    // the browser has a share sheet in both projects (as Chrome on Windows does): it records what it was given, or refuses when told to
     await page.addInitScript(() => {
-      Object.defineProperty(navigator, "share", { value: async (d: ShareData) => { (window as unknown as { shared: ShareData }).shared = d; }, configurable: true });
+      const w = window as unknown as { shared?: ShareData; refuse?: boolean };
+      Object.defineProperty(navigator, "share", {
+        value: async (d: ShareData) => {
+          if (w.refuse) throw new DOMException("Permission denied", "NotAllowedError");
+          w.shared = d;
+        },
+        configurable: true,
+      });
     });
-    await page.reload();
+    await page.goto("/koolitused/kulmude-lami");
+    const copied = page.getByRole("status").filter({ hasText: "Koolituse link kopeeritud." });
+    const shared = () => page.evaluate(() => (window as unknown as { shared?: ShareData }).shared);
     await page.getByRole("button", { name: "Jaga koolitust" }).click();
-    const shared = await page.evaluate(() => (window as unknown as { shared?: ShareData }).shared);
-    expect(shared?.url).toMatch(/\/koolitused\/kulmude-lami$/);
-    expect(shared?.title).toBe("Kulmude LAMI");
+    if (!isMobile) {
+      await expect(copied).toBeVisible();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/koolitused\/kulmude-lami$/);
+      expect(await shared()).toBeUndefined();
+      return;
+    }
+    await expect.poll(async () => (await shared())?.url).toMatch(/\/koolitused\/kulmude-lami$/);
+    expect((await shared())?.title).toBe("Kulmude LAMI");
+    await expect(copied).toHaveCount(0);
+
+    await page.evaluate(() => { (window as unknown as { refuse: boolean }).refuse = true; });
+    await page.getByRole("button", { name: "Jaga koolitust" }).click();
+    await expect(copied).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/koolitused\/kulmude-lami$/);
   });
 
   test("favourite toggles, says so, and is remembered in this browser across a reload and in Russian (P6)", async ({ page }) => {

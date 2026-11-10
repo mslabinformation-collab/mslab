@@ -64,6 +64,18 @@
   grid-column: 1 / -1;
 }
 
+/* „Kontaktifoto“ under the portrait: its picture small and round, as the site shows it by the contact forms (Maria 10.11) */
+.contactPhoto {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--iced);
+}
+
+.contactPhoto [data-current-image] {
+  width: 96px;
+  border-radius: 50%;
+}
+
 /* the portrait picture on top of its column: FocalPoint's picker (a click there sets the point), then the point's fields and the crop previews */
 .picture [data-focal-point] > [data-focal-pick] {
   order: -1;

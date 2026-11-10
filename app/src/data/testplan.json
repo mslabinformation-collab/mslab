@@ -188,11 +188,14 @@
         "„Vali kuupäev ja linn“ all on tulevased kuupäevad, igaühel vabade kohtade arv.",
         "„Individuaalkoolitus“ peidab kuupäevad ja küsib „Soovitud periood või kuupäev“.",
         "Allpool on „Koolitusest“, „Pärast koolitust oskad“, „Koolitus sisaldab“ ja „Õppekava“.",
+        "Telefonis on ploki „Sinu koolitaja“ portree kaardi keskel, mitte vasakus servas.",
         "Lõpus on plokk „Sulle võiksid huvi pakkuda“."
       ],
       "why": "Siin teeb õpilane otsuse ja registreerub.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-ekursus-leht",
@@ -280,23 +283,27 @@
       "id": "avalik-jaga-lemmik",
       "area": "avalik",
       "who": "maria",
-      "device": "telefon",
+      "device": "any",
       "title": "Jaga ja lisa lemmikutesse",
       "href": "/koolitused",
       "steps": [
         "Ava mõni koolitus, kui sa pole õpilasena sisse logitud.",
         "Vajuta „Jaga koolitust“.",
+        "Arvutis ava uus vahekaart ja kleebi link aadressiribale.",
         "Vajuta „Lisa lemmikutesse“.",
         "Laadi leht uuesti."
       ],
       "expect": [
-        "„Jaga koolitust“ avab telefoni jagamise akna või ütleb „Koolituse link kopeeritud.“.",
+        "Telefonis ja tahvlis avab „Jaga koolitust“ seadme jagamise akna.",
+        "Arvutis ütleb „Jaga koolitust“ all „Koolituse link kopeeritud.“ ja kleebitud link avab sama koolituse.",
         "Süda täitub ja nupp ütleb „Lemmikutes“.",
         "Pärast uuesti laadimist on koolitus ikka „Lemmikutes“."
       ],
       "why": "Lemmik ja jagamine aitavad õpilasel koolituse juurde tagasi tulla.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-kalender",
@@ -358,11 +365,14 @@
       "expect": [
         "Üleval on portree, nimi, tutvustus ja numbrid.",
         "Allpool on „Koolitaja tööd“, „Koolituskeskuse lugu“ ja „Koolitaja teekond“.",
+        "„Koolitaja tööd“ näitab korraga kolm pilti arvutis, tahvlis ja telefonis.",
         "„Vaata koolitusi“ avab koolituste loendi."
       ],
       "why": "Õpilane tahab teada, kes teda õpetab.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudised",
@@ -447,13 +457,16 @@
       ],
       "expect": [
         "Jaluses on uudiskirja plokk „MS LABi kirjad“, lingid ja kontaktandmed.",
+        "Jaluse lause on „Õpilase edu on meie eesmärk.“, ilma sõnadeta „Õpi. Arene. Loo.“.",
         "„Privaatsus“ avab privaatsusteksti.",
         "„Õppetingimused“ avab õppetingimuste teksti.",
         "„Võta ühendust ↗“ avab lehe „Alustame vestlusest.“."
       ],
       "why": "Jalus on igal lehel ja viib õigusteksti ning kontakti juurde.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri",
@@ -1763,6 +1776,31 @@
       "markedAt": "2026-10-27T02:01:40.147Z"
     },
     {
+      "id": "haldus-koolitaja-kontaktifoto",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Kontaktifoto",
+      "href": "/admin/koolitaja",
+      "steps": [
+        "Ava „Koolitaja“ ja vaata kaardil „Portree ja tutvustus“ portree all olevat välja „Kontaktifoto“.",
+        "Lae väljale „Kontaktifoto“ mõni teine pilt ja oota olekut „Mustand salvestatud“.",
+        "Vajuta ribal „Eelvaade ↗“ ja ava eelvaates „Kontakt“, siis mõni koolituse leht.",
+        "Tule tagasi, vajuta ribal „Loobu muudatustest“ ja kinnita."
+      ],
+      "expect": [
+        "Väljal on praegune väike ümar pilt ja vihje „Väike ümar pilt kontaktivormi ja koolituse lehe juures.“.",
+        "Riba on „Avaldamata muudatused: 1 · Kontaktifoto. Avalikul lehel on näha eelmine versioon.“.",
+        "Eelvaates on uus ümar pilt kontaktivormi juures ja koolituse lehel rea „Koolitaja“ nime ees.",
+        "Pärast loobumist on väljal endine pilt ja avalikul lehel ei muutunud midagi."
+      ],
+      "why": "Maria vahetab kontaktivormi väikese pildi ise.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-koolitaja-galerii-tais",
       "area": "haldus",
       "who": "dim",
@@ -2826,7 +2864,7 @@
         "Vali „Individuaalkoolitus“."
       ],
       "expect": [
-        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega.“.",
+        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega“, lõpus punkti pole.",
         "„Loe lepingut“ avab lepingu teksti vormi sees ja leht jääb samaks.",
         "Tekst on Seadetes kirjutatud kontaktkoolituse leping, enne selle kirjutamist „Õppetingimused“.",
         "Kui tekstis on {toimumine}, on enne kuupäeva valimist seal „(vali toimumine)“.",
@@ -2836,8 +2874,8 @@
       "why": "Õpilane loeb lepingu enne, kui ta selle ruuduga kinnitab.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-leping-muutunud",
@@ -4612,7 +4650,7 @@
         "Vajuta ruudu all „Loe lepingut“."
       ],
       "expect": [
-        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega.“.",
+        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega“, lõpus punkti pole.",
         "„Loe lepingut“ avab ostukorvis Seadetes kirjutatud e-koolituse tingimused.",
         "Kui tekstis on {nimi} või {hind}, on seal sinu kirjutatud nimi ja koolituse hind.",
         "Linki „Õppetingimused“ ostukorvis enam pole."
@@ -4620,8 +4658,8 @@
       "why": "Ostja loeb e-koolituse lepingu enne maksmist.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost",

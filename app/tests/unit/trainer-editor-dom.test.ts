@@ -32,6 +32,7 @@ vi.mock("@/lib/shrink-image", () => ({ shrinkImage: async (file: File) => file, 
 const TRAINER: TrainerDraft = {
   portraitKey: "img/portree.jpg",
   portraitPos: "50% 30%",
+  contactPhotoKey: "img/kontakt.jpg",
   name: { et: "Maria Sosnina", ru: "Мария Соснина" },
   role: { et: "Kulmumeister ja koolitaja", ru: "Мастер и преподаватель" },
   stats: [
@@ -210,6 +211,25 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     await leave(x);
     expect(remote.log).toEqual([{ part: "trainer", version: "l:trainer", patch: { portraitPos: "30% 30%" } }]);
     expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 09:40");
+  });
+
+  it("„Kontaktifoto“ (Maria 10.11): the small round photo by the contact forms is its own picture under the portrait; an upload and „Eemalda pilt“ save at once", async () => {
+    await show();
+    const photo = card("portree")!.querySelector<HTMLElement>('[data-single-image="contactPhoto"]')!;
+    expect(photo.getAttribute("data-field")).toBe("trainer.contactPhotoKey");
+    expect(text(photo.querySelector("p"))).toBe("Kontaktifoto");
+    expect(text(photo)).toContain("Väike ümar pilt kontaktivormi ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.");
+    expect(photo.querySelector("[data-current-image]")!.getAttribute("data-current-image")).toBe("img/kontakt.jpg");
+    const input = photo.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
+    await act(async () => void input.dispatchEvent(new Event("change", { bubbles: true })));
+    await settle();
+    expect(remote.log.at(-1)).toEqual({ part: "trainer", version: "l:trainer", patch: { contactPhotoKey: "img/uus.jpg" } });
+    expect(barWords()).toBe(draft("Kontaktifoto"));
+    expect(text(card("portree")!.querySelector("h2"))).toBe("Portree ja tutvustus · avaldamata");
+    await click(button("Eemalda pilt", photo));
+    await settle();
+    expect(remote.log.at(-1)!.patch).toEqual({ contactPhotoKey: "" });
   });
 
   it("the bio typed and left: the bio's draft, the bar „Tutvustus“, the field marked „· avaldamata“", async () => {

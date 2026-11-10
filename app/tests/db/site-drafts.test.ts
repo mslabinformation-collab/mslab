@@ -384,17 +384,14 @@ describe("„Loobu muudatustest“ (discardSite)", () => {
 });
 
 describe("versions (R-b): the hash of the part's draft-shaped live value", () => {
-  test("changing settings.trainer.contactPhotoKey does not move the trainer part's version, and a trainer draft still publishes", async () => {
+  test("settings.trainer.contactPhotoKey is a field of the trainer part since „Kontaktifoto“ (Maria 10.11): changing it moves the part's version", async () => {
     const before = (await read("trainer")).parts.trainer;
+    expect(before.live).toMatchObject({ contactPhotoKey: "/seed/maria-seated.jpg" });
     const stored = (await readSetting(db, "trainer")) as Record<string, unknown>;
-    expect(stored.contactPhotoKey).toBe("/seed/maria-seated.jpg");
     await setSetting(db, "trainer", { ...stored, contactPhotoKey: UPLOAD });
-    expect((await read("trainer")).parts.trainer).toEqual(before);
-    // a draft made before such a change still publishes: its base is still live's
-    expect((await save("trainer", "trainer", { role: { et: "Koolitaja" } })).ok).toBe(true);
-    await setSetting(db, "trainer", { ...stored, contactPhotoKey: "/seed/maria-standing.jpg" });
-    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
-    expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: "/seed/maria-standing.jpg", role: { et: "Koolitaja" } });
+    const after = (await read("trainer")).parts.trainer;
+    expect(after.version).not.toBe(before.version);
+    expect(after.live).toMatchObject({ contactPhotoKey: UPLOAD });
   });
 
   test("changing package MINI's live row does not move part MAXI's version (each package is its own part)", async () => {

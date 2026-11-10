@@ -34,7 +34,7 @@ describe("siteFieldLabel: S4-1's label of a field, by its path in the part's edi
 
   test("Koolitaja (S4-17): the portrait with its focal point, name, role, every stat as „Numbrid“; the bio, the gallery and the stories by their names", () => {
     const trainer = (part: string, path: string) => siteFieldLabel("trainer", part, path);
-    expect(["portraitKey", "portraitPos", "name", "role", "stats", "stats.1.label"].map((f) => trainer("trainer", f))).toEqual(["Portree", "Portree", "Nimi", "Amet", "Numbrid", "Numbrid"]);
+    expect(["portraitKey", "portraitPos", "contactPhotoKey", "name", "role", "stats", "stats.1.label"].map((f) => trainer("trainer", f))).toEqual(["Portree", "Portree", "Kontaktifoto", "Nimi", "Amet", "Numbrid", "Numbrid"]);
     expect(trainer("bio", "body")).toBe("Tutvustus");
     expect(trainer("works", "works.4.key")).toBe("Galerii");
     expect(trainer("works", "works")).toBe("Galerii");
@@ -212,6 +212,7 @@ describe("siteChangeLabels: Avaleht (S4-12)", () => {
 const TRAINER: TrainerDraft = {
   portraitKey: "/seed/maria.jpg",
   portraitPos: "50% 30%",
+  contactPhotoKey: "/seed/maria-seated.jpg",
   name: { et: "Maria", ru: "Мария" },
   role: { et: "Koolitaja", ru: "Тренер" },
   stats: [
@@ -236,6 +237,11 @@ describe("siteChangeLabels: Koolitaja (S4-17)", () => {
     expect(trainer({ trainer: { ...TRAINER, portraitKey: "img/uus.jpg", portraitPos: "40% 20%" } })).toEqual(["Portree"]);
     expect(trainer({ trainer: { ...TRAINER, portraitPos: "40% 20%" } })).toEqual(["Portree"]);
     expect(trainer({ trainer: { ...TRAINER, role: { et: "Koolitaja", ru: "Тренер" } } })).toEqual([]);
+  });
+
+  test("a new or removed contact photo gives „Kontaktifoto“, after „Portree“ (Maria 10.11)", () => {
+    expect(trainer({ trainer: { ...TRAINER, contactPhotoKey: "img/uus.jpg" } })).toEqual(["Kontaktifoto"]);
+    expect(trainer({ trainer: { ...TRAINER, contactPhotoKey: "", portraitPos: "40% 20%" } })).toEqual(["Portree", "Kontaktifoto"]);
   });
 
   test("the cards' order: „Portree ja tutvustus“ (Portree, Nimi, Amet, Tutvustus), then Numbrid, Galerii and the stories", () => {

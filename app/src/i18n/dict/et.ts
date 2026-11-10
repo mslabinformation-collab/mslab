@@ -293,12 +293,12 @@ export const et = {
     sending: "Saadan…",
     register: "Registreeru",
     // the individual request's box (D1: it gets no contract) and its link to „Õppetingimused“
-    terms: "Olen tutvunud tingimustega ja nõustun nendega.",
+    terms: "Olen tutvunud tingimustega ja nõustun nendega",
     // the group registration's box is the contract (contracts, D1: verbatim), with the inline contract („Loe lepingut“, verbatim) filled live
     // from the form; until a date is chosen, {toimumine} says `contractNoSession` (Draft for Dim's wording sheet). `contractChanged` (Draft for
     // Dim's wording sheet; ruling R6) is the box's error when the contract's text changed since the page was loaded, in the cart too: the form
     // shows the new text and the box is cleared
-    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega",
     readContract: "Loe lepingut",
     contractNoSession: "(vali toimumine)",
     contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
@@ -344,7 +344,7 @@ export const et = {
   },
 
   footer: {
-    tagline: "Õpilase edu on meie eesmärk. Õpi. Arene. Loo.",
+    tagline: "Õpilase edu on meie eesmärk.",
     learnTitle: "Sinu õpiteekond",
     allCourses: "Kõik koolitused",
     orgTitle: "MS LAB",
@@ -426,7 +426,7 @@ export const et = {
     emptyText: "Vali endale sobiv e-koolitus — selle saad osta kohe, kui makse avaneb.",
     total: "Kokku",
     // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
-    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega",
     // the purchase's choice while Järelmaks (Inbank) is offered (instalments §4; Draft): the bank link, beside forms.payFinancing
     payBank: "Pangalink",
   },

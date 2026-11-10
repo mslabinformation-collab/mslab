@@ -85,6 +85,7 @@ export function looseTrainer(v: TrainerDraft): LooseProblems {
   const c = new Check();
   c.image("portraitKey", v.portraitKey);
   c.focal("portraitPos", v.portraitPos);
+  c.image("contactPhotoKey", v.contactPhotoKey);
   c.text("name", v.name, L.trainerName);
   c.text("role", v.role, L.role);
   let stats = 0;

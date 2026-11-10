@@ -176,11 +176,12 @@ describe("the texts", () => {
     for (const [key, text] of all) expect(text, key).not.toMatch(/(^|[\s(«])[вскоуВСКОУ] /u);
   });
 
-  test("the verbatim texts of the spec", () => {
-    expect(et.forms.contractTerms).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega.");
-    expect(et.cart.contractTerms).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega.");
+  test("the verbatim texts of the spec; no full stop after a box's text, as after the site's other boxes (Maria 10.11)", () => {
+    expect(et.forms.contractTerms).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega");
+    expect(et.cart.contractTerms).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega");
     expect(et.forms.readContract).toBe("Loe lepingut");
     // the individual request keeps today's box (D1)
-    expect(et.forms.terms).toBe("Olen tutvunud tingimustega ja nõustun nendega.");
+    expect(et.forms.terms).toBe("Olen tutvunud tingimustega ja nõustun nendega");
+    expect([ru.forms.contractTerms, ru.cart.contractTerms, ru.forms.terms].filter((s) => s.endsWith("."))).toEqual([]);
   });
 });

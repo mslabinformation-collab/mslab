@@ -274,9 +274,9 @@ export const ru: Dict = {
     submit: "Отправить",
     sending: "Отправляем…",
     register: "Записаться",
-    terms: "Ознакомлен(а) с условиями и принимаю их.",
+    terms: "Ознакомлен(а) с условиями и принимаю их",
     // the contract's box, its inline text and its refusal (contracts Task 4, ruling R6): Draft for Dim's wording sheet
-    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их",
     readContract: "Читать договор",
     contractNoSession: "(выберите дату)",
     contractChanged: "Текст договора за это время изменился — прочитайте его снова и подтвердите.",
@@ -314,7 +314,7 @@ export const ru: Dict = {
   },
 
   footer: {
-    tagline: "Успех ученика — наша цель. Учись. Развивайся. Создавай.",
+    tagline: "Успех ученика — наша цель.",
     learnTitle: "Ваше обучение",
     allCourses: "Все курсы",
     orgTitle: "MS LAB",
@@ -379,7 +379,7 @@ export const ru: Dict = {
     emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
     total: "Итого",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
-    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их",
     payBank: "Интернет-банк",
   },
 
