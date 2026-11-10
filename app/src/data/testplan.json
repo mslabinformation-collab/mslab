@@ -195,7 +195,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "avalik-ekursus-leht",
@@ -303,7 +303,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "avalik-kalender",
@@ -372,7 +372,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "avalik-uudised",
@@ -466,7 +466,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "avalik-uudiskiri",
@@ -1798,7 +1798,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "haldus-koolitaja-galerii-tais",
@@ -2875,7 +2875,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "registreerimine-leping-muutunud",
@@ -4659,7 +4659,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
       "id": "ekursus-ost",
