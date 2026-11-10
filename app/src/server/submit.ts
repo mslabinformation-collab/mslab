@@ -106,7 +106,7 @@ type Confirmation = {
 };
 
 /**
- * What a handler stored and what follows the answer. `subscribe`: "Soovin MS LABi uudiseid ja pakkumisi" was ticked on a registration
+ * What a handler stored and what follows the answer. `subscribe`: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" was ticked on a registration
  * form (phase 2c), so the newsletter's own sign-up runs after the response (subscribeLater). `welcome`: the newsletter's own forms stored
  * the sign-up before the answer (subscribeAddress), and the welcome mail it left due goes after it.
  */
@@ -731,7 +731,7 @@ async function welcomeLater(deps: Deps, form: FormName, due: WelcomeDue): Promis
 }
 
 /**
- * "Soovin MS LABi uudiseid ja pakkumisi" ticked on a registration form (phase 2c): the newsletter's own sign-up (subscribeAddress, then
+ * "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" ticked on a registration form (phase 2c): the newsletter's own sign-up (subscribeAddress, then
  * its welcome mail with all the guards) after the answer. Never throws: the registration is stored whatever happens here, and a failure is
  * logged without the address. settle.ts calls it too, when a paid e-course purchase had the box ticked (phase 2b).
  */

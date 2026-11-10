@@ -39,7 +39,7 @@ h3 {
   }
 }
 
-/* The account's pages (AccountShell, data-account-shell) have "Saada mulle uudiskirja" in Minu andmed: the footer's newsletter form
+/* The account's pages (AccountShell, data-account-shell) have "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" in Minu andmed: the footer's newsletter form
    (Newsletter, data-footer-newsletter) is not shown under them, so there are never two ways to subscribe on one screen. CSS only:
    the static pages read nothing on the server, and the frame is in their HTML, so nothing moves after the page has loaded. The
    link columns then take the whole footer. */

@@ -214,7 +214,7 @@ export default async function Home({ params, searchParams }: Props) {
       {home.practice.length > 0 && (
         <PracticeBlock
           t={{
-            eyebrow: d.practice.eyebrowParnu,
+            eyebrow: d.practice.eyebrowPlaces,
             title: d.practice.title,
             slogan: d.practice.slogan,
             text: d.practice.panelText,

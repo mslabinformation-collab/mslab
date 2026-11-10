@@ -32,7 +32,7 @@ export type PracticeTexts = {
 
 /**
  * Prototype B `practicePanel()` (dark panel, MINI / MAXI cards) with Maria's changes: "Praktika" is the big
- * heading and comes first (C08 / H11) with "Individuaalpraktika · ainult Pärnus" above it (C22); B's slogan and
+ * heading and comes first (C08 / H11) with "Individuaalpraktika · Pärnus ja Tallinnas" above it (C22); B's slogan and
  * text are secondary; each card shows the approximate duration (C07 / H10); the price is Jost 400 28px (C09 / H12).
  *
  * `variant="page"` is the panel on /praktika, under the page's own "Praktika" H1: B's slogan is the (smaller) panel

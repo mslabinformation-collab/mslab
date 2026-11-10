@@ -130,13 +130,13 @@ export function purchaseInterestSummary(r: { course: string; email: string; loca
   };
 }
 
-export function practiceSummary(r: Visitor & { package: string; course: string; times: string }, adminUrl: string): Summary {
+export function practiceSummary(r: Visitor & { package: string; city: string; course: string; times: string }, adminUrl: string): Summary {
   const title = "Praktika taotlus";
   return {
     subject: `Praktika taotlus: ${r.package} — ${r.name}`,
     text: body(
       title,
-      [["Pakett", r.package], ...person(r), ["Läbitud koolitus või kogemus", r.course], ["Sobivad ajad", r.times, true]],
+      [["Pakett", r.package], ["Linn", r.city], ...person(r), ["Läbitud koolitus või kogemus", r.course], ["Sobivad ajad", r.times, true]],
       adminUrl,
       "Aeg kinnitatakse pärast Maria vastust.",
     ),

@@ -51,7 +51,7 @@ const WELCOME_ONCE_SEC = 365 * 24 * 60 * 60;
 const welcomeMarkKey = async (address: string) => `rl:welcome:${await sha256(address)}`;
 
 /**
- * The welcome mail to a newly subscribed address (the sign-up, "Saada mulle uudiskirja", the old confirmation link): the greeting, Seaded's
+ * The welcome mail to a newly subscribed address (the sign-up, "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", the old confirmation link): the greeting, Seaded's
  * welcome code when there is one (without a code the mail still goes out) with how many days it is valid when Hüpikaken has published them
  * (piece 4b S4-Q3 A), and the unsubscribe link of the address's row. Never throws, and
  * logs no address, no token and no code. No mail when: the address is a sample one; Resend is not set up; the address has no subscriber row
