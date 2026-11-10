@@ -52,7 +52,7 @@ const t: ContactRegisterTexts = {
   financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
   modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
   createAccount: "Loo mulle kohe konto MS LAB keskkonda",
-  newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+  newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada",
   terms: "Olen tutvunud tingimustega ja nõustun nendega.",
   termsLink: { label: "Õppetingimused", href: "/tingimused" },
   contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
@@ -185,7 +185,7 @@ describe("the cart: the e-course contract in the same way", () => {
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
     readContract: "Loe lepingut",
     contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
-    newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+    newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada",
     paymentLabel: "Tasumine",
     payBank: "Pangalink",
     payFinancing: "Järelmaks (Inbank)",
@@ -260,7 +260,7 @@ describe("a text that changed since the page was loaded (ruling R6): the form sa
   test("the cart: it sends the version it shows; 'changed' shows the message at the box, unticks it and loads the cart again, and goes nowhere", async () => {
     const et: EcoursePurchaseTexts = {
       name: "Nimi", email: "E-post", contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.", readContract: "Loe lepingut", contractChanged: MESSAGE,
-      newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi", paymentLabel: "Tasumine", payBank: "Pangalink", payFinancing: "Järelmaks (Inbank)",
+      newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", paymentLabel: "Tasumine", payBank: "Pangalink", payFinancing: "Järelmaks (Inbank)",
       financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
       errorRequired: "See väli on kohustuslik.", errorEmail: "Sisesta korrektne e-posti aadress.", errorTooMany: "Liiga palju katseid.", errorGeneric: "Midagi läks valesti.",
     };

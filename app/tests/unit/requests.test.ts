@@ -33,8 +33,8 @@ describe("requestFacts (S3-j)", () => {
   });
 
   test("Praktika: phone, package, the course she took and her times, each with its label", () => {
-    const payload = { package: "MINI", name: "Liis", email: "l@example.test", phone: "+372 5555 0103", course: "Kulmumeistri baaskoolitus", times: "Tööpäeviti pärast kella 17", locale: "et" };
-    expect(requestFacts("practice", payload)).toBe("+372 5555 0103 · Pakett: MINI · Läbitud koolitus: Kulmumeistri baaskoolitus · Sobivad ajad: Tööpäeviti pärast kella 17");
+    const payload = { package: "MINI", name: "Liis", email: "l@example.test", phone: "+372 5555 0103", city: "Tallinn", course: "Kulmumeistri baaskoolitus", times: "Tööpäeviti pärast kella 17", locale: "et" };
+    expect(requestFacts("practice", payload)).toBe("+372 5555 0103 · Pakett: MINI · Linn: Tallinn · Läbitud koolitus: Kulmumeistri baaskoolitus · Sobivad ajad: Tööpäeviti pärast kella 17");
     expect(requestFacts("practice", { package: "MAXI", phone: "5555", course: "", times: "" })).toBe("5555 · Pakett: MAXI");
   });
 
@@ -76,13 +76,14 @@ describe("requestFacts (S3-j)", () => {
 
   test("the words are the dictionary's", () => {
     const t = adminEt.requests;
-    expect([t.facts.russian, t.facts.cart, t.fields.period, t.fields.modelHelp, t.fields.account, t.fields.package, t.fields.completedCourse, t.fields.times, t.fields.session]).toEqual([
+    expect([t.facts.russian, t.facts.cart, t.fields.period, t.fields.modelHelp, t.fields.account, t.fields.package, t.fields.city, t.fields.completedCourse, t.fields.times, t.fields.session]).toEqual([
       "Vastus vene keeles",
       "Ostu ei lõpetanud · ostukorvist",
       "Soovitud periood",
       "Vajab abi modelli leidmisel",
       "Soovib kontot",
       "Pakett",
+      "Linn",
       "Läbitud koolitus",
       "Sobivad ajad",
       "Toimumine",

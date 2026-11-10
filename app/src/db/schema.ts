@@ -68,6 +68,8 @@ export const courses = pgTable("courses", {
   certificateSkills: jsonb("certificate_skills").$type<string[]>().notNull().default([]),
   /** An e-course's volume on its certificate, "10 akadeemilist tundi"; empty: the PDF leaves it out. */
   certificateVolume: text("certificate_volume").notNull().default(""),
+  /** An e-course's title on its certificate („Pealkiri tunnistusel“); empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
+  certificateTitle: text("certificate_title").notNull().default(""),
   published: boolean("published").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   isSample: boolean("is_sample").notNull().default(false),
@@ -368,7 +370,7 @@ export const payments = pgTable(
     providerUuid: text("provider_uuid"),
     method: text("method").notNull().default(""),
     bank: text("bank").notNull().default(""),
-    /** E-course: "Soovin MS LABi uudiseid ja pakkumisi" was ticked in the cart; acted on when paid. */
+    /** E-course: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" was ticked in the cart; acted on when paid. */
     newsletter: boolean("newsletter").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     paidAt: timestamp("paid_at", { withTimezone: true }),

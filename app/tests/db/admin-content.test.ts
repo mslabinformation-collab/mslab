@@ -650,10 +650,10 @@ describe("saveCourseForm: 'Teadmiste test' and the e-course's points (e-course c
 describe("saveCourseForm: 'Tunnistus' (phase 3d, spec §6)", () => {
   test("an e-course stores its certificate lines trimmed, without blank ones, in order, and its volume; the editor gets them back", async () => {
     const e = await load(online.id);
-    expect([e.certificateSkills, e.certificateVolume]).toEqual([[], ""]);
-    expect(await save({ ...e, certificateSkills: [" Kulmude kuju ja proportsioonid ", "", "Värvi valik"], certificateVolume: " 10 akadeemilist tundi " })).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: ["Kulmude kuju ja proportsioonid", "Värvi valik"], certificateVolume: "10 akadeemilist tundi" });
-    expect(await load(online.id)).toMatchObject({ certificateSkills: ["Kulmude kuju ja proportsioonid", "Värvi valik"], certificateVolume: "10 akadeemilist tundi" });
+    expect([e.certificateSkills, e.certificateVolume, e.certificateTitle]).toEqual([[], "", ""]);
+    expect(await save({ ...e, certificateSkills: [" Kulmude kuju ja proportsioonid ", "", "Värvi valik"], certificateVolume: " 10 akadeemilist tundi ", certificateTitle: "  Kulmumeistri  baaskoolitus " })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: ["Kulmude kuju ja proportsioonid", "Värvi valik"], certificateVolume: "10 akadeemilist tundi", certificateTitle: "Kulmumeistri baaskoolitus" });
+    expect(await load(online.id)).toMatchObject({ certificateSkills: ["Kulmude kuju ja proportsioonid", "Värvi valik"], certificateVolume: "10 akadeemilist tundi", certificateTitle: "Kulmumeistri baaskoolitus" });
   });
 
   test("more than 16 lines, a line over 120 characters or a volume over 80 is refused on its field; nothing is saved", async () => {
@@ -661,24 +661,26 @@ describe("saveCourseForm: 'Tunnistus' (phase 3d, spec §6)", () => {
     expect(fieldsOf(await save({ ...e, certificateSkills: Array.from({ length: 17 }, (_, i) => `Oskus ${i + 1}`) }))).toEqual({ certificateSkills: "tooMany" });
     expect(fieldsOf(await save({ ...e, certificateSkills: ["x".repeat(121)] }))).toEqual({ certificateSkills: "tooLong" });
     expect(fieldsOf(await save({ ...e, certificateVolume: "x".repeat(81) }))).toEqual({ certificateVolume: "tooLong" });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "" });
-    expect(await save({ ...e, certificateSkills: Array.from({ length: 16 }, () => "x".repeat(120)), certificateVolume: "x".repeat(80) })).toMatchObject({ ok: true });
+    expect(fieldsOf(await save({ ...e, certificateTitle: "x".repeat(101) }))).toEqual({ certificateTitle: "tooLong" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
+    expect(await save({ ...e, certificateSkills: Array.from({ length: 16 }, () => "x".repeat(120)), certificateVolume: "x".repeat(80), certificateTitle: "x".repeat(100) })).toMatchObject({ ok: true });
   });
 
   test("a contact course has no certificate: a draft's lines and volume are not stored, and switching an e-course to contact empties them", async () => {
-    expect(await save({ ...(await load(contact.id)), certificateSkills: ["Kulmude kuju"], certificateVolume: "6 ak" })).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, contact.id)).toMatchObject({ certificateSkills: [], certificateVolume: "" });
-    expect(await save({ ...(await load(online.id)), certificateSkills: ["Kulmude kuju"], certificateVolume: "10 akadeemilist tundi" })).toMatchObject({ ok: true });
+    expect(await save({ ...(await load(contact.id)), certificateSkills: ["Kulmude kuju"], certificateVolume: "6 ak", certificateTitle: "Pealkiri" })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, contact.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
+    expect(await save({ ...(await load(online.id)), certificateSkills: ["Kulmude kuju"], certificateVolume: "10 akadeemilist tundi", certificateTitle: "Pealkiri" })).toMatchObject({ ok: true });
     expect(await save({ ...(await load(online.id)), type: "contact", priceGroup: "100" })).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
   });
 
   test("a draft without them (an editor page opened before the deploy) still saves, with none", async () => {
     const older: Partial<CourseDraft> = { ...(await load(online.id)) };
     delete older.certificateSkills;
     delete older.certificateVolume;
+    delete older.certificateTitle;
     expect(await saveCourseForm(db, form({ data: JSON.stringify(older) }))).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
   });
 
   test("a pasted line is cleaned, not refused (control characters and NUL go, a line break is a space); a line blank once cleaned is dropped", async () => {

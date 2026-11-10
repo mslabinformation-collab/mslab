@@ -375,9 +375,9 @@ describe("an unpublished course: a part saves straight to the record (spec §10)
     expect(await row(hidden.id)).toMatchObject({ price: 4990, accessMonths: 3 });
     // and back: the e-course's fields go, its test row too
     await db.insert(courseTests).values({ courseId: hidden.id, questions: [QUESTION] });
-    await db.update(courses).set({ certificateSkills: ["Oskus"], certificateVolume: "10 ak" }).where(eq(courses.id, hidden.id));
+    await db.update(courses).set({ certificateSkills: ["Oskus"], certificateVolume: "10 ak", certificateTitle: "Pealkiri" }).where(eq(courses.id, hidden.id));
     expect((await write(hidden.id, "basics", { type: "contact" }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
-    expect(await row(hidden.id)).toMatchObject({ type: "contact", price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "" });
+    expect(await row(hidden.id)).toMatchObject({ type: "contact", price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "", certificateTitle: "" });
     expect(await db.select().from(courseTests).where(eq(courseTests.courseId, hidden.id))).toEqual([]);
   });
 
@@ -389,8 +389,9 @@ describe("an unpublished course: a part saves straight to the record (spec §10)
     expect(await write(hidden.id, "test", { questions: [QUESTION, QUESTION] }, t.version)).toMatchObject({ ok: false, error: "invalid", fields: { questions: expect.any(String) } });
     expect((await write(hidden.id, "test", { questions: [QUESTION], tries: "5" }, t.version)).ok).toBe(true);
     expect((await db.select().from(courseTests).where(eq(courseTests.courseId, hidden.id)))[0]).toMatchObject({ questions: [QUESTION], passPercent: 80, tries: 5 });
-    expect((await write(hidden.id, "certificate", { certificateSkills: [" Oskab ", ""], certificateVolume: "10 ak" }, (await read(hidden.id, "certificate")).version)).ok).toBe(true);
-    expect(await row(hidden.id)).toMatchObject({ certificateSkills: ["Oskab"], certificateVolume: "10 ak" });
+    expect((await write(hidden.id, "certificate", { certificateTitle: "  Kulmumeistri baaskoolitus ", certificateSkills: [" Oskab ", ""], certificateVolume: "10 ak" }, (await read(hidden.id, "certificate")).version)).ok).toBe(true);
+    expect(await row(hidden.id)).toMatchObject({ certificateTitle: "Kulmumeistri baaskoolitus", certificateSkills: ["Oskab"], certificateVolume: "10 ak" });
+    expect(await write(hidden.id, "certificate", { certificateTitle: "x".repeat(101) }, (await read(hidden.id, "certificate")).version)).toEqual({ ok: false, error: "invalid", fields: { certificateTitle: "tooLong" } });
     expect((await write(hidden.id, "gallery", { images: [{ key: UPLOAD, alt: { et: "Uus" } }] }, (await read(hidden.id, "gallery")).version)).ok).toBe(true);
     expect((await db.select().from(courseImages).where(eq(courseImages.courseId, hidden.id))).map((i) => [i.key, i.sort, i.alt])).toEqual([[UPLOAD, 0, { et: "Uus" }]]);
     expect(await write(hidden.id, "gallery", { images: [{ key: "https://evil.example/a.jpg", alt: { et: "" } }] }, (await read(hidden.id, "gallery")).version)).toEqual({ ok: false, error: "invalid", fields: { images: "image" } });

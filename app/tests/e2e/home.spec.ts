@@ -345,7 +345,7 @@ test.describe("home content from the database", () => {
     await expect(page.locator("[data-course-card][data-type='e_learning']").first()).toContainText("Veebis · alusta kohe");
     // Practice: "Praktika" first, Pärnu only, duration chips, Jost price, link to the request form.
     const practice = page.locator("[data-practice]");
-    await expect(practice.getByText("Individuaalpraktika · ainult Pärnus")).toBeVisible();
+    await expect(practice.getByText("Individuaalpraktika · Pärnus ja Tallinnas")).toBeVisible();
     await expect(practice.getByText("≈ 4 ak")).toBeVisible();
     await expect(practice.getByText("≈ 8 ak")).toBeVisible();
     const price = await practice.locator("[data-price]").first().evaluate((el) => { const c = getComputedStyle(el); return { f: c.fontFamily, z: c.fontSize, w: c.fontWeight }; });

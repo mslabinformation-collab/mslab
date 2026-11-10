@@ -450,7 +450,7 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from requests where payload->>'email' like ${match}`;
     await sql`delete from courses where slug like ${courses}`; // on delete cascade: its sessions
     await sql`delete from client_login_tokens where email like ${match}`;
-    await sql`delete from subscribers where email like ${match}`; // "Saada mulle uudiskirja" in Minu andmed
+    await sql`delete from subscribers where email like ${match}`; // "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" in Minu andmed
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
     await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
     await sql`delete from invoices where buyer->>'email' like ${match}`; // its invoices (invoices Task 6): no cascade, they outlive the account

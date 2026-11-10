@@ -19,9 +19,9 @@ test("calendar puts course name first and shows language", async ({ page }) => {
   expect(nf).toBeGreaterThan(cf);
   await expect(row.locator("[data-lang]")).toHaveText(/ET|RU/);
 });
-test("practice says Pärnu only and shows durations", async ({ page }) => {
+test("practice says where it is offered and shows durations", async ({ page }) => {
   await page.goto("/praktika");
-  await expect(page.getByText(/ainult Pärnus/i).first()).toBeVisible();
+  await expect(page.getByText(/Pärnus ja Tallinnas/i).first()).toBeVisible();
   await expect(page.getByText(/\d+\s*ak\b/).first()).toBeVisible();
 });
 test("trainer page has gallery, story and journey", async ({ page }) => {
@@ -182,7 +182,7 @@ test.describe("calendar seat states (test-owned fixtures in the local DB)", () =
     await expect(form.getByLabel("Nimi")).toBeFocused();
     await expect(form).toContainText(`Kulmude LAMI · ${lamiParnu} · Pärnu`);
     await expect(form).toHaveAttribute("method", "post");
-    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked(); // phase 2c: the newsletter consent, unticked
+    await expect(form.getByLabel("Soovin MS LABi sooduspakkumisi ja uudiskirju saada")).not.toBeChecked(); // phase 2c: the newsletter consent, unticked
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(form).toBeHidden();
@@ -207,7 +207,7 @@ test.describe("calendar seat states (test-owned fixtures in the local DB)", () =
     // A valid request shows the confirmation and moves focus to it; it is stored as a waitlist request.
     await email.fill(addr);
     const session = Number(await form.locator("input[name='session']").inputValue());
-    await form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
+    await form.getByLabel("Soovin MS LABi sooduspakkumisi ja uudiskirju saada").check();
     await submit.click();
     const sent = full.locator("[data-waitlist-sent]");
     await expect(sent).toHaveText("Aitäh! Oled ootenimekirjas.");
@@ -249,11 +249,11 @@ test.describe("calendar seat states (test-owned fixtures in the local DB)", () =
 });
 
 test.describe("practice", () => {
-  test("H1 Praktika first, Pärnu only, Maria's text and the protocol, MINI and MAXI with durations and Jost prices (R1–R5)", async ({ page }) => {
+  test("H1 Praktika first, Pärnu and Tallinn, Maria's text and the protocol, MINI and MAXI with durations and Jost prices (R1–R5)", async ({ page }) => {
     await page.goto("/praktika");
     await expect(page.locator("#main").locator("h1, h2").first()).toHaveText("Praktika");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Praktika");
-    await expect(page.getByText("Praktika toimub ainult Pärnus, MS LAB stuudios.")).toBeVisible();
+    await expect(page.getByText("Praktikavõimalus on Pärnus ja Tallinnas.")).toBeVisible();
     const panel = page.locator("[data-practice]");
     await expect(panel.getByText(/Praktika toimub koolitaja juhendamisel/)).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Praktikaprotokoll" })).toBeVisible();
@@ -358,6 +358,13 @@ test.describe("practice", () => {
     await expect(form.getByRole("radio", { name: /MINI/ })).toBeFocused();
     await form.getByRole("radio", { name: /MINI/ }).check();
     await form.getByRole("button", { name: "Saada taotlus" }).click();
+    // the student picks the city (nothing preselected): without one, „Vali linn.“ and focus on the first city
+    const city = form.getByRole("radiogroup", { name: "Linn" });
+    await expect(city.getByRole("radio")).toHaveCount(2);
+    await expect(city.getByRole("radio", { name: "Pärnu" })).toBeFocused();
+    await expect(city).toHaveAccessibleDescription("Vali linn.");
+    await city.getByRole("radio", { name: "Tallinn" }).check();
+    await form.getByRole("button", { name: "Saada taotlus" }).click();
     const nameField = form.getByLabel("Nimi");
     await expect(nameField).toBeFocused();
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
@@ -372,15 +379,18 @@ test.describe("practice", () => {
     await expect(page.locator("[data-practice-sent]")).toBeFocused();
     if (LOCAL_FIXTURES)
       expect(await storedRequests(addr)).toEqual([
-        { kind: "practice", payload: { package: "MINI", name: "Test Õpilane", email: addr, phone: "+372 5555 5555", course: "Kulmumeistri baaskoolitus", times: "Tööpäeva õhtud", locale: "et" } },
+        { kind: "practice", payload: { package: "MINI", name: "Test Õpilane", email: addr, phone: "+372 5555 5555", city: "Tallinn", course: "Kulmumeistri baaskoolitus", times: "Tööpäeva õhtud", locale: "et" } },
       ]);
   });
 
   test("RU practice", async ({ page }) => {
     await page.goto("/ru/praktika?pakett=MINI");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Практика");
-    await expect(page.getByText("Практика проходит только в Пярну, в студии MS LAB.")).toBeVisible();
+    await expect(page.getByText("Практика возможна в Пярну и Таллинне.")).toBeVisible();
     await expect(page.locator("[data-practice-form]").getByRole("radio", { name: /MINI/ })).toBeChecked();
+    // the city choice in Russian (Maria 10.11): Пярну and Таллинн, nothing picked
+    await expect(page.locator("[data-practice-form]").getByRole("radio", { name: "Таллинн" })).not.toBeChecked();
+    await expect(page.locator("[data-practice-form]").getByRole("radio", { name: "Пярну" })).not.toBeChecked();
   });
 });
 

@@ -28,7 +28,7 @@ const t: EcoursePurchaseTexts = {
   contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
   readContract: "Loe lepingut",
   contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
-  newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+  newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada",
   paymentLabel: "Tasumine",
   payBank: "Pangalink",
   payFinancing: "Järelmaks (Inbank)",

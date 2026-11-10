@@ -31,6 +31,7 @@ const course = (over: Partial<CourseListRow> = {}): CourseListRow =>
     protocolStages: [],
     certificateSkills: [],
     certificateVolume: "",
+    certificateTitle: "",
     published: true,
     sort: 1,
     isSample: false,

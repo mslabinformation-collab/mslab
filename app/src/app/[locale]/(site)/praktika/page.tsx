@@ -21,12 +21,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.practice.title} — ${d.common.siteName}`, description: d.practice.onlyParnu };
+  return { title: `${d.practice.title} — ${d.common.siteName}`, description: d.practice.places };
 }
 
 /**
  * Practice (Task 9, R1–R5) on prototype B's practice page, with Maria's changes: "Praktika" is the H1 and comes first
- * (C08 / H11); "Ainult Pärnus" above it and a visible line "Praktika toimub ainult Pärnus, MS LAB stuudios." (C22 / R4);
+ * (C08 / H11); "Personaalne praktika" above it and a visible line "Praktikavõimalus on Pärnus ja Tallinnas." (C22 / R4);
  * B's dark panel with Maria's text and the praktikaprotokoll explanation (R2) and the MINI / MAXI cards from the
  * database with their durations and Jost prices (R3, R5); then the request form (#taotlus), preselected from ?pakett.
  */
@@ -62,11 +62,11 @@ export default async function PracticePage({ params }: Props) {
   return (
     <>
       <header className={`${ui.wrap} ${styles.head}`}>
-        <p className={`${ui.eyebrow} ${styles.eyebrow}`}>{p.onlyParnuShort}</p>
+        <p className={`${ui.eyebrow} ${styles.eyebrow}`}>{p.personalShort}</p>
         <h1 className={`${ui.pageTitle} ${styles.title}`}>{p.title}</h1>
         <p className={styles.where} data-practice-where="">
           <Icon name="pin" size={18} className={styles.pin} />
-          {p.onlyParnu}
+          {p.places}
         </p>
         <p className={styles.intro}>{p.intro}</p>
       </header>
@@ -110,6 +110,9 @@ export default async function PracticePage({ params }: Props) {
                 selectedPackage: p.selectedPackage,
                 packageLabel: p.package,
                 packageRequired: p.packageRequired,
+                cityLabel: p.cityLabel,
+                cityRequired: p.cityRequired,
+                cities: p.cities,
                 durationLabel: p.duration,
                 name: d.forms.name,
                 email: d.forms.email,

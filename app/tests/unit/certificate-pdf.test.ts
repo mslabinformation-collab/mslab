@@ -3,7 +3,7 @@ import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber } from "pdf-lib";
 import { describe, expect, test } from "vitest";
-import { checkCertificateName, readCertificateSettings } from "@/domain/certificate";
+import { CERT_LIMITS, checkCertificateName, readCertificateSettings } from "@/domain/certificate";
 import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
@@ -289,6 +289,18 @@ describe("renderCertificate: the page (spec §7)", () => {
     expect(medium.size).toBeLessThan(11.2);
     expect(medium.size).toBeGreaterThanOrEqual(5);
     expect(widthOf(medium)).toBeLessThanOrEqual(170 + 0.01);
+  });
+
+  test("the longest „Pealkiri tunnistusel“ (CERT_LIMITS.title characters, the widest capitals) still fits: two lines within 680 pt, not smaller than 9 pt, clear of the heading", async () => {
+    const courseTitle = `${"MWMWMWMWMW".repeat(5)} ${"WMWMWMWMW ".repeat(5)}`.trim().slice(0, CERT_LIMITS.title);
+    expect(Array.from(courseTitle)).toHaveLength(CERT_LIMITS.title);
+    const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, courseTitle }, ASSETS));
+    const lines = runs.filter((r) => r.font === TITLE_FAMILY);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].size).toBeGreaterThanOrEqual(9);
+    for (const line of lines) expect(widthOf(line)).toBeLessThanOrEqual(680 + 0.01);
+    const headingInk = 468.5 + (glacial.layout("TUNNISTUS").bbox.minY / 1000) * 71;
+    expect(446 + 0.72 * lines[0].size).toBeLessThan(headingInk - 5);
   });
 
   test("a long course title wraps to two lines at 18 pt or smaller, the upper one's capitals clear of the heading's ink", async () => {

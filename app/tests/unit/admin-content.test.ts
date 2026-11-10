@@ -147,12 +147,13 @@ describe("drafts", () => {
     expect(draftFromCourse({ ...stored, test: null }).test).toEqual({ questions: [], passPercent: "80", tries: "3" });
     expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null, protocolStages: [], test: { questions: [], passPercent: "80", tries: "3" } });
     // "Tunnistus" (phase 3d, spec §6): none stored (or a caller without them) is none; stored lines as they are, anything that is not a line left out
-    expect([d.certificateSkills, d.certificateVolume]).toEqual([[], ""]);
-    expect(draftFromCourse({ ...stored, certificateSkills: ["Kulmude kuju", 7 as unknown as string], certificateVolume: "10 akadeemilist tundi" })).toMatchObject({
+    expect([d.certificateSkills, d.certificateVolume, d.certificateTitle]).toEqual([[], "", ""]);
+    expect(draftFromCourse({ ...stored, certificateSkills: ["Kulmude kuju", 7 as unknown as string], certificateVolume: "10 akadeemilist tundi", certificateTitle: "Kulmumeistri baaskoolitus" })).toMatchObject({
       certificateSkills: ["Kulmude kuju"],
       certificateVolume: "10 akadeemilist tundi",
+      certificateTitle: "Kulmumeistri baaskoolitus",
     });
-    expect(newCourseDraft()).toMatchObject({ certificateSkills: [], certificateVolume: "" });
+    expect(newCourseDraft()).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
   });
 
   test("moveItem moves one item and leaves the input alone", () => {

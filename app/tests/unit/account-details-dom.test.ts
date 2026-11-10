@@ -174,14 +174,14 @@ describe("name, phone and language", () => {
   });
 });
 
-describe("Saada mulle uudiskirja", () => {
+describe("Soovin MS LABi sooduspakkumisi ja uudiskirju saada", () => {
   test("a switch that saves at once with its own line, not with Salvesta; a failure puts it back", async () => {
     let answer = () => Promise.resolve(json(200, { ok: true }));
     api({}, { "/api/konto/uudiskiri": () => answer() });
     await mount();
     const sw = () => $<HTMLInputElement>("input[role='switch']")!;
     expect(sw().checked).toBe(false);
-    expect(sw().closest("label")?.textContent).toBe("Saada mulle uudiskirja");
+    expect(sw().closest("label")?.textContent).toBe("Soovin MS LABi sooduspakkumisi ja uudiskirju saada");
     await click(sw());
     expect(sent("/api/konto/uudiskiri")).toEqual([{ on: true }]);
     expect(sw().checked).toBe(true);

@@ -117,7 +117,7 @@ describe("contact, newsletter, cart, practice, waitlist", () => {
     expect(errors(parsePurchaseInterest(form({ course: "", email: "x" })))).toEqual({ email: "invalid", form: "invalid" });
   });
   test("practice: package, contact details and preferred times; the completed course is optional", () => {
-    const practice = { package: "MINI", name: "Test Õpilane", email: "test@example.com", phone: "+372 5555 5555", times: "Tööpäeva õhtud", locale: "et" };
+    const practice = { package: "MINI", name: "Test Õpilane", email: "test@example.com", phone: "+372 5555 5555", city: "Pärnu", times: "Tööpäeva õhtud", locale: "et" };
     expect(parsePractice(form(practice))).toEqual({ ok: true, data: { ...practice, course: "" } });
     expect(parsePractice(form({ ...practice, course: "Kulmumeistri baaskoolitus" })).ok).toBe(true);
     expect(errors(parsePractice(form({ email: "x", course: "y".repeat(201) })))).toEqual({
@@ -125,10 +125,15 @@ describe("contact, newsletter, cart, practice, waitlist", () => {
       name: "required",
       email: "invalid",
       phone: "required",
+      city: "required",
       course: "required",
       times: "required",
     });
     expect(errors(parsePractice(form({ ...practice, package: "<script>" })))).toEqual({ package: "required" });
+    // the city is one of PRACTICE_CITIES: Tallinn is fine, another city or none is not
+    expect(parsePractice(form({ ...practice, city: "Tallinn" })).ok).toBe(true);
+    expect(errors(parsePractice(form({ ...practice, city: "Tartu" })))).toEqual({ city: "required" });
+    expect(errors(parsePractice(form({ ...practice, city: "" })))).toEqual({ city: "required" });
   });
   test("waitlist: name, e-mail and the session", () => {
     expect(parseWaitlist(form({ session: "12", name: "Test", email: "test@example.com" }))).toEqual({

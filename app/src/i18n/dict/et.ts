@@ -218,10 +218,11 @@ export const et = {
   practice: {
     title: "Praktika",
     eyebrow: "Individuaalpraktika",
-    onlyParnuShort: "Ainult Pärnus",
-    // Home practice block eyebrow above the big "Praktika" heading (H11, C22).
-    eyebrowParnu: "Individuaalpraktika · ainult Pärnus",
-    onlyParnu: "Praktika toimub ainult Pärnus, MS LAB stuudios.",
+    personalShort: "Personaalne praktika",
+    // Home practice block eyebrow above the big "Praktika" heading (H11, C22): where practice is offered, so nobody from elsewhere writes in vain.
+    eyebrowPlaces: "Individuaalpraktika · Pärnus ja Tallinnas",
+    // The visible line under the eyebrow on /praktika, also the page's meta description.
+    places: "Praktikavõimalus on Pärnus ja Tallinnas.",
     slogan: "Teadmised muutuvad oskusteks.",
     lead: "Harjuta, küsi ja katseta. Üks-ühele juhendamine aitab leida sinu käekirja ja järgmise arengusammu.",
     intro:
@@ -241,12 +242,16 @@ export const et = {
     selectedPackage: "Valitud pakett: {name}",
     completedCourse: "Läbitud koolitus või kogemus",
     preferredTimes: "Millised ajad sulle sobivad?",
-    preferredTimesPlaceholder: "Näiteks tööpäeva õhtud Pärnus",
+    preferredTimesPlaceholder: "Näiteks tööpäeva õhtud",
     requestNote: "See on aja kokkuleppimise taotlus. Kohtumine kinnitatakse pärast Maria vastust.",
     requestSubmit: "Saada taotlus",
     requestSent: "Taotlus on saadetud.",
     requestSentText: "Maria võtab sinuga ühendust ja pakub sobiva aja.",
     packageRequired: "Vali praktikapakett.",
+    // the city of the request (PRACTICE_CITIES): the student picks one; the values are shown as they are stored
+    cityLabel: "Linn",
+    cityRequired: "Vali linn.",
+    cities: { Pärnu: "Pärnu", Tallinn: "Tallinn" },
   },
 
   trainer: {
@@ -306,7 +311,7 @@ export const et = {
     modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
     createAccount: "Loo mulle kohe konto MS LAB keskkonda",
     // the registration forms' newsletter consent (phase 2c): unticked; ticked, the newsletter's own sign-up follows
-    newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+    newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada",
     paymentLabel: "Tasumine",
     payFull: "100% kohe",
     payHalf: "50% registreerimisel + 50% koolituspäeval",
@@ -330,6 +335,9 @@ export const et = {
     // Contact page
     contactPageTitle: "Alustame vestlusest.",
     contactPageLead: "Küsimus koolituse, praktika või koostöö kohta? Jäta oma mõte siia.",
+    // The /kontakt page's own form block (the home page keeps home.contactTitle / contactLead)
+    contactBlockTitle: "Võta ühendust.",
+    contactBlockLead: "Küsimus, koostööpakkumine või midagi muud? Kirjuta Mariale — vastan tavaliselt ühe tööpäeva jooksul.",
     contactDetails: "Kontaktandmed",
     address: "Asukoht",
     // Results and errors
@@ -1034,7 +1042,7 @@ export const et = {
       save: "Salvesta",
       saved: "Salvestatud.",
       saveFailed: "Ei õnnestunud salvestada. Proovi uuesti.",
-      newsletter: "Saada mulle uudiskirja",
+      newsletter: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada",
       delete: "Kustuta konto",
       deleteQuestion: "Kas kustutame su konto? Sinu registreeringud jäävad Mariale alles.",
       deleteYes: "Jah, kustuta",

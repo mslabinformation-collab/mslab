@@ -78,7 +78,7 @@ const SCHEMAS = {
   includes: z.object({ includes: z.array(i18n).max(200, "tooMany") }).strict(),
   protocolStages: z.object({ protocolStages: z.array(text(2_000)).max(200, "tooMany") }).strict(),
   test: z.object({ questions, passPercent: text(10), tries: text(10) }).strict(),
-  certificate: z.object({ certificateSkills: z.array(text(2_000)).max(200, "tooMany"), certificateVolume: text(2_000) }).strict(),
+  certificate: z.object({ certificateTitle: text(2_000), certificateSkills: z.array(text(2_000)).max(200, "tooMany"), certificateVolume: text(2_000) }).strict(),
   gallery: z.object({ images: z.array(z.object({ key: z.string().max(300, "tooLong"), alt: i18n })).max(200, "tooMany") }).strict(),
   recommendations: z.object({ recommendationIds: z.array(z.number().int().positive().max(ROW_ID_MAX)).max(200, "tooMany") }).strict(),
   badge: z.object({ badge: z.object({ label: z.object({ et: text(200), ru: text(200).optional() }), bg: z.string().max(20), fg: z.string().max(20) }).nullable() }).strict(),

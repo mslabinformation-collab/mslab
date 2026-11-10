@@ -78,9 +78,9 @@ export async function highestIssuedSeq(year: number): Promise<number> {
 }
 
 /** The course's "Tunnistus" card as stored. */
-export async function storedCourseCertificate(courseId: number): Promise<{ skills: string[]; volume: string }> {
+export async function storedCourseCertificate(courseId: number): Promise<{ skills: string[]; volume: string; title: string }> {
   const [row] = await localDb(
-    (sql) => sql<{ skills: string[]; volume: string }[]>`select certificate_skills as skills, certificate_volume as volume from courses where id = ${courseId}`,
+    (sql) => sql<{ skills: string[]; volume: string; title: string }[]>`select certificate_skills as skills, certificate_volume as volume, certificate_title as title from courses where id = ${courseId}`,
   );
   return row;
 }

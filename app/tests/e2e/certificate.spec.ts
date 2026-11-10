@@ -104,9 +104,12 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
     await card.locator("[data-add-skill]").click();
     await card.locator(`[data-certificate-skill="${i}"]`).fill(line);
   }
+  await expect(card.locator('[data-field="certificateTitle"]')).toBeVisible();
+  await card.locator('[data-field="certificateTitle"]').fill("Kulmumeistri baaskoolitus");
+  await card.locator('[data-field="certificateTitle"]').blur();
   await card.locator('[data-field="certificateVolume"]').fill("10 akadeemilist tundi");
   await card.locator('[data-field="certificateVolume"]').blur();
-  await expect.poll(() => storedCourseCertificate(s.courseId)).toEqual({ skills: lines, volume: "10 akadeemilist tundi" });
+  await expect.poll(() => storedCourseCertificate(s.courseId)).toEqual({ skills: lines, volume: "10 akadeemilist tundi", title: "Kulmumeistri baaskoolitus" });
   await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
 
   // the student: "Lõpetamine" has the "Tunnistus" row, her account's name in the field
@@ -145,7 +148,7 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   // the frozen copy: her name, the course's title, the card's lines and volume, Seaded's place, registry code and practical line
   expect(stored).toMatchObject({
     name: "Kätlin Kask-Žukova",
-    courseTitle: "E2E lõpetamine",
+    courseTitle: "Kulmumeistri baaskoolitus", // the card's „Pealkiri tunnistusel“, not the course's own title „E2E lõpetamine“
     skills: lines,
     volume: "10 akadeemilist tundi",
     place: before.place,
@@ -196,7 +199,7 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   await expect(page.locator('[data-tab-pills] a[aria-current="page"]')).toHaveText("Tunnistused");
   await expect(page.locator("[data-tab-pills]").getByRole("link", { name: /^Ootab hindamist/ })).toHaveAttribute("href", "/admin/hindamine");
   const entry = page.locator(`[data-certificate-register] [data-register-row="${stored.id}"]`);
-  for (const text of [stored.number, "Kätlin Kask", "E2E lõpetamine"]) await expect(entry).toContainText(text);
+  for (const text of [stored.number, "Kätlin Kask", "Kulmumeistri baaskoolitus"]) await expect(entry).toContainText(text);
   await expect(entry.locator("[data-register-download]")).toHaveAttribute("href", `/api/admin/tunnistus/${stored.id}`);
 
   // her access ended: the dashboard card links the certificate, which still downloads

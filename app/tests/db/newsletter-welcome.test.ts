@@ -124,7 +124,7 @@ test("newsletterState and clientNewsletter: yes / pending / no, whatever the sto
   expect(await clientNewsletter(db, 987654)).toBeNull();
 });
 
-test("Minu andmed: 'Saada mulle uudiskirja' on confirms at once and sends the welcome mail once; on again, or off and on, no second mail", async () => {
+test("Minu andmed: 'Soovin MS LABi sooduspakkumisi ja uudiskirju saada' on confirms at once and sends the welcome mail once; on again, or off and on, no second mail", async () => {
   const mails = outbox();
   await setCode("TERE10");
   const [kati] = await db.insert(clients).values({ email: "kati@example.com" }).returning();

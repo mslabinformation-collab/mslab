@@ -268,7 +268,7 @@ describe("honeypot and rate limit", () => {
     expect(await db.select().from(requests)).toHaveLength(5);
     expect(kv.ttl.get("rl:contact:198.51.100.9")).toBe(600);
     // Another form and another visitor are counted separately.
-    expect(await handlePractice(deps, form({ package: "MINI", name: "A", email: "a@example.com", phone: "+372 5555 5555", times: "õhtuti" }))).toEqual({ ok: true });
+    expect(await handlePractice(deps, form({ package: "MINI", name: "A", email: "a@example.com", phone: "+372 5555 5555", city: "Pärnu", times: "õhtuti" }))).toEqual({ ok: true });
     expect(await handleContact({ ...deps, ip: "198.51.100.10" }, msg)).toEqual({ ok: true });
   });
 
@@ -354,23 +354,28 @@ describe("requests", () => {
   test("practice request for a known package", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const { deps } = setup();
-    const fields = { package: "MINI", name: "Test", email: "test@example.com", phone: "+372 5555 5555", course: "Kulmud", times: "Tööpäeva õhtud" };
+    const fields = { package: "MINI", name: "Test", email: "test@example.com", phone: "+372 5555 5555", city: "Tallinn", course: "Kulmud", times: "Tööpäeva õhtud" };
     expect(await handlePractice(deps, form(fields))).toEqual({ ok: true });
     const [row] = await db.select().from(requests);
     expect(row).toMatchObject({ kind: "practice", payload: { ...fields, locale: "et" } });
     expect(await handlePractice(deps, form({ ...fields, package: "MAXI" }))).toEqual({ ok: false, errors: { package: "required" } });
+    // the student picks the city: none, or one that is not offered, is refused
+    expect(await handlePractice(deps, form({ ...fields, city: "" }))).toEqual({ ok: false, errors: { city: "required" } });
+    expect(await handlePractice(deps, form({ ...fields, city: "Tartu" }))).toEqual({ ok: false, errors: { city: "required" } });
   });
 
   test("Maria's practice mail names the package once when its name is its code, and name (code) when they differ", async () => {
     const { mails } = outbox();
     const { deps, flush } = setup({ secrets: true });
     await db.insert(practicePackages).values({ code: "MAXI", name: { et: "Põhjalik praktika" }, tagline: { et: "" }, models: 3, durationLabel: { et: "8 ak" }, price: 20000 });
-    const fields = { name: "Proov 3", email: "test@example.com", phone: "+372 5555 5555", times: "Õhtud" };
+    const fields = { name: "Proov 3", email: "test@example.com", phone: "+372 5555 5555", city: "Tallinn", times: "Õhtud" };
     await handlePractice(deps, form({ ...fields, package: "MINI" }));
     await handlePractice(deps, form({ ...fields, package: "MAXI" }));
     await flush();
     const subjects = mails().filter((m) => m.to === "maria@example.com").map((m) => m.subject);
     expect(subjects).toEqual(["Praktika taotlus: MINI — Proov 3", "Praktika taotlus: Põhjalik praktika (MAXI) — Proov 3"]);
+    // and says the city she picked
+    expect(mails().filter((m) => m.to === "maria@example.com").every((m) => /Linn: Tallinn/.test(m.text))).toBe(true);
   });
 
   test("waitlist for a scheduled session of a published course", async () => {
@@ -878,7 +883,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
       await db.insert(mailQuota).values({ day: "2026-10-01", sent: CONFIRMATION_MAIL_DAILY_CAP });
       const { deps, flush } = setup({ secrets: true });
       expect(await handleRegistration(deps, group({ locale: "et" }))).toEqual({ ok: true });
-      expect(await handlePractice(deps, form({ package: "MINI", name: "T", email: "test@example.com", phone: "+372 5555 5555", times: "õhtuti" }))).toEqual({ ok: true });
+      expect(await handlePractice(deps, form({ package: "MINI", name: "T", email: "test@example.com", phone: "+372 5555 5555", city: "Pärnu", times: "õhtuti" }))).toEqual({ ok: true });
       await flush();
       expect(to(mails(), "test@example.com")).toHaveLength(0);
       expect(to(mails(), "maria@example.com")).toHaveLength(2);
@@ -955,7 +960,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
     const { deps, kv, flush } = setup({ secrets: true });
     await handleRegistration(deps, group({ email: "Kati+Test@Example.test", account: "on" }));
     await handleIndividual(deps, form({ course: "kulmud", name: "Kati", email: "kati@example.test", phone: "+372 5555 5555", period: "Detsember", account: "on", terms: "on" }));
-    await handlePractice(deps, form({ package: "MINI", name: "Kati", email: "kati@example.test", phone: "+372 5555 5555", times: "õhtuti" }));
+    await handlePractice(deps, form({ package: "MINI", name: "Kati", email: "kati@example.test", phone: "+372 5555 5555", city: "Pärnu", times: "õhtuti" }));
     await handleWaitlist(deps, form({ session: String(ids.full), name: "Kati", email: "kati@example.test" }));
     await flush();
     expect(mails().map((m) => m.to)).toEqual(["maria@example.com", "maria@example.com", "maria@example.com", "maria@example.com"]);
@@ -1006,7 +1011,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
   test("practice request and waitlist entry: the short confirmation each, never a code; the waitlist says what its dashboard card says", async () => {
     const { mails } = outbox();
     const { deps, flush } = setup({ secrets: true });
-    await handlePractice(deps, form({ package: "MINI", name: "Test Õpilane", email: "test@example.com", phone: "+372 5555 5555", times: "Tööpäeva õhtud", locale: "ru" }));
+    await handlePractice(deps, form({ package: "MINI", name: "Test Õpilane", email: "test@example.com", phone: "+372 5555 5555", city: "Pärnu", times: "Tööpäeva õhtud", locale: "ru" }));
     await handleWaitlist(deps, form({ session: String(ids.full), name: "Test", email: "test@example.com" }));
     await flush();
     const [practice, waitlist] = to(mails(), "test@example.com");
