@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { courses, registrations } from "@/db/schema";
+import { registrations } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0019 (admin UX pass, piece 2, Task 2: B22, spec §7) as the Railway database goes through it: 0000–0018 applied, with a course, a
@@ -27,7 +27,8 @@ test("0019 adds the payment status 'replaced' and the nullable column payments.c
     }
   };
   await through("0018_financing");
-  const [course] = await db.insert(courses).values({ slug: "kulmud", type: "contact", level: "basic", title: { et: "Kulmud" }, summary: { et: "" }, body: { et: "" }, published: true }).returning();
+  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true) returning id`)).rows;
   const [r] = await db.insert(registrations).values({ courseId: course.id, kind: "individual", name: "Anna", email: "anna@example.test", paymentChoice: "full" }).returning();
   // (raw SQL: the schema's payments already has the column this migration adds)
   const pay = (n: number, status: string) =>

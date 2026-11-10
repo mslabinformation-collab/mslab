@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { courseModules, courses, lessonFiles, lessons } from "@/db/schema";
+import { courseModules, lessonFiles, lessons } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0020 (admin UX pass, piece 3a, Task 2: B18, R-e, R-f, R-g) as the Railway database goes through it: 0000–0019 applied, with a
@@ -38,7 +38,8 @@ test("0020 adds exactly four columns (two flags default false, video_progress an
   };
   await through("0019_payments_replaced");
   // (raw SQL for the three tables 0020 changes: the schema's tables already have the columns this migration adds)
-  const [course] = await db.insert(courses).values({ slug: "veeb", type: "e_learning", level: "basic", title: { et: "Veeb" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9500 }).returning();
+  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published, price) values ('veeb', 'e_learning', 'basic', '{"et":"Veeb"}', '{"et":""}', '{"et":""}', true, 9500) returning id`)).rows;
   await db.execute(sql`insert into course_modules (course_id, position, title) values (${course.id}, 1, '{"et":"Algus"}'::jsonb)`);
   await db.execute(sql`insert into lessons (module_id, position, title, hidden, video_id, video_status, duration_sec) select id, 1, '{"et":"Esimene"}'::jsonb, true, 'vid-1', 'processing', 120 from course_modules`);
   await db.execute(sql`insert into lesson_files (lesson_id, position, name, r2_key, size, content_type) select id, 1, 'Juhend.pdf', 'lessons/a.pdf', 5, 'application/pdf' from lessons`);

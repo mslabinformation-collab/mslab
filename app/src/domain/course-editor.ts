@@ -105,6 +105,8 @@ export type CourseDraft = {
    */
   certificateSkills: string[];
   certificateVolume: string;
+  /** „Pealkiri tunnistusel“: the title printed on the certificate; empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
+  certificateTitle: string;
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -142,6 +144,7 @@ export function newCourseDraft(): CourseDraft {
     test: emptyTestDraft(),
     certificateSkills: [],
     certificateVolume: "",
+    certificateTitle: "",
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -175,6 +178,7 @@ type StoredCourse = {
   /** "Tunnistus" (phase 3d); absent where a caller has none to give (none then). */
   certificateSkills?: string[];
   certificateVolume?: string;
+  certificateTitle?: string;
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -208,6 +212,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     // jsonb read defensively: only the lines that are text
     certificateSkills: (c.certificateSkills ?? []).filter((s): s is string => typeof s === "string"),
     certificateVolume: c.certificateVolume ?? "",
+    certificateTitle: c.certificateTitle ?? "",
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

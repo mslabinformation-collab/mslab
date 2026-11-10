@@ -153,6 +153,19 @@ describe("issueCertificate (spec §4, §5)", () => {
     expect(await stored()).toEqual({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 2 });
   });
 
+  test("the title on the certificate: Maria's own „Pealkiri tunnistusel“ (trimmed) when the course has one, else its Estonian title; an issued certificate keeps what it had", async () => {
+    const c = await ecourse({ certificateTitle: "  Kulmumeistri baaskoolitus " });
+    const kati = await student("kati@example.test", c.id);
+    const mari = await student("mari@example.test", c.id);
+    const liis = await student("liis@example.test", c.id);
+    await issued(kati.client.id, "Kati Kask");
+    await db.update(courses).set({ certificateTitle: "Uus pealkiri" }).where(eq(courses.id, c.id));
+    await issued(mari.client.id, "Mari Maasikas");
+    await db.update(courses).set({ certificateTitle: "   " }).where(eq(courses.id, c.id));
+    await issued(liis.client.id, "Liis Lill");
+    expect((await rows()).map((r) => r.courseTitle)).toEqual(["Kulmumeistri baaskoolitus", "Uus pealkiri", "Kulmude e-kursus"]);
+  });
+
   test("the refusals: a name the rules refuse, a course not completed yet, a revoked access, no access or a contact course — nothing stored; an expired completed access issues (she completed it)", async () => {
     const c = await ecourse();
     const kati = await student("kati@example.test", c.id);

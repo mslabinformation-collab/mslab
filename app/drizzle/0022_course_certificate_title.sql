@@ -1,0 +1,1 @@
+ALTER TABLE "courses" ADD COLUMN "certificate_title" text DEFAULT '' NOT NULL;

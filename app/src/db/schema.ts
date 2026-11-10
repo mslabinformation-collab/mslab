@@ -68,6 +68,8 @@ export const courses = pgTable("courses", {
   certificateSkills: jsonb("certificate_skills").$type<string[]>().notNull().default([]),
   /** An e-course's volume on its certificate, "10 akadeemilist tundi"; empty: the PDF leaves it out. */
   certificateVolume: text("certificate_volume").notNull().default(""),
+  /** An e-course's title on its certificate („Pealkiri tunnistusel“); empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
+  certificateTitle: text("certificate_title").notNull().default(""),
   published: boolean("published").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   isSample: boolean("is_sample").notNull().default(false),

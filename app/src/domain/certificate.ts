@@ -9,7 +9,7 @@ import { tallinnFormParts } from "./calendar";
  * The name 2–80 characters; at most 16 competency lines of at most 120 characters; the volume, the place, the registry code, the practical
  * line and the trainer's name at most these characters (spec §3, §5).
  */
-export const CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 } as const;
+export const CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, title: 100, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 } as const;
 
 /** The `settings` key "certificate" as read (readCertificateSettings): what Seaded → Tunnistus sets and the number series' next number. */
 export type CertificateSettings = {
@@ -160,6 +160,14 @@ export function seqToIssue(s: { nextYear: number; nextSeq: number }, year: numbe
 
 /** A line as the PDF draws it: every run of white space (a line break too) one space, trimmed. */
 const oneLine = (s: unknown): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
+
+/**
+ * The title printed on the certificate: the course's own „Pealkiri tunnistusel“ (on one line, trimmed) when it has one, else its Estonian title.
+ * An empty or blank one is none, so a course that never set it prints what it always did.
+ */
+export function certificateTitle(course: { title: { et: string }; certificateTitle: string }): string {
+  return oneLine(course.certificateTitle) || course.title.et;
+}
 
 /**
  * The course's certificate lines (spec §3): its own "Oskused tunnistusel" when it has any, else its outcomes' Estonian texts ("Mida

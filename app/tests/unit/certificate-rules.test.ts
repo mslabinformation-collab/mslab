@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  CERT_DEFAULTS, CERT_LIMITS, certificateFileName, certificateSkills, checkCertificateName, formatCertificateNumber, nextNumber, outcomesTooLong,
+  CERT_DEFAULTS, CERT_LIMITS, certificateFileName, certificateSkills, certificateTitle, checkCertificateName, formatCertificateNumber, nextNumber, outcomesTooLong,
   readCertificateSettings, seqToIssue, tallinnDateText, tallinnYear,
 } from "@/domain/certificate";
 
@@ -9,7 +9,7 @@ import {
 
 describe("the limits and the defaults (spec §3)", () => {
   test("as the spec and the plan name them", () => {
-    expect(CERT_LIMITS).toEqual({ nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 });
+    expect(CERT_LIMITS).toEqual({ nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, title: 100, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 });
     expect(CERT_DEFAULTS).toEqual({
       place: "Pärnu linn",
       registryCode: "16346048",
@@ -221,5 +221,17 @@ describe("certificateSkills: the course's lines (spec §3)", () => {
     expect(outcomesTooLong({ certificateSkills: [], outcomes: [fits, { et: ` ${"y".repeat(60)}\n\n${"y".repeat(59)} ` }] })).toBe(false); // on one line: 120
     expect(outcomesTooLong({ certificateSkills: [], outcomes: [...Array.from({ length: 16 }, () => fits), long] })).toBe(false); // the 17th is not printed
     expect(outcomesTooLong({ certificateSkills: [], outcomes: [] })).toBe(false);
+  });
+});
+
+describe("certificateTitle: the title printed on the certificate", () => {
+  test("its own „Pealkiri tunnistusel“, trimmed and on one line; else the course's Estonian title", () => {
+    expect(certificateTitle({ title: { et: "Kulmude e-kursus" }, certificateTitle: "  Kulmumeistri\n baaskoolitus " })).toBe("Kulmumeistri baaskoolitus");
+    expect(certificateTitle({ title: { et: "Kulmude e-kursus" }, certificateTitle: "" })).toBe("Kulmude e-kursus");
+    expect(certificateTitle({ title: { et: "Kulmude e-kursus" }, certificateTitle: "   " })).toBe("Kulmude e-kursus");
+  });
+
+  test("the limit is 100 characters", () => {
+    expect(CERT_LIMITS.title).toBe(100);
   });
 });
