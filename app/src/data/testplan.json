@@ -351,7 +351,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "avalik-koolitaja",
@@ -858,7 +858,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "avalik-ru-avaleht",
@@ -1141,7 +1141,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "haldus-ekursus-avalda",
@@ -2882,7 +2882,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "registreerimine-leping-muutunud",
@@ -3797,7 +3797,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "registreerimine-ootenimekiri",
@@ -4530,7 +4530,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "konto-parool",
@@ -4674,7 +4674,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "ekursus-ost",
@@ -5246,7 +5246,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "ekursus-tunnistus-pdf",
@@ -5324,7 +5324,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "ekursus-ligipaas-ava",
@@ -6758,7 +6758,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
       "id": "kirjad-maria-sonum",
