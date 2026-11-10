@@ -399,18 +399,17 @@ test.describe("trainer", () => {
     expect(Math.abs(box!.x - portrait!.x)).toBeLessThan(2);
     await expect(works.locator("[data-work]")).toHaveCount(7);
 
-    // Per view: 3 on desktop, 2 on tablets and phones (C29 "paar-kolm pilti ritta", N8; the tablet checked below).
+    // Per view: 3 on desktop, tablets and phones alike (Maria 10.11: "kas saaks telefoni ja tahvlisse ka kolm panna"; the tablet checked below).
     const perView = () =>
       works.locator("[data-works-track]").evaluate((track) => {
         const item = track.firstElementChild as HTMLElement;
         const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
         return (track.clientWidth + gap) / (item.getBoundingClientRect().width + gap);
       });
-    if (isMobile) expect(await perView()).toBeCloseTo(2, 1);
-    else {
-      expect(await perView()).toBeCloseTo(3, 1);
+    expect(await perView()).toBeCloseTo(3, 1);
+    if (!isMobile) {
       await page.setViewportSize({ width: 834, height: 1112 });
-      await expect.poll(perView).toBeCloseTo(2, 1);
+      await expect.poll(perView).toBeCloseTo(3, 1);
     }
   });
 

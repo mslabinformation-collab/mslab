@@ -324,6 +324,29 @@ describe("trainer page", () => {
     expect(((await read("trainer")).parts.trainer.value as TrainerDraft).portraitPos).toBe("40% 30%");
   });
 
+  test("„Kontaktifoto“ (Maria 10.11): the editor holds the contact photo; a new one is published, a removed one leaves the setting without it", async () => {
+    const card = clone((await read("trainer")).parts.trainer.value as TrainerDraft);
+    expect(card.contactPhotoKey).toBe("/seed/maria-seated.jpg");
+    await draft("trainer", "trainer", { ...card, contactPhotoKey: UPLOAD });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
+    expect((await getSettings(db)).trainer).toMatchObject({ portraitKey: card.portraitKey, contactPhotoKey: UPLOAD });
+
+    await draft("trainer", "trainer", { ...card, contactPhotoKey: "" });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
+    // none stored: the site shows the portrait there (components/site/settings.ts trainerSettings)
+    expect(Object.hasOwn((await getSettings(db)).trainer as object, "contactPhotoKey")).toBe(false);
+    expect(((await read("trainer")).parts.trainer.value as TrainerDraft).contactPhotoKey).toBe("");
+  });
+
+  test("„Kontaktifoto“: an outside image is refused at its field, and a draft that holds one is held back", async () => {
+    const card = clone((await read("trainer")).parts.trainer.value as TrainerDraft);
+    const bad = { ...card, contactPhotoKey: "https://evil.example/p.jpg" };
+    expect(await writeSitePart(db, "trainer", "trainer", bad, (await read("trainer")).parts.trainer.version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { contactPhotoKey: "image" } });
+    await forge("trainer", "trainer", bad);
+    expect(await publishNow("trainer")).toMatchObject({ published: [], blocked: [{ part: "trainer", reason: "missing", fields: ["kontaktifoto"] }] });
+    expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoKey: "/seed/maria-seated.jpg" });
+  });
+
   test("a missing name, an outside image, a half stat and more than 3 stats are held back", async () => {
     const card = clone((await read("trainer")).parts.trainer.value as TrainerDraft);
     const four = Array.from({ length: 4 }, (_, i) => ({ uid: `s${i}`, value: String(i), label: { et: "x" } }));

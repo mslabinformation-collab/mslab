@@ -10,7 +10,7 @@ export type WorksTexts = LightboxTexts & { title: string; open: string };
 
 /**
  * "Koolitaja tööd" under the trainer's portrait (Maria C29 / T2): a small carousel of her works — three per view on
- * desktop, two on tablets, about 1.2 on phones (the next image peeks in). Arrows move one image; swipe is the native
+ * desktop, tablets and phones alike (Maria 10.11: "kas saaks telefoni ja tahvlisse ka kolm panna"). Arrows move one image; swipe is the native
  * scroll with snap. Clicking an image opens it full size in the shared Lightbox.
  */
 export function WorksGallery({ images, t }: { images: LightboxImage[]; t: WorksTexts }) {

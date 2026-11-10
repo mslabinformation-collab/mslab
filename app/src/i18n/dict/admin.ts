@@ -277,6 +277,8 @@ export const adminEt = {
     trainer: {
       // the picture and its focal point
       portrait: "Portree",
+      // the small round photo by the contact forms (Maria 10.11)
+      contactPhoto: "Kontaktifoto",
       name: "Nimi",
       role: "Amet",
       bio: "Tutvustus",
@@ -2353,6 +2355,9 @@ export const adminEt = {
     portraitHint: "Püstine foto sobib kõige paremini. Fookuspunkt jääb alati nähtavale.",
     portraitWide: "Arvutis (4:5)",
     portraitNarrow: "Telefonis (4:3)",
+    // the small round photo by the contact forms and on the course page's „Koolitaja“ line, under the portrait (Maria 10.11)
+    contactPhoto: "Kontaktifoto",
+    contactPhotoHint: "Väike ümar pilt kontaktivormi ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.",
     name: "Nimi",
     role: "Amet",
     roleHint: "Näidatakse koolitaja lehel, kui tutvustus on tühi.",

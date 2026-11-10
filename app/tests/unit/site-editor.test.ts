@@ -166,11 +166,12 @@ describe("drafts from stored values", () => {
       items: [{ et: "a", ru: "б" }],
     });
     expect(pageDraft(null)).toEqual({ title: { et: "" }, body: { et: "" } });
-    expect(trainerDraft(null)).toEqual({ portraitKey: "", portraitPos: "50% 50%", name: { et: "" }, role: { et: "" }, stats: [] });
+    expect(trainerDraft(null)).toEqual({ portraitKey: "", portraitPos: "50% 50%", contactPhotoKey: "", name: { et: "" }, role: { et: "" }, stats: [] });
     expect(trainerDraft({ name: { et: "Maria", ru: "Мария" } }).name).toEqual({ et: "Maria", ru: "Мария" });
-    expect(trainerDraft({ portraitKey: "/seed/maria-standing.jpg", name: "M", stats: [{ value: "8+", label: { et: "aastat" } }, "junk"] })).toEqual({
+    expect(trainerDraft({ portraitKey: "/seed/maria-standing.jpg", contactPhotoKey: "/seed/maria-seated.jpg", name: "M", stats: [{ value: "8+", label: { et: "aastat" } }, "junk"] })).toEqual({
       portraitKey: "/seed/maria-standing.jpg",
       portraitPos: "50% 20%",
+      contactPhotoKey: "/seed/maria-seated.jpg", // the small round photo by the contact forms (Maria 10.11)
       name: { et: "M" }, // a plain string, as stored before round 2: the Estonian name
       role: { et: "" },
       stats: [

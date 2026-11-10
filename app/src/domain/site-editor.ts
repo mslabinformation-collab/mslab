@@ -249,7 +249,11 @@ export type StatDraft = Keyed & { value: string; label: I18n };
  * does not count it (domain/site-checks.ts), and Koolitaja's editor keeps none at the end of its three pairs (TrainerEditor.tsx).
  */
 export const isBlankStat = (s: { value: string; label: I18n }): boolean => !s.value.trim() && !s.label.et.trim() && !(s.label.ru ?? "").trim();
-export type TrainerDraft = { portraitKey: string; portraitPos: string; name: I18n; role: I18n; stats: StatDraft[] };
+/**
+ * The trainer card's draft. `contactPhotoKey`: the small round photo by the contact forms (the home page's and /kontakt's) and on the course
+ * page's „Koolitaja“ line (Maria 10.11: „Kontaktifoto“); "" for none, and the site then shows the portrait there (components/site/settings.ts).
+ */
+export type TrainerDraft = { portraitKey: string; portraitPos: string; contactPhotoKey: string; name: I18n; role: I18n; stats: StatDraft[] };
 
 /** settings.trainer → the trainer card's draft (the portrait's focal point defaults as the site frames it). */
 export function trainerDraft(value: unknown): TrainerDraft {
@@ -258,6 +262,7 @@ export function trainerDraft(value: unknown): TrainerDraft {
   return {
     portraitKey,
     portraitPos: portraitFraming(portraitKey, str(t.portraitPos)).pos,
+    contactPhotoKey: str(t.contactPhotoKey),
     // a plain string (before round 2) is the Estonian name
     name: typeof t.name === "string" ? { et: t.name } : i18nOf(t.name),
     role: i18nOf(t.role),

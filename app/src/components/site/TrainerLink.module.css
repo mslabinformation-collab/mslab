@@ -83,7 +83,10 @@
     grid-template-columns: 1fr;
   }
 
+  /* the one column's portrait in the middle of the card, not at its left (Maria 10.11: "Telefonis pilt nihkes, hoiab vasakule") */
   .photo {
+    justify-self: center;
+    width: 100%;
     max-width: 260px;
   }
 }

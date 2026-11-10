@@ -343,6 +343,7 @@ export const trainerParts: Parts = {
     schema: z.object({
       portraitKey: text(400),
       portraitPos: text(20),
+      contactPhotoKey: text(400),
       name: i18n,
       role: i18n,
       stats: z.array(z.object({ uid, value: text(100), label: i18n })).max(20),
@@ -354,6 +355,7 @@ export const trainerParts: Parts = {
       const p = `${name}.`;
       const portraitKey = c.image(`${p}portraitKey`, v.portraitKey);
       const portraitPos = c.focal(`${p}portraitPos`, v.portraitPos);
+      const contactPhotoKey = c.image(`${p}contactPhotoKey`, v.contactPhotoKey);
       const trainerName = c.text(`${p}name`, v.name, L.trainerName, { required: true });
       const role = c.text(`${p}role`, v.role, L.role);
       const stats: { value: string; label: I18n }[] = [];
@@ -365,10 +367,11 @@ export const trainerParts: Parts = {
       }
       if (stats.length > L.stats) c.fail(`${p}stats`, "tooMany");
       const value = (stored: unknown) => {
-        // other keys (the contact block's photo) stay as they are
-        const { role: _oldRole, ...rest } = obj(stored);
+        // other keys stay as they are; no contact photo is stored as none (the site then shows the portrait there)
+        const { role: _oldRole, contactPhotoKey: _oldPhoto, ...rest } = obj(stored);
         void _oldRole;
-        return { ...rest, portraitKey, portraitPos, name: trainerName, ...(role ? { role } : {}), stats };
+        void _oldPhoto;
+        return { ...rest, portraitKey, portraitPos, ...(contactPhotoKey ? { contactPhotoKey } : {}), name: trainerName, ...(role ? { role } : {}), stats };
       };
       return writing((tx, stored) => setSetting(tx, "trainer", value(stored)), value);
     },

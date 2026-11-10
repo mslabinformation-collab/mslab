@@ -132,7 +132,7 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
       title={t.card}
       parts={[trainer, bio]}
       // the portrait and its focal point have no label of their own on screen: a change of them marks the card (README §1.8)
-      unpublished={trainer.unpublished("portraitKey") || trainer.unpublished("portraitPos")}
+      unpublished={trainer.unpublished("portraitKey") || trainer.unpublished("portraitPos") || trainer.unpublished("contactPhotoKey")}
       className={`${styles.card} ${styles.portraitCard}`}
       titleClassName={styles.title}
     >
@@ -171,6 +171,19 @@ function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bi
           name="portrait"
           field="trainer.portraitKey"
         />
+        <div className={styles.contactPhoto}>
+          <SingleImage
+            label={t.contactPhoto}
+            value={v.contactPhotoKey}
+            onChange={(contactPhotoKey) => trainer.commit("contactPhotoKey", contactPhotoKey)}
+            hint={t.contactPhotoHint}
+            error={trainer.error("contactPhotoKey")}
+            ratio="1 / 1"
+            removable
+            name="contactPhoto"
+            field="trainer.contactPhotoKey"
+          />
+        </div>
       </div>
       <div className={styles.text} data-portrait-text="">
         <I18nInput label={t.name} value={v.name} onChange={(name) => trainer.set("name", name)} maxLength={SITE_LIMITS.trainerName} error={trainer.error("name")} name="trainer.name" unpublished={trainer.unpublished("name")} />
