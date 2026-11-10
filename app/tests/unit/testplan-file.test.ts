@@ -736,7 +736,7 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     // Proov 3 unsubscribes in the campaign check, before the welcome mail's; Proov 1 subscribes in konto-andmed, between the two
     expect(at("avalik-uudiskiri-kampaania-loobu")).toBeLessThan(at("konto-andmed"));
     expect(at("konto-andmed")).toBeLessThan(at("kirjad-tervituskiri"));
-    expect(item("konto-andmed").steps.join("\n")).toContain("„Saada mulle uudiskirja“");
+    expect(item("konto-andmed").steps.join("\n")).toContain("„Soovin MS LABi sooduspakkumisi ja uudiskirju saada“");
     // and nothing between them takes Proov 1 off the list
     for (const id of order.slice(at("konto-andmed") + 1, at("kirjad-tervituskiri"))) expect(text(id), id).not.toMatch(/Loobu uudiskirjast|uudiskirja(st)? (välja|loobu)/);
   });
