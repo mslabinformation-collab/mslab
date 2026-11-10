@@ -207,7 +207,7 @@ describe("the course page's data (getCourseBySlug with the preview's drafts)", (
     await draft(online.id, "price", { price: "120,50", accessMonths: "12", nextDiscount: { et: "-10%" } });
     await draft(online.id, "outcomes", { outcomes: [{ et: "Oskus A" }, { et: "Oskus B" }] });
     await draft(online.id, "badge", { badge: { label: { et: "Uus" }, bg: "#ddd4dc", fg: "#000" } });
-    await draft(online.id, "certificate", { certificateVolume: "10 akadeemilist tundi" });
+    await draft(online.id, "certificate", { certificateVolume: "10 akadeemilist tundi", certificateTitle: "Kulmumeistri baaskoolitus" });
     await draft(online.id, "protocolStages", { protocolStages: ["Algus"] });
     await asAdmin();
     const page = await pageCourse("e-kulm");
@@ -220,6 +220,7 @@ describe("the course page's data (getCourseBySlug with the preview's drafts)", (
       outcomes: [{ et: "Oskus A" }, { et: "Oskus B" }],
       badge: { label: { et: "Uus" }, bg: "#DDD4DC", fg: "#222222" },
       certificateVolume: "10 akadeemilist tundi",
+      certificateTitle: "Kulmumeistri baaskoolitus",
       protocolStages: ["Algus"],
     });
     // the rest is live's

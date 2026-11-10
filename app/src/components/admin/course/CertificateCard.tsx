@@ -12,7 +12,7 @@ import { PlainField } from "./PlainField";
 import type { PartApi } from "./types";
 
 /**
- * „Tunnistus“ (an e-course's card; phase 3d, spec §6): the certificate's lines (none: its „Õpiväljundid“ are printed, `outcomes`) and its volume.
+ * „Tunnistus“ (an e-course's card; phase 3d, spec §6): the certificate's title (empty: the course's), its lines (none: its „Õpiväljundid“ are printed, `outcomes`) and its volume.
  * Lines added, moved, removed or brought back save now (the part's update); the volume when typing stops or the card is left.
  */
 export function CertificateCard({ api, outcomes }: { api: PartApi<"certificate">; outcomes: readonly I18n[] }) {
@@ -23,6 +23,16 @@ export function CertificateCard({ api, outcomes }: { api: PartApi<"certificate">
     <Card id={CARD_ID.certificate} title={t.sections.certificate} onLeave={api.flush} conflict={api.conflict} onRestore={api.restore} data-certificate-card="">
       <div className={styles.certificate}>
         <p className={ui.muted}>{f.certificateLead}</p>
+        <PlainField
+          name="certificateTitle"
+          label={f.certificateTitle}
+          value={api.fields.certificateTitle}
+          onChange={(x) => api.set("certificateTitle", x)}
+          hint={f.certificateTitleHint}
+          error={api.error("certificateTitle")}
+          maxLength={CERT_LIMITS.title}
+          unpublished={api.unpublished("certificateTitle")}
+        />
         <ProtocolStagesEditor
           kind="skills"
           items={items}

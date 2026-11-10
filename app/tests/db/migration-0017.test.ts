@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { contentDrafts, courses, settings } from "@/db/schema";
+import { contentDrafts, settings } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0017 (admin UX pass, the draft layer: spec §7, behaviours.md B2) as the Railway database goes through it: 0000–0016 applied, with a
@@ -39,7 +39,8 @@ test("0017 adds content_drafts with its unique (entity, entity_id, part), and to
     }
   };
   await through("0016_newsletter_simple");
-  const [course] = await db.insert(courses).values({ slug: "kulmud", type: "contact", level: "basic", title: { et: "Kulmud" }, summary: { et: "" }, body: { et: "" }, published: true }).returning();
+  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true) returning id`)).rows;
   await db.insert(settings).values({ key: "contact", value: { email: "info@example.test" } });
   const coursesBefore = (await db.execute<Record<string, unknown>>(sql`select * from courses order by id`)).rows;
   const columnsBefore = await db.execute<Column>(sql`select table_name, column_name from information_schema.columns where table_schema = 'public' order by table_name, column_name`);

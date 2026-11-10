@@ -1779,6 +1779,8 @@ export const adminEt = {
       testOptionRemoved: "Vastusevariant eemaldatud.",
       // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
       certificateLead: "E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      certificateTitle: "Pealkiri tunnistusel",
+      certificateTitleHint: "Kui jätad tühjaks, kasutatakse koolituse nime.",
       certificateSkills: "Oskused tunnistusel",
       certificateSkill: "Rida",
       certificateSkillsHint: "Tühjana kasutatakse „Õpiväljundid“ ridu",

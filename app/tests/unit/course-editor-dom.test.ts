@@ -1188,6 +1188,11 @@ describe("the layout: the section map lists only this type's cards", () => {
       "Galerii 1",
       "Soovitused 1",
     ]);
+    // „Tunnistus“ starts with „Pealkiri tunnistusel“ (one line, its hint says what empty does), before the lines and the volume
+    const card = $("[data-certificate-card]")!;
+    expect(card.querySelector("[data-field]")!.getAttribute("data-field")).toBe("certificateTitle");
+    expect(card.textContent).toContain("Pealkiri tunnistusel");
+    expect(card.textContent).toContain("Kui jätad tühjaks, kasutatakse koolituse nime.");
     // each entry points at its card on the page
     for (const a of $$<HTMLAnchorElement>("nav[aria-label='Jaotised'] a")) expect(container.querySelector(a.getAttribute("href")!), a.getAttribute("href")!).not.toBeNull();
     // below 1180 px the same entries are the „Jaotised“ select

@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { courses, registrations, settings } from "@/db/schema";
+import { registrations, settings } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0018 (instalments, Task 1: spec §3) as the Railway database goes through it: 0000–0017 applied, with a course, registrations of both
@@ -25,7 +25,8 @@ test("0018 adds the payment choice 'financing' to the enum, and touches nothing 
     }
   };
   await through("0017_content_drafts");
-  const [course] = await db.insert(courses).values({ slug: "kulmud", type: "contact", level: "basic", title: { et: "Kulmud" }, summary: { et: "" }, body: { et: "" }, published: true }).returning();
+  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true) returning id`)).rows;
   const register = (paymentChoice: "full" | "half" | "financing", name: string) =>
     db.insert(registrations).values({ courseId: course.id, kind: "individual", name, email: `${name.toLowerCase()}@example.test`, paymentChoice }).returning();
   await register("full", "Anna");

@@ -6,7 +6,7 @@ import { readSetting } from "@/db/queries/public";
 import { certificates, courseAccess, courses, type Certificate } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import {
-  CERT_LIMITS, certificateForm, certificateSkills, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
+  CERT_LIMITS, certificateForm, certificateSkills, certificateTitle, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
 } from "@/domain/certificate";
 import { PAGE_SIZE } from "@/domain/paging";
 import { toStorable } from "@/lib/to-storable";
@@ -81,7 +81,7 @@ const readSettings = async (q: Db, now: Date): Promise<CertificateSettings> => r
  *   number already issued in that year (highestSeq under the lock): the issue takes the larger of the two, so Seaded's number ahead of the
  *   series (Maria's jump) is kept, and one behind it or for another year, or no row at all, cannot make the unique (year, seq) refuse every
  *   later issue. This amends spec §4's "else 1";
- * - the frozen copy is written: the course's Estonian title, its certificate lines (certificateSkills: its own, else "Mida õpid") and its
+ * - the frozen copy is written: the title on the certificate (the course's own „Pealkiri tunnistusel“, else its Estonian title; certificateTitle), its certificate lines (certificateSkills: its own, else "Mida õpid") and its
  *   volume, and Seaded's practical line, place and registry code;
  * - Seaded's next number is moved on: the year used and the number used plus one.
  * `notFound` also without an access, and for a contact course (accessFor). Logs `[certificate] access N: issued <number>` after the commit.
@@ -99,7 +99,7 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
     const [existing] = await tx.select().from(certificates).where(eq(certificates.accessId, access.id)).limit(1);
     if (existing) return { kind: "already", certificate: viewOf(existing) };
     const [course] = await tx
-      .select({ title: courses.title, certificateSkills: courses.certificateSkills, certificateVolume: courses.certificateVolume, outcomes: courses.outcomes })
+      .select({ title: courses.title, certificateSkills: courses.certificateSkills, certificateVolume: courses.certificateVolume, certificateTitle: courses.certificateTitle, outcomes: courses.outcomes })
       .from(courses)
       .where(eq(courses.id, access.courseId))
       .limit(1);
@@ -120,7 +120,7 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
         year: taken.year,
         seq: taken.seq,
         name: checked.name,
-        courseTitle: course.title.et,
+        courseTitle: certificateTitle(course),
         skills: certificateSkills(course),
         volume: course.certificateVolume.trim(),
         practicalLine: settings.practicalLine,

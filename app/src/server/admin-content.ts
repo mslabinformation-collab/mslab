@@ -63,6 +63,7 @@ const draftSchema = z.object({
   // "Tunnistus" (phase 3d): loose here, the real limits after (with field errors); the defaults: an editor page loaded before the deploy posts neither
   certificateSkills: z.array(z.string().max(2000)).max(200).default([]),
   certificateVolume: z.string().max(2000).default(""),
+  certificateTitle: z.string().max(2000).default(""),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -178,21 +179,25 @@ export function checkCourseTest(c: Check, d: TestDraft, type: CourseType): { tes
 }
 
 /**
- * "Tunnistus" (phase 3d, spec §6): an e-course's certificate lines and volume, each cleaned as a heading is (one line), trimmed, blank lines
- * dropped; at most 16 lines of at most 120 characters, the volume at most 80. A contact course has no certificate: it stores none.
+ * "Tunnistus" (phase 3d, spec §6): an e-course's certificate title, lines and volume, each cleaned as a heading is (one line), trimmed, blank lines
+ * dropped; at most 16 lines of at most 120 characters, the title at most 100 (CERT_LIMITS.title), the volume at most 80. A contact course has no certificate: it stores none.
  */
 export function checkCourseCertificate(
   c: Check,
-  d: Pick<CourseDraft, "certificateSkills" | "certificateVolume">,
+  d: Pick<CourseDraft, "certificateTitle" | "certificateSkills" | "certificateVolume">,
   type: CourseType,
-): Pick<CourseFields, "certificateSkills" | "certificateVolume"> {
-  if (type !== "e_learning") return { certificateSkills: [], certificateVolume: "" };
+): Pick<CourseFields, "certificateTitle" | "certificateSkills" | "certificateVolume"> {
+  if (type !== "e_learning") return { certificateTitle: "", certificateSkills: [], certificateVolume: "" };
   let certificateSkills: string[] = [];
   const lines = d.certificateSkills.map((s) => heading(s).trim()).filter(Boolean);
   if (lines.length > CERT_LIMITS.skills) c.fail("certificateSkills", "tooMany");
   else if (lines.some((s) => s.length > CERT_LIMITS.skill)) c.fail("certificateSkills", "tooLong");
   else certificateSkills = lines;
-  return { certificateSkills, certificateVolume: c.plain("certificateVolume", heading(d.certificateVolume), CERT_LIMITS.volume) };
+  return {
+    certificateTitle: c.plain("certificateTitle", heading(d.certificateTitle), CERT_LIMITS.title),
+    certificateSkills,
+    certificateVolume: c.plain("certificateVolume", heading(d.certificateVolume), CERT_LIMITS.volume),
+  };
 }
 
 /** The badge: one of D's swatches and at most 18 characters (each language), or none; the Russian text is optional. */

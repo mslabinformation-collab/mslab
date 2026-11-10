@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { courses, reviews } from "@/db/schema";
+import { reviews } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0021 (admin UX pass, piece 4c, Task 1: spec §7, R-b) as the Railway database goes through it: 0000–0020 applied, with a published course
@@ -31,7 +31,8 @@ test("0021 adds exactly one column (reviews.removed_at, null), keeps every row a
   };
   await through("0020_course_drafts");
   // (raw SQL for the reviews: the schema's table already has the column this migration adds)
-  const [course] = await db.insert(courses).values({ slug: "kulmud", type: "contact", level: "basic", title: { et: "Kulmud" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9500 }).returning();
+  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published, price) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true, 9500) returning id`)).rows;
   await db.execute(sql`insert into reviews (course_id, kind, text, name, locale, written_at, status) values (${course.id}, 'student', 'Soovitan.', 'Mari M.', 'et', '2026-10-13T08:00:00Z', 'pending')`);
   await db.execute(sql`insert into reviews (course_id, kind, text, name, locale, written_at, status, featured, decided_at) values (${course.id}, 'student', 'Väga hea.', 'Kati K.', 'ru', '2026-10-14T08:00:00Z', 'published', true, '2026-10-15T08:00:00Z')`);
   await db.execute(sql`insert into reviews (course_id, kind, text, name, locale, written_at, status, decided_at, note) values (${course.id}, 'manual', 'Tore.', 'Anu A.', 'et', '2026-09-19T21:00:00Z', 'published', '2026-10-16T08:00:00Z', 'paberil')`);
