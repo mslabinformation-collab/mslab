@@ -94,7 +94,7 @@ describe("records made for an address with an account link to it at once", () =>
 
   test("a practice request, the cart's purchase request, a contact message and a newsletter sign-up link too", async () => {
     const id = await signedIn("kati@example.test");
-    expect(await handlePractice(deps(), form({ package: "MINI", name: "Kati Kask", email: "kati@example.test", phone: "+372 5555 1234", times: "õhtuti" }))).toEqual({ ok: true });
+    expect(await handlePractice(deps(), form({ package: "MINI", name: "Kati Kask", email: "kati@example.test", phone: "+372 5555 1234", city: "Pärnu", times: "õhtuti" }))).toEqual({ ok: true });
     expect(await handlePurchaseInterest(deps(), form({ course: "e-kulm", email: "kati@example.test" }))).toEqual({ ok: true });
     expect(await handleContact(deps(), form({ name: "Kati Kask", email: "kati@example.test", message: "Tere!" }))).toEqual({ ok: true });
     expect(await handleSubscribe(deps(), form({ email: "kati@example.test" }))).toEqual({ ok: true });
