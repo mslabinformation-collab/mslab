@@ -386,8 +386,11 @@ test.describe("practice", () => {
   test("RU practice", async ({ page }) => {
     await page.goto("/ru/praktika?pakett=MINI");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Практика");
-    await expect(page.getByText("Практика проходит только в Пярну, в студии MS LAB.")).toBeVisible();
+    await expect(page.getByText("Практика возможна в Пярну и Таллинне.")).toBeVisible();
     await expect(page.locator("[data-practice-form]").getByRole("radio", { name: /MINI/ })).toBeChecked();
+    // the city choice in Russian (Maria 10.11): Пярну and Таллинн, nothing picked
+    await expect(page.locator("[data-practice-form]").getByRole("radio", { name: "Таллинн" })).not.toBeChecked();
+    await expect(page.locator("[data-practice-form]").getByRole("radio", { name: "Пярну" })).not.toBeChecked();
   });
 });
 
