@@ -95,7 +95,8 @@ Today no code reaches the money path:
       - A failed, abandoned or refunded payment gives the code back.
   - **Once per person** (my call). Her earlier uses count while the registration is not `cancelled`, or the e-course payment is `paid` or `held`. Two kinds are left out, like the order being made (`personFacts`' `except`, §4.2):
     - a use on a registration of the **same course** that has nothing paid and is not `confirmed`, whatever its age;
-    - a use on an e-course payment that is not `paid` or `held`, the pending window included.
+    - a use on an e-course payment of the **same course** that is not `paid` or `held`, the pending window included.
+    - A `pending` payment of **another** course counts inside its window (`attemptEnds`), so two tabs on two e-courses cannot both use a once-per-person code; after its window, or once it fails, it gives the use back.
     - So her re-send is the same order again: a booking sent twice, or a cart paid again after Back or a failed payment, gets the code again.
     - An unpaid booking of **another** course still holds her use until it is cancelled (§6).
   - **Nothing else changes.** Settle, `failPayment`, `setRegistrationStatus` and the refund path need no change for codes.
@@ -495,7 +496,7 @@ Logs name a code by its id only, never by its text, and never name an e-mail.
   - a code of the wrong shape.
 - **`discount-codes.test.ts`:**
   - once per person, `first` and `returning`, with D7's training sources (paid, confirmed, unpaid, cancelled, an access, a paid e-course);
-  - once per person's `except`: an unpaid, unconfirmed booking of the same course is left out (the re-send gets the code), whatever its age; a confirmed or part-paid one, or one of another course, is not; a pending, failed or abandoned e-course payment is left out, a paid or held one is not;
+  - once per person's `except`: an unpaid, unconfirmed booking of the same course is left out (the re-send gets the code), whatever its age; a confirmed or part-paid one, or one of another course, is not; a pending, failed or abandoned e-course payment of the same course is left out, a paid or held one is not; a pending payment of another course counts inside its window and not after, nor once failed;
   - the subscriber rule with its days;
   - the limit under D7's counting: an unpaid booking counts for 24 hours and then stops; a confirmed or part-paid one keeps counting; a late payment on an old booking counts again, over the limit; a cancellation gives back; a failed payment gives back; a pending payment counts inside its window and not after;
   - the admin's create, edit, pause and delete;

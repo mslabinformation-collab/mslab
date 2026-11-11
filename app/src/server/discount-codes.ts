@@ -3,6 +3,7 @@ import type { Q, Tx } from "@/db/client";
 import { attemptEnds } from "@/db/queries/payments";
 import { discountCodeCourses, discountCodes, discountRedemptions, subscribers, type DiscountCode } from "@/db/schema";
 import { tallinnToday } from "@/domain/client-access";
+import { normalizeEmail } from "@/domain/email";
 import {
   codeRefusal,
   codeValueText,
@@ -76,22 +77,24 @@ const accessKept = sql`exists (select 1 from course_access ca where ca.client_id
  * a code's `max_uses` at `now`. A registration counts unless cancelled, and then when it is confirmed, has money paid or is under 24 hours old
  * (an unpaid one holds the use for REGISTRATION_USE_MS); an e-course payment counts when paid or held, or pending inside its attempt window
  * (db/queries/payments.ts attemptEnds, which reads `p.updated_at` and `p.method`: hence the raw aliases). R15: a refunded payment counts too
- * while its access is not revoked. A use whose registration or payment is gone counts for nothing. domain/discount-codes.ts useMark is the same
+ * while its access is not revoked. A use carrying both ids is judged by its registration, as useMark does (the payment branch needs
+ * `d.registration_id is null`). A use whose registration or payment is gone counts for nothing. domain/discount-codes.ts useMark is the same
  * rule for one use in memory; a test holds them equal.
  */
 export function countingUse(now: Date): SQL {
   const since = ts(new Date(now.getTime() - REGISTRATION_USE_MS));
   return sql`(
     (d.registration_id is not null and r.status <> 'cancelled' and (r.status = 'confirmed' or r.paid_cents > 0 or r.created_at > ${since}))
-    or (d.payment_id is not null and (p.status in ('paid', 'held') or (p.status = 'pending' and ${attemptEnds} > ${ts(now)}) or (p.status = 'refunded' and ${accessKept})))
+    or (d.registration_id is null and d.payment_id is not null and (p.status in ('paid', 'held') or (p.status = 'pending' and ${attemptEnds} > ${ts(now)}) or (p.status = 'refunded' and ${accessKept})))
   )`;
 }
 
-const joins = sql`discount_redemptions d left join registrations r on r.id = d.registration_id left join payments p on p.id = d.payment_id`;
+/** The uses `d` with their registration `r` and payment `p`: countingUse works only over this join (the admin's use list reuses it). */
+export const useJoins = sql`discount_redemptions d left join registrations r on r.id = d.registration_id left join payments p on p.id = d.payment_id`;
 
 /** How many uses of the code count against its limit at `now` (D7). */
 export async function usesOf(q: Q, codeId: number, now: Date): Promise<number> {
-  const result = await q.execute(sql`select count(*)::int as n from ${joins} where d.code_id = ${codeId} and ${countingUse(now)}`);
+  const result = await q.execute(sql`select count(*)::int as n from ${useJoins} where d.code_id = ${codeId} and ${countingUse(now)}`);
   return Number(rowsOf(result)[0]?.n ?? 0);
 }
 
@@ -99,18 +102,24 @@ export async function usesOf(q: Q, codeId: number, now: Date): Promise<number> {
  * What the rules need to know about the person behind `email` (already normalizeEmail'd by the caller, D6) when she uses code `at.codeId` for
  * course `at.courseId`:
  * - `uses`: her uses of this code that count for once per person: a registration that is not cancelled, except an unpaid, unconfirmed one of this
- *   very course (she may take the form again), and a paid or held payment, or a refunded one whose access is kept (R15). Unlike usesOf, no
+ *   very course (she may take the form again), and a paid or held payment, or a refunded one whose access is kept (R15), or (S1) a pending payment of another course inside its window, so that two tabs on two e-courses cannot both
+ *   use a once-per-person code; a not-paid payment of this very course is left out (her re-pay after Back or a failure gets the code again). Unlike usesOf, no
  *   24-hour window: an old unpaid booking of another course keeps her use;
  * - `trained`: she has a confirmed or part-paid booking, a paid e-course, or an open access (audience „first“ / „returning“);
  * - `subscribedOn`: the Tallinn day of her newsletter consent, when confirmed; else null (the welcome code).
  */
-export async function personFacts(q: Q, email: string, at: { codeId: number; courseId: number }): Promise<PersonFacts> {
+export async function personFacts(q: Q, typedEmail: string, at: { codeId: number; courseId: number }, now: Date): Promise<PersonFacts> {
+  const email = normalizeEmail(typedEmail); // (idempotent: the callers pass it normalized, D6)
   const uses = rowsOf(
     await q.execute(sql`
-      select count(*)::int as n from ${joins}
+      select count(*)::int as n from ${useJoins}
       where d.code_id = ${at.codeId} and d.email = ${email} and (
         (d.registration_id is not null and r.status <> 'cancelled' and not (r.course_id = ${at.courseId} and r.paid_cents = 0 and r.status <> 'confirmed'))
-        or (d.payment_id is not null and (p.status in ('paid', 'held') or (p.status = 'refunded' and ${accessKept})))
+        or (d.registration_id is null and d.payment_id is not null and (
+          p.status in ('paid', 'held')
+          or (p.status = 'refunded' and ${accessKept})
+          or (p.status = 'pending' and p.course_id <> ${at.courseId} and ${attemptEnds} > ${ts(now)})
+        ))
       )`),
   )[0]?.n;
   const trained = rowsOf(
@@ -124,7 +133,7 @@ export async function personFacts(q: Q, email: string, at: { codeId: number; cou
   const [sub] = await q
     .select({ consentAt: subscribers.consentAt })
     .from(subscribers)
-    .where(and(eq(subscribers.email, email), isNotNull(subscribers.confirmedAt)))
+    .where(and(sql`lower(${subscribers.email}) = ${email}`, isNotNull(subscribers.confirmedAt)))
     .limit(1);
   return { uses: Number(uses ?? 0), trained: trained === true, subscribedOn: sub ? tallinnToday(sub.consentAt) : null };
 }
@@ -149,7 +158,8 @@ export type Redeemed = { ok: true; codeId: number; code: string; discountCents: 
  * (`changed`: also when the form showed none). The lock stays until the transaction ends, so the caller's insert of the use is ordered with
  * every other one.
  */
-export async function redeem(tx: Tx, input: RedeemInput, now: Date): Promise<Redeemed> {
+export async function redeem(tx: Tx, rawInput: RedeemInput, now: Date): Promise<Redeemed> {
+  const input = { ...rawInput, email: normalizeEmail(rawInput.email) }; // (idempotent, D6)
   const found = await findCode(tx, input.typed);
   if (!found) return { ok: false, error: "unknown" };
   const c = await lockCode(tx, found.id);
@@ -158,7 +168,7 @@ export async function redeem(tx: Tx, input: RedeemInput, now: Date): Promise<Red
   const rule = ruleOf(c);
   const refusal = codeRefusal(rule, { courseId: input.courseId, courseType: input.courseType, listCents: input.listCents, today, uses: await usesOf(tx, c.id, now) });
   if (refusal) return { ok: false, error: refusal };
-  const facts = await personFacts(tx, input.email, { codeId: c.id, courseId: input.courseId });
+  const facts = await personFacts(tx, input.email, { codeId: c.id, courseId: input.courseId }, now);
   if (personRefusal(rule, facts, { subscribing: input.subscribing, today })) return { ok: false, error: "person" };
   const d = discountCents(rule, input.listCents);
   if (input.shownCents === null || input.shownCents !== d) return { ok: false, error: "changed" };

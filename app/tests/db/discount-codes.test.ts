@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import * as schema from "@/db/schema";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "@/db/client";
 import { courseAccess, courses, courseSessions, discountCodeCourses, discountCodes, discountRedemptions, registrations, subscribers, type Course, type CourseSession, type DiscountCode, type Registration } from "@/db/schema";
@@ -19,6 +20,12 @@ let contact: { course: Course; session: CourseSession };
 let other: { course: Course; session: CourseSession };
 let ecourse: Course;
 let n = 0;
+
+/** A second e-course, to buy next to the first. */
+async function ecourseCourse2(): Promise<Course> {
+  const [course] = await db.insert(courses).values({ slug: `teine-e-koolitus${++n}`, type: "e_learning", level: "basic", title: { et: "Teine e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9000, accessMonths: 6 }).returning();
+  return course;
+}
 
 beforeAll(async () => {
   db = await makeTestDb();
@@ -58,7 +65,7 @@ async function paidUse(code: DiscountCode, who: string, over: Parameters<typeof 
   return p;
 }
 
-const factsOf = (code: DiscountCode, who: string, courseId = contact.course.id) => personFacts(db, who, { codeId: code.id, courseId });
+const factsOf = (code: DiscountCode, who: string, courseId = contact.course.id) => personFacts(db, who, { codeId: code.id, courseId }, NOW);
 
 describe("findCode and lockCode", () => {
   it("finds a typed code in any spelling, with its courses; unknown and non-code strings give null", async () => {
@@ -114,6 +121,24 @@ describe("personFacts.uses (once per person)", () => {
     }
   });
 
+  it("once per person: a pending payment of another course counts inside its window; after it, failed, or of the same course it does not", async () => {
+    const code = await makeCode();
+    const second = await ecourseCourse2();
+    const live = email();
+    await paidUse(code, live, { at: ago(10 * MIN), method: "paymentInitiation" }); // started on the e-course, 10 minutes ago
+    expect((await personFacts(db, live, { codeId: code.id, courseId: second.id }, NOW)).uses).toBe(1);
+    expect((await personFacts(db, live, { codeId: code.id, courseId: ecourse.id }, NOW)).uses).toBe(0); // the same course: her re-pay
+    const late = email();
+    await paidUse(code, late, { at: ago(40 * MIN), method: "paymentInitiation" });
+    expect((await personFacts(db, late, { codeId: code.id, courseId: second.id }, NOW)).uses).toBe(0);
+    const loan = email();
+    await paidUse(code, loan, { at: ago(40 * MIN), method: "hirePurchase" }); // a järelmaks has 60
+    expect((await personFacts(db, loan, { codeId: code.id, courseId: second.id }, NOW)).uses).toBe(1);
+    const failed = email();
+    await paidUse(code, failed, { at: ago(10 * MIN), status: "failed" });
+    expect((await personFacts(db, failed, { codeId: code.id, courseId: second.id }, NOW)).uses).toBe(0);
+  });
+
   it("once per person (R15): a refund that leaves the access keeps the use; a refund with the access revoked gives it back", async () => {
     const code = await makeCode();
     const kept = email();
@@ -152,6 +177,9 @@ describe("personFacts.trained and subscribedOn", () => {
     const revoked = email();
     await clientWithAccess(db, revoked, ecourse, { revoked: true });
     expect(await trained(revoked)).toBe(false);
+    const heldCourse = email();
+    await ecoursePayment(db, ecourse, heldCourse, { status: "held" });
+    expect(await trained(heldCourse)).toBe(false);
     const pendingCourse = email();
     await ecoursePayment(db, ecourse, pendingCourse, { status: "pending" });
     expect(await trained(pendingCourse)).toBe(false);
@@ -208,7 +236,7 @@ describe("usesOf", () => {
     expect(await usesOf(db, loan.id, new Date(NOW.getTime() + 61 * MIN))).toBe(0);
   });
 
-  it("usesOf (R15): a refund that leaves the access keeps counting; a refund with the access revoked gives back", async () => {
+  it("usesOf: a refund that leaves the access keeps counting; a refund with the access revoked gives back", async () => {
     const code = await makeCode();
     const kept = email();
     const keptClient = await clientWithAccess(db, kept, ecourse);
@@ -278,6 +306,34 @@ describe("usesOf", () => {
   });
 });
 
+describe("uses whose rows are gone and double-id uses", () => {
+  it("usesOf: a use whose payment is gone counts for nothing", async () => {
+    const code = await makeCode();
+    const p = await paidUse(code, email(), { status: "paid" });
+    expect(await usesOf(db, code.id, NOW)).toBe(1);
+    await db.delete(schema.payments).where(eq(schema.payments.id, p.id));
+    expect(await usesOf(db, code.id, NOW)).toBe(0);
+  });
+
+  it("a use carrying a registration and a payment is judged by its registration", async () => {
+    const code = await makeCode();
+    const who = email();
+    const r = await registrationOn(db, contact, { email: who, status: "cancelled" });
+    const p = await ecoursePayment(db, ecourse, who, { status: "paid" });
+    await insertRedemption(db, { codeId: code.id, email: who, clientId: null, courseId: contact.course.id, registrationId: r.id, paymentId: p.id, listCents: 35000, discountCents: 3500, via: "form" }, NOW);
+    expect(await usesOf(db, code.id, NOW)).toBe(0);
+    expect((await factsOf(code, who)).uses).toBe(0);
+  });
+
+  it("an e-mail in capitals is the same person (D6 defence)", async () => {
+    const code = await makeCode();
+    await bookedUse(code, "mari.mees@example.test", { status: "confirmed" });
+    expect((await factsOf(code, " Mari.Mees@Example.TEST ")).uses).toBe(1);
+    await db.insert(subscribers).values({ email: "Sub.Mixed@example.test", token: `t${++n}`, consentAt: new Date("2026-11-05T10:00:00Z"), confirmedAt: new Date("2026-11-05T10:01:00Z") });
+    expect((await factsOf(code, "sub.mixed@example.test")).subscribedOn).toBe("2026-11-05");
+  });
+});
+
 describe("redeem", () => {
   const input = (over: Partial<RedeemInput> = {}): RedeemInput => ({ typed: "", shownCents: 1000, email: "kati@example.test", courseId: contact.course.id, courseType: "contact", listCents: 10_000, subscribing: false, ...over });
   const run = (over: Partial<RedeemInput>) => db.transaction((tx) => redeem(tx, input(over), NOW));
@@ -304,6 +360,11 @@ describe("redeem", () => {
     const once = await makeCode();
     await bookedUse(once, "kati@example.test", { status: "confirmed" });
     expect(await run({ typed: once.code })).toEqual({ ok: false, error: "person" });
+    const second = await ecourseCourse2();
+    const twoTabs = await makeCode();
+    const tabs = email();
+    await paidUse(twoTabs, tabs, { at: ago(5 * MIN), method: "paymentInitiation" });
+    expect(await run({ typed: twoTabs.code, email: tabs, courseId: second.id, courseType: "e_learning" })).toEqual({ ok: false, error: "person" });
     const first = await makeCode({ audience: "first" });
     expect(await run({ typed: first.code, email: "kati@example.test" })).toEqual({ ok: false, error: "person" });
     const returning = await makeCode({ audience: "returning" });
