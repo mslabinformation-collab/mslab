@@ -80,6 +80,19 @@ Each line below has its test in the task that owns the code.
 - **R12, D11 („Lisa sooduskood“ on the Raha card).** Its refusals: `paid`, `unpaidInvoice`, `cancelled`, `unknown`, `stale` (the registration already has a code, or none to remove), and `worthless` (the list price is 1,00 € or less). `worthless` uses the Draft text „Sellele hinnale sooduskood ei mõju.“ (my call).
 - **R13, the seed.** It keeps `settings.newsletter` with an empty code, so no welcome row exists. The migration's data SQL makes the row only from a code of the right shape.
 
+### Amendments after comparing Rempire's promo codes (controller, 11.11; binding)
+
+- **R14, looser normalising (Task 1).** `normalizeCode` = NFKC, remove every whitespace character inside and around (spaces, NBSP U+00A0, U+202F, zero-width U+200B–U+200D, U+FEFF), fold dash variants (U+2010–U+2015, U+2212) to "-", upper case. `isCode` additionally requires at least one letter or digit ("---" is not a code). The admin save normalises the same way, so Maria's „tere 10“ is stored as `TERE10`. Reason: the welcome code is copied from a mail on a phone.
+- **R15, a refund that leaves the access (Tasks 1 and 3).** A `refunded` e-course payment's use **keeps counting** (for `usesOf`/`countingUse`, `personFacts.uses` and `useMark` → "counts") while a `course_access` with `revoked_at is null` exists for the payment's client and course. Only a refund whose access is revoked (or never existed) gives the use back. Reason: `montonio.ts` maps PARTIALLY_REFUNDED to `refunded`, and the spec's own fix for a wrong e-course price is a partial refund; without this a limited code gets a slot back and a once-per-person code becomes reusable while she keeps the course.
+- **R16, one validator for every write (Task 13).** `writeCode` checks `codeFieldProblems` over the **stored row merged with the patch**, never the patch alone (a patch `{ scope: "courses" }` with no courses, or `{ kind: "euro" }` with no amount, is refused with the field error, never a DB check error).
+- **R17, switching Protsent ↔ Eurod (Task 13).** Switching empties the value field; the kind is saved only together with a valid value (clicking the choice alone sends nothing). Rempire shipped 150 € → 150 % twice.
+- **R18, a euro ceiling (Task 13).** A euro amount above the highest current list price among the courses in the code's scope is refused: field error `amountTooHigh` „Soodustus on suurem kui koolituse hind.“ (Draft). Checked on every write over the merged row (R16), so narrowing the scope re-checks it. The 1 € floor still covers later price drops.
+- **R19, delete (Task 13).**
+  - A code with redemption rows but none that count: the line „Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, seega ei saa seda kustutada. Peata see.“ (Draft) instead of the plain used line, so „Kasutatud 0“ never contradicts it.
+  - `deleteCode` maps a foreign-key violation (Postgres `23503`, a booking committed first) to `{ ok: false, error: "used" }`, never a 500.
+- **R20, small admin aids (Task 13).** `codeTaken` carries the existing code's id and the field error shows a link „Ava see kood“ (Draft) to its drawer. The drawer shows „Soodustust kokku: {amount}“ (Draft): the sum of `discount_cents` over the uses that count.
+- **Kept as the spec says (Rempire differs):** the code text stays editable until its first use (`codeUsed` after), because the welcome code's text must stay changeable as it is today.
+
 ## File Structure
 
 | File | Responsibility |
@@ -170,6 +183,7 @@ export type SubmitCodeError = "unknown" | CodeRefusal | "person" | "changed";
 - **`useMark`:**
   - With a registration: `cancelled` if cancelled; `counts` if confirmed, `paidCents > 0` or under 24 h; else `unpaid`.
   - With a payment: `paid`/`held` → `counts`; `pending` && inWindow → `counts`; `pending`/`replaced` → `pending`; `failed` → `failed`; `refunded` → `refunded`.
+  - **R15:** the payment input also has `accessKept: boolean` (a `course_access` not revoked for the payment's client and course); `refunded` with `accessKept` → `counts`. Add `useMark(pay("refunded", false, true), now)` → `"counts"` to the test table (the `pay` helper gains the third argument, default false).
   - With neither → `gone`.
 - **`codeValueText`:** percent → `${p}%`. Euros → `formatEUR(amountCents, "et")`.
 
@@ -255,8 +269,13 @@ test("validOn includes both days", () => {
 });
 test("normalizeCode and isCode", () => {
   expect(normalizeCode("  tere10 ")).toBe("TERE10");
+  // R14: spaces inside, NBSP, zero-width and dash variants
+  expect(normalizeCode("suvi 10")).toBe("SUVI10");
+  expect(normalizeCode("tere 10​")).toBe("TERE10");
+  expect(normalizeCode("tere–10")).toBe("TERE-10");
   expect(isCode("TERE-10")).toBe(true);
   expect(isCode("TERE 10")).toBe(false);
+  expect(isCode("---")).toBe(false);
   expect(isCode("A".repeat(31))).toBe(false);
 });
 test("addDays crosses the month and the year", () => expect(addDays("2026-12-31", 1)).toBe("2027-01-01"));
@@ -403,6 +422,7 @@ export async function welcomeCode(q: Q, now: Date): Promise<WelcomeCode | null>;
   or (d.payment_id is not null and (p.status in ('paid','held') or (p.status = 'pending' and attemptEnds > now)))
   ```
   Raw SQL with the aliases `d`/`r`/`p`, because `attemptEnds` reads `p.updated_at` / `p.method`.
+  - **R15:** the payment branch also counts `p.status = 'refunded'` while a `course_access` with `revoked_at is null` exists for the payment's client and course; `personFacts.uses` likewise; `useMark`'s payment input gains `accessKept: boolean` and a refunded payment with `accessKept` is "counts". Tests: `"usesOf: a refund that leaves the access keeps counting; a refund with the access revoked gives back"` and the matching once-per-person case, and the `useMark` table in Task 1 gains `pay("refunded", false, true)` → "counts".
 - **`personFacts.uses`:** the uses of `(codeId, email)` that count for once per person. These are:
   - a registration not cancelled, **except** one of `courseId` with `paid_cents = 0` and status ≠ `confirmed`;
   - or a payment `paid`/`held`.
@@ -860,7 +880,10 @@ export async function codeUses(q: Q, codeId: number, now: Date): Promise<CodeUse
 
 - [ ] **Step 1: Write the failing tests:**
   - **`discount-code-fields.test.ts`:**
-    - `"each field error"`: percent 100 → `discountRange`; 7,5 → `whole`; amount "abc" → `amountEuro`; end before start → `endBeforeStart`; scope courses with none → `coursesRequired`; days 366 on the welcome row → `codeDaysRange`; "tere 10" → `codeFormat`; "" → `codeRequired`.
+    - `"each field error"`: percent 100 → `discountRange`; 7,5 → `whole`; amount "abc" → `amountEuro`; end before start → `endBeforeStart`; scope courses with none → `coursesRequired`; days 366 on the welcome row → `codeDaysRange`; "---" → `codeFormat` ("tere 10" is valid after R14's normalising); "" → `codeRequired`.
+  - **Amendment tests (R16–R20), in the files below:**
+    - admin: `"a one-field patch is checked over the stored row: scope courses with none chosen and euro with no amount are field errors"`; `"a one-field patch leaves the dates, scope and chosen courses alone"`; `"a euro amount above the highest list price in scope is amountTooHigh, re-checked when the scope narrows"`; `"deleteCode answers used when a booking committed first (23503)"`; `"a code whose only uses are cancelled or abandoned refuses delete with its own line"`; `"codeTaken carries the existing code's id"`; `"Soodustust kokku sums the counting uses only"`.
+    - drawer DOM: `"switching Protsent to Eurod empties the value and sends nothing until a valid amount"`; `"a refused value (95 %) shows the error and sends no request"`; `"Aktiivne flips at once and rolls back when the server refuses"`; `"codeTaken shows Ava see kood linking to the existing code"`.
   - **`discount-code-admin.test.ts`:**
     - `"create, edit, pause and delete a code"`;
     - `"a second code of the same text is codeTaken"`;

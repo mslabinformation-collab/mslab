@@ -634,3 +634,12 @@ Only questions whose answers change what gets built. Until an answer comes, the 
 - **The PDF rows** of the invoice and the contract, within §4.8.
 - **Code structure:** whether `domain/welcome-code.ts` is folded into `domain/discount-codes.ts`.
 - **Texts:** the Estonian and Russian beyond those quoted. They are Draft and go to Dim's wording sheet.
+
+## 12. Additions after comparing Rempire's promo codes (11.11)
+
+Dim asked to look at the discount codes of his other project, Rempire (an e-shop), for ideas. The plan's R14–R20 (`docs/superpowers/plans/2026-11-11-discount-codes.md`, "Amendments") carry them; all are my calls, the texts Draft:
+- **Looser normalising:** spaces, non-breaking and zero-width characters inside a code are removed and dash variants folded to "-", so „tere 10“ copied from a phone works; a code needs at least one letter or digit.
+- **A refund that leaves the access keeps the use:** a refunded e-course payment counts while the student keeps the course access (a partial refund is how Maria corrects a price).
+- **Admin safety:** every save is checked over the whole stored code, not the changed field alone; switching between % and € empties the value; a euro amount above the highest list price in scope is refused („Soodustus on suurem kui koolituse hind.“); a delete racing a booking answers "used"; a code used only on cancelled or abandoned bookings explains why it cannot be deleted.
+- **Small aids:** „Ava see kood“ next to "code already exists"; „Soodustust kokku“ (discount given in total) in the drawer.
+- **Not taken:** Rempire never lets a code's text change; here it stays editable until first use, because the welcome code's text must stay changeable as today. Generated one-person codes and audit rows stay out of scope (§9).
