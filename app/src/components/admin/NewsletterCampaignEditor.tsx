@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type SyntheticEvent } from "react";
 import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_FIELDS, CAMPAIGN_LIMITS, campaignFieldCodes, campaignSaveCheck, checkCampaignDraft, type CampaignField } from "@/domain/newsletter-campaign";
-import { CODE_MAX } from "@/domain/discount-codes";
+import { CODE_MAX, normalizeCode } from "@/domain/discount-codes";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
@@ -115,6 +115,12 @@ const LABELS: Record<CampaignField, string> = {
   buttonLabel: t.buttonLabel,
   buttonHref: t.buttonHref,
 };
+/** „Kood“ is typed and names no active discount code (D13; `active` are normalised): a warning only, the save and the send go on. */
+const unknownCode = (typed: string, active: readonly string[]): boolean => {
+  const code = normalizeCode(typed);
+  return code !== "" && !active.includes(code);
+};
+
 const ONE_LANGUAGE: readonly string[] = ["name", "code", "buttonHref"];
 /** The element of a field (its input in the language shown; the picture's own control). */
 const fieldElement = (name: string): HTMLElement | null =>
@@ -199,6 +205,7 @@ export function NewsletterCampaignEditor({
   testTargets,
   gated,
   audience,
+  activeCodes,
 }: {
   campaign: CampaignEditorView;
   /** The site's pages for the button's address (server/site-links.ts). */
@@ -209,6 +216,8 @@ export function NewsletterCampaignEditor({
   gated: boolean;
   /** Who „Saada kõigile ({n})“ goes to, as the page read it (B9). */
   audience: Audience;
+  /** The normalised texts of the active discount codes (activeCodeTexts, the page's read): „Kood“ warns when it is none of them (D13). */
+  activeCodes: readonly string[];
 }) {
   // a line that stays when the letter's state changes under it (a delete refused because it was sent meanwhile: the page then shows it read-only)
   const [notice, setNotice] = useState<string | null>(null);
@@ -223,7 +232,7 @@ export function NewsletterCampaignEditor({
       {readOnly ? (
         <SentCampaign campaign={campaign} />
       ) : (
-        <DraftEditor campaign={campaign} links={links} testTargets={testTargets} gated={gated} audience={audience} onNotice={setNotice} />
+        <DraftEditor campaign={campaign} links={links} testTargets={testTargets} gated={gated} audience={audience} activeCodes={activeCodes} onNotice={setNotice} />
       )}
     </>
   );
@@ -327,6 +336,7 @@ function DraftEditor({
   testTargets,
   gated,
   audience,
+  activeCodes,
   onNotice,
 }: {
   campaign: CampaignEditorView;
@@ -334,6 +344,7 @@ function DraftEditor({
   testTargets: TestTarget[];
   gated: boolean;
   audience: Audience;
+  activeCodes: readonly string[];
   onNotice: (text: string | null) => void;
 }) {
   const router = useRouter();
@@ -478,7 +489,7 @@ function DraftEditor({
             {counterBoth("body", values.body, L.body)}
           </div>
           <div className={styles.trio}>
-            <TextField label={t.code} value={values.code} onChange={(code) => set("code", code)} maxLength={CODE_MAX} hint={t.codeHint} error={err("code")} name="code" />
+            <TextField label={t.code} value={values.code} onChange={(code) => set("code", code)} maxLength={CODE_MAX} hint={t.codeHint} error={err("code")} warning={unknownCode(values.code, activeCodes) ? t.codeNotActive : undefined} name="code" />
             <div>
               <I18nInput label={t.buttonLabel} value={values.buttonLabel} onChange={(v) => set("buttonLabel", both(v))} maxLength={L.buttonLabel} error={err("buttonLabel")} name="buttonLabel" />
               {counterBoth("buttonLabel", values.buttonLabel, L.buttonLabel)}

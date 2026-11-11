@@ -11,6 +11,8 @@ type Props = {
   onChange: (value: string) => void;
   hint?: string;
   error?: string;
+  /** A warning that never blocks (the newsletter's „Kood“ names no active code): under the hint, named by aria-describedby, in the admin's warn style. */
+  warning?: string;
   type?: HTMLInputTypeAttribute;
   inputMode?: "text" | "decimal" | "numeric" | "email" | "tel" | "url";
   autoComplete?: string;
@@ -37,6 +39,7 @@ export function TextField({
   onChange,
   hint,
   error,
+  warning,
   type = "text",
   inputMode,
   autoComplete = "off",
@@ -49,7 +52,7 @@ export function TextField({
   unpublished,
 }: Props) {
   const id = useId();
-  const describedBy = [unpublished ? `${id}-unpublished` : "", hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
+  const describedBy = [unpublished ? `${id}-unpublished` : "", hint ? `${id}-hint` : "", error ? `${id}-error` : "", warning ? `${id}-warning` : ""].filter(Boolean).join(" ") || undefined;
   const drafted = unpublished !== undefined;
   const own = (
     <label htmlFor={id} className={labelHidden ? ui.sr : undefined}>
@@ -91,6 +94,11 @@ export function TextField({
       {hint && (
         <p id={`${id}-hint`} className={ui.hint}>
           {hint}
+        </p>
+      )}
+      {warning && (
+        <p id={`${id}-warning`} className={`${ui.notice} ${ui.warn}`} data-code-warning="">
+          {warning}
         </p>
       )}
       {error && (

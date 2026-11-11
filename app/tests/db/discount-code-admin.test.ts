@@ -21,7 +21,7 @@ const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
 
 import { POST as saveRoute } from "@/app/api/admin/sooduskood/[id]/route";
-import { createCode, deleteCode, listCodes, readCode, setCodeActive, writeCode, codeUses, CODE_PATCH } from "@/server/discount-code-admin";
+import { createCode, deleteCode, listCodes, readCode, setCodeActive, writeCode, codeUses, activeCodeTexts, CODE_PATCH } from "@/server/discount-code-admin";
 
 const NOW = new Date("2026-11-11T10:00:00Z");
 const ORIGIN = "https://mslab.example";
@@ -464,5 +464,17 @@ describe("codeUses", () => {
   test("an unknown code has no uses", async () => {
     expect(await codeUses(db, 999_999, NOW)).toEqual([]);
     expect(courseAccess).toBeDefined();
+  });
+});
+
+describe("activeCodeTexts", () => {
+  test("activeCodeTexts lists active codes valid today only", async () => {
+    await make({ code: "LIVE1" });
+    await make({ code: "WINDOW1", startsOn: "2026-11-01", endsOn: "2026-11-30" });
+    await make({ code: "ENDED1", endsOn: "2026-11-10" });
+    await make({ code: "SOON1", startsOn: "2026-11-12" });
+    const paused = await make({ code: "PAUSED1" });
+    await setCodeActive(db, paused.id, false, paused.version, NOW);
+    expect((await activeCodeTexts(db, NOW)).sort()).toEqual(["LIVE1", "WINDOW1"]);
   });
 });

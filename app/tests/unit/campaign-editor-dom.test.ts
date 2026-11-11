@@ -95,7 +95,7 @@ const later = () =>
     await new Promise((r) => setTimeout(r, 450));
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
-type Shown = { testTargets?: TestTarget[]; gated?: boolean; audience?: Audience };
+type Shown = { testTargets?: TestTarget[]; gated?: boolean; audience?: Audience; activeCodes?: readonly string[] };
 // (the page's ET | RU switch is in the page's heading, not in the editor: the test puts it beside it, under the panel's provider; the editor is keyed by
 // the letter as CampaignsPanel keys it)
 const tree = (campaign: CampaignEditorView | null, o: Shown = {}) =>
@@ -112,6 +112,7 @@ const tree = (campaign: CampaignEditorView | null, o: Shown = {}) =>
         testTargets: o.testTargets ?? TARGETS,
         gated: o.gated ?? false,
         audience: o.audience ?? AUDIENCE,
+        activeCodes: o.activeCodes ?? [],
       }),
   );
 const show = async (campaign: CampaignEditorView | null, o: Shown = {}) => {
@@ -919,5 +920,29 @@ describe("a sent letter", () => {
     actions.copyCampaignAction.mockResolvedValueOnce({ ok: false, error: "notFound" });
     await click($("[data-campaign-copy]"));
     expect(text("[data-campaign-copy-status]")).toBe("Seda kirja enam pole.");
+  });
+});
+
+// F1 Task 15 (D13): „Kood“ warns when it names no active discount code; the send and the save are never blocked.
+describe("the „Kood“ warning (F1 Task 15)", () => {
+  const WARNING = "Sellist aktiivset sooduskoodi pole. Lisa see lehel „Sooduskoodid“, muidu kood ei tööta.";
+
+  test("an unknown code shows the warning and the send stays enabled", async () => {
+    await show(DRAFT, { activeCodes: ["TERE10"] });
+    expect(words($("[data-code-warning]"))).toBe(WARNING);
+    const input = $<HTMLInputElement>('[data-field="code"]')!;
+    expect(input.getAttribute("aria-describedby")!.split(" ")).toContain($("[data-code-warning]")!.id);
+    expect($("[data-send-all]")!.getAttribute("aria-disabled")).toBeNull();
+    await type(input, " sugis15 ");
+    expect($("[data-code-warning]")).not.toBeNull();
+    await type(input, "");
+    expect($("[data-code-warning]")).toBeNull();
+  });
+
+  test("an active code shows none", async () => {
+    await show(DRAFT, { activeCodes: ["SUGIS15"] });
+    expect($("[data-code-warning]")).toBeNull();
+    await type($('[data-field="code"]'), "sugis15");
+    expect($("[data-code-warning]")).toBeNull();
   });
 });

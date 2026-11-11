@@ -21,6 +21,7 @@ import { requireAdmin } from "@/server/auth";
 import { gateEnv, serverEnv } from "@/server/env";
 import { serverKv } from "@/server/kv";
 import { campaignVersion, getCampaign, listCampaigns, progressOf, sendCountsNow, sendRefused } from "@/server/newsletter-campaigns";
+import { activeCodeTexts } from "@/server/discount-code-admin";
 import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
 
@@ -239,6 +240,7 @@ async function campaignsPage(email: string, kampaania: string) {
         testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
         gated={gateOn(gateEnv().SITE_GATE)}
         audience={audience}
+        activeCodes={await activeCodeTexts(db, new Date())}
       />
     </div>
   );

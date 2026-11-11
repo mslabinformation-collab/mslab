@@ -76,6 +76,7 @@ export function CampaignsPanel({
   testTargets,
   gated,
   audience,
+  activeCodes,
 }: {
   campaigns: CampaignListRow[];
   /** The letter chosen (?kampaania=): its id, or null for none. */
@@ -91,6 +92,8 @@ export function CampaignsPanel({
   gated: boolean;
   /** Who „Saada kõigile ({n})“ goes to, as the page read it (B9, R-h). */
   audience: Audience;
+  /** The active discount codes' texts (the page's read; the editor's „Kood“ warning). */
+  activeCodes: readonly string[];
 }) {
   const t = adminEt.newsletter.campaigns;
   const open = editing !== null;
@@ -127,7 +130,7 @@ export function CampaignsPanel({
               </p>
             )}
             {/* (keyed by the letter: its autosave starts from the page's read of it, and another letter is another editor) */}
-            {editing && <NewsletterCampaignEditor key={editing.id} campaign={editing} links={links} testTargets={testTargets} gated={gated} audience={audience} />}
+            {editing && <NewsletterCampaignEditor key={editing.id} campaign={editing} links={links} testTargets={testTargets} gated={gated} audience={audience} activeCodes={activeCodes} />}
           </div>
         )}
       </div>
