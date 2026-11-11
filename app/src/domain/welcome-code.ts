@@ -3,10 +3,12 @@
 // UX pass piece 4b, ruling R-c): the discount the footer shows („Soodustus (%)“, discountPercent) and how many days the code is valid („Kood
 // kehtib (päeva)“, codeDays: the welcome mail says it, S4-Q3 A), written by Hüpikaken's „Avalda muudatused“. Pure: no database, no React.
 
-/** The longest welcome code. */
-export const WELCOME_CODE_MAX = 30;
+import { CODE_MAX, CODE_SHAPE, DAYS_MAX, DAYS_MIN, PERCENT_MAX, PERCENT_MIN } from "./discount-codes";
 
-const SHAPE = /^[A-Z0-9-]{1,30}$/;
+/** The longest welcome code (one limit for every discount code, see domain/discount-codes). */
+export const WELCOME_CODE_MAX = CODE_MAX;
+
+const SHAPE = CODE_SHAPE;
 
 /** As the admin typed it → as stored: trimmed, in capitals. */
 export const normalizeWelcomeCode = (typed: string): string => typed.trim().toUpperCase();
@@ -33,13 +35,13 @@ const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const wholeIn = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
 /** Hüpikaken's discount, a whole percentage (R-c), and the one the footer shows while none is stored (the seed's „10%“). */
-export const DISCOUNT_MIN = 1;
-export const DISCOUNT_MAX = 99;
+export const DISCOUNT_MIN = PERCENT_MIN;
+export const DISCOUNT_MAX = PERCENT_MAX;
 export const DEFAULT_DISCOUNT_PERCENT = 10;
 
 /** How many days the welcome code is valid, at most (R-c): a whole 1–365. */
-export const CODE_DAYS_MIN = 1;
-export const CODE_DAYS_MAX = 365;
+export const CODE_DAYS_MIN = DAYS_MIN;
+export const CODE_DAYS_MAX = DAYS_MAX;
 
 /**
  * The stored `newsletter` setting → Hüpikaken's discount (R-c): `discountPercent`, a whole 1–99; before the first publish writes it, the whole

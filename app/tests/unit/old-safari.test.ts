@@ -19,6 +19,8 @@ const BROWSER_FILES = [
   // what domain/protocols.ts pulls into the browser (Task 1's review)
   "src/domain/calendar.ts",
   "src/domain/catalogue.ts",
+  // F1, Task 1: the discount rules the forms share
+  "src/domain/discount-codes.ts",
   // Task 4
   "src/components/admin/ProtocolStagesEditor.tsx",
   // Task 5
