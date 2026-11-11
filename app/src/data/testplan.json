@@ -250,7 +250,7 @@
       "expect": [
         "Mõlemas loendis on samasugune linnuke ✓ hallis ringis.",
         "Koolitaja kaardil on amet nime all üks kord; tekst ei alusta sama lausega.",
-        "Portree taust on kaardiga sama värvi: heledamat kasti pildi ümber pole.",
+        "Portree raam on kaardiga sama värvi; foto enda hall taust paistab, kuni Maria valib väljalõigatud portree.",
         "Koolitaja tekst ulatub kaardi parema servani, mitte poole peale.",
         "Kitsas aknas on „Lash Lift BOTOX“ ühel real."
       ],
@@ -258,7 +258,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-11-11T19:04:44.922Z"
+      "markedAt": "2026-11-11T19:21:28.630Z"
     },
     {
       "id": "avalik-ekursus-leht",

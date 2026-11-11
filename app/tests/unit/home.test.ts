@@ -56,13 +56,12 @@ describe("text helpers", () => {
     expect(withoutRole("Töötan Pärnus.", "")).toBe("Töötan Pärnus.");
   });
 
-  test("the course page's trainer card: the role once, the photo on the card's colour, the text the card's full width", () => {
+  test("the course page's trainer card: the role once, the photo's frame in the card's colour, the text the card's full width", () => {
     const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(read("src/app/[locale]/(site)/koolitused/[slug]/page.tsx")).toMatch(/text: withoutRole\(firstParagraph\(pick\(bio\?\.body, locale\)\), pick\(t\.role, locale\)\)/);
     const css = read("src/components/site/TrainerLink.module.css");
     const rule = (selector: string) => new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
     expect(rule(".photo")).toMatch(/background:\s*var\(--canvas\)/);
-    expect(rule(".image")).toMatch(/mix-blend-mode:\s*multiply/);
     expect(rule(".text")).not.toMatch(/max-width/);
   });
 });

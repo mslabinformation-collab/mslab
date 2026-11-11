@@ -44,7 +44,7 @@
   background: var(--canvas);
 }
 
-/* UX pass P12: the portrait on the card's own colour; its light backdrop multiplied into it, so no lighter box shows inside the card */
+/* UX pass P12: the portrait's frame in the card's own colour (a cut-out portrait stands on the card; a photo's own backdrop still shows as it is) */
 .photo {
   position: relative;
   aspect-ratio: 4 / 5;
@@ -56,7 +56,6 @@
 .image {
   object-fit: cover;
   object-position: 50% 20%;
-  mix-blend-mode: multiply;
 }
 
 .body {
