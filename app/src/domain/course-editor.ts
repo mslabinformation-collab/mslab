@@ -86,6 +86,8 @@ export type CourseDraft = {
   level: CourseLevel;
   slug: string;
   language: CourseLanguage;
+  /** „Valdkond“ (course areas, spec 2026-11-11 §4.2): one of Seaded → Valdkonnad's areas (course_areas.id), null „Määramata“. */
+  areaId: number | null;
   title: I18n;
   summary: I18n;
   body: I18n;
@@ -135,6 +137,7 @@ export function newCourseDraft(): CourseDraft {
     level: "basic",
     slug: "",
     language: "ET",
+    areaId: null,
     title: empty(),
     summary: empty(),
     body: empty(),
@@ -167,6 +170,8 @@ type StoredCourse = {
   level: CourseLevel;
   slug: string;
   language: string;
+  /** Its area (course_areas.id); absent where a caller has none to give (none then). */
+  areaId?: number | null;
   title: I18n;
   summary: I18n;
   body: I18n;
@@ -202,6 +207,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     level: c.level,
     slug: c.slug,
     language: (COURSE_LANGUAGES as readonly string[]).includes(c.language) ? (c.language as CourseLanguage) : "ET",
+    areaId: c.areaId ?? null,
     title: copy(c.title),
     summary: copy(c.summary),
     body: copy(c.body),

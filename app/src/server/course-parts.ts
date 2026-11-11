@@ -71,7 +71,17 @@ const questions = z
 
 const SCHEMAS = {
   basics: z
-    .object({ title: i18n, slug: text(200), level: z.enum(["basic", "advanced"]), language: z.enum(COURSE_LANGUAGES), summary: i18n, body: i18n, type: z.enum(["e_learning", "contact"]) })
+    .object({
+      title: i18n,
+      slug: text(200),
+      level: z.enum(["basic", "advanced"]),
+      language: z.enum(COURSE_LANGUAGES),
+      // „Valdkond“ (course areas): an area's id or null („Määramata“); whether the area is there is the check's (checkCourseBasics, field `area`)
+      areaId: z.number().int().positive().max(ROW_ID_MAX).nullable(),
+      summary: i18n,
+      body: i18n,
+      type: z.enum(["e_learning", "contact"]),
+    })
     .strict(),
   price: z.object({ price: text(40), accessMonths: text(40), videoCount: text(40), nextDiscount: i18n, priceGroup: text(40), priceIndividual: text(40), durationLabel: i18n }).strict(),
   outcomes: z.object({ outcomes: z.array(i18n).max(200, "tooMany") }).strict(),

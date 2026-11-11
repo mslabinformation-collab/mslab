@@ -6,7 +6,8 @@ import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
 import { stubFetch } from "../fakes";
 
 // Seaded (admin UX pass piece 3b, Task 4; README B4, the Part 3 frame „B4 Seaded“ and the Part 4 phone frame; rulings R-f, „Cards that move“) in a
-// browser-like document (happy-dom): one page with the section map Kontakt, Uudiskiri, Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs
+// browser-like document (happy-dom): one page with the section map Kontakt, Uudiskiri, Valdkonnad (course areas, 11.11: AreasSettings, its own test
+// tests/unit/areas-settings-dom.test.ts), Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs
 // (and below 1180 px its „Jaotised ▾“ select); the old anchors #arve, #ettemaks and #jarelmaks lead to „Maksmine“, #tunnistus and #lepingud to their
 // sections; every card autosaves under the one SaveStatus of the header — no page „Salvesta“ and no card button; the four legal texts type into their
 // drafts under the same chip (Task 5), and the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while some wait (P-11). The page lead is gone
@@ -40,6 +41,10 @@ const PROPS: Parameters<typeof SettingsEditor>[0] = {
   invoice: { company: "MS LAB OÜ", registryCode: "16346048", address: "Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 7, termDays: 7, footer: "", last: null, version: "i:a.b" },
   certificate: { place: "Pärnu linn", registryCode: "16346048", practicalLine: "Praktiline töö", trainerName: "Maria Sosnina", nextYear: 2026, nextSeq: 93, last: null, version: "c:a.b" },
   financing: { enabled: false, version: "f1" },
+  areas: [
+    { id: 1, name: { et: "Kulmukoolitused", ru: "Курсы по бровям" }, version: "a1", used: 0 },
+    { id: 2, name: { et: "Ripsmekoolitused", ru: "Курсы по ресницам" }, version: "a2", used: 0 },
+  ],
   legal: {
     privacy: legal("l:p", "Privaatsus", "Tekst."),
     terms: legal("l:t", "Õppetingimused", "Tekst."),
@@ -112,21 +117,22 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect($$("[data-save-status][data-save-kind]")).toHaveLength(1);
   });
 
-  test("the section map: the six sections in order, each a link to its section; the same six in the „Jaotised“ select", async () => {
+  test("the section map: the seven sections in order („Valdkonnad“ after „Uudiskiri“, course areas), each a link to its section; the same seven in the „Jaotised“ select", async () => {
     await show();
     const links = $$<HTMLAnchorElement>("nav a");
     expect(links.map((a) => [text(a.querySelector("[data-section-label]")), a.getAttribute("href")])).toEqual([
       ["Kontakt", "#kontakt"],
       ["Uudiskiri", "#uudiskiri"],
+      ["Valdkonnad", "#valdkonnad"],
       ["Maksmine", "#maksmine"],
       ["Tunnistus", "#tunnistus"],
       ["Lepingud ja tingimused", "#lepingud"],
       ["Halduse ligipääs", "#ligipaas"],
     ]);
-    expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "uudiskiri", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
+    expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "uudiskiri", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
     // each entry's section is on the page, in the map's order
     const sections = $$("[data-seaded-section]").map((s) => s.id);
-    expect(sections).toEqual(["kontakt", "uudiskiri", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
+    expect(sections).toEqual(["kontakt", "uudiskiri", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
   });
 
   test("the old anchors are aliases: #arve, #ettemaks and #jarelmaks at the start of „Maksmine“, #tunnistus and #lepingud the sections themselves; each id once", async () => {
@@ -176,6 +182,8 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     const titles = (id: string) => Array.from(document.getElementById(id)!.querySelectorAll("h2")).map(text);
     expect(titles("kontakt")).toEqual(["Kontaktandmed"]);
     expect(titles("uudiskiri")).toEqual(["Uudiskiri"]);
+    expect(titles("valdkonnad")).toEqual(["Valdkonnad"]);
+    expect(Array.from(document.querySelectorAll("#valdkonnad [data-area]")).map((r) => r.getAttribute("data-area"))).toEqual(["1", "2"]);
     expect(titles("maksmine")).toEqual(["Maksmine", "Järelmaks (Inbank)"]);
     expect(titles("tunnistus")).toEqual(["Tunnistus"]);
     expect(titles("lepingud")).toEqual(["Privaatsus", "Õppetingimused", "E-koolituse leping", "Kontaktkoolituse leping"]);

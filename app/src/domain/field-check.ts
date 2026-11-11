@@ -28,6 +28,8 @@ export type FieldError =
   | "image"
   | "badge"
   | "typeLocked"
+  // „Valdkond“ (course areas): an area that is not there (deleted in Seaded meanwhile)
+  | "area"
   | "course"
   | "date"
   | "time"

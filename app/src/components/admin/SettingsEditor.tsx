@@ -7,6 +7,8 @@ import { SITE_LIMITS, type ContactDraft, type NewsletterDraft } from "@/domain/s
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import type { SettingsRead } from "@/server/admin-site";
+import type { AdminArea } from "@/server/course-areas";
+import { AreasSettings } from "./AreasSettings";
 import { CertificateSettings, type CertificateSettingsInitial } from "./CertificateSettings";
 import { LegalTexts } from "./ContractTexts";
 import { combineStatus } from "./course/course-view";
@@ -27,10 +29,12 @@ import styles from "./SettingsEditor.module.css";
  * The page's sections in the map's order (README B4): the id of each, its card(s) below. The old anchors are aliases at the start of the section
  * that now holds their card („Cards that move“): #arve, #ettemaks and #jarelmaks go to „Maksmine“; #tunnistus and #lepingud are their sections' own.
  */
-type SectionId = "kontakt" | "uudiskiri" | "maksmine" | "tunnistus" | "lepingud" | "ligipaas";
+type SectionId = "kontakt" | "uudiskiri" | "valdkonnad" | "maksmine" | "tunnistus" | "lepingud" | "ligipaas";
 const SECTIONS: { id: SectionId; label: keyof typeof adminEt.settings.sections; aliases?: readonly string[] }[] = [
   { id: "kontakt", label: "contact" },
   { id: "uudiskiri", label: "newsletter" },
+  // course areas (spec 2026-11-11 §4.1, its placement my call: after the site's own texts, before the money)
+  { id: "valdkonnad", label: "areas" },
   { id: "maksmine", label: "payment", aliases: ["arve", "ettemaks", "jarelmaks"] },
   { id: "tunnistus", label: "certificate" },
   { id: "lepingud", label: "legal" },
@@ -143,7 +147,8 @@ function Restore({ conflict, onRestore }: { conflict: boolean; onRestore: () => 
  * at the left, below it the „Jaotised ▾“ select under the header) — and the header's ET | RU switch and ONE SaveStatus for every card (compact below
  * 900 px). Every card autosaves its part on api/admin/seaded/<part> (useSeadedPart) and tells its status here: „Kontaktandmed“, „Uudiskiri“, „Maksmine“
  * (the prepayment instructions' bank fields and the invoice settings in one card, InvoiceSettings) with „Järelmaks (Inbank)“'s instant switch, and
- * „Tunnistus“. The four legal texts (Task 5: ContractTexts.tsx LegalTexts) type into their drafts under the same chip and are published by their own
+ * „Tunnistus“; „Valdkonnad“ (course areas, 11.11: AreasSettings.tsx, each row autosaved on api/admin/valdkond/<id>, its adds, moves and deletes
+ * presses of their own). The four legal texts (Task 5: ContractTexts.tsx LegalTexts) type into their drafts under the same chip and are published by their own
  * „Avalda uus leping“ / „Avalda uus tekst“; the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while some wait. The admin addresses are
  * shown, never edited (the environment variable ADMIN_EMAILS). „Näita“ of the chip goes to the first field a route refused. The page lead is gone
  * (none is drawn).
@@ -154,6 +159,8 @@ export function SettingsEditor(p: {
   invoice: InvoiceSettingsInitial;
   certificate: CertificateSettingsInitial;
   financing: FinancingInitial;
+  /** „Valdkonnad“: the course areas with their versions and use (server/course-areas.ts readAdminAreas). */
+  areas: AdminArea[];
   /** The four legal texts with their drafts (server/legal-drafts.ts readLegalTexts). */
   legal: Record<LegalKey, LegalState>;
   /** The students the e-course contract's panel says will be asked again (ruling R-e). */
@@ -207,6 +214,9 @@ export function SettingsEditor(p: {
           </Section>
           <Section id="uudiskiri">
             <NewsletterCard version={initial.versions.newsletter} value={initial.values.newsletter} onStatus={report} />
+          </Section>
+          <Section id="valdkonnad">
+            <AreasSettings initial={p.areas} onStatus={report} />
           </Section>
           <Section id="maksmine">
             <InvoiceSettings initial={p.invoice} bank={{ version: initial.versions.prepayment, value: initial.values.prepayment }} now={p.now} onStatus={report} />

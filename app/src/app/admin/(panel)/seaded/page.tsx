@@ -9,6 +9,7 @@ import { loadSettings } from "@/server/admin-site";
 import { requireAdmin } from "@/server/auth";
 import { certificateCard } from "@/server/certificates";
 import { serverEnv } from "@/server/env";
+import { readAdminAreas } from "@/server/course-areas";
 import { invoiceCard } from "@/server/invoices";
 import { reacceptCount, readLegalTexts } from "@/server/legal-drafts";
 import { financingVersionOf } from "@/server/seaded";
@@ -17,8 +18,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.settings) };
 
 /**
- * Seaded (admin UX pass piece 3b, Task 4; README B4, B21): one page with a section map — Kontakt, Uudiskiri, Maksmine, Tunnistus, Lepingud ja
- * tingimused, Halduse ligipääs — whose cards autosave under one SaveStatus (components/admin/SettingsEditor.tsx; api/admin/seaded/<part>). It reads
+ * Seaded (admin UX pass piece 3b, Task 4; README B4, B21): one page with a section map — Kontakt, Uudiskiri, Valdkonnad (course areas, 11.11:
+ * readAdminAreas), Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs — whose cards autosave under one SaveStatus (components/admin/SettingsEditor.tsx; api/admin/seaded/<part>). It reads
  * each part with the version its autosave goes from: the contact details, „Uudiskiri“ and the prepayment instructions (loadSettings), the invoice
  * settings as the next issue takes them (invoiceCard: the number, the last issued, B21: this Tallinn year), the certificate's card (certificateCard),
  * „Järelmaks (Inbank)“'s switch (off unless the stored value is exactly { enabled: true }, domain/financing.ts), the four legal texts with their
@@ -31,13 +32,15 @@ export default async function SettingsEditPage() {
   const db = getDb();
   // the cards show the number the next issue will really get (in January, until the year's first issue, the stored one is still last year's)
   const now = new Date();
-  const [initial, certificate, invoice, storedFinancing, legal, reaccept] = await Promise.all([
+  const [initial, certificate, invoice, storedFinancing, legal, reaccept, areas] = await Promise.all([
     loadSettings(db),
     certificateCard(db, now),
     invoiceCard(db, now),
     readSetting(db, FINANCING_KEY),
     readLegalTexts(db),
     reacceptCount(db, now),
+    // „Valdkonnad“ (course areas): the list with each row's version and use
+    readAdminAreas(db),
   ]);
   // the sign-in allow-list (the environment variable ADMIN_EMAILS): shown, never edited here
   const admins = serverEnv()
@@ -51,6 +54,7 @@ export default async function SettingsEditPage() {
       invoice={invoice}
       certificate={{ ...certificate.settings, last: certificate.last, version: certificate.version }}
       financing={{ ...readFinancingSettings(storedFinancing), version: await financingVersionOf(storedFinancing) }}
+      areas={areas}
       legal={legal}
       reaccept={reaccept}
       now={now}

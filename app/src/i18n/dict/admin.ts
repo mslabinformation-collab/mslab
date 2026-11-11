@@ -25,6 +25,8 @@ const fieldErrors = {
   capacityBelow: "Kinnitatud on {n} — kohti ei saa olla vähem.",
   courseLocked: "Toimumisel on registreeringuid, seega koolitust muuta ei saa.",
   typeLocked: "Sellel koolitusel on toimumisi või registreerimisi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.",
+  // „Valdkond“ (course areas, Draft): the area was deleted in Seaded meanwhile
+  area: "Seda valdkonda pole enam. Vali uuesti.",
   href: "Sisesta lehe aadress, mis algab kaldkriipsuga (nt /koolitused), või täielik aadress, mis algab https://.",
   url: "Sisesta täielik aadress, mis algab https://.",
   email: "Sisesta korrektne e-posti aadress.",
@@ -1718,6 +1720,10 @@ export const adminEt = {
       slugChanged: "Aadressi muutmisel ei avane vana link enam.",
       level: "Tase",
       language: "Koolituse keel",
+      // „Valdkond“ (course areas, spec 2026-11-11 §4.2; Draft): Seaded → Valdkonnad's areas, „Määramata“ first
+      area: "Valdkond",
+      areaNone: "Määramata",
+      areaHint: "Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.",
       summary: "Lühikirjeldus",
       summaryHint: "Kaardil ja koolituse lehe päises.",
       body: "Pikk kirjeldus",
@@ -2476,7 +2482,7 @@ export const adminEt = {
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    sections: { contact: "Kontakt", newsletter: "Uudiskiri", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
+    sections: { contact: "Kontakt", newsletter: "Uudiskiri", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",
@@ -2490,6 +2496,32 @@ export const adminEt = {
     // the welcome discount moved to Hüpikaken (piece 4b S4-Q2 A: „Soodustus (%)“); the code's hint drops „pärast … kinnitamist“ (S4-29 ruling)
     welcomeCode: "Tervituskood",
     welcomeCodeHint: "Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
+    // „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx). All Draft (Dim's wording
+    // sheet): the lead as the spec words it, with the basics card's real name („Põhiinfo“); {name} the area's Estonian name, {n} a count
+    areas: {
+      title: "Valdkonnad",
+      lead: "Valdkonnad, mille järgi õpilane saab koolituskalendris ja koolituste lehel koolitusi valida. Koolituse valdkonna valid koolituse kaardil „Põhiinfo“.",
+      empty: "Valdkondi veel pole.",
+      nameEt: "Nimi (eesti keeles)",
+      nameRu: "Nimi (vene keeles)",
+      // the add form below the rows: its two fields and its button
+      newTitle: "Uus valdkond",
+      add: "Lisa valdkond",
+      remove: "Kustuta",
+      removeQuestion: "Kas kustutan valdkonna „{name}“?",
+      removeYes: "Jah, kustuta",
+      // in a used area's row, in place of „Kustuta“ (the spec's „Seda valdkonda kasutab {n} koolitust.“, with its one)
+      usedOne: "Seda valdkonda kasutab 1 koolitus.",
+      usedMany: "Seda valdkonda kasutab {n} koolitust.",
+      // a row without an Estonian name yet: the handle's and the arrows' name (DragList)
+      unnamed: "Nimeta valdkond",
+      errors: {
+        required: "Kirjuta nimi.",
+        tooLong: "Nimi võib olla kuni 60 märki.",
+        taken: "Sellise nimega valdkond on juba olemas.",
+        notFound: "Seda valdkonda enam pole. Laadi leht uuesti.",
+      },
+    },
     // where students pay the prepayment: on the unpaid contact-course cards of their account (never on a public page); the „Maksmine“ card's bank fields
     prepaymentHint: "Juhised on õpilasele näha ainult siis, kui saaja ja IBAN on täidetud. Muidu ütleb kaart: „Maria saadab sulle arve“.",
     receiver: "Saaja",
