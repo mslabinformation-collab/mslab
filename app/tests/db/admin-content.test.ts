@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
+import { certificateDesigns, clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
 import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, listSessionCities, moveCourseTo, sessionCounts } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { startOfDayTallinn } from "@/domain/calendar";
@@ -674,13 +674,28 @@ describe("saveCourseForm: 'Tunnistus' (phase 3d, spec §6)", () => {
     expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
   });
 
+  test("„Kujundus“ (2026-11-11 certificate designs): an e-course stores the design picked, none is the first; no design's id is refused; a contact course none", async () => {
+    const [hele, tume] = await db.select().from(certificateDesigns).orderBy(certificateDesigns.sort);
+    const e = await load(online.id);
+    expect(e.certificateDesignId).toBeNull();
+    expect(await save({ ...e, certificateDesignId: tume.id })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: tume.id });
+    expect((await load(online.id)).certificateDesignId).toBe(tume.id);
+    expect(fieldsOf(await save({ ...(await load(online.id)), certificateDesignId: 999_999 }))).toEqual({ certificateDesignId: "certificateDesign" });
+    expect(await save({ ...(await load(contact.id)), certificateDesignId: hele.id })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, contact.id)).toMatchObject({ certificateDesignId: null });
+    expect(await save({ ...(await load(online.id)), type: "contact", priceGroup: "100" })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: null });
+  });
+
   test("a draft without them (an editor page opened before the deploy) still saves, with none", async () => {
     const older: Partial<CourseDraft> = { ...(await load(online.id)) };
     delete older.certificateSkills;
     delete older.certificateVolume;
     delete older.certificateTitle;
+    delete older.certificateDesignId;
     expect(await saveCourseForm(db, form({ data: JSON.stringify(older) }))).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "", certificateDesignId: null });
   });
 
   test("a pasted line is cleaned, not refused (control characters and NUL go, a line break is a space); a line blank once cleaned is dropped", async () => {

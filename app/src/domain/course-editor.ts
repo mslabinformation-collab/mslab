@@ -107,6 +107,11 @@ export type CourseDraft = {
   certificateVolume: string;
   /** „Pealkiri tunnistusel“: the title printed on the certificate; empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
   certificateTitle: string;
+  /**
+   * „Kujundus“ (2026-11-11 certificate designs, spec §5.2): the id of the certificate design the e-course's certificates are issued in; null: the
+   * first design (domain/certificate-design.ts firstDesign). A contact course has none.
+   */
+  certificateDesignId: number | null;
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -145,6 +150,7 @@ export function newCourseDraft(): CourseDraft {
     certificateSkills: [],
     certificateVolume: "",
     certificateTitle: "",
+    certificateDesignId: null,
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -179,6 +185,7 @@ type StoredCourse = {
   certificateSkills?: string[];
   certificateVolume?: string;
   certificateTitle?: string;
+  certificateDesignId?: number | null;
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -213,6 +220,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     certificateSkills: (c.certificateSkills ?? []).filter((s): s is string => typeof s === "string"),
     certificateVolume: c.certificateVolume ?? "",
     certificateTitle: c.certificateTitle ?? "",
+    certificateDesignId: c.certificateDesignId ?? null,
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

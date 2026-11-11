@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db, Q } from "@/db/client";
-import { courses, type TestQuestion } from "@/db/schema";
-import { inArray } from "drizzle-orm";
+import { certificateDesigns, courses, type TestQuestion } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, isSlugTaken, moveCourseTo, saveCourseWithImages, type CourseFields } from "@/db/queries/admin";
 import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
@@ -64,6 +64,8 @@ const draftSchema = z.object({
   certificateSkills: z.array(z.string().max(2000)).max(200).default([]),
   certificateVolume: z.string().max(2000).default(""),
   certificateTitle: z.string().max(2000).default(""),
+  // „Kujundus“ (2026-11-11 certificate designs): none (the first design) unless a design's id; checked after (checkCourseCertificateDesign)
+  certificateDesignId: z.number().int().positive().max(ID_MAX).nullable().default(null),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -200,6 +202,17 @@ export function checkCourseCertificate(
   };
 }
 
+/**
+ * „Kujundus“ (2026-11-11 certificate designs, spec §5.2): an e-course's design, none (null: the first design) or the id of one that exists, read FOR
+ * KEY SHARE so that a deletion of it at the same moment waits for this save (and then finds the course using it), or went first (and this is
+ * `certificateDesign`). A contact course has no certificate: none.
+ */
+export async function checkCourseCertificateDesign(q: Q, c: Check, designId: number | null, type: CourseType): Promise<number | null> {
+  if (type !== "e_learning" || designId === null) return null;
+  const [design] = await q.select({ id: certificateDesigns.id }).from(certificateDesigns).where(eq(certificateDesigns.id, designId)).for("key share");
+  return design ? design.id : c.fail("certificateDesignId", "certificateDesign");
+}
+
 /** The badge: one of D's swatches and at most 18 characters (each language), or none; the Russian text is optional. */
 export function checkCourseBadge(c: Check, d: CourseDraft["badge"]): CourseFields["badge"] {
   if (!d || !d.label.et.trim()) return null;
@@ -263,6 +276,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const test = checkCourseTest(c, d.test, d.type);
   if (test === "duplicateId") return { ok: false, error: "invalid" };
   const certificate = checkCourseCertificate(c, d, d.type);
+  const certificateDesignId = await checkCourseCertificateDesign(db, c, d.certificateDesignId, d.type);
   if (d.published) checkCoursePriceRequired(c, price, d.type);
   const badge = checkCourseBadge(c, d.badge);
   const images = checkCourseGallery(c, d.images);
@@ -282,6 +296,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     isSample: d.isSample,
     test: test.test,
     ...certificate,
+    certificateDesignId,
   };
   const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };

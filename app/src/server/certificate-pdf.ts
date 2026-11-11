@@ -4,7 +4,7 @@ import fontkit, { type Font } from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, setCharacterSpacing, type Color, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import type { Certificate } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
-import type { DesignTone } from "@/domain/certificate-design";
+import type { DesignTone, FrozenDesign } from "@/domain/certificate-design";
 import type { MediaSource } from "./media";
 import { drawLogo } from "./pdf-logo";
 
@@ -120,6 +120,12 @@ export function loadCertificateBackground(key: string, store: MediaSource | null
   });
   if (backgrounds.size > BACKGROUNDS_KEPT) backgrounds.delete(backgrounds.keys().next().value!);
   return read;
+}
+
+/** The look of a certificate's frozen design: its tone, with its photo read from `store` (loadCertificateBackground); none: today's dark page. */
+export async function lookOf(design: FrozenDesign | null, store: MediaSource | null): Promise<CertificateLook> {
+  if (!design) return DARK_LOOK;
+  return { tone: design.tone, background: design.backgroundKey ? await loadCertificateBackground(design.backgroundKey, store) : null };
 }
 
 // ---------- the layout (842 × 595 pt) ----------

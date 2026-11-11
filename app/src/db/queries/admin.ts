@@ -157,7 +157,14 @@ export type CourseTestFields = { questions: TestQuestion[]; passPercent: number;
  * certificate's lines and volume (phase 3d) are required here although the columns have defaults: every save writes them (a contact course
  * `[]` and `""`), so a save that forgot them could not leave an old e-course's lines behind.
  */
-export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTestFields | null; certificateSkills: string[]; certificateVolume: string; certificateTitle: string };
+export type CourseFields = Omit<CourseInput, "id" | "sort"> & {
+  test: CourseTestFields | null;
+  certificateSkills: string[];
+  certificateVolume: string;
+  certificateTitle: string;
+  /** „Kujundus“ (2026-11-11 certificate designs): null, the first design; required for the same reason as the lines. */
+  certificateDesignId: number | null;
+};
 
 /**
  * The course editor's save: the course, its whole image list and its "Teadmiste test" row in ONE transaction.
@@ -250,7 +257,7 @@ export async function writeCourseTest(tx: Tx, id: number, test: CourseTestFields
  */
 export const EMPTIED_FOR_TYPE = {
   e_learning: { priceGroup: null, priceIndividual: null, durationLabel: null, includes: [] },
-  contact: { price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "", certificateTitle: "" },
+  contact: { price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "", certificateTitle: "", certificateDesignId: null },
 } satisfies Record<Course["type"], CourseColumns>;
 
 /** A course whose type became `type`: the other type's fields are emptied (EMPTIED_FOR_TYPE), and a contact course's test goes. */

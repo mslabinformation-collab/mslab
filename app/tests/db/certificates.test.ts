@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
@@ -7,13 +8,14 @@ import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
 import * as schema from "@/db/schema";
-import { certificates, clients, courseAccess, courses, settings } from "@/db/schema";
+import { certificateDesigns, certificates, clients, courseAccess, courses, settings } from "@/db/schema";
 import { CERT_DEFAULTS } from "@/domain/certificate";
 import { renderCertificate } from "@/server/certificate-pdf";
 import {
   certificateCard, certificateForAdmin, certificateForStudent, certificateOfAccess, certificatePdf, getCertificateSettings, issueCertificate, lastIssued, listCertificates,
   reissueCertificate, saveCertificateSettings, type IssueResult,
 } from "@/server/certificates";
+import { fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
 
 // The e-course certificate's server (phase 3d, spec §3, §4, §6, §9) against a real (PGlite) database: the issue (the name rules first, then
@@ -625,5 +627,82 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
       ["body", "logoBlack", "logoWhite", "sans", "script", "title"],
     ]);
     expect(calls.map(([content]) => content.trainerName)).toEqual(["Maria Sosnina", "Maria Sosnina"]);
+  });
+});
+
+describe("the certificate's design (2026-11-11 certificate designs, spec §3, §4)", () => {
+  const PHOTO = [...readFileSync("tests/fixtures/certificate-background.jpg")];
+  const designs = () => db.select().from(certificateDesigns).orderBy(certificateDesigns.sort, certificateDesigns.id);
+  /** The look the renderer was given on its last call. */
+  const lastLook = () => vi.mocked(renderCertificate).mock.calls.at(-1)![2];
+
+  test("the issue freezes the course's design — its pick, else the first (lowest sort, then id) — as its tone and photo; a design edited or deleted later changes no certificate", async () => {
+    const [hele, tume] = await designs();
+    const photo = `img/${"0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f"}.jpg`;
+    await db.update(certificateDesigns).set({ backgroundKey: photo }).where(eq(certificateDesigns.id, hele.id));
+    const c = await ecourse();
+    const kati = await student("kati@example.test", c.id);
+    const mari = await student("mari@example.test", c.id);
+    const liis = await student("liis@example.test", c.id);
+    // no pick: the first design, „Hele“
+    await issued(kati.client.id, "Kati Kask");
+    // a pick: that design
+    await db.update(courses).set({ certificateDesignId: tume.id }).where(eq(courses.id, c.id));
+    await issued(mari.client.id, "Mari Maasikas");
+    // a new first design (a lower sort) takes over for a course with no pick
+    const [hall] = await db.insert(certificateDesigns).values({ name: "Hall", tone: "dark", sort: 0 }).returning();
+    await db.update(courses).set({ certificateDesignId: null }).where(eq(courses.id, c.id));
+    await issued(liis.client.id, "Liis Lill");
+    expect((await rows()).map((r) => r.design)).toEqual([
+      { tone: "light", backgroundKey: photo },
+      { tone: "dark", backgroundKey: "" },
+      { tone: "dark", backgroundKey: "" },
+    ]);
+    // the designs change or go: the certificates keep what they were issued with
+    await db.update(certificateDesigns).set({ tone: "dark", backgroundKey: "" }).where(eq(certificateDesigns.id, hele.id));
+    await db.delete(certificateDesigns).where(eq(certificateDesigns.id, hall.id));
+    expect((await rows())[0].design).toEqual({ tone: "light", backgroundKey: photo });
+  });
+
+  test("no design at all (every row deleted by hand): the issue still issues, with today's dark page", async () => {
+    await db.delete(certificateDesigns);
+    const c = await ecourse();
+    const kati = await student("kati@example.test", c.id);
+    await issued(kati.client.id, "Kati Kask");
+    expect((await rows())[0].design).toEqual({ tone: "dark", backgroundKey: "" });
+  });
+
+  test("„Paranda nimi“ keeps the frozen design: only the name changes", async () => {
+    const [, tume] = await designs();
+    const c = await ecourse({ certificateDesignId: tume.id });
+    const kati = await student("kati@example.test", c.id);
+    const { id } = await issued(kati.client.id, "Kati Kask");
+    await db.update(courses).set({ certificateDesignId: null }).where(eq(courses.id, c.id));
+    await reissueCertificate(db, id, "Katrin Kask", NOW);
+    expect((await rows())[0]).toMatchObject({ name: "Katrin Kask", design: { tone: "dark", backgroundKey: "" } });
+  });
+
+  test("certificatePdf draws the frozen design: an older certificate (none) today's dark page, a light one with its photo from the store; a photo it cannot read fails the download", async () => {
+    const c = await ecourse();
+    const kati = await student("kati@example.test", c.id);
+    await issued(kati.client.id, "Kati Kask");
+    const [k] = await rows();
+    const store = fakeMediaStore({ [`img/1f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg`]: { bytes: PHOTO, contentType: "image/jpeg" } });
+    // an older certificate: no design
+    await certificatePdf(db, { ...k, design: null }, NOW, store);
+    expect(lastLook()).toEqual({ tone: "dark", background: null });
+    // „Hele“ as issued (no photo): the light page
+    await certificatePdf(db, k, NOW, store);
+    expect(lastLook()).toEqual({ tone: "light", background: null });
+    expect(store.requested).toEqual([]);
+    // a design with a photo: its bytes from the store, as they were uploaded
+    const withPhoto = { ...k, design: { tone: "light" as const, backgroundKey: "img/1f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg" } };
+    const pdf = await certificatePdf(db, withPhoto, NOW, store);
+    expect(Buffer.from(lastLook()!.background!).equals(Buffer.from(PHOTO))).toBe(true);
+    expect(pdf.byteLength).toBeLessThan(300 * 1024 + PHOTO.length + 50 * 1024);
+    // the photo gone from the store, or no store: the download fails (and is tried again), never a certificate drawn without it
+    const missing = { ...k, design: { tone: "light" as const, backgroundKey: "img/2f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg" } };
+    await expect(certificatePdf(db, missing, NOW, store)).rejects.toThrow();
+    await expect(certificatePdf(db, { ...missing, design: { tone: "dark", backgroundKey: "img/3f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg" } }, NOW, null)).rejects.toThrow();
   });
 });

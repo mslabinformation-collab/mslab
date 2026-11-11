@@ -34,6 +34,8 @@ const fieldErrors = {
   imageRequired: "Lisa pilt.",
   localeHref: "Kirjuta lehe aadress ilma keeleta, nt /koolitused: vene lehel lisatakse /ru ise.",
   iban: "Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.",
+  // (Draft, 2026-11-11 certificate designs) „Kujundus“: the design picked is gone (deleted in another tab)
+  certificateDesign: "Seda kujundust enam pole. Vali teine kujundus.",
   // "Teadmiste test" (e-course completion): shown in the card of the question the save names
   testTooMany: "Testis saab olla kuni 50 küsimust.",
   testEmpty: "Täida küsimuse tekst ja iga vastusevariant.",
