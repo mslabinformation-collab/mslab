@@ -1167,7 +1167,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-ekursus-avalda",
@@ -1272,7 +1272,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-kalender-valdkond",
@@ -1302,7 +1302,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-koolitused-valdkond",
@@ -1330,7 +1330,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-pikk-leht",
@@ -2082,7 +2082,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-seaded-ettemaks",
@@ -2194,7 +2194,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-seaded-tunnistuse-kujundused",
@@ -2224,7 +2224,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-seaded-arve",
@@ -5418,7 +5418,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-tunnistus-pdf",
@@ -5446,7 +5446,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-paranda-nimi",
@@ -5472,7 +5472,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-tunnistused",
