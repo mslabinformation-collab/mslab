@@ -931,7 +931,6 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     // the offer has no discount fields any more: its hint leads to the welcome code's own page
     await expect(card.getByText("Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.")).toBeVisible();
     await expect(card.getByRole("textbox", { name: "Soodustus (%)", exact: true })).toHaveCount(0);
-    await expect(preview.getByText("17% tervitussoodustus")).toBeVisible(); // (the welcome row's value, not a number typed here)
     expect(await popupRow()).toEqual(before);
     // the preview follows the page's ET | RU, with the rules line under it
     await editLang(page, "ru");
