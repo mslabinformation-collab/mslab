@@ -5,7 +5,6 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { registrations } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0019 (admin UX pass, piece 2, Task 2: B22, spec §7) as the Railway database goes through it: 0000–0018 applied, with a course, a
@@ -29,7 +28,7 @@ test("0019 adds the payment status 'replaced' and the nullable column payments.c
   await through("0018_financing");
   // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
   const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true) returning id`)).rows;
-  const [r] = await db.insert(registrations).values({ courseId: course.id, kind: "individual", name: "Anna", email: "anna@example.test", paymentChoice: "full" }).returning();
+  const [r] = (await db.execute<{ id: number }>(sql`insert into registrations (course_id, kind, name, email, payment_choice) values (${course.id}, 'individual', 'Anna', 'anna@example.test', 'full') returning id`)).rows;
   // (raw SQL: the schema's payments already has the column this migration adds)
   const pay = (n: number, status: string) =>
     db.execute(sql`insert into payments (reference, kind, registration_id, course_id, email, name, amount_cents, status) values (${`MSLAB-M${n}`}, 'prepayment', ${r.id}, ${course.id}, 'anna@example.test', 'Anna', 17500, ${status}::payment_status)`);

@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { pgTable, serial, text, integer, smallint, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, smallint, boolean, jsonb, timestamp, date, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { I18n } from "@/i18n/field";
 import type { FeedbackAnswers } from "@/domain/protocols";
 import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
@@ -28,6 +28,13 @@ export const payKind = pgEnum("payment_kind", ["prepayment", "balance", "ecourse
  * about by the daily check and keeps its seat window as a pending one does (server/payments/start.ts, settle.ts).
  */
 export const payStatus = pgEnum("payment_status", ["pending", "paid", "failed", "refunded", "held", "replaced"]);
+
+/** What a discount code applies to (migration 0025): everything, only e-courses, only contact courses, or the courses listed in `discount_code_courses`. */
+export const discountScope = pgEnum("discount_scope", ["all", "ecourse", "contact", "courses"]);
+/** Who may use a discount code: anyone, only a person with no earlier paid purchase ("first"), or only one who has one ("returning"). */
+export const discountAudience = pgEnum("discount_audience", ["all", "first", "returning"]);
+/** Where a discount was taken: the registration form, the e-course cart, or entered by Maria in the admin. */
+export const redemptionVia = pgEnum("redemption_via", ["form", "cart", "admin"]);
 
 /** A badge's text: Estonian, and Russian when Maria gave one (the RU pages fall back to the Estonian text). */
 export type BadgeLabel = { et: string; ru?: string };
@@ -130,6 +137,9 @@ export const registrations = pgTable("registrations", {
   locale: text("locale").notNull().default("et"),
   status: regStatus("status").notNull().default("awaiting_prepayment"),
   paidCents: integer("paid_cents").notNull().default(0),
+  /** The discount frozen on this registration (migration 0025): the cents taken off the list price and the code that gave it; 0 and '' without one. */
+  discountCents: integer("discount_cents").notNull().default(0),
+  discountCode: text("discount_code").notNull().default(""),
   note: text("note").notNull().default(""),
   clientId: integer("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
   /**
@@ -155,6 +165,7 @@ export const registrations = pgTable("registrations", {
   index("registrations_client").on(t.clientId),
   index("registrations_email_lower").on(sql`lower(${t.email})`),
   uniqueIndex("registrations_pay_token").on(t.payToken),
+  check("registrations_discount_not_negative", sql`${t.discountCents} >= 0`),
 ]);
 
 export const requests = pgTable("requests", {
@@ -343,6 +354,73 @@ export const courseAccess = pgTable("course_access", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("course_access_client_course").on(t.clientId, t.courseId)]);
 
+/**
+ * Discount codes (migration 0025; spec 2026-11-11-discount-codes): Maria's codes, and the one welcome code (`welcome`, at most one row) that the
+ * newsletter sign-up mails. A code takes a percent (1–99) or a fixed amount (`amount_cents`), never both. `scope` says which courses it applies
+ * to (`courses`: those in `discount_code_courses`), `starts_on`/`ends_on` its days (inclusive), `max_uses` the cap on all uses, `audience` who may
+ * use it and `once_per_person` whether one e-mail may use it twice. `days_after_signup` (welcome only): how long after the sign-up it works.
+ * The checks keep the rules of domain/discount-codes.ts true in the database too.
+ */
+export const discountCodes = pgTable("discount_codes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  welcome: boolean("welcome").notNull().default(false),
+  percent: smallint("percent"),
+  amountCents: integer("amount_cents"),
+  scope: discountScope("scope").notNull().default("all"),
+  startsOn: date("starts_on", { mode: "string" }),
+  endsOn: date("ends_on", { mode: "string" }),
+  maxUses: integer("max_uses"),
+  audience: discountAudience("audience").notNull().default("all"),
+  oncePerPerson: boolean("once_per_person").notNull().default(true),
+  daysAfterSignup: smallint("days_after_signup"),
+  note: text("note").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("discount_codes_code").on(t.code),
+  uniqueIndex("discount_codes_one_welcome").on(t.welcome).where(sql`${t.welcome}`),
+  check("discount_codes_code_shape", sql`${t.code} ~ '^[A-Z0-9-]{1,30}$' AND ${t.code} ~ '[A-Z0-9]'`),
+  check("discount_codes_one_value", sql`(${t.percent} is null) <> (${t.amountCents} is null)`),
+  check("discount_codes_percent_range", sql`${t.percent} between 1 and 99`),
+  check("discount_codes_amount_positive", sql`${t.amountCents} > 0`),
+  check("discount_codes_dates_order", sql`${t.endsOn} >= ${t.startsOn}`),
+  check("discount_codes_max_uses_positive", sql`${t.maxUses} > 0`),
+  check("discount_codes_days", sql`${t.daysAfterSignup} is null or (${t.welcome} and ${t.daysAfterSignup} between 1 and 365)`),
+  check("discount_codes_welcome_rules", sql`not ${t.welcome} or (${t.audience} = 'first' and ${t.oncePerPerson})`),
+]);
+
+/** The courses a code of scope `courses` applies to; deleted with the code or the course. */
+export const discountCodeCourses = pgTable("discount_code_courses", {
+  codeId: integer("code_id").notNull().references(() => discountCodes.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+}, (t) => [primaryKey({ columns: [t.codeId, t.courseId] })]);
+
+/**
+ * One use of a code: the list price and the cents taken off, frozen. A code that has uses cannot be deleted (no `onDelete`: Maria deactivates it),
+ * and one registration or payment carries at most one use. The links to the person, course, registration and payment are set null when those go.
+ */
+export const discountRedemptions = pgTable("discount_redemptions", {
+  id: serial("id").primaryKey(),
+  codeId: integer("code_id").notNull().references(() => discountCodes.id),
+  email: text("email").notNull(),
+  clientId: integer("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+  courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
+  registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
+  paymentId: integer("payment_id").references(() => payments.id, { onDelete: "set null" }),
+  listCents: integer("list_cents").notNull(),
+  discountCents: integer("discount_cents").notNull(),
+  via: redemptionVia("via").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("discount_redemptions_code").on(t.codeId),
+  index("discount_redemptions_code_email").on(t.codeId, t.email),
+  uniqueIndex("discount_redemptions_registration").on(t.registrationId).where(sql`${t.registrationId} is not null`),
+  uniqueIndex("discount_redemptions_payment").on(t.paymentId).where(sql`${t.paymentId} is not null`),
+  check("discount_redemptions_cents_positive", sql`${t.listCents} > 0 and ${t.discountCents} > 0`),
+]);
+
 export const termsAcceptances = pgTable("terms_acceptances", {
   clientId: integer("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
   courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
@@ -387,6 +465,9 @@ export const payments = pgTable(
     name: text("name").notNull(),
     locale: text("locale").$type<"et" | "ru">().notNull().default("et"),
     amountCents: integer("amount_cents").notNull(),
+    /** The discount frozen on this payment (migration 0025): the cents taken off and the code that gave it; 0 and '' without one. */
+    discountCents: integer("discount_cents").notNull().default(0),
+    discountCode: text("discount_code").notNull().default(""),
     status: payStatus("status").notNull().default("pending"),
     providerUuid: text("provider_uuid"),
     method: text("method").notNull().default(""),
@@ -419,6 +500,7 @@ export const payments = pgTable(
     // the invoice a payment was started for (migration 0012): the R14 read per invoice row, and the set null of an invoice's deletion
     index("payments_invoice").on(t.invoiceId),
     check("payments_amount_positive", sql`${t.amountCents} > 0`),
+    check("payments_discount_not_negative", sql`${t.discountCents} >= 0`),
   ],
 );
 
@@ -910,7 +992,8 @@ export const kvEntries = pgTable(
 );
 export const settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value").notNull() });
 // keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {welcomeCode (Seaded), discountPercent, codeDays (Hüpikaken, piece 4b R-c;
-// before it Seaded's discountLabel, still read: domain/welcome-code.ts)}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
+// before it Seaded's discountLabel, still read: domain/welcome-code.ts); since migration 0025 these keys are no longer read: the welcome code is a
+// `discount_codes` row (welcome), which the migration made from them; the setting stays, unchanged, for a rollback}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 // "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
 // "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's

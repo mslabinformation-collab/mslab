@@ -23,6 +23,8 @@ const row = (id: number, status: PaymentStatus, over: Partial<PaymentRow> = {}):
   name: "Kati Tamm",
   locale: "et",
   amountCents: 17500,
+  discountCents: 0,
+  discountCode: "",
   status,
   providerUuid: `uuid-${id}`,
   method: "paymentInitiation",

@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { registrations, settings } from "@/db/schema";
+import { settings } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
 // Migration 0018 (instalments, Task 1: spec §3) as the Railway database goes through it: 0000–0017 applied, with a course, registrations of both
@@ -25,10 +25,10 @@ test("0018 adds the payment choice 'financing' to the enum, and touches nothing 
     }
   };
   await through("0017_content_drafts");
-  // (raw SQL: the schema's table has the column 0022 adds, which this database does not have yet)
+  // (raw SQL: the schema's tables have the columns 0022 and 0025 add, which this database does not have yet)
   const [course] = (await db.execute<{ id: number }>(sql`insert into courses (slug, type, level, title, summary, body, published) values ('kulmud', 'contact', 'basic', '{"et":"Kulmud"}', '{"et":""}', '{"et":""}', true) returning id`)).rows;
   const register = (paymentChoice: "full" | "half" | "financing", name: string) =>
-    db.insert(registrations).values({ courseId: course.id, kind: "individual", name, email: `${name.toLowerCase()}@example.test`, paymentChoice }).returning();
+    db.execute(sql`insert into registrations (course_id, kind, name, email, payment_choice) values (${course.id}, 'individual', ${name}, ${`${name.toLowerCase()}@example.test`}, ${paymentChoice}::payment_choice)`);
   await register("full", "Anna");
   await register("half", "Berta");
   await db.insert(settings).values({ key: "contact", value: { email: "info@example.test" } });
@@ -59,10 +59,9 @@ test("0018 adds the payment choice 'financing' to the enum, and touches nothing 
   expect((await db.select().from(settings)).map((s) => [s.key, s.value])).toEqual([["contact", { email: "info@example.test" }]]);
 
   // a registration with 'financing' succeeds, and 'full' and 'half' still work
-  const [financing] = await register("financing", "Cecilia");
-  expect(financing.paymentChoice).toBe("financing");
-  expect((await register("full", "Dora"))[0].paymentChoice).toBe("full");
-  expect((await register("half", "Eva"))[0].paymentChoice).toBe("half");
+  await register("financing", "Cecilia");
+  await register("full", "Dora");
+  await register("half", "Eva");
   const stored = await db.execute<{ name: string; payment_choice: string }>(sql`select name, payment_choice from registrations order by id`);
   expect(stored.rows.map((r) => [r.name, r.payment_choice])).toEqual([["Anna", "full"], ["Berta", "half"], ["Cecilia", "financing"], ["Dora", "full"], ["Eva", "half"]]);
   // any other word is still refused
