@@ -98,7 +98,7 @@ Today no code reaches the money path:
     - a use on an e-course payment of the **same course** that is not `paid` or `held`, the pending window included.
     - A `pending` payment of **another** course counts inside its window (`attemptEnds`), so two tabs on two e-courses cannot both use a once-per-person code; after its window, or once it fails, it gives the use back.
     - So her re-send is the same order again: a booking sent twice, or a cart paid again after Back or a failed payment, gets the code again.
-    - **A re-sent e-course order** (the open attempt of the same code, total and method, inside its window) is not a new use: its own use is left out of the count, so the last use under a limit is not refused to the person who holds it. Her other live pending attempts of the same course, of either method, are left out too when she starts a new one, so switching between the bank and järelmaks is not `usedUp` against her own open attempt.
+    - **A re-sent e-course order** (the open attempt of the same code, total and method, inside its window) is not a new use: its own use is left out of the count, so the last use under a limit is not refused to the person who holds it. Her other live pending attempts of the same course, of either method, are left out too, on a re-send as on a new start, so switching between the bank and järelmaks is not `usedUp` against her own open attempt.
     - An unpaid booking of **another** course still holds her use until it is cancelled (§6).
   - **Nothing else changes.** Settle, `failPayment`, `setRegistrationStatus` and the refund path need no change for codes.
   - **An earlier training** decides `first` and `returning`. It is any of these, for the same e-mail, leaving out the order being made:

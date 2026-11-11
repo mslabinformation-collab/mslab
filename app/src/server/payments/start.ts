@@ -413,7 +413,7 @@ export async function startEcoursePayment(
           // out of scope since the first press refuses the re-send. The open attempt's own use is not counted against the limit. Nothing is written.
           const locked = await lockCode(tx, found.id);
           if (!locked) return { discount: "unknown" };
-          const uses = await usesOf(tx, locked.id, deps.now, { exceptPaymentId: open.id });
+          const uses = await usesOf(tx, locked.id, deps.now, { exceptPaymentId: open.id, exceptPendingOf: { email, courseId: input.courseId } });
           const refusal = codeRefusal(ruleOf(locked), { courseId: input.courseId, courseType: "e_learning", listCents: input.amountCents, today: tallinnToday(deps.now), uses });
           if (refusal) return { discount: refusal };
           // (a re-send of a järelmaks is still refused when it is switched off since: the same check as for a new attempt)

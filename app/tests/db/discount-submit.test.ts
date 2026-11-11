@@ -286,6 +286,23 @@ describe("an e-course start with a code (Task 7)", () => {
     expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, email())).toEqual({ ok: false, errors: { discountCode: "usedUp" } });
   });
 
+  it("bank, then järelmaks, then a järelmaks re-send under maxUses 1 reuses the open attempt", async () => {
+    await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+    const code = await makeCode({ maxUses: 1 });
+    const m = stubMontonio();
+    const who = email();
+    const typed = { discountCode: code.code, discountCents: "1900" };
+    expect(await buy(m, typed, who)).toMatchObject({ ok: true });
+    expect(await buy(m, { method: "hirePurchase", ...typed }, who, new Date(NOW.getTime() + 60_000))).toMatchObject({ ok: true });
+    const before = await paymentsOf(who);
+    const loan = before.find((r) => r.method === "hirePurchase")!;
+    expect(await buy(m, { method: "hirePurchase", ...typed }, who, new Date(NOW.getTime() + 120_000))).toMatchObject({ ok: true });
+    const after = await paymentsOf(who);
+    expect(after.map((r) => r.id).sort()).toEqual(before.map((r) => r.id).sort());
+    expect(after.find((r) => r.method === "hirePurchase")!.id).toBe(loan.id);
+    expect(await usesOf(code.id)).toHaveLength(2);
+  });
+
   it("a järelmaks re-send with its code is refused when järelmaks was switched off meanwhile, and the row is unchanged", async () => {
     await db.insert(settings).values({ key: "financing", value: { enabled: true } });
     const code = await makeCode();
