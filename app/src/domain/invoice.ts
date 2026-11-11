@@ -445,16 +445,42 @@ function csvText(raw: string): string {
 }
 
 /**
+ * The share of a booking's discount one invoice carries, in cents (F1, the final review's I1, ruling F-I1): the accountant reads „Soodustus“
+ * row by row and sums it per period, so a split booking must not state its whole discount twice. Each row's „Kokku“ + „Soodustus“ is that
+ * invoice's share of the list price, and the rows of a booking sum to its whole discount — without reading the other invoice, because an export
+ * is one month and the two parts may fall in two. `total` is the booking's price after the code (the line's list − cents, frozen with it):
+ * - the whole sum (an amount of `total`, whatever its kind: a „Kogu summa“, an e-course, a receipt of everything): the whole discount;
+ * - a first part (a prepayment, or a „Kogu summa“ receipt of only some of it: receiptKind's first money), its share rounded:
+ *   `round(cents × amount / total)`;
+ * - the last part (the rest, „Jääk“): what the first part did not take, `cents − round(cents × (total − amount) / total)`, so a prepayment and
+ *   its rest sum exactly, to the cent.
+ * null — the cell stays empty, „Sooduskood“ still says the code — for a line without a code and for an invoice that is none of these: a
+ * cancelled one (its sums are zero), an e-course invoice of less than its total, or an amount above the total. A booking paid in three or
+ * more parts (two rests) is not told apart from one: each rest takes its remainder as if it were the only one.
+ */
+export function discountShare(i: Pick<Invoice, "kind" | "status" | "amountCents"> & { line: Pick<InvoiceLine, "discount"> }): number | null {
+  const d = i.line.discount;
+  if (!d || i.status === "cancelled") return null;
+  const total = d.listCents - d.cents;
+  if (total <= 0 || i.amountCents <= 0 || i.amountCents > total) return null;
+  if (i.amountCents === total) return d.cents;
+  if (i.kind === "prepayment" || i.kind === "full") return Math.round((d.cents * i.amountCents) / total);
+  if (i.kind === "balance") return d.cents - Math.round((d.cents * (total - i.amountCents)) / total);
+  return null;
+}
+
+/**
  * The CSV for the accountant (§6.5): a row per invoice in the order given, `;`-separated for Estonian Excel, UTF-8 with a BOM, CRLF line
  * ends. Dates are Tallinn dd.mm.yyyy. A cancelled invoice stays in the file marked „Tühistatud" with zero sums; the paid date and the way
  * are those of a paid invoice only. Sums are net, VAT and total (the invoice's amount is the gross; no rate: all net). A paid invoice whose
  * payment was refunded or voided (`refunded`, D5, the final review's I3) reads „Tagastatud“, its sums, paid date and way as issued: the
- * accountant books the return (credit notes are out of scope).
+ * accountant books the return (credit notes are out of scope). „Soodustus“ is the invoice's share of the booking's discount (discountShare).
  */
 export function invoiceCsv(rows: (Invoice & { refunded?: boolean })[]): string {
   const lines = rows.map((i) => {
     const sums = i.status === "cancelled" ? { net: 0, vat: 0, gross: 0 } : vatSplit(i.amountCents, i.vatRate);
     const paid = i.status === "paid";
+    const share = discountShare(i);
     return [
       csvText(i.number),
       tallinnDateText(i.issuedAt),
@@ -470,7 +496,7 @@ export function invoiceCsv(rows: (Invoice & { refunded?: boolean })[]): string {
       paid && i.paidAt ? tallinnDateText(i.paidAt) : "",
       paid && i.paidMethod ? paidMethodText(i.paidMethod) : "",
       i.line.discount ? csvText(i.line.discount.code) : "",
-      i.line.discount ? csvAmount(i.line.discount.cents) : "",
+      share !== null ? csvAmount(share) : "",
     ].join(";");
   });
   return `\uFEFF${[CSV_HEADER.join(";"), ...lines].join("\r\n")}\r\n`;

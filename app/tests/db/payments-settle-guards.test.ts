@@ -1044,4 +1044,23 @@ describe("the total of a discounted registration (F1): the list price less the f
     expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse")).map((x) => x.subject)).toHaveLength(1);
     expect(m.mails().find((x) => x.subject.startsWith("Ülemakse"))!.subject).toContain("Kati Tamm");
   });
+
+  test("M7: Maria's „Uus makse“ for a discounted registration's prepayment has the registration's „Sooduskood“ row (its payment row carries none)", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const coded = await registrationOn(db, c, { email: "kood@example.test", discountCents: 3500, discountCode: "TERE10" });
+    // half of the 315 € total
+    const pre = await pendingPayment(db, coded, { amountCents: 15750, method: "paymentInitiation" }, ago(10 * MIN));
+    expect([pre.discountCode, pre.discountCents]).toEqual(["", 0]);
+    const plain = await registrationOn(db, c, { email: "taishind@example.test" });
+    const other = await pendingPayment(db, plain, { method: "paymentInitiation" }, ago(10 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(pre)))).toMatchObject({ payment: { status: "paid" } });
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(other)))).toMatchObject({ payment: { status: "paid" } });
+    await flush();
+    const notices = m.mails().filter((x) => x.subject.startsWith("Uus makse"));
+    expect(notices).toHaveLength(2);
+    expect(notices[0].text.split("\n")).toContain("Sooduskood: TERE10 (−35 €)");
+    expect(notices[1].text).not.toContain("Sooduskood");
+  });
 });

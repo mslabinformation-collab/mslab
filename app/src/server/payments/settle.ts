@@ -10,7 +10,7 @@ import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { isHirePurchase } from "@/domain/financing";
 import { invoiceFileName, invoiceKindOfPayment } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
-import { registrationTotal } from "@/domain/discount-codes";
+import { registrationDiscount, registrationTotal } from "@/domain/discount-codes";
 import { pick } from "@/i18n/field";
 import { contractAttachment, ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
@@ -351,7 +351,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration, won.invoice);
     if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant, won.invoice, won.contract);
     try {
-      await tellMaria(deps, won.payment, { ...outcomeOf(won), part: won.invoice?.kind ?? invoiceKindOfPayment(won.payment, won.registration?.registration ?? null) });
+      await tellMaria(deps, won.payment, { ...outcomeOf(won), part: won.invoice?.kind ?? invoiceKindOfPayment(won.payment, won.registration?.registration ?? null) }, won.registration);
     } finally {
       // the cart's "Soovin MS LABi sooduspakkumisi ja uudiskirju saada": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
       // and a failing notice to Maria does not skip it
@@ -709,11 +709,18 @@ async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
   }
 }
 
-/** Maria's "Uus makse: …" (mail and Telegram); its „Makse“ line is what the payment paid (`part`: its invoice's kind, else the one it would have). */
-async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until" | "part">): Promise<void> {
+/**
+ * Maria's "Uus makse: …" (mail and Telegram); its „Makse“ line is what the payment paid (`part`: its invoice's kind, else the one it would have).
+ * Its „Sooduskood“ row (spec §4.9) is the payment row's own discount (an e-course's, frozen on it), else — a registration's prepayment or rest,
+ * whose payment row carries none — the registration's code and what it takes off its live list price (registrationDiscount, the invoice's
+ * number; the final review's M7).
+ */
+async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until" | "part">, paid: RegistrationPaid | null): Promise<void> {
   const ctx = await contextOf(deps, p.id);
+  const ofRegistration = p.registrationId !== null && paid ? registrationDiscount(paid.course, paid.registration) : null;
+  const discount = p.discountCents > 0 ? { code: p.discountCode, cents: p.discountCents } : ofRegistration ? { code: ofRegistration.code, cents: ofRegistration.cents } : null;
   const s = paymentSummary(
-    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, discount: p.discountCents > 0 ? { code: p.discountCode, cents: p.discountCents } : null, ...outcome },
+    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, discount, ...outcome },
     adminUrl(deps.siteUrl),
   );
   const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });

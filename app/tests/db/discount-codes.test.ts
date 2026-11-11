@@ -386,6 +386,20 @@ describe("redeem", () => {
     expect(await run({ typed: ten.code, shownCents: 1000, email: email() })).toEqual({ ok: true, codeId: ten.id, code: ten.code, discountCents: 1000 });
   });
 
+  it("redeem (M1): a wrong shownCents answers `changed` before any person rule, so a stranger's probe cannot tell a subscriber from anyone", async () => {
+    const welcome = await makeCode({ welcome: true, audience: "first", oncePerPerson: true, daysAfterSignup: 30 });
+    const stranger = email();
+    const subscriber = email();
+    await db.insert(subscribers).values({ email: subscriber, token: `t${++n}`, consentAt: new Date("2026-11-10T10:00:00Z"), confirmedAt: new Date("2026-11-10T10:01:00Z") });
+    // the welcome code takes 10,00 € off 100 €: 1 cent off is a deliberate wrong amount
+    expect(await run({ typed: welcome.code, shownCents: 999, email: stranger })).toEqual({ ok: false, error: "changed" });
+    expect(await run({ typed: welcome.code, shownCents: 999, email: subscriber })).toEqual({ ok: false, error: "changed" });
+    // with the right amount the person rules still decide
+    expect(await run({ typed: welcome.code, shownCents: 1000, email: stranger })).toEqual({ ok: false, error: "person" });
+    expect(await run({ typed: welcome.code, shownCents: 1000, email: subscriber })).toMatchObject({ ok: true, discountCents: 1000 });
+    await db.delete(discountCodes).where(eq(discountCodes.id, welcome.id));
+  });
+
   it("redeem finds a code typed in lower case with spaces around it", async () => {
     await makeCode({ code: "TERE10" });
     expect(await run({ typed: "  tere10 ", email: email() })).toMatchObject({ ok: true, code: "TERE10", discountCents: 1000 });

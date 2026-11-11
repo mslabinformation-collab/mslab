@@ -546,14 +546,71 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
   });
 
   test("the CSV ends with Sooduskood and Soodustus, empty for an old line", () => {
-    const discounted: Invoice = { ...base, id: 6, number: "MSL2026-006", seq: 6, line: { ...base.line, discount: { code: "TERE10", listCents: 35000, cents: 3500 } } };
+    // 385 € − 35 € = 350 €: `base` is its 175 € prepayment, so half the discount (I1)
+    const discounted: Invoice = { ...base, id: 6, number: "MSL2026-006", seq: 6, line: { ...base.line, discount: { code: "TERE10", listCents: 38500, cents: 3500 } } };
     const [coded, old] = rowsOf([discounted, base]).map((r) => r.split(";"));
     // the accountant's columns keep their places: the two new ones are the last two
-    expect(coded.slice(-2)).toEqual(['"TERE10"', "35,00"]);
+    expect(coded.slice(-2)).toEqual(['"TERE10"', "17,50"]);
     expect(coded.slice(0, 13)).toEqual(old.slice(0, 13).map((c, i) => (i === 0 ? '"MSL2026-006"' : c)));
     expect(old.slice(-2)).toEqual(["", ""]);
     expect(old).toHaveLength(15);
     expect(invoiceCsv([]).split("\r\n")[0].split(";").slice(-2)).toEqual(["Sooduskood", "Soodustus"]);
+  });
+
+  // I1 (the final review, ruling F-I1): the accountant reads „Soodustus“ per row and sums it per period, so each invoice carries its share of
+  // the booking's discount: „Kokku“ + „Soodustus“ is that invoice's share of the list price, and a booking's rows sum to its whole discount.
+  describe("„Soodustus“ is the invoice's share of the booking's discount (I1)", () => {
+    const coded = (over: Partial<Invoice>, discount: { code: string; listCents: number; cents: number }): Invoice => ({
+      ...base, ...over, line: { ...base.line, discount },
+    });
+    /** The two last cells of each row: the code and the share. */
+    const tail = (list: Invoice[]) => rowsOf(list).map((r) => r.split(";").slice(-2));
+    const cents = (cell: string) => Number(cell.replace(",", ""));
+    const TERE10 = { code: "TERE10", listCents: 35000, cents: 3500 };
+
+    test("350 € − 35 € paid 50 % + 50 %: 17,50 on each part, the column sums to 35,00", () => {
+      const rows = tail([
+        coded({ kind: "prepayment", amountCents: 15750 }, TERE10),
+        coded({ id: 7, number: "MSL2026-007", seq: 7, kind: "balance", amountCents: 15750, line: { ...base.line, part: "Jääk 50%" } }, TERE10),
+      ]);
+      expect(rows).toEqual([['"TERE10"', "17,50"], ['"TERE10"', "17,50"]]);
+    });
+
+    test("a whole-sum invoice keeps the whole discount", () => {
+      expect(tail([coded({ kind: "full", amountCents: 31500, line: { ...base.line, part: "Kogu summa (100%)" } }, TERE10)])).toEqual([['"TERE10"', "35,00"]]);
+      // an e-course's invoice is always its whole sum
+      expect(tail([coded({ kind: "ecourse", amountCents: 31500, registrationId: null }, TERE10)])).toEqual([['"TERE10"', "35,00"]]);
+    });
+
+    test("an odd split that rounds still sums exactly: the last part takes what the first did not", () => {
+      // 100,01 € − 10,00 € = 90,01 €; Maria records a 27,00 € prepayment (30 %), the rest is 63,01 €
+      const odd = { code: "SUVI", listCents: 10001, cents: 1000 };
+      const [first, last] = tail([
+        coded({ kind: "prepayment", amountCents: 2700 }, odd),
+        coded({ id: 8, number: "MSL2026-008", seq: 8, kind: "balance", amountCents: 6301 }, odd),
+      ]);
+      expect(first).toEqual(['"SUVI"', "3,00"]);
+      expect(last).toEqual(['"SUVI"', "7,00"]);
+      // where rounding each part by itself would give a cent too many: 101,01 € − 1,01 € at 50/50 → 0,505 € each
+      const cent = { code: "SENT", listCents: 10101, cents: 101 };
+      const halves = tail([coded({ kind: "prepayment", amountCents: 5000 }, cent), coded({ id: 9, number: "MSL2026-009", seq: 9, kind: "balance", amountCents: 5000 }, cent)]);
+      expect(halves.map(([, c]) => c)).toEqual(["0,51", "0,50"]);
+      expect(halves.reduce((s, [, c]) => s + cents(c), 0)).toBe(101);
+    });
+
+    test("each row's „Kokku“ + „Soodustus“ is its share of the list price", () => {
+      const rows = rowsOf([
+        coded({ kind: "prepayment", amountCents: 15750 }, TERE10),
+        coded({ id: 7, number: "MSL2026-007", seq: 7, kind: "balance", amountCents: 15750 }, TERE10),
+      ]).map((r) => r.split(";"));
+      expect(rows.map((c) => cents(c[9]) + cents(c[14]))).toEqual([17500, 17500]);
+    });
+
+    test("an invoice that cannot be placed (cancelled, an e-course part, more than the total) keeps the code and leaves the share empty", () => {
+      expect(tail([coded({ status: "cancelled", kind: "prepayment", amountCents: 15750 }, TERE10)])).toEqual([['"TERE10"', ""]]);
+      expect(tail([coded({ kind: "ecourse", amountCents: 10000, registrationId: null }, TERE10)])).toEqual([['"TERE10"', ""]]);
+      expect(tail([coded({ kind: "balance", amountCents: 40000 }, TERE10)])).toEqual([['"TERE10"', ""]]);
+    });
   });
 
   test("no invoices: the BOM and the header only", () => {

@@ -96,6 +96,14 @@ describe("Lisa sooduskood", () => {
     const voided = await registrationOn(db, contact, { email: "e@example.test" });
     await invoiceOf(voided.id, "cancelled");
     expect(await addRegistrationDiscount(db, voided.id, code.code, NOW)).toEqual({ ok: true });
+    // P28: a paid invoice on a registration with nothing in „Laekunud summa“ (Maria marked it paid without adding the money) refuses neither
+    // as `unpaidInvoice` (only status 'unpaid' is, not "anything not cancelled") nor as `paid` (that is paid_cents alone)
+    const markedPaid = await registrationOn(db, contact, { email: "f@example.test" });
+    await invoiceOf(markedPaid.id, "paid");
+    expect(await addRegistrationDiscount(db, markedPaid.id, code.code, NOW)).toEqual({ ok: true });
+    // and one cent received is already money in
+    const cent = await registrationOn(db, contact, { email: "g@example.test", paidCents: 1 });
+    expect(await addRegistrationDiscount(db, cent.id, code.code, NOW)).toEqual({ ok: false, error: "paid" });
   });
 
   test("a code already on the registration is stale; a code that takes nothing off is worthless", async () => {
@@ -148,6 +156,12 @@ describe("Eemalda sooduskood", () => {
     expect(await removeRegistrationDiscount(db, invoiced.id)).toEqual({ ok: false, error: "unpaidInvoice" });
     expect(await removeRegistrationDiscount(db, 999_999)).toEqual({ ok: false, error: "stale" });
     expect(await reg(invoiced.id)).toMatchObject({ discountCents: 3500, discountCode: code.code });
+    // P28: a paid invoice with nothing received does not block the removal; one cent received does
+    const markedPaid = await mk("d@example.test", {});
+    await invoiceOf(markedPaid.id, "paid");
+    expect(await removeRegistrationDiscount(db, markedPaid.id)).toEqual({ ok: true });
+    const cent = await mk("e@example.test", { paidCents: 1 });
+    expect(await removeRegistrationDiscount(db, cent.id)).toEqual({ ok: false, error: "paid" });
   });
 });
 

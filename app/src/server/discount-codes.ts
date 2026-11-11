@@ -164,8 +164,8 @@ export type Redeemed = { ok: true; codeId: number; code: string; discountCents: 
 
 /**
  * The submit's check of a typed code, in the caller's transaction (D8): finds it, locks it, and runs the rules in order: the code's (unknown,
- * paused, ended, notYet, scope, usedUp), the person's (any reason: `person`), then whether the discount still equals what the form showed
- * (`changed`: also when the form showed none). The lock stays until the transaction ends, so the caller's insert of the use is ordered with
+ * paused, ended, notYet, scope, usedUp), whether the discount still equals what the form showed (`changed`: also when the form showed none),
+ * then the person's (any reason: `person`). The lock stays until the transaction ends, so the caller's insert of the use is ordered with
  * every other one.
  */
 export async function redeem(tx: Tx, rawInput: RedeemInput, now: Date): Promise<Redeemed> {
@@ -178,10 +178,14 @@ export async function redeem(tx: Tx, rawInput: RedeemInput, now: Date): Promise<
   const rule = ruleOf(c);
   const refusal = codeRefusal(rule, { courseId: input.courseId, courseType: input.courseType, listCents: input.listCents, today, uses: await usesOf(tx, c.id, now, input.exceptOwnPending ? { exceptPendingOf: { email: input.email, courseId: input.courseId } } : {}) });
   if (refusal) return { ok: false, error: refusal };
-  const facts = await personFacts(tx, input.email, { codeId: c.id, courseId: input.courseId }, now);
-  if (personRefusal(rule, facts, { subscribing: input.subscribing, today })) return { ok: false, error: "person" };
+  // M1 (the final review): the shown amount before the person's rules. A stranger who sends a code with a deliberately wrong amount then hears
+  // `changed` whoever the address is, so the submit is no silent oracle for "a confirmed subscriber who has not trained"; a probe needs the
+  // right amount, which stores a booking and mails the address's owner and Maria. (An e-course start still answers an eligible address with a
+  // payment URL: that residue is inherent while the welcome code is subscriber-only, spec §4.6.)
   const d = discountCents(rule, input.listCents);
   if (input.shownCents === null || input.shownCents !== d) return { ok: false, error: "changed" };
+  const facts = await personFacts(tx, input.email, { codeId: c.id, courseId: input.courseId }, now);
+  if (personRefusal(rule, facts, { subscribing: input.subscribing, today })) return { ok: false, error: "person" };
   return { ok: true, codeId: c.id, code: c.code, discountCents: d };
 }
 
