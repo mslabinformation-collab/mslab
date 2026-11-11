@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -196,5 +197,16 @@ describe("the calendar's area chips (course areas §5.1)", () => {
     const empty = $("[data-calendar-empty]")!;
     expect(empty.textContent).toBe("Uued kuupäevad avaldatakse peagi.");
     expect(empty.querySelector("button")).toBeNull();
+  });
+
+  // review round 1, item 2: the names are Maria's, so a long one (Russian runs long) must not make a chip wider than a 390 px screen
+  // (pages.spec.ts measures it at 390). The city chips stay on one line each.
+  test("the stylesheet: the area chips (the second chip row) wrap within the page; the city chips stay nowrap", () => {
+    const css = readFileSync("src/components/site/Calendar.module.css", "utf8");
+    const area = css.match(/\n\.chips \+ \.chips \.chip\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(area).toMatch(/max-width:\s*100%/);
+    expect(area).toMatch(/white-space:\s*normal/);
+    expect(area).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(css.match(/\n\.chip\s*\{([^}]*)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
   });
 });

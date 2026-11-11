@@ -213,7 +213,9 @@ test.describe("calendar", () => {
     await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("at 390 the area chips are 44 px targets inside the page, ET and RU, with no horizontal overflow", async ({ page, isMobile }) => {
+  const LONG_AREA = "Курсы долговременной укладки и ламинирования бровей и ресниц";
+
+  test("at 390 the area chips are 44 px targets inside the page, ET and RU, with no horizontal overflow, a 60-character name too", async ({ page, isMobile }) => {
     test.skip(!isMobile, "phone width");
     for (const path of ["/koolituskalender", "/ru/koolituskalender"]) {
       await page.goto(path);
@@ -225,6 +227,16 @@ test.describe("calendar", () => {
         expect(b.height, path).toBeGreaterThanOrEqual(44);
         expect(b.right, path).toBeLessThanOrEqual(390);
       }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), path).toBe(true);
+
+      // an area name of Maria's 60 characters long (Russian runs long; the text set in the page, nothing written): the chip wraps inside the page
+      expect(LONG_AREA).toHaveLength(60);
+      await chips.last().evaluate((e, name) => (e.textContent = name), LONG_AREA);
+      const group = (await page.locator("[data-area-filter]").boundingBox())!;
+      const long = (await chips.last().boundingBox())!;
+      expect(long.height, path).toBeGreaterThanOrEqual(44);
+      expect(long.x + long.width, path).toBeLessThanOrEqual(group.x + group.width + 0.5);
+      expect(group.x + group.width, path).toBeLessThanOrEqual(390);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), path).toBe(true);
     }
   });

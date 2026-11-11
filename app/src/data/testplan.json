@@ -1269,7 +1269,8 @@
         "Linn ja valdkond koos jätavad alles kuupäevad, mis sobivad mõlemaga.",
         "Kui ükski kuupäev ei sobi, on teade „Valitud filtritega hetkel koolitusi pole.“ ja nupp „Näita kõiki“.",
         "„Näita kõiki“ näitab jälle kõiki kuupäevi ja mõlemas reas on valitud „Kõik“.",
-        "Pärast värskendamist on sama valdkond ikka valitud."
+        "Pärast värskendamist on sama valdkond ikka valitud.",
+        "Pikk valdkonna nimi jätkub nupus uuel real ja leht ei liigu küljele."
       ],
       "why": "Kui kuupäevi on palju, leiab õpilane valdkonna järgi oma koolituse.",
       "risk": "med",

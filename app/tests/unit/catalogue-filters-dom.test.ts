@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -155,5 +156,16 @@ describe("the catalogue's area chips (course areas §5.2)", () => {
     expect(window.location.search).toBe("?utm=kiri");
     expect(titles()).toHaveLength(4);
     expect(chips("area")[0]).toEqual(["Kõik", "true"]);
+  });
+
+  // review round 1, item 2: the names are Maria's, so a long one (Russian runs long) must not make a chip wider than a 390 px screen
+  // (catalogue.spec.ts measures it at 390). The format and level chips keep their own rules.
+  test("the stylesheet: the area chips wrap within the page; the other chips stay nowrap", () => {
+    const css = readFileSync("src/components/site/CatalogueFilters.module.css", "utf8");
+    const area = css.match(/\n\.areas \.pill\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(area).toMatch(/max-width:\s*100%/);
+    expect(area).toMatch(/white-space:\s*normal/);
+    expect(area).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(css.match(/\n\.pill\s*\{([^}]*)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
   });
 });

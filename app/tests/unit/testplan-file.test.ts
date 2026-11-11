@@ -1594,6 +1594,11 @@ describe("course areas (spec 2026-11-11)", () => {
     expect(ru.calendar.areaLabel).toBe("Направление");
   });
 
+  // review round 1, item 2: a long area name wraps inside its chip on the phone instead of widening the page
+  test("the phone check of the calendar's area chips: a long name stays on the screen", () => {
+    expect(find("haldus-kalender-valdkond").expect).toContain("Pikk valdkonna nimi jätkub nupus uuel real ja leht ei liigu küljele.");
+  });
+
   test("the old calendar empty state's words are gone from the plan", () => {
     const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((line) => `${c.id}: ${line}`));
     expect(lines.filter((line) => /Selles linnas hetkel koolitusi pole|„Kõik linnad“/.test(line))).toEqual([]);

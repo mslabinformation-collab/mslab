@@ -32,6 +32,13 @@
   margin-top: -16px;
 }
 
+/* The area chips are Maria's names (Seaded → Valdkonnad), so a long one (Russian runs long) wraps inside the page instead of widening it. */
+.chips + .chips .chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chip:hover {
   border-color: var(--fog);
 }
