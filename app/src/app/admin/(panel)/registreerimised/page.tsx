@@ -34,7 +34,8 @@ import { tallinnFormParts } from "@/domain/calendar";
 import { coveringInvoices, openAmounts, receiptTakeBack, sellerReady, uninvoicedOf } from "@/domain/invoice";
 import { euro, euroBare } from "@/domain/money-text";
 import { parsePage, parseSearch } from "@/domain/paging";
-import { registrationPrice, type RegStatus } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
+import type { RegStatus } from "@/domain/registration";
 import { holdsSeat } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
@@ -126,7 +127,7 @@ function listSession(r: RegistrationRow): string {
 
 /** „Laekunud“: „{paid} / {price} €“ (the euro sign once, after the price); a course with no price: the money alone. */
 function paidText(r: RegistrationRow): string {
-  const price = registrationPrice(r.course, r.kind);
+  const price = registrationTotal(r.course, r);
   if (price == null) return euro(r.paidCents);
   return fill(adminEt.registrations.paidOf, { paid: euroBare(r.paidCents), price: euro(price) });
 }
@@ -368,7 +369,7 @@ function RegistrationDetail({
     return { paymentId: p.id, amountCents: p.amountCents, paidAt: (p.paidAt ?? p.createdAt).toISOString(), pays: linked ? linked.number : null };
   });
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
-  const total = registrationPrice(r.course, r.kind);
+  const total = registrationTotal(r.course, r);
   // „Võta tasumine tagasi“ of a receipt (S3-f) says what it will do: the sum the server takes off Laekunud summa (capped at what no other paid invoice
   // covers) and whether a confirmed registration then falls under 50 % — domain/invoice.ts receiptTakeBack, the server's own rule
   const invoiceOf = (inv: AdminInvoice) => {

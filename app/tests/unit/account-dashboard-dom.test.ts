@@ -6,6 +6,7 @@ import { CoursesTab } from "@/components/account/CoursesTab";
 import { PrepaymentInfo } from "@/components/account/PrepaymentInfo";
 import { coursesTexts } from "@/components/account/texts";
 import type { AccountCard, ContactCard } from "@/domain/account-cards";
+import { formatEUR } from "@/domain/money";
 import { getDict } from "@/i18n/locales";
 import type { Dashboard } from "@/server/client-data";
 
@@ -150,5 +151,15 @@ describe("Kopeeri", () => {
     await act(async () => button.click());
     expect(status()).toBe("Kopeeritud: IBAN");
     expect(writeText).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a discounted registration's card (F1)", () => {
+  test("says the code and the euros it took off, before the next-step sentence; a card without a code says nothing of it", async () => {
+    await act(async () => root.render(createElement(CoursesTab, { locale: "et", t, data: dashboard([contact(8, { priceCents: 31500, discount: { code: "TERE10", cents: 3500 } }), contact(9)]), now: NOW })));
+    const line = $("[data-card='registration-8'] [data-card-discount]");
+    expect(line?.textContent).toBe(`Sooduskood TERE10: −${formatEUR(3500, "et")}`);
+    expect(line?.nextElementSibling?.hasAttribute("data-next-step")).toBe(true);
+    expect($("[data-card='registration-9'] [data-card-discount]")).toBeNull();
   });
 });

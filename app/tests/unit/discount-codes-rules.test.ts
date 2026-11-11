@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { RegStatus } from "@/domain/registration";
 import {
-  addDays, codeRefusal, codeState, codeValueText, discountCents, isCode, normalizeCode, personRefusal, registrationDiscount, registrationTotal,
+  addDays, codeRefusal, codeState, codeValueText, discountCents, isCode, listCentsOf, normalizeCode, personRefusal, registrationDiscount, registrationTotal,
   totalWith, useMark, validOn, type CodeRule,
 } from "@/domain/discount-codes";
 
@@ -32,6 +32,12 @@ describe("discount codes: the pure rules", () => {
     expect(registrationDiscount(c, { kind: "group", discountCents: 0, discountCode: "" })).toBeNull();
     expect(registrationDiscount(c, { kind: "group", discountCents: 3500, discountCode: "" })).toBeNull();
     expect(registrationDiscount({ ...c, priceGroup: null }, { kind: "group", discountCents: 3500, discountCode: "TERE10" })).toBeNull();
+  });
+  test("listCentsOf is the e-course's price, a contact course's group price, or null", () => {
+    expect(listCentsOf({ type: "e_learning", price: 9500, priceGroup: null, priceIndividual: null })).toBe(9500);
+    expect(listCentsOf({ type: "contact", price: null, priceGroup: 40000, priceIndividual: 60000 })).toBe(40000);
+    expect(listCentsOf({ type: "contact", price: null, priceGroup: null, priceIndividual: 60000 })).toBeNull();
+    expect(listCentsOf({ type: "e_learning", price: null, priceGroup: null, priceIndividual: null })).toBeNull();
   });
   test.each([
     [{ active: false }, "paused"],

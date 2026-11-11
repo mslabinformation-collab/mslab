@@ -12,7 +12,7 @@ import {
 import { DEFAULT_TERMS_VERSION, nextTermsVersion, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { isSampleAddress } from "@/domain/email";
 import { euro } from "@/domain/invoice";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
@@ -146,7 +146,7 @@ export async function shownVersionHolds(q: Q, kind: ContractKind, locale: "et" |
  * What a contact registration's contract is made of: its fields (D3), `prepaymentText` and the `template` it is made from, from one read of the
  * registration and one read of the text, so that the language, the payment words, the course's name and the text agree and the caller reads none again.
  * The fields come from the registration, its course and its session: the school (Seaded → Maksmine), the student as she typed herself, the course's
- * name in the contract's language, the session's date and place, the price (the group or the individual price: registrationPrice) and the payment
+ * name in the contract's language, the session's date and place, the price (the group or the individual price: listPrice, less the frozen discount: registrationTotal) and the payment
  * choice in words. `prepaymentText` is „Ettemaks“, the half the choice asks first (or the whole price), for the placeholder. `locale` (the template's
  * too) is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian). The template's version is read
  * before its text (storedTemplate). Null for an unknown registration. The fields are domain/contract.ts contractParts of the stored registration:
@@ -175,7 +175,7 @@ export async function registrationContractFields(
     email: r.email,
     course: contractCourseName(course.title, locale),
     session,
-    priceCents: registrationPrice(course, r.kind),
+    priceCents: registrationTotal(course, r),
     choice: r.paymentChoice,
     locale,
   });

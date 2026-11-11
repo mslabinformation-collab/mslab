@@ -27,7 +27,7 @@ import { firstParagraph, nextSessionByCourse } from "@/domain/home";
 import { formatEUR } from "@/domain/money";
 import { shownBadge } from "@/domain/badge";
 import { recommend } from "@/domain/recommend";
-import { registrationPrice } from "@/domain/registration";
+import { listPrice } from "@/domain/registration";
 import { seatState, seatsLeft } from "@/domain/sessions";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatWeekday } from "@/i18n/format";
@@ -146,7 +146,7 @@ export default async function CoursePage({ params }: Props) {
         ...trainerFact,
       ];
   // Järelmaks (Inbank): offered for the e-course's price, or a contact course's group price (the online payment is the group registration's)
-  const financing = financingShown(settings, registrationPrice(course, "group"));
+  const financing = financingShown(settings, listPrice(course, "group"));
   const discountText = pick(course.nextDiscount, locale);
   const discount = discountText ? { label: c.discountLabel, value: discountText } : undefined;
 
@@ -268,7 +268,7 @@ export default async function CoursePage({ params }: Props) {
                   body: template?.body ?? "",
                   locale: template?.locale ?? locale,
                   course: contractCourseName(course.title, template?.locale ?? locale),
-                  priceCents: registrationPrice(course, "group"),
+                  priceCents: listPrice(course, "group"),
                 }}
                 t={{
                   participationLabel: c.participationLabel,

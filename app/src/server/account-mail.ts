@@ -356,7 +356,7 @@ export type RegistrationConfirmationInput = {
   course: I18n;
   session: SessionInfo;
   paymentChoice: PaymentChoice;
-  /** What the registration is measured against (domain/registration.ts registrationPrice), cents; null when the course has no such price. */
+  /** What the registration is measured against (domain/discount-codes.ts registrationTotal), cents; null when the course has no such price. */
   priceCents: number | null;
   /** The admin's prepayment setting (domain/account-cards.ts parsePrepayment); without a receiver and an IBAN Maria sends an invoice. */
   prepayment: PrepaymentInfo | null;

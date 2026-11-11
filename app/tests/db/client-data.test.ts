@@ -787,3 +787,19 @@ describe("e-course progress on the dashboard (phase 2c)", () => {
     expect(await resume()).toBeNull();
   });
 });
+
+describe("a discounted registration's card (F1)", () => {
+  test("the account card's priceCents is the total and its discount is the code and the cents", async () => {
+    // (the rows of the file's other tests are cleared by its beforeEach; a fresh client here)
+    const kati = await client();
+    // list 350 €, 35 € off: the total is 315 €
+    const reg = await register(kati.id, f.lami.id, f.soon.id, { discountCents: 3500, discountCode: "TERE10" });
+    const plain = await register(kati.id, f.lami.id, f.later.id);
+    const { cards } = (await loadDashboard(db, kati.id, NOW))!;
+    expect(cards.find((c) => c.kind === "contact" && c.registrationId === reg.id)).toMatchObject({ priceCents: 31500, discount: { code: "TERE10", cents: 3500 } });
+    // a registration without a code has the list price and no `discount` key at all
+    const card = cards.find((c) => c.kind === "contact" && c.registrationId === plain.id)!;
+    expect(card).toMatchObject({ priceCents: 35000 });
+    expect("discount" in card).toBe(false);
+  });
+});

@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
@@ -337,5 +338,16 @@ describe("subscribers: search by address, the two states, the counts", () => {
       expect(await countSubscribers(db, { search, state: "confirmed" })).toBe(counts.confirmed);
       expect(await countSubscribers(db, { search, state: "pending" })).toBe(counts.pending);
     }
+  });
+});
+
+describe("a registration's total (F1: list price less the frozen discount)", () => {
+  test("addRegistrationPayment confirms the place from 50 % of the total", async () => {
+    await db.update(courses).set({ priceGroup: 40000 }).where(eq(courses.id, contact.id));
+    // list 400 €, 40 € off: the total is 360 €, so 180 € is half (half of the list, 200 €, is not the rule any more)
+    const confirms = await register({ email: "yes@example.test", discountCents: 4000, discountCode: "TERE10" });
+    expect(await addManualPayment(db, { registrationId: confirms.id, cents: 18000, paidOn: "2026-10-21", method: "bank", receipt: false, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed", confirmedNow: true });
+    const short = await register({ email: "no@example.test", discountCents: 4000, discountCode: "TERE10" });
+    expect(await addManualPayment(db, { registrationId: short.id, cents: 17999, paidOn: "2026-10-21", method: "bank", receipt: false, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "awaiting_prepayment", confirmedNow: false });
   });
 });

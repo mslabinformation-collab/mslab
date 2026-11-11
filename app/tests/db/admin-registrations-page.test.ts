@@ -392,3 +392,20 @@ describe("the drawer (Task 5: README A2 drawer 1–3)", () => {
     ]);
   });
 });
+
+describe("the Raha card of a discounted registration (F1)", () => {
+  test("the Raha card gets the total as priceCents", async () => {
+    // list 220 € (Kulmude LAMI), 22 € off: the total is 198 €, and a place is confirmed from 99 €
+    const [r] = await db
+      .insert(registrations)
+      .values({ courseId: course.lami, courseSessionId: sessions.s1, kind: "group", name: "Dagmar Soodus", email: "dagmar@example.test", paymentChoice: "half", discountCents: 2200, discountCode: "TERE10", createdAt: new Date("2030-10-20T08:00:00Z") })
+      .returning();
+    const doc = await open(`id=${r.id}`);
+    const card = doc.querySelector(`[data-registration-detail="${r.id}"] [data-money-card]`)!;
+    const said = (el: { textContent: string | null } | null | undefined) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+    expect(said(card.querySelector("[data-money-total]"))).toBe("/ 198 € laekunud");
+    expect(said(card.querySelector("[data-money-seat]"))).toContain("Koht kinnitub 99 € juures");
+    // the list's „Laekunud“ is measured against the same total
+    expect(rowOf(doc, r.id).querySelectorAll("td")[3].textContent).toBe("0 / 198 €");
+  });
+});

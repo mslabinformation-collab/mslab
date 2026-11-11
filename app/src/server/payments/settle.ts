@@ -10,7 +10,7 @@ import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { isHirePurchase } from "@/domain/financing";
 import { invoiceFileName, invoiceKindOfPayment } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { pick } from "@/i18n/field";
 import { contractAttachment, ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
@@ -248,7 +248,7 @@ type Second = "loan" | "bank" | "replaced";
  * lock, which a settlement of the same course and address holds too). `p`'s method is the one its start recorded.
  * - A registration's loan ("loan"), or a registration's replaced order ("replaced": its status as the database has it under the registration's
  *   lock, which every start takes before it replaces): its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts
- *   registrationPrice; none: never). Any other bank payment of a registration: never (its sum over the price is "Ülemakse", today's backstop).
+ *   listPrice, less the frozen discount (registrationTotal); none: never). Any other bank payment of a registration: never (its sum over the price is "Ülemakse", today's backstop).
  * - An e-course's loan: another purchase of the same course by the same address (lower-cased, as start.ts paidRecently reads it) is `paid`,
  *   paid at or after this loan started (its row's created_at): the bank payment she made while Inbank's answer was pending.
  * - An e-course's bank payment: a loan (`hirePurchase`) of the same course by the same address is `paid`, paid at or after this bank payment
@@ -285,13 +285,13 @@ async function paidAlready(tx: Tx, p: Payment): Promise<Second | null> {
   const replaced = !loan && (await tx.select({ status: payments.status }).from(payments).where(eq(payments.id, p.id)).limit(1))[0]?.status === "replaced";
   if (!loan && !replaced) return null;
   const [r] = await tx
-    .select({ paidCents: registrations.paidCents, kind: registrations.kind, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual })
+    .select({ paidCents: registrations.paidCents, discountCents: registrations.discountCents, kind: registrations.kind, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual })
     .from(registrations)
     .innerJoin(courses, eq(registrations.courseId, courses.id))
     .where(eq(registrations.id, p.registrationId))
     .limit(1);
   if (!r) return null;
-  const price = registrationPrice(r, r.kind);
+  const price = registrationTotal(r, r);
   return price !== null && r.paidCents >= price ? (loan ? "loan" : "replaced") : null;
 }
 
@@ -372,7 +372,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
  * goes out once per payment; the payment is recorded as any other.
  */
 function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): void {
-  const price = registrationPrice(r.course, r.registration.kind);
+  const price = registrationTotal(r.course, r.registration);
   if (price === null || r.registration.paidCents <= price) return;
   logNote(`[payments] payment ${p.id}: over the price, Maria is alerted`);
   deps.later(async () => {
@@ -497,7 +497,7 @@ function outcomeOf(won: Won): Pick<PaymentNotice, "outcome" | "restCents" | "unt
   if (!r) return { outcome: "received" };
   if (r.full) return { outcome: "full" };
   if (r.registration.status !== "confirmed") return { outcome: "received" };
-  const total = registrationPrice(r.course, r.registration.kind);
+  const total = registrationTotal(r.course, r.registration);
   return { outcome: "confirmed", restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents) };
 }
 
@@ -778,7 +778,7 @@ async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: 
 async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: RegistrationPaid, invoice: Invoice | null): Promise<void> {
   if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
   try {
-    const total = registrationPrice(r.course, r.registration.kind);
+    const total = registrationTotal(r.course, r.registration);
     const attachment = await invoiceAttachment(deps, invoice);
     const mail = registrationPaidMail({
       siteUrl: deps.siteUrl,

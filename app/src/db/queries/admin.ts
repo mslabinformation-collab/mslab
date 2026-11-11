@@ -6,7 +6,8 @@ import { campaign, contentDrafts, courseAccess, courseAreas, courseImages, cours
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
 import { startOfDayTallinn } from "@/domain/calendar";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
-import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
+import { registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import { REQUEST_TABS, TAB_KIND, type TabKey } from "@/domain/requests";
 import { phoneQuery } from "@/domain/search";
 import type { SubscriberFilter, SubscriberState } from "@/domain/subscribers";
@@ -584,7 +585,7 @@ export async function addRegistrationPayment(tx: Tx, registrationId: number, cen
   if (!current) return null;
   const { registration: r, course, session } = current;
   const paidCents = r.paidCents + cents;
-  const total = registrationPrice(course, r.kind);
+  const total = registrationTotal(course, r);
   const wasConfirmed = r.status === "confirmed";
   let status = wasConfirmed || total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
   let full = false;

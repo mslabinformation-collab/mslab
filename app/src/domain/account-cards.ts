@@ -81,8 +81,10 @@ export type ContactCard = {
   session: CalendarSession;
   status: RegStatus;
   paymentChoice: PaymentChoice;
-  /** What the registration is measured against (domain/registration.ts registrationPrice), cents; null when the course has no such price. */
+  /** What the registration is measured against (domain/discount-codes.ts registrationTotal: the list price less the frozen discount), cents; null when the course has no such price. */
   priceCents: number | null;
+  /** The code the registration was made with and the euros it took off the list price (priceCents is already the total); absent without one. */
+  discount?: { code: string; cents: number };
   paidCents: number;
   createdAt: string;
   /** Maria has sent this registration's protocol (phase protocols, spec §5): the card offers "Vaata protokolli". Absent until then. */

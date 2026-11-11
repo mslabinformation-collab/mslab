@@ -1090,6 +1090,12 @@ export const et = {
     home: "Avalehele",
   },
 
+  // Discount codes (F1): the words the account card and the forms share. Draft (the design's wording).
+  discount: {
+    // a card's line: the code of the registration and the euros it took off the list price
+    applied: "Sooduskood {code}: −{amount}",
+  },
+
   // The coming-soon page (app/tulekul/[locale]): all a visitor sees until the launch (SITE_GATE, lib/site-gate.ts).
   // Its <title> is common.siteName; the sign-up is the newsletter's own (newsletter, forms).
   gate: {

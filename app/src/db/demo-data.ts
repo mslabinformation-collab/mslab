@@ -4,7 +4,7 @@ import { takesSeat } from "./queries/seats";
 import { courseSessions, courses, registrations, requests, subscribers } from "./schema";
 import { addDays } from "./seed-dates";
 import { tallinnInstant } from "../domain/calendar";
-import { registrationPrice, registrationStatusAfterPayment } from "../domain/registration";
+import { listPrice, registrationStatusAfterPayment } from "../domain/registration";
 import { seatState, type SeatState } from "../domain/sessions";
 import { newToken } from "../server/token";
 
@@ -234,7 +234,7 @@ async function resolveSession(db: Q, pick: SessionPick, problems: string[], now:
     capacity: session.capacity,
     startsAt: session.startsAt,
     status: session.status,
-    price: registrationPrice(course, "group"),
+    price: listPrice(course, "group"),
     taken: all,
     realTaken: all - samples,
   };

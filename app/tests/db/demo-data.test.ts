@@ -9,7 +9,7 @@ import { seedBaseDate } from "@/db/seed-dates";
 import { applyDemo, DEMO_PLAN, demoPlan, isSampleEmail, planDemo, removeDemo, SAMPLE_REGISTRATIONS } from "@/db/demo-data";
 import { describeReport } from "@/db/demo";
 import { listUpcomingSessions } from "@/db/queries/public";
-import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
+import { listPrice, registrationStatusAfterPayment } from "@/domain/registration";
 import { seatState } from "@/domain/sessions";
 
 // The removable sample data for the admin (src/db/demo-data.ts): a dry run writes nothing, apply inserts what is
@@ -75,7 +75,7 @@ describe("sample data", () => {
     expect(confirmed.filter((x) => x.r.paidCents === x.c.priceGroup)).toHaveLength(3);
     expect(confirmed.filter((x) => x.r.paidCents === Math.ceil(x.c.priceGroup! / 2))).toHaveLength(3);
     for (const { r, c } of regs) {
-      if (r.status !== "cancelled") expect(r.status, r.email).toBe(registrationStatusAfterPayment(r, registrationPrice(c, "group")!));
+      if (r.status !== "cancelled") expect(r.status, r.email).toBe(registrationStatusAfterPayment(r, listPrice(c, "group")!));
       expect(r.kind).toBe("group");
       expect(isSampleEmail(r.email), r.email).toBe(true);
       expect(r.name).toMatch(/ \(näidis\)$/);

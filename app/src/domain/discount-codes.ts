@@ -4,7 +4,7 @@
 // the caller says what "today" is, so nothing here reads the clock except `useMark`, which is given `now`.
 
 import { formatEUR } from "./money";
-import { registrationPrice, type RegStatus } from "./registration";
+import { listPrice, type RegStatus } from "./registration";
 
 /** The longest code. */
 export const CODE_MAX = 30;
@@ -67,11 +67,19 @@ export function totalWith(listCents: number, discountCents: number): number {
   return listCents - Math.min(discountCents, Math.max(listCents - MIN_TOTAL_CENTS, 0));
 }
 
-type PriceCourse = Parameters<typeof registrationPrice>[0];
+type PriceCourse = Parameters<typeof listPrice>[0];
+
+/**
+ * The list price a discount code applies to: for an e-course its price, for a contact course the group price (a code is looked up before the
+ * kind is known); null when the course has no such price. Later tasks read list prices only through it.
+ */
+export function listCentsOf(course: PriceCourse): number | null {
+  return listPrice(course, "group");
+}
 
 /** A registration's total: its live list price minus the euros frozen on it; null when the course has no such price. */
 export function registrationTotal(course: PriceCourse, r: { kind: "group" | "individual"; discountCents: number }): number | null {
-  const list = registrationPrice(course, r.kind);
+  const list = listPrice(course, r.kind);
   return list === null ? null : totalWith(list, r.discountCents);
 }
 
@@ -81,7 +89,7 @@ export function registrationDiscount(
   r: { kind: "group" | "individual"; discountCents: number; discountCode: string },
 ): { code: string; listCents: number; cents: number } | null {
   if (r.discountCode === "" || r.discountCents === 0) return null;
-  const list = registrationPrice(course, r.kind);
+  const list = listPrice(course, r.kind);
   if (list === null) return null;
   const total = totalWith(list, r.discountCents);
   return { code: r.discountCode, listCents: list, cents: list - total };

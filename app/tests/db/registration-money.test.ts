@@ -333,3 +333,14 @@ describe("addManualPaymentAction: the drawer's „Lisa laekumine“ (Task 5's pa
     expect(await registration(r.id)).toMatchObject({ paidCents: 5000 });
   });
 });
+
+describe("addManualPayment: the total of a discounted registration", () => {
+  test("overRemainder measures against the total", async () => {
+    const c = await course290();
+    // 290 € less 29 € is 261 €: the whole remainder is 261 €, not 290 €
+    const r = await registrationOn(db, c, { discountCents: 2900, discountCode: "TERE10" });
+    expect(await add(r, 26101)).toEqual({ ok: false, error: "overRemainder" });
+    expect(await add(r, 26100)).toMatchObject({ ok: true, paidCents: 26100, status: "confirmed" });
+    expect(await add(r, 1, { expectedPaidCents: 26100 })).toEqual({ ok: false, error: "overRemainder" });
+  });
+});

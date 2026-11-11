@@ -1021,3 +1021,20 @@ describe("one open order per registration (B22): a new attempt marks the older o
     expect((await ordered()).map((p) => p.status)).toEqual(["pending", "pending"]);
   });
 });
+
+describe("the amounts of a discounted registration (F1)", () => {
+  test("a registration with a discount starts ceil(T/2) for 50 % + 50 % and T for 100 %", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    // list 400 €, 34,99 € off: T = 365,01 €, its half rounded up to the cent is 182,51 €
+    await db.update(courses).set({ priceGroup: 40000 }).where(eq(courses.id, c.course.id));
+    const half = await registrationOn(db, c, { discountCents: 3499, discountCode: "TERE10" });
+    const whole = await registrationOn(db, c, { email: "terve@example.com", paymentChoice: "full", discountCents: 3499, discountCode: "TERE10" });
+    const start = (target: Parameters<typeof startRegistrationPayment>[1]) => startRegistrationPayment({ db, now: NOW, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, target);
+    expect(await start({ registrationId: half.id })).toMatchObject({ kind: "started" });
+    expect(await start({ registrationId: whole.id })).toMatchObject({ kind: "started" });
+    const amount = async (id: number) => (await rows()).find((p) => p.registrationId === id)!.amountCents;
+    expect(await amount(half.id)).toBe(18251);
+    expect(await amount(whole.id)).toBe(36501);
+  });
+});

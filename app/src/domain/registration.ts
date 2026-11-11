@@ -21,7 +21,7 @@ export function registrationStatusAfterPayment(r: { status: RegStatus; paidCents
  * The price a registration's payment is measured against: the e-learning price, or for a contact course the group
  * price (group registration) or the individual price. null when the course has no such price.
  */
-export function registrationPrice(
+export function listPrice(
   course: { type: "e_learning" | "contact"; price: number | null; priceGroup: number | null; priceIndividual: number | null },
   kind: "group" | "individual",
 ): number | null {

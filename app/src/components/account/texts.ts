@@ -23,6 +23,8 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
   certificate: CertificateTexts;
   /** The invoices on the card (invoices Task 6): the account.invoices words. */
   invoices: Dict["account"]["invoices"];
+  /** The registration's discount line (F1): discount.applied. */
+  discount: Dict["discount"];
   /**
    * The contract on the card (contracts Task 6): the account.contract words, and the forms' own refusals for „Kinnitan“ (forms.contractChanged: the
    * text changed since she opened it, ruling R6; forms.errorTooMany; forms.errorGeneric).
@@ -101,6 +103,7 @@ export const coursesTexts = (d: Dict): CoursesTexts => ({
   completed: d.account.completion.completedOn,
   certificate: certificateTexts(d),
   invoices: d.account.invoices,
+  discount: d.discount,
   contract: { ...d.account.contract, changed: d.forms.contractChanged, rate: d.forms.errorTooMany, failed: d.forms.errorGeneric },
 });
 

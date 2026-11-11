@@ -71,7 +71,7 @@ export function paymentMethodLabel(method: string, bank: string | null): string 
 export type DueInput = {
   status: RegStatus;
   paymentChoice: PaymentChoice;
-  /** The registration's price (domain/registration.ts registrationPrice), cents; null without one. */
+  /** The registration's total (domain/discount-codes.ts registrationTotal), cents; null without one. */
   priceCents: number | null;
   paidCents: number;
   /** The session's start; null for a registration without one (an individual course). */

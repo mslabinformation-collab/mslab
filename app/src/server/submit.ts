@@ -8,7 +8,7 @@ import type { Contract, Course, CourseSession, Registration } from "@/db/schema"
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { contractCourseName, filledContract } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { attemptWindowMs } from "@/domain/financing";
 import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
@@ -476,7 +476,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
             course: course.title,
             session: { startsAt: session.startsAt, city: session.city ?? "", venue: session.venue ?? "" },
             paymentChoice: data.paymentChoice,
-            priceCents: registrationPrice(course, "group"),
+            priceCents: registrationTotal(course, { kind: "group", discountCents: registration.discountCents }),
             prepayment,
             payLink: deps.montonio ? payLinkUrl(deps.siteUrl, registration.payToken) : null,
             login,

@@ -7,7 +7,7 @@ import { groupIban, hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT
 import { FINANCING_KEY, financingAllowed, readFinancingSettings } from "@/domain/financing";
 import { formatEUR } from "@/domain/money";
 import { payableDue, type Due } from "@/domain/payments";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { getDict, type Locale } from "@/i18n/locales";
@@ -61,7 +61,7 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
   if (!row) return null;
   const { registration: r, course, session } = row;
   const pay = parsePrepayment(await readSetting(db, PREPAYMENT_KEY));
-  const priceCents = registrationPrice(course, r.kind);
+  const priceCents = registrationTotal(course, r);
   const due = payableDue(
     { status: r.status, paymentChoice: r.paymentChoice, priceCents, paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
     await unpaidInvoiceOf(db, r.id),

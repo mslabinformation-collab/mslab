@@ -18,7 +18,7 @@ import { FINANCING_KEY, readFinancingSettings } from "@/domain/financing";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
 import { feedbackOpenFor } from "@/domain/protocols";
-import { registrationPrice } from "@/domain/registration";
+import { registrationDiscount, registrationTotal } from "@/domain/discount-codes";
 import { MARKS_ENTITY } from "@/domain/test-review-marks";
 import { normalizeEmail } from "@/domain/email";
 import type { I18n } from "@/i18n/field";
@@ -187,6 +187,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         kind: registrations.kind,
         paymentChoice: registrations.paymentChoice,
         paidCents: registrations.paidCents,
+        discountCents: registrations.discountCents,
+        discountCode: registrations.discountCode,
         preferredPeriod: registrations.preferredPeriod,
         createdAt: registrations.createdAt,
         contractRequestedAt: registrations.contractRequestedAt,
@@ -321,6 +323,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       });
     } else {
       const open = mine && payable ? openInvoiceOf(mine) : null;
+      const discount = registrationDiscount(r.course, r);
       cards.push({
         kind: "contact",
         registrationId: r.id,
@@ -328,7 +331,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         session: { startsAt: iso(r.startsAt), city: r.city ?? "", venue: r.venue ?? "", cancelled: r.sessionStatus === "cancelled" },
         status: r.status,
         paymentChoice: r.paymentChoice,
-        priceCents: registrationPrice(r.course, r.kind),
+        priceCents: registrationTotal(r.course, r),
+        ...(discount ? { discount: { code: discount.code, cents: discount.cents } } : {}),
         paidCents: r.paidCents,
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),

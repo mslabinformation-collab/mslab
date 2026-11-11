@@ -1021,3 +1021,27 @@ async function loggedDb(): Promise<{ db: Db; queries: string[] }> {
   await migrate(logged as Parameters<typeof migrate>[0], { migrationsFolder: "./drizzle" });
   return { db: logged, queries };
 }
+
+describe("the total of a discounted registration (F1): the list price less the frozen discount", () => {
+  const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+
+  test("paid in full and „Ülemakse“ are measured against the total", async () => {
+    // list 350 €, 35 € off: the total is 315 €
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    // paid in full (315 €, under the list price): a loan that turns PAID afterwards is held as a double payment, not counted
+    const full = await registrationOn(db, c, { email: "tais@example.test", paymentChoice: "financing", paidCents: 31500, status: "confirmed", discountCents: 3500, discountCode: "TERE10" });
+    const loan = await pendingPayment(db, full, { amountCents: 31500, method: "hirePurchase" }, ago(20 * MIN));
+    // 330 € paid at once is over the total (315 €), though under the list price: the „Ülemakse“ alert
+    const over = await registrationOn(db, c, { email: "ule@example.test", discountCents: 3500, discountCode: "TERE10" });
+    const big = await pendingPayment(db, over, { amountCents: 33000, method: "paymentInitiation" }, ago(10 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held", checkReason: "double" } });
+    expect((await registration(full.id)).paidCents).toBe(31500);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(big)))).toMatchObject({ payment: { status: "paid" } });
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse")).map((x) => x.subject)).toHaveLength(1);
+    expect(m.mails().find((x) => x.subject.startsWith("Ülemakse"))!.subject).toContain("Kati Tamm");
+  });
+});

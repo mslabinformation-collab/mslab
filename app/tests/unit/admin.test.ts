@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { SECTIONS } from "@/components/admin/sections";
 import { centsToInput, MAX_PAYMENT_CENTS, parseEuroCents } from "@/domain/money";
 import { MAX_PAGE, pageInfo, PAGE_SIZE, parsePage } from "@/domain/paging";
-import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
+import { listPrice, registrationStatusAfterPayment } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { formatDate, formatDayMonth, formatDayShortMonth, formatLongDate, formatMonthLong, formatStamp, formatTime, formatWeekday } from "@/i18n/format";
 import { csvCell, toCsv } from "@/server/csv";
@@ -34,16 +34,16 @@ describe("parseEuroCents (Laekunud summa)", () => {
   });
 });
 
-describe("registrationPrice + Maria's 50% rule", () => {
+describe("listPrice + Maria's 50% rule", () => {
   const contact = { type: "contact" as const, price: null, priceGroup: 35000, priceIndividual: 45000 };
   test("group → group price, individual → individual price, e-learning → its price, missing → null", () => {
-    expect(registrationPrice(contact, "group")).toBe(35000);
-    expect(registrationPrice(contact, "individual")).toBe(45000);
-    expect(registrationPrice({ type: "e_learning", price: 9500, priceGroup: null, priceIndividual: null }, "group")).toBe(9500);
-    expect(registrationPrice({ ...contact, priceIndividual: null }, "individual")).toBeNull();
+    expect(listPrice(contact, "group")).toBe(35000);
+    expect(listPrice(contact, "individual")).toBe(45000);
+    expect(listPrice({ type: "e_learning", price: 9500, priceGroup: null, priceIndividual: null }, "group")).toBe(9500);
+    expect(listPrice({ ...contact, priceIndividual: null }, "individual")).toBeNull();
   });
   test("the amount from the form decides the status against that price", () => {
-    const total = registrationPrice(contact, "group")!;
+    const total = listPrice(contact, "group")!;
     expect(registrationStatusAfterPayment({ status: "awaiting_prepayment", paidCents: parseEuroCents("174,99")! }, total)).toBe("awaiting_prepayment");
     expect(registrationStatusAfterPayment({ status: "awaiting_prepayment", paidCents: parseEuroCents("175")! }, total)).toBe("confirmed");
     expect(registrationStatusAfterPayment({ status: "confirmed", paidCents: parseEuroCents("100")! }, total)).toBe("awaiting_prepayment");

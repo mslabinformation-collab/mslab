@@ -5,7 +5,8 @@ import { lockForPayment } from "@/db/queries/seats";
 import { courses, registrations } from "@/db/schema";
 import { tallinnToday } from "@/domain/client-access";
 import { paidDay, type ManualPaidMethod } from "@/domain/invoice";
-import { registrationPrice, type RegStatus } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
+import type { RegStatus } from "@/domain/registration";
 import { issueReceiptInTx } from "./invoices";
 
 // Maria's one money path (admin UX pass B4, spec §9–§10; README A2 drawer 2): „Lisa laekumine“ on a registration's Raha card adds money that came in
@@ -84,7 +85,7 @@ export async function addManualPayment(db: Db, input: ManualPaymentInput, now: D
       const { registration: r, course } = found;
       if (r.status === "cancelled") return { ok: false, error: "cancelled" };
       if (r.paidCents !== expectedPaidCents) return { ok: false, error: "stale" };
-      const price = registrationPrice(course, r.kind);
+      const price = registrationTotal(course, r);
       if (price !== null && cents > price - r.paidCents) return { ok: false, error: "overRemainder" };
       // (a course without a price has no remainder to keep the total under: its column must still hold it)
       if (r.paidCents + cents > INT4_MAX) return { ok: false, error: "invalid" };

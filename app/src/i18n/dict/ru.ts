@@ -927,6 +927,11 @@ export const ru: Dict = {
     home: "На главную",
   },
 
+  // Discount codes (F1): the words the account card and the forms share. Draft.
+  discount: {
+    applied: "Промокод {code}: −{amount}",
+  },
+
   gate: {
     title: "Новый сайт скоро будет готов.",
     lead: "Подпишитесь на рассылку — сообщим, когда откроемся.",

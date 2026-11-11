@@ -356,3 +356,12 @@ describe("resumeSlug: the e-course of the 'Pooleli' card (phase 2c)", () => {
     expect(resumeSlug([], new Map(), NOW_D)).toBeNull();
   });
 });
+
+describe("a card with a discount is measured by its total (F1)", () => {
+  test("priceCents is the total: half of it confirms the place, and the discount is only shown", () => {
+    const discounted = contact({ priceCents: 31500, discount: { code: "TERE10", cents: 3500 }, paymentChoice: "half", paidCents: 15750, status: "confirmed" });
+    expect(nextStep(discounted, NOW, null).key).toBe("confirmedRest");
+    // (paid 157,50 € of a 315 € total is half, so it is "rest to pay", where half of the 350 € list would not have been reached)
+    expect(nextStep({ ...discounted, paidCents: 31500 }, NOW, null).key).not.toBe("confirmedRest");
+  });
+});

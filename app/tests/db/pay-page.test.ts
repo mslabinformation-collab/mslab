@@ -620,3 +620,18 @@ describe("Järelmaks (Inbank) on the pay page", () => {
     expect(payPage({ ...view, locale: "ru", financing: false }, { online: true, notice: "financing" })).toContain('data-pay-notice="financing">Рассрочка возможна для обучения стоимостью 100–5000 €.</p>');
   });
 });
+
+describe("the amounts of a discounted registration (F1)", () => {
+  test("/maksa offers the amounts of the total", async () => {
+    const m = stubMontonio();
+    await db.insert(settings).values({ key: "prepayment", value: PAY });
+    const c = await contactCourse(db);
+    // list 350 €, 35 € off: the total is 315 €, its half 157,50 €, and the rest after the half 157,50 €
+    const first = await registrationOn(db, c, { discountCents: 3500, discountCode: "TERE10" });
+    expect(await text(await handlePayPage(get(first.payToken), first.payToken, deps(m.montonio)))).toContain("Maksa 157,50 €");
+    const rest = await registrationOn(db, c, { email: "jaak@example.com", status: "confirmed", paidCents: 15750, discountCents: 3500, discountCode: "TERE10" });
+    expect(await text(await handlePayPage(get(rest.payToken), rest.payToken, deps(m.montonio)))).toContain("Maksa ülejäänud 157,50 €");
+    const paid = await registrationOn(db, c, { email: "tasus@example.com", status: "confirmed", paidCents: 31500, discountCents: 3500, discountCode: "TERE10" });
+    expect(await text(await handlePayPage(get(paid.payToken), paid.payToken, deps(m.montonio)))).not.toContain("Maksa");
+  });
+});

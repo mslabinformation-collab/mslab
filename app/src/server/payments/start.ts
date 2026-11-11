@@ -8,7 +8,7 @@ import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
 import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingRefusal, isHirePurchase, readFinancingSettings, type BillingAddress, type FinancingRefusal } from "@/domain/financing";
 import { payableDue } from "@/domain/payments";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { holdUntil } from "@/domain/sessions";
 import { unpaidInvoiceOf } from "../invoices";
 import { logNote } from "../log";
@@ -238,7 +238,7 @@ export async function startRegistrationPayment(
       .where(and(eq(registrations.id, found.id), which));
     if (!row) return { kind: "notFound" };
     const { registration: r, course, session } = row;
-    const priceCents = registrationPrice(course, r.kind);
+    const priceCents = registrationTotal(course, r);
     // (unpaidInvoiceOf is a plain read: every change of the registration's invoices takes lockForPayment first, so it cannot change before
     // this commits)
     const due = payableDue(

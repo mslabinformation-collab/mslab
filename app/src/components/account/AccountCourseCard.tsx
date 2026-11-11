@@ -406,6 +406,11 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
           {when.place && <span className={styles.place}>{when.place}</span>}
         </p>
       )}
+      {card.kind === "contact" && card.discount && (
+        <p className={styles.next} data-card-discount="">
+          {fill(t.discount.applied, { code: card.discount.code, amount: formatEUR(card.discount.cents, locale) })}
+        </p>
+      )}
       <NextStepLine className={styles.next} step={step} texts={t.next} />
       {progress && (
         <div className={styles.progress} data-card-progress="">

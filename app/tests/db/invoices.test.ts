@@ -12,7 +12,7 @@ import * as schema from "@/db/schema";
 import { clients, courses, invoices, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
 import { receiptTakeBack } from "@/domain/invoice";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { renderInvoice } from "@/server/invoice-pdf";
 import { addManualPayment } from "@/server/registration-money";
 import {
@@ -1213,7 +1213,7 @@ describe("the reads: the student's own, Maria's, a registration's, the list, the
       // it is exactly what the registration's drawer computes (domain/invoice.ts receiptTakeBack over the same rows)
       const [reg] = await db.select().from(registrations).where(eq(registrations.id, r.id));
       expect(map.get(receipt.id)).toEqual(
-        receiptTakeBack(reg, registrationPrice(c.course, reg.kind), receipt, await invoicesOfRegistration(db, r.id), []),
+        receiptTakeBack(reg, registrationTotal(c.course, reg), receipt, await invoicesOfRegistration(db, r.id), []),
       );
     });
 
@@ -1448,5 +1448,24 @@ describe("Review Focus 1: the order of the locks (Global Constraints): the regis
     expect([p.sessionLock < p.registrationLock, p.registrationLock < p.invoiceLock, p.invoiceLock < p.numberLock, p.numberLock < p.settingRead, p.settingRead < p.written, p.written < p.settingWrite]).toEqual([
       true, true, true, true, true, true,
     ]);
+  });
+});
+
+describe("the total of a discounted registration (F1): the list price less the frozen discount", () => {
+  const DISCOUNT = { discountCents: 3500, discountCode: "TERE10" };
+
+  test("createInvoice and issueReceiptInTx measure the open amounts against the total", async () => {
+    // list 350 €, 35 € off: the total is 315 €; half is 157,50 €
+    const c = await contactCourse(db);
+    await ready();
+    const half = await registrationOn(db, c, DISCOUNT);
+    expect(await request(half)).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%" } });
+    expect(await request(half, "balance")).toMatchObject({ kind: "balance", amountCents: 15750 });
+    const whole = await registrationOn(db, c, { email: "tais@example.test", paymentChoice: "full", ...DISCOUNT });
+    expect(await request(whole, "full")).toMatchObject({ kind: "full", amountCents: 31500 });
+    // the receipt of „Lisa laekumine“ (issueReceiptInTx) names the part by the total as well: 157,50 € is the half
+    const typed = await registrationOn(db, c, { email: "kviitung@example.test", ...DISCOUNT });
+    expect(await addManualPayment(db, { registrationId: typed.id, cents: 15750, paidOn: "2026-10-15", method: "bank", receipt: true, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed" });
+    expect((await allInvoices()).find((i) => i.registrationId === typed.id)).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%" } });
   });
 });

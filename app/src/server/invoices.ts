@@ -17,7 +17,7 @@ import {
   type PaidMethod,
 } from "@/domain/invoice";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
-import { registrationPrice } from "@/domain/registration";
+import { registrationTotal } from "@/domain/discount-codes";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
@@ -232,7 +232,7 @@ export async function createInvoice(
       .limit(1);
     if (!found) return { ok: false, error: "notFound" };
     const { registration: r, course, session } = found;
-    const price = registrationPrice(course, r.kind);
+    const price = registrationTotal(course, r);
     const covering = await coveringOf(tx, r);
     const open = price === null ? undefined : openAmounts({ priceCents: price, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, covering)[input.mode].find((o) => o.kind === input.kind);
     if (!open) return { ok: false, error: "notOpen" };
@@ -294,7 +294,7 @@ export async function issueReceiptInTx(
   now: Date,
 ): Promise<Invoice | "sellerMissing"> {
   const { registration: r, course, session } = of;
-  const price = registrationPrice(course, r.kind);
+  const price = registrationTotal(course, r);
   const covering = await coveringOf(tx, r);
   // money recorded before this press that no paid invoice covers (`r` is the row with this press added): this receipt is then later money
   const earlier = r.paidCents - input.cents - covering.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0);
@@ -339,7 +339,7 @@ async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents
   const others = (await coveringOf(tx, r, invoiceId)).filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0);
   const taken = takeBackCents(r.paidCents, cents, others);
   const paidCents = r.paidCents - taken;
-  const status = registrationStatusAfterTakeBack({ status: r.status, paidCents }, registrationPrice(course, r.kind));
+  const status = registrationStatusAfterTakeBack({ status: r.status, paidCents }, registrationTotal(course, r));
   await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, registrationId));
 }
 
@@ -530,7 +530,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
       ? []
       : await tx.select({ title: courses.title, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual }).from(courses).where(eq(courses.id, courseId)).limit(1);
   const kind = kindOfLinked ?? invoiceKindOfPayment(p, r);
-  const price = course && r ? registrationPrice(course, r.kind) : null;
+  const price = course && r ? registrationTotal(course, r) : null;
   return issueInTx<never>(tx, now, () => ({
     kind,
     registrationId: p.registrationId,
@@ -925,7 +925,7 @@ export async function receiptTakeBacks(db: Db, rows: AdminInvoice[]): Promise<Ma
       receipt.id,
       receiptTakeBack(
         r,
-        registrationPrice(course, r.kind),
+        registrationTotal(course, r),
         receipt,
         covering.filter((i) => i.registrationId === r.id),
         uninvoiced.filter((p): p is typeof p & UninvoicedPayment => p.registrationId === r.id),
