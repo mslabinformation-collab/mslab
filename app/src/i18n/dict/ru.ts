@@ -384,7 +384,6 @@ export const ru: Dict = {
     title: "Корзина",
     emptyTitle: "Корзина пуста",
     emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
-    total: "Итого",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их",
     payBank: "Интернет-банк",

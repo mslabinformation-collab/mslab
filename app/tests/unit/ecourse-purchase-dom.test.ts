@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { EcoursePurchase, type EcoursePurchaseTexts } from "@/components/site/EcoursePurchase";
+import type { CheckAnswer } from "@/domain/discount-codes";
 
 // The e-course cart's purchase form (phase 2b, spec 6.4, D3): name, e-mail, the box (the e-course contract with „Loe lepingut“: contracts, D1;
 // tests/unit/contract-preview-dom.test.ts fills it), the newsletter box and "Maksa 190 €";
@@ -15,8 +16,8 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const mocks = vi.hoisted(() => ({ buyEcourse: vi.fn<(fd: FormData) => Promise<unknown>>(), navigate: vi.fn<(url: string) => void>(), address: { search: "" } }));
-vi.mock("@/server/actions/public", () => ({ buyEcourse: mocks.buyEcourse }));
+const mocks = vi.hoisted(() => ({ buyEcourse: vi.fn<(fd: FormData) => Promise<unknown>>(), checkDiscountCode: vi.fn<(fd: FormData) => Promise<CheckAnswer>>(), navigate: vi.fn<(url: string) => void>(), address: { search: "" } }));
+vi.mock("@/server/actions/public", () => ({ buyEcourse: mocks.buyEcourse, checkDiscountCode: mocks.checkDiscountCode }));
 vi.mock("@/lib/navigate", () => ({ navigate: mocks.navigate }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 // the cart is one cached page per course: its address (?makse=jarelmaks from the result page's „Proovi uuesti“) is read in the browser
@@ -34,16 +35,40 @@ const t: EcoursePurchaseTexts = {
   payFinancing: "Järelmaks (Inbank)",
   financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
   financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
-  submit: "Maksa 190 €",
+  pay: "Maksa {amount}",
   starting: "Avan makse…",
   alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
   errorRequired: "See väli on kohustuslik.",
   errorEmail: "Sisesta korrektne e-posti aadress.",
   errorTooMany: "Liiga palju katseid. Proovi mõne minuti pärast.",
   errorGeneric: "Midagi läks valesti. Proovi uuesti.",
+  discount: {
+    open: "Mul on sooduskood",
+    label: "Sooduskood",
+    apply: "Rakenda",
+    applied: "Sooduskood {code}: −{amount}",
+    remove: "Eemalda",
+    total: "Kokku {total}",
+    hintWelcome: "Kehtib uudiskirjaga liitunud aadressil ja ainult esimesel koolitusel.",
+    hintFirst: "Kehtib ainult esimesel koolitusel.",
+    hintReturning: "Kehtib MS LABi varasematele õpilastele.",
+    errors: {
+      empty: "Kirjuta sooduskood.",
+      unknown: "Sellist sooduskoodi ei ole.",
+      paused: "See sooduskood ei kehti enam.",
+      ended: "See sooduskood ei kehti enam.",
+      notYet: "See sooduskood kehtib alates {date}.",
+      usedUp: "Selle sooduskoodi kasutuskorrad on otsas.",
+      scope: "See sooduskood ei kehti sellele koolitusele.",
+      person: "Seda sooduskoodi ei saa selle e-posti aadressiga kasutada.",
+      changed: "Sooduskood muutus vahepeal. Vaata uus hind üle ja proovi uuesti.",
+      rate: "Liiga palju katseid. Proovi mõne minuti pärast.",
+      server: "Midagi läks valesti. Proovi uuesti.",
+    },
+  },
 };
 const contract = { version: "2026-10-01T00:00:00.000Z", title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}.", locale: "et" as const, course: "Kulmumeistri e-koolitus", priceCents: 19000 };
-const props = { financing: false, course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
+const props = { financingSwitch: { enabled: false, paymentsOn: true }, listCents: 19000, course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -66,6 +91,8 @@ const type = async (selector: string, value: string) => {
 
 beforeEach(() => {
   mocks.buyEcourse.mockReset();
+  mocks.checkDiscountCode.mockReset();
+  window.sessionStorage.clear();
   mocks.navigate.mockReset();
   mocks.address.search = "";
   vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
@@ -261,7 +288,7 @@ test("what she typed before the answer came is kept; a hint with no session (401
 // payments setting); the form then sends `method`, the way the start is made (paymentInitiation | hirePurchase). Otherwise the cart is as it was: no field.
 
 describe("Järelmaks (Inbank) in the cart", () => {
-  const offered = { ...props, financing: true };
+  const offered = { ...props, financingSwitch: { enabled: true, paymentsOn: true } };
   const methods = () => [...container.querySelectorAll<HTMLInputElement>("input[name='method']")];
   const fillAndSubmit = async () => {
     await type("input[name='name']", "Kati Tamm");
@@ -361,5 +388,148 @@ describe("Järelmaks (Inbank) in the cart", () => {
     await submit();
     expect(mocks.buyEcourse.mock.calls[1][0].get("method")).toBe("paymentInitiation");
     expect(mocks.navigate).toHaveBeenCalledWith("https://sandbox-stargate.montonio.com/pay-4");
+  });
+});
+
+// ---------- the sooduskood in the cart (F1, Task 10; design "Ostukorv — sooduskoodiga") ----------
+// The field above „Nimi“, one „Kokku“ line, „Maksa“ with the total; „Maksa“ applies a typed code first; järelmaks is decided on the total (the hook
+// and the field are the registration form's: tests/unit/contact-register-discount-dom.test.ts). The server is mocked.
+
+describe("the sooduskood in the cart", () => {
+  const ok = (code: string, off: number, list = 19000): CheckAnswer => ({ ok: true, code, discountCents: off, totalCents: list - off, value: "10%", audience: "all", welcome: false });
+  const refused = (error: Extract<CheckAnswer, { ok: false }>["error"]): CheckAnswer => ({ ok: false, error });
+  const on = { ...props, financingSwitch: { enabled: true, paymentsOn: true }, listCents: 11000, contract: { ...contract, priceCents: 11000 } };
+  const methods = () => [...container.querySelectorAll<HTMLInputElement>("input[name='method']")];
+  const codeInput = () => $<HTMLInputElement>("[data-discount] input")!;
+  const openAndType = async (code: string) => {
+    await act(async () => $<HTMLButtonElement>("[data-discount-open]")!.click());
+    await type("[data-discount] input", code);
+  };
+  const fillIn = async () => {
+    await type("input[name='name']", "Kati Tamm");
+    await type("input[name='email']", "kati@example.test");
+    await act(async () => $<HTMLInputElement>("input[name='terms']")!.click());
+  };
+
+  test("the field sits above the name; Kokku and Maksa follow the applied code", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("E-ESMASPAEV", 1900));
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    const field = $("[data-discount]")!;
+    expect(field.compareDocumentPosition($("input[name='name']")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.textContent).toContain("Kokku190 €");
+    expect($("button[type='submit']")!.textContent).toBe("Maksa 190 €");
+    await openAndType("e-esmaspaev");
+    await act(async () => $<HTMLButtonElement>("[data-discount-apply]")!.click());
+    await settle();
+    expect($("[data-discount-total]")!.textContent).toContain("171 €");
+    expect($("[data-discount-total] s")!.textContent).toBe("190 €");
+    expect(container.querySelectorAll("[data-cart-total], [data-discount-total]")).toHaveLength(1); // one total line, not two
+    expect($("button[type='submit']")!.textContent).toBe("Maksa 171 €");
+  });
+
+  test("Maksa with a typed code applies it first and sends discountCode and discountCents", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("E-ESMASPAEV", 1900));
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-9" });
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    await openAndType("e-esmaspaev");
+    await fillIn();
+    await submit();
+    expect(mocks.checkDiscountCode).toHaveBeenCalledTimes(1);
+    const sent = mocks.buyEcourse.mock.calls[0][0];
+    expect([sent.get("discountCode"), sent.get("discountCents")]).toEqual(["E-ESMASPAEV", "1900"]);
+    expect(mocks.navigate).toHaveBeenCalledWith("https://sandbox-stargate.montonio.com/pay-9");
+  });
+
+  test("without a code nothing about a code is sent", async () => {
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-9" });
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    await fillIn();
+    await submit();
+    const sent = mocks.buyEcourse.mock.calls[0][0];
+    expect([sent.get("discountCode"), sent.get("discountCents")]).toEqual(["", ""]);
+  });
+
+  test("a refused typed code is not sent", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(refused("unknown"));
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    await openAndType("vale");
+    await fillIn();
+    await submit();
+    expect(mocks.buyEcourse).not.toHaveBeenCalled();
+    expect($("[data-discount-error]")!.textContent).toBe("Sellist sooduskoodi ei ole.");
+  });
+
+  test("a refused typed code at Maksa focuses the code field", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(refused("unknown"));
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    await openAndType("vale");
+    await fillIn();
+    await act(async () => $<HTMLButtonElement>("button[type='submit']")!.focus());
+    await submit();
+    expect(mocks.buyEcourse).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(codeInput());
+  });
+
+  test("the server's discountCode refusal goes back to the field, and focuses it", async () => {
+    mocks.checkDiscountCode.mockResolvedValueOnce(ok("SUVI", 1900)).mockResolvedValueOnce(refused("usedUp"));
+    mocks.buyEcourse.mockResolvedValue({ ok: false, errors: { discountCode: "usedUp" } });
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    await openAndType("suvi");
+    await act(async () => $<HTMLButtonElement>("[data-discount-apply]")!.click());
+    await settle();
+    await fillIn();
+    await submit();
+    expect($("[role='alert']")).toBeNull(); // not the generic line
+    expect($("[data-discount-error]")!.textContent).toBe("Selle sooduskoodi kasutuskorrad on otsas.");
+    expect(document.activeElement).toBe(codeInput());
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  test("järelmaks is decided on the total: a code takes it out of range, removing the code brings it back", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 1100, 11000));
+    await act(async () => root.render(createElement(EcoursePurchase, on)));
+    await act(async () => methods()[1].click());
+    expect(methods().map((m) => m.checked)).toEqual([false, true]);
+    await openAndType("tere10");
+    await act(async () => $<HTMLButtonElement>("[data-discount-apply]")!.click());
+    await settle();
+    // 99 €: below 100 €, järelmaks is not offered; the bank link is what is selected, and the range is said
+    expect(methods().map((m) => [m.value, m.checked])).toEqual([["paymentInitiation", true]]);
+    expect($("[data-financing-range]")!.textContent).toBe("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+    await act(async () => $<HTMLButtonElement>("[data-discount-remove]")!.click());
+    expect(methods().map((m) => [m.value, m.checked])).toEqual([["paymentInitiation", false], ["hirePurchase", true]]);
+    expect($("[data-financing-range]")).toBeNull();
+  });
+
+  test("a typed code at Maksa that takes järelmaks out of range is not sent as järelmaks", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 1100, 11000));
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-8" });
+    await act(async () => root.render(createElement(EcoursePurchase, on)));
+    await act(async () => methods()[1].click());
+    await openAndType("tere10");
+    await fillIn();
+    await submit();
+    // nothing is sent: she sees the 99 €, the flipped choice and the range line first
+    expect(mocks.buyEcourse).not.toHaveBeenCalled();
+    expect($("[data-discount-total] strong")!.textContent).toBe("99 €");
+    expect($("button[type='submit']")!.textContent).toBe("Maksa 99 €");
+    expect(methods().map((m) => [m.value, m.checked])).toEqual([["paymentInitiation", true]]);
+    expect(document.activeElement).toBe($("[data-financing-range]"));
+    // pressing Maksa again sends it, by bank, with the discount
+    await submit();
+    const sent = mocks.buyEcourse.mock.calls[0][0];
+    expect([sent.get("method"), sent.get("discountCode"), sent.get("discountCents")]).toEqual(["paymentInitiation", "TERE10", "1100"]);
+  });
+
+  test("a code that keeps the total within järelmaks' range sends hirePurchase with the discount", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 500, 11000));
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-7" });
+    await act(async () => root.render(createElement(EcoursePurchase, on)));
+    await act(async () => methods()[1].click());
+    await openAndType("tere10");
+    await fillIn();
+    await submit();
+    const sent = mocks.buyEcourse.mock.calls[0][0];
+    expect([sent.get("method"), sent.get("discountCode"), sent.get("discountCents")]).toEqual(["hirePurchase", "TERE10", "500"]);
   });
 });

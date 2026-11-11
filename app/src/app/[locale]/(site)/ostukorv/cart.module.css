@@ -96,21 +96,6 @@
   background: #f0ebee;
 }
 
-.total {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #ddd3d8;
-  font-size: 14px;
-}
-
-.total b {
-  font: 400 32px/1 var(--font-display);
-}
-
 .soon {
   margin: 18px 0 0;
   font-size: 15px;

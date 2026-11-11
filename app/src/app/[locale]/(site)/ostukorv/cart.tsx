@@ -11,13 +11,12 @@ import { getCourseBySlug } from "@/db/queries/public";
 import { contractCourseName } from "@/domain/contract";
 import { formatEUR } from "@/domain/money";
 import { pick } from "@/i18n/field";
-import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import { contractTemplate } from "@/server/contracts";
 import { paymentsConfigured } from "@/server/payments/montonio";
-import { financingShown, getSiteSettings } from "@/server/site-data";
+import { financingSwitch, getSiteSettings } from "@/server/site-data";
 import styles from "./cart.module.css";
 
 export function cartMetadata(locale: Locale): Metadata {
@@ -33,7 +32,9 @@ export function cartMetadata(locale: Locale): Metadata {
  * the form gives way to that same interest form under "Makse ei avanenud…". Whether payments are on is a setting of the deployment, read while
  * the page renders (the page stays one cached page per course): nothing about the visitor is in it, her name and e-mail are filled in by the
  * browser from /api/konto/me. While Järelmaks (Inbank) is offered for the course's price (Seaded's toggle on, payments on, 100–5000 €; instalments D4) the
- * purchase has a choice, „Pangalink“ (the default) and „Järelmaks (Inbank)“; saving the toggle revalidates the carts (server/cache-targets.ts).
+ * purchase has a choice, „Pangalink“ (the default) and „Järelmaks (Inbank)“, decided on the total there (a sooduskood changes it, F1); saving the toggle
+ * revalidates the carts (server/cache-targets.ts). The cart's one „Kokku“ line and the code field are the purchase's own (EcoursePurchase): the page passes only
+ * the list price, the two switches and the texts, and nothing about a code is rendered here (F1 spec §4.5).
  * Only e-learning courses can be bought; contact courses are registered on their own page.
  * The middleware serves "?kursus=<slug>" from ./[kursus] (one cached page per course); /ostukorv alone is the empty cart.
  * A course that does not exist or is not published is a 404 (./[kursus]/not-found.tsx says the cart is empty). Next.js
@@ -58,7 +59,8 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
   const price = formatEUR(course.price, locale);
   const c = d.course;
   const payments = paymentsConfigured();
-  const financing = payments && financingShown(await getSiteSettings(), course.price);
+  // the two switches, not the answer: whether järelmaks is offered depends on the total, which a code changes (EcoursePurchase decides it)
+  const financing = payments ? financingSwitch(await getSiteSettings()) : null;
   // today's purchase-interest form under a line saying why: "Makse lisandub peagi" without payments, "Makse ei avanenud" when Montonio is down
   // at the moment of buying (phase 2b: nothing is lost)
   const interest = (line: string) => (
@@ -117,15 +119,12 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
         </article>
 
         <aside className={styles.summary} data-cart-summary="">
-          <p className={styles.total}>
-            <span>{d.cart.total}</span>
-            <b>{price}</b>
-          </p>
-          {payments ? (
+          {payments && financing ? (
             <EcoursePurchase
               course={course.slug}
               locale={locale}
-              financing={financing}
+              listCents={course.price}
+              financingSwitch={financing}
               t={{
                 name: d.forms.name,
                 email: d.forms.email,
@@ -138,13 +137,14 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 payFinancing: d.forms.payFinancing,
                 financingRange: d.forms.payFinancingRange,
                 financingOff: d.forms.payFinancingOff,
-                submit: fill(d.payment.pay, { amount: price }),
+                pay: d.payment.pay,
                 starting: d.payment.starting,
                 alreadyPaid: d.payment.alreadyPaid,
                 errorRequired: d.forms.errorRequired,
                 errorEmail: d.forms.errorEmail,
                 errorTooMany: d.forms.errorTooMany,
                 errorGeneric: d.forms.errorGeneric,
+                discount: { ...d.discount, errors: { ...d.discount.errors, rate: d.forms.errorTooMany, server: d.forms.errorGeneric } },
               }}
               contract={{ version: contract.version, title: contract.title, body: contract.body, locale: contract.locale, course: contractCourseName(course.title, contract.locale), priceCents: course.price }}
               fallback={interest(d.payment.cartDown)}

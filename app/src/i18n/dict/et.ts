@@ -437,7 +437,6 @@ export const et = {
     title: "Ostukorv",
     emptyTitle: "Ostukorv on tühi",
     emptyText: "Vali endale sobiv e-koolitus — selle saad osta kohe, kui makse avaneb.",
-    total: "Kokku",
     // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega",
     // the purchase's choice while Järelmaks (Inbank) is offered (instalments §4; Draft): the bank link, beside forms.payFinancing

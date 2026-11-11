@@ -191,7 +191,7 @@ describe("the cart: the e-course contract in the same way", () => {
     payBank: "Pangalink",
     payFinancing: "Järelmaks (Inbank)",
     financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
-    submit: "Maksa 190 €",
+    pay: "Maksa {amount}", discount: t.discount,
     starting: "Avan makse…",
     alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
     errorRequired: "See väli on kohustuslik.",
@@ -202,7 +202,7 @@ describe("the cart: the e-course contract in the same way", () => {
   const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi} ({e-post}). {koolitus} maksab {hind}.[{toimumine}{ettemaks}]", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
 
   test("the box is the contract, „Loe lepingut“ opens it in the cart: the name and the address as typed, the course, the price; no session and no prepayment", async () => {
-    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financingSwitch: { enabled: false, paymentsOn: true }, listCents: 19000, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
     expect($<HTMLInputElement>("input[name='terms']")!.closest("label")!.textContent).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega.");
     expect(container.querySelector("a[href='/tingimused']")).toBeNull();
     expect(panel()!.hidden).toBe(true);
@@ -214,7 +214,7 @@ describe("the cart: the e-course contract in the same way", () => {
   });
 
   test("a contract with no text at all offers nothing to open (the box stays)", async () => {
-    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract: { ...contract, title: "", body: "  " }, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financingSwitch: { enabled: false, paymentsOn: true }, listCents: 19000, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract: { ...contract, title: "", body: "  " }, fallback: null })));
     expect($("input[name='terms']")).not.toBeNull();
     expect(toggle()).toBeNull();
   });
@@ -262,12 +262,12 @@ describe("a text that changed since the page was loaded (ruling R6): the form sa
     const et: EcoursePurchaseTexts = {
       name: "Nimi", email: "E-post", contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.", readContract: "Loe lepingut", contractChanged: MESSAGE,
       newsletterConsent: "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", paymentLabel: "Tasumine", payBank: "Pangalink", payFinancing: "Järelmaks (Inbank)",
-      financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+      financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.", pay: "Maksa {amount}", discount: t.discount, starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
       errorRequired: "See väli on kohustuslik.", errorEmail: "Sisesta korrektne e-posti aadress.", errorTooMany: "Liiga palju katseid.", errorGeneric: "Midagi läks valesti.",
     };
     const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi}.", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
     mocks.buyEcourse.mockResolvedValue({ ok: false, errors: { terms: "changed" } });
-    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financingSwitch: { enabled: false, paymentsOn: true }, listCents: 19000, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
     await type("input[name='name']", "Kati Kask");
     await type("input[name='email']", "kati@example.test");
     await click(box());
