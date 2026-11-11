@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, exists, gte, ilike, inArray, isNotNull, isNu
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "../client";
 import type * as schema from "../schema";
-import { campaign, contentDrafts, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
+import { campaign, contentDrafts, courseAccess, courseAreas, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
 import { startOfDayTallinn } from "@/domain/calendar";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
@@ -166,16 +166,24 @@ export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTest
  *   one — someone saved the course in another window meanwhile — so a save never overwrites changes it did not see.
  *   Compared to the millisecond, as JavaScript dates carry no microseconds.
  * - the test (e-course completion, R1): upserted into course_tests behind the same check, or its row deleted (a contact course).
- * `updatedAt` is set on every save. Returns the saved course with its images, "notFound" or "stale".
+ * - the course's area (course areas, „Valdkond“): read again here, FOR KEY SHARE, in this transaction. The caller checked it before (admin-content.ts
+ *   checkCourseBasics), outside it; an area deleted since (Seaded → Valdkonnad „Kustuta“, server/course-areas.ts deleteArea) is "area", the field's
+ *   error, and nothing is written — never the foreign key's 23503 thrown. One not deleted yet stays: its delete takes the row FOR UPDATE, so it waits
+ *   for this save and then counts this course among its users (and is refused).
+ * `updatedAt` is set on every save. Returns the saved course with its images, "notFound", "stale" or "area".
  */
 export async function saveCourseWithImages(
   db: Db,
   target: { id: number | null; expected?: Date },
   fields: CourseFields,
   images: ImageInput[],
-): Promise<AdminCourse | "notFound" | "stale"> {
+): Promise<AdminCourse | "notFound" | "stale" | "area"> {
   return db.transaction(async (tx) => {
     const { test, ...row } = fields;
+    if (row.areaId != null) {
+      const [area] = await tx.select({ id: courseAreas.id }).from(courseAreas).where(eq(courseAreas.id, row.areaId)).for("key share");
+      if (!area) return "area";
+    }
     const values = { ...row, updatedAt: new Date() };
     let course: Course;
     if (target.id == null) {

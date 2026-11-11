@@ -296,6 +296,8 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     ...certificate,
   };
   const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
+  // the area deleted since checkCourseBasics read it (course areas): the field's error, as if the check had seen it gone; nothing was written
+  if (saved === "area") return invalid({ areaId: "area" });
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };
   return { ok: true, id: saved.id, created: d.id == null };
 }
