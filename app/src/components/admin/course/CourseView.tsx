@@ -27,7 +27,7 @@ import { RecommendationsCard } from "./RecommendationsCard";
 import { StagesCard } from "./StagesCard";
 import { TestCard } from "./TestCard";
 import { TypeCard } from "./TypeCard";
-import type { CertificateDesignOption, CourseParts, OtherCourse } from "./types";
+import type { AreaOption, CertificateDesignOption, CourseParts, OtherCourse } from "./types";
 
 const cents = (s: string) => (s.trim() ? parseEuroCents(s) : null);
 
@@ -71,6 +71,7 @@ export function CourseView({
   modules,
   others,
   designs = [],
+  areas,
   next,
   locked,
   liveType,
@@ -92,6 +93,8 @@ export function CourseView({
   others: OtherCourse[];
   /** Seaded's certificate designs, the first first („Tunnistus“'s „Kujundus“). */
   designs?: CertificateDesignOption[];
+  /** „Valdkond“'s choices (Seaded → Valdkonnad). */
+  areas: readonly AreaOption[];
   next: { startsAt: string; city: string } | null;
   locked: boolean;
   liveType: CourseType;
@@ -118,7 +121,7 @@ export function CourseView({
   );
 
   const cards: Record<string, ReactNode> = {
-    basics: <BasicsCard api={parts.basics} />,
+    basics: <BasicsCard api={parts.basics} areas={areas} />,
     price: <TypeCard basics={parts.basics} price={parts.price} locked={locked} liveType={liveType} priceMissing={priceMissing} />,
     outcomes: <OutcomesCard api={parts.outcomes} />,
     outline: <ModulesCard courseId={courseId} online={online} modules={modules} />,

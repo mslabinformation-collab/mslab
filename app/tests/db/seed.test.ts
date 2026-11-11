@@ -1,13 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { makeTestDb } from "./helpers";
 import { fakeMediaStore } from "../fakes";
 import type { Db } from "@/db/client";
-import { campaign, certificateDesigns, clients, courseAccess, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
+import { campaign, certificateDesigns, clients, courseAccess, courseAreas, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
 import { runSeed } from "@/db/seed";
-import { applySeed, SeedRefusal, studentDataRefusal } from "@/db/seed-apply";
+import { applySeed, giveSeedCoursesAreas, SeedRefusal, studentDataRefusal } from "@/db/seed-apply";
 import * as seedData from "@/db/seed-data";
 import { SEEDED_AT } from "@/db/seed-data";
 import { seedSessionStart } from "@/db/seed-dates";
@@ -120,6 +120,27 @@ describe("prototype seed", () => {
     expect(sessions[sessions.length - 1].startsAt.toISOString()).toBe(seedSessionStart(SEEDED_AT, 70).toISOString());
     expect(sessions.map((s) => formatWeekday(s.startsAt, "et"))).toEqual(["laupäev", "laupäev", "laupäev", "laupäev", "kolmapäev", "laupäev", "laupäev", "laupäev"]);
     expect(sessions.every((s) => s.taken === 0)).toBe(true);
+  });
+
+  test("areas (course areas §3): the brow courses „Kulmukoolitused“, the lash courses „Ripsmekoolitused“, the migration's two rows and no new one", async () => {
+    const areas = await db.select().from(courseAreas).orderBy(asc(courseAreas.sort));
+    expect(areas.map((a) => [a.name, a.sort])).toEqual([
+      [{ et: "Kulmukoolitused", ru: "Курсы по бровям" }, 1],
+      [{ et: "Ripsmekoolitused", ru: "Курсы по ресницам" }, 2],
+    ]);
+    const name = new Map(areas.map((a) => [a.id, a.name.et]));
+    const list = await listPublishedCourses(db);
+    expect(Object.fromEntries(list.map((c) => [c.slug, c.areaId === null ? null : name.get(c.areaId)]))).toEqual({
+      "kulmumeistri-baaskoolitus": "Kulmukoolitused",
+      "lash-lift-botox": "Ripsmekoolitused",
+      "kulmude-lami": "Kulmukoolitused",
+      "kulmumeistri-e-koolitus": "Kulmukoolitused",
+      "kulmukuju-ja-summeetria": "Kulmukoolitused",
+      "ripsmete-laminatsiooni-alused": "Ripsmekoolitused",
+    });
+    // so the calendar has dates of both (its area chips are shown)
+    const dated = new Set((await listUpcomingSessions(db, new Date())).map((s) => s.course.areaId));
+    expect(dated.size).toBe(2);
   });
 
   test("practice packages carry duration and price (MINI 4 ak / 100 €, MAXI 8 ak / 150 €)", async () => {
@@ -243,6 +264,69 @@ describe("seed modes", () => {
     // the home page's popup as the seed has it since piece 4b: the newsletter sign-up shown, the old campaign offer off (D3, R-d)
     expect((await getHomeData(db)).popup).toMatchObject({ id: 2, kind: "newsletter", active: true, imageKey: "/seed/gift-bag-serum.jpg" });
     expect((await db.select().from(campaign).where(eq(campaign.id, 1)))[0].active).toBe(false);
+  });
+
+  test("areas: --reset keeps the area list (not a content table) and gives the courses theirs again; an area the seed needs and lacks is added after the others", async () => {
+    const db = await makeTestDb();
+    // a database without the migration's „Ripsmekoolitused“ (renamed), and with an area of its own
+    await db.update(courseAreas).set({ name: { et: "Ripsmed", ru: "Ресницы" } }).where(eq(courseAreas.sort, 2));
+    await db.insert(courseAreas).values({ name: { et: "Meik", ru: "Макияж" }, sort: 5 });
+    await applySeed(db);
+    const names = async () => (await db.select().from(courseAreas).orderBy(asc(courseAreas.sort), asc(courseAreas.id))).map((a) => [a.name.et, a.sort]);
+    expect(await names()).toEqual([
+      ["Kulmukoolitused", 1],
+      ["Ripsmed", 2],
+      ["Meik", 5],
+      ["Ripsmekoolitused", 6],
+    ]);
+    const areaOf = async (slug: string) => {
+      const [row] = await db.select({ name: courseAreas.name }).from(courses).innerJoin(courseAreas, eq(courses.areaId, courseAreas.id)).where(eq(courses.slug, slug));
+      return row?.name.et ?? null;
+    };
+    expect(await areaOf("lash-lift-botox")).toBe("Ripsmekoolitused");
+    await applySeed(db, { reset: true });
+    expect(await names()).toEqual([
+      ["Kulmukoolitused", 1],
+      ["Ripsmed", 2],
+      ["Meik", 5],
+      ["Ripsmekoolitused", 6],
+    ]);
+    expect(await areaOf("lash-lift-botox")).toBe("Ripsmekoolitused");
+    expect(await areaOf("kulmude-lami")).toBe("Kulmukoolitused");
+  });
+
+  // tests/e2e/fixtures.ts ensureSeedAreas (review round 1, item 1): the local e2e database was seeded before the areas and is never reset, so the
+  // seed's course rows exist and applySeed leaves them without one.
+  test("giveSeedCoursesAreas: a database seeded before the areas gets them for the seed's courses that have none; any other course, and an area set, are left", async () => {
+    const db = await makeTestDb();
+    await applySeed(db);
+    // as such a database is: no course has an area, the migration's „Ripsmekoolitused“ is gone, and Maria gave LAMI an area of her own
+    await db.update(courses).set({ areaId: null });
+    await db.delete(courseAreas).where(eq(courseAreas.sort, 2));
+    const [meik] = await db.insert(courseAreas).values({ name: { et: "Meik", ru: "Макияж" }, sort: 3 }).returning();
+    await db.update(courses).set({ areaId: meik.id }).where(eq(courses.slug, "kulmude-lami"));
+    await db.insert(courses).values({ slug: "maria-oma", type: "contact", level: "basic", title: { et: "Maria oma" }, summary: { et: "" }, body: { et: "" }, sort: 9 });
+
+    expect(await giveSeedCoursesAreas(db)).toBe(5);
+    const rows = await db.select({ slug: courses.slug, area: courseAreas.name }).from(courses).leftJoin(courseAreas, eq(courses.areaId, courseAreas.id));
+    expect(Object.fromEntries(rows.map((r) => [r.slug, r.area?.et ?? null]))).toEqual({
+      "kulmumeistri-baaskoolitus": "Kulmukoolitused",
+      "lash-lift-botox": "Ripsmekoolitused",
+      "kulmude-lami": "Meik",
+      "kulmumeistri-e-koolitus": "Kulmukoolitused",
+      "kulmukuju-ja-summeetria": "Kulmukoolitused",
+      "ripsmete-laminatsiooni-alused": "Ripsmekoolitused",
+      "maria-oma": null,
+    });
+    // the missing area added after the others, by the seed's names
+    expect((await db.select().from(courseAreas).orderBy(asc(courseAreas.sort))).map((a) => [a.name, a.sort])).toEqual([
+      [{ et: "Kulmukoolitused", ru: "Курсы по бровям" }, 1],
+      [{ et: "Meik", ru: "Макияж" }, 3],
+      [{ et: "Ripsmekoolitused", ru: "Курсы по ресницам" }, 4],
+    ]);
+    // a second run changes nothing
+    expect(await giveSeedCoursesAreas(db)).toBe(0);
+    expect(await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(courseAreas)).toEqual([{ n: 3 }]);
   });
 
   test("--reset refuses to delete registrations unless forced", async () => {

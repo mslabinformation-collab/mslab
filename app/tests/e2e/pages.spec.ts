@@ -149,6 +149,96 @@ test.describe("calendar", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Расписание");
     await expect(page.locator("[data-city-filter] button").first()).toHaveText("Все");
     await expect(page.locator("[data-calendar-row]").first().getByRole("link", { name: /Записаться/ })).toHaveAttribute("href", /^\/ru\/koolitused\/.+\?sessioon=\d+$/);
+    // the area chips in Russian, the same Estonian slug in the address (course areas §5.1, §5.3)
+    const area = page.locator("[data-area-filter]");
+    await expect(area).toHaveAttribute("aria-label", "Направление");
+    await expect(area.locator("button")).toHaveText(["Все", "Курсы по бровям", "Курсы по ресницам"]);
+    await area.getByRole("button", { name: "Курсы по ресницам" }).click();
+    await expect(page).toHaveURL(/\/ru\/koolituskalender\?valdkond=ripsmekoolitused$/);
+    await expect(page.locator("[data-calendar-row]")).toHaveCount(3);
+    await page.locator("[data-city-filter]").getByRole("button", { name: "Pärnu" }).click();
+    const empty = page.locator("[data-calendar-empty]");
+    await expect(empty).toContainText("По выбранным фильтрам сейчас нет курсов.");
+    await empty.getByRole("button", { name: "Показать все" }).click();
+    await expect(page).toHaveURL(/\/ru\/koolituskalender$/);
+    await expect(page.locator("[data-calendar-row]")).toHaveCount(8);
+  });
+
+  // Course areas (spec 2026-11-11-course-areas-filter-design.md §5.1): the seed gives the brow courses „Kulmukoolitused“ (5 dates) and Lash Lift
+  // BOTOX „Ripsmekoolitused“ (3 dates: Tallinn, Viljandi, the cancelled Tartu one).
+  test("area filter: below the city chips, ?valdkond with ?linn (AND), reload, the empty state's „Näita kõiki“, unknown values", async ({ page }) => {
+    await page.goto("/koolituskalender");
+    const area = page.locator("[data-area-filter]");
+    await expect(area).toHaveAttribute("role", "group");
+    await expect(area).toHaveAttribute("aria-label", "Valdkond");
+    await expect(area.locator("button")).toHaveText(["Kõik", "Kulmukoolitused", "Ripsmekoolitused"]);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+    // right under the city chips, no heading between them
+    const city = (await page.locator("[data-city-filter]").boundingBox())!;
+    const box = (await area.boundingBox())!;
+    expect(box.y).toBeGreaterThan(city.y + city.height - 1);
+    expect(box.y - (city.y + city.height)).toBeLessThan(20);
+    const rows = page.locator("[data-calendar-row]");
+
+    await area.getByRole("button", { name: "Ripsmekoolitused" }).click();
+    await expect(page).toHaveURL(/\/koolituskalender\?valdkond=ripsmekoolitused$/);
+    await expect(rows).toHaveCount(3);
+    await expect(rows.locator("[data-course-name]")).toHaveText(Array(3).fill("Lash Lift BOTOX baaskoolitus"));
+
+    await page.locator("[data-city-filter]").getByRole("button", { name: "Tallinn" }).click();
+    await expect(page).toHaveURL(/\/koolituskalender\?valdkond=ripsmekoolitused&linn=tallinn$/);
+    await expect(rows).toHaveCount(1);
+    await page.reload();
+    await expect(rows).toHaveCount(1);
+    await expect(area.getByRole("button", { name: "Ripsmekoolitused" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-city-filter]").getByRole("button", { name: "Tallinn" })).toHaveAttribute("aria-pressed", "true");
+
+    // Pärnu has no lash date: the empty state, whose „Näita kõiki“ clears both filters
+    await page.locator("[data-city-filter]").getByRole("button", { name: "Pärnu" }).click();
+    await expect(rows).toHaveCount(0);
+    const empty = page.locator("[data-calendar-empty]");
+    await expect(empty).toContainText("Valitud filtritega hetkel koolitusi pole.");
+    await empty.getByRole("button", { name: "Näita kõiki" }).click();
+    await expect(page).toHaveURL(/\/koolituskalender$/);
+    await expect(rows).toHaveCount(8);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-city-filter] button").first()).toHaveAttribute("aria-pressed", "true");
+
+    // a link with both: the brow course's Tallinn date; an unknown or old area reads as „Kõik“
+    await page.goto("/koolituskalender?valdkond=kulmukoolitused&linn=tallinn");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().locator("[data-course-name]")).toHaveText("Kulmumeistri baaskoolitus");
+    await page.goto("/koolituskalender?valdkond=vana-valdkond");
+    await expect(rows).toHaveCount(8);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  const LONG_AREA = "Курсы долговременной укладки и ламинирования бровей и ресниц";
+
+  test("at 390 the area chips are 44 px targets inside the page, ET and RU, with no horizontal overflow, a 60-character name too", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "phone width");
+    for (const path of ["/koolituskalender", "/ru/koolituskalender"]) {
+      await page.goto(path);
+      const chips = page.locator("[data-area-filter] button");
+      await expect(chips).toHaveCount(3);
+      const city = (await page.locator("[data-city-filter]").boundingBox())!;
+      for (const b of await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect))) {
+        expect(b.top, path).toBeGreaterThan(city.y + city.height - 1);
+        expect(b.height, path).toBeGreaterThanOrEqual(44);
+        expect(b.right, path).toBeLessThanOrEqual(390);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), path).toBe(true);
+
+      // an area name of Maria's 60 characters long (Russian runs long; the text set in the page, nothing written): the chip wraps inside the page
+      expect(LONG_AREA).toHaveLength(60);
+      await chips.last().evaluate((e, name) => (e.textContent = name), LONG_AREA);
+      const group = (await page.locator("[data-area-filter]").boundingBox())!;
+      const long = (await chips.last().boundingBox())!;
+      expect(long.height, path).toBeGreaterThanOrEqual(44);
+      expect(long.x + long.width, path).toBeLessThanOrEqual(group.x + group.width + 0.5);
+      expect(group.x + group.width, path).toBeLessThanOrEqual(390);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), path).toBe(true);
+    }
   });
 });
 

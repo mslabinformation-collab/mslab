@@ -10,6 +10,8 @@ export type OtherCourse = { id: number; title: string; type: CourseType; publish
 
 /** A certificate design, for „Tunnistus“'s „Kujundus“ (2026-11-11 certificate designs): the list is in Seaded's order, the first first. */
 export type CertificateDesignOption = { id: number; name: string };
+/** A course area for „Valdkond“ (Seaded → Valdkonnad, in Maria's order): its id and Estonian name. */
+export type AreaOption = { id: number; name: string };
 
 /** A saved course as its editor starts (page.tsx; server/course-parts.ts readCourseEditor). */
 export type CourseEditorData = {

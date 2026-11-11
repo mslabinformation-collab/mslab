@@ -24,7 +24,7 @@ export const isCoursePart = (part: string): part is CoursePart => (COURSE_PARTS 
 
 /**
  * Each part's fields, as the autosave saves them (a patch names some of them), in screen order:
- * - basics: „Põhiinfo“ and the type („Õppevorm“: in the type card, but it decides which of the other cards there are);
+ * - basics: „Põhiinfo“ (its „Valdkond“ too: `areaId`, course areas) and the type („Õppevorm“: in the type card, but it decides which of the other cards there are);
  * - price: the rest of „Õppevorm ja hind“, both types' fields (only the course's type's are stored; the other type's are emptied);
  * - outline: „Moodulid ja õppetunnid“ / „Programm“, the order and the texts of the modules and lessons students see (OutlineValue);
  * - test: „Teadmiste test“, the e-course's questions with their answer key, the pass mark and the tries (course_tests, never on a public course);
@@ -32,7 +32,7 @@ export const isCoursePart = (part: string): part is CoursePart => (COURSE_PARTS 
  * - the lists and cards: their one field.
  */
 export const PART_FIELDS = {
-  basics: ["title", "slug", "level", "language", "summary", "body", "type"],
+  basics: ["title", "slug", "level", "language", "areaId", "summary", "body", "type"],
   price: ["price", "accessMonths", "videoCount", "nextDiscount", "priceGroup", "priceIndividual", "durationLabel"],
   outcomes: ["outcomes"],
   outline: ["modules"],
@@ -54,7 +54,7 @@ export type OutlineValue = { modules: { id: number; title: I18n; lessons: { id: 
 
 /** The value of each part. */
 export type PartValues = {
-  basics: Pick<CourseDraft, "title" | "slug" | "level" | "language" | "summary" | "body" | "type">;
+  basics: Pick<CourseDraft, "title" | "slug" | "level" | "language" | "areaId" | "summary" | "body" | "type">;
   price: Pick<CourseDraft, "price" | "accessMonths" | "videoCount" | "nextDiscount" | "priceGroup" | "priceIndividual" | "durationLabel">;
   outcomes: Pick<CourseDraft, "outcomes">;
   outline: OutlineValue;
@@ -100,6 +100,7 @@ const FIELD_LABELS: Record<string, string> = {
   slug: fieldText.slug,
   level: fieldText.level,
   language: fieldText.language,
+  areaId: fieldText.area,
   summary: fieldText.summary,
   body: fieldText.body,
   type: fieldText.type,

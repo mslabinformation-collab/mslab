@@ -58,7 +58,7 @@ test("0022 adds exactly one column (courses.certificate_title, empty), keeps eve
   expect(await rows()).toEqual(before.courses.map((r) => ({ ...r, certificate_title: "" })));
 
   // the column works: empty on an insert that does not name it, and the text stored when it does (raw SQL, read back by its column: the schema's
-  // table has the column 0023 adds, which this database does not have yet)
+  // table has the columns 0023 and 0024 add, which this database does not have yet)
   await db.execute(sql`insert into courses (slug, type, level, title, summary, body) values ('uus-1', 'e_learning', 'basic', '{"et":"Uus"}', '{"et":""}', '{"et":""}')`);
   await db.execute(sql`insert into courses (slug, type, level, title, summary, body, certificate_title) values ('uus-2', 'e_learning', 'basic', '{"et":"Uus"}', '{"et":""}', '{"et":""}', 'Kulmumeistri baaskoolitus')`);
   expect(await db.select({ slug: courses.slug, certificateTitle: courses.certificateTitle }).from(courses).where(inArray(courses.slug, ["uus-1", "uus-2"])).orderBy(courses.slug)).toEqual([

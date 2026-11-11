@@ -214,5 +214,7 @@ export function useSeadedPart(o: {
   return {
     status, text, type, typing, commit, flush, codeOf, setField, adopt: auto.adopt, conflict: auto.conflict, restore: auto.restore, unconfirmed,
     versionNow: auto.versionNow, conflictNow: auto.conflictNow,
+    // (a row of Seaded → „Valdkonnad“ deleted: its copy in this browser goes, nothing more is sent; AreasSettings.tsx)
+    discardCopy: auto.discardCopy,
   };
 }

@@ -49,7 +49,7 @@ vi.mock("@/db/queries/admin", () => ({
   courseUsage: read("usage", { registrations: 0 }),
   typeLocked: () => false,
 }));
-vi.mock("@/db/queries/public", () => ({ getCourseBySlug: read("detail") }));
+vi.mock("@/db/queries/public", () => ({ getCourseBySlug: read("detail"), listCourseAreas: read("areas", []) }));
 vi.mock("@/server/admin-lessons", () => ({ listCourseLessons: read("lessons", []) }));
 vi.mock("@/server/course-parts", () => ({ readCourseEditor: read("editor", { parts: {}, outline: [] }) }));
 vi.mock("@/server/certificate-designs", () => ({

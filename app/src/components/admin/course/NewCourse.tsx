@@ -16,7 +16,7 @@ import { fieldLabel } from "./course-view";
 import { CourseView } from "./CourseView";
 import { focusPartField } from "./useCoursePart";
 import { useLocalParts } from "./useLocalParts";
-import type { CertificateDesignOption, OtherCourse } from "./types";
+import type { AreaOption, CertificateDesignOption, OtherCourse } from "./types";
 
 // The new-course page /admin/koolitused/uus (admin UX pass piece 3a, Task 7; piece3-texts S3-P3-g, P-6; README P1 §3.1): the same cards, but nothing
 // saves until the one explicit „Lisa koolitus“ (createCourse) — the course does not exist yet. The header says „Täida kohustuslikud väljad“ until
@@ -42,6 +42,8 @@ function readCopy(): CourseDraft | null {
       if (key === "id" || key === "version" || v === undefined) continue;
       const kind = (x: unknown) => (Array.isArray(x) ? "list" : x === null ? "null" : typeof x);
       if (kind(v) === kind(base) || (key === "badge" && (v === null || typeof v === "object"))) out[key] = v;
+      // „Valdkond“ is null in a new draft and an area's id once picked (the create checks the area is there)
+      else if (key === "areaId" && Number.isInteger(v)) out[key] = v;
     }
     return out as CourseDraft;
   } catch {
@@ -75,11 +77,14 @@ function firstTyped(draft: CourseDraft): { part: EditorPart; name: string } | nu
 
 export function NewCourse({
   others,
+  areas,
   next,
   modules,
   designs,
 }: {
   others: OtherCourse[];
+  /** „Valdkond“'s choices (Seaded → Valdkonnad). */
+  areas: readonly AreaOption[];
   next: { startsAt: string; city: string } | null;
   modules: AdminModule[];
   /** Seaded's certificate designs, the first first („Tunnistus“'s „Kujundus“). */
@@ -165,6 +170,7 @@ export function NewCourse({
       modules={modules}
       others={others}
       designs={designs}
+      areas={areas}
       next={next}
       locked={false}
       liveType={draft.type}

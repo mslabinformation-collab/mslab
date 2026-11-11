@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { after } from "next/server";
-import { CourseEditor, type CourseEditorData, type OtherCourse } from "@/components/admin/CourseEditor";
+import { CourseEditor, type AreaOption, type CourseEditorData, type OtherCourse } from "@/components/admin/CourseEditor";
 import { Drawer } from "@/components/admin/Drawer";
 import { LessonDrawer } from "@/components/admin/LessonDrawer";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { courseUsage, getCourseForEdit, listAllCourses, typeLocked } from "@/db/queries/admin";
-import { getCourseBySlug } from "@/db/queries/public";
+import { getCourseBySlug, listCourseAreas } from "@/db/queries/public";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
@@ -55,13 +55,15 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
   await requireAdmin();
   const [id, sp, stamp] = await Promise.all([parsed, searchParams, stamped]);
   if (typeof id === "number") after(() => purgeRemovedLessonFiles(db, mediaStore(), new Date()));
-  const [course, all, usage, modules, editor, designs] = await Promise.all([
+  const [course, all, usage, modules, editor, designs, areaRows] = await Promise.all([
     typeof id === "number" ? getCourseForEdit(db, id) : null,
     listAllCourses(db),
     typeof id === "number" ? courseUsage(db, id) : null,
     typeof id === "number" ? listCourseLessons(db, id) : [],
     typeof id === "number" ? readCourseEditor(db, id) : null,
     id === null ? [] : listCertificateDesigns(db),
+    // „Valdkond“'s choices (course areas): Seaded → Valdkonnad, in Maria's order
+    listCourseAreas(db),
   ]);
   const t = adminEt.courseEditor;
 
@@ -93,6 +95,7 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
   const others: OtherCourse[] = all
     .filter((c) => c.id !== course?.id)
     .map((c) => ({ id: c.id, title: pick(c.title, "et"), type: c.type, published: c.published }));
+  const areas: AreaOption[] = areaRows.map((a) => ({ id: a.id, name: pick(a.name, "et") }));
 
   // a saved course: its cards' parts (the draft's values on a published course, with live's beside them), its live address and state
   const data: CourseEditorData | null =
@@ -115,6 +118,7 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
       <CourseEditor
         course={data}
         others={others}
+        areas={areas}
         next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null}
         created={sp.loodud === "1"}
         modules={course ? modules : []}

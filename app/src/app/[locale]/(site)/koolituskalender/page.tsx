@@ -4,8 +4,9 @@ import { CalendarList } from "@/components/site/CalendarList";
 import type { CalendarRowData } from "@/components/site/CalendarRow";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
-import { listUpcomingSessions } from "@/db/queries/public";
+import { listCourseAreas, listUpcomingSessions } from "@/db/queries/public";
 import { calendarCities, citySlug, contactSessions, upcomingFrom } from "@/domain/calendar";
+import { areaChips, areaSlug } from "@/domain/course-areas";
 import { seatState, seatsLeft } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
 import { formatDayMonth, formatWeekday } from "@/i18n/format";
@@ -32,14 +33,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * Calendar (Task 9, L1–L5): prototype A's screen kept as a whole (Maria C20) with her C21 changes in each row — see
  * CalendarRow. Contact-course sessions from today on, soonest first; cancelled ones stay listed as "Tühistatud".
- * The city filter lives in the URL (?linn=…) and is applied by CalendarList.
+ * The city filter (?linn=…) and the area filter (?valdkond=…; course areas, spec 2026-11-11-course-areas-filter-design.md §5.1) live in the URL and
+ * are applied by CalendarList. The area chips are the areas these sessions' courses have, in Maria's order, named in the page's language; none
+ * when fewer than two (domain/course-areas.ts areaChips), so the calendar looks as it did until Maria gives two courses with dates their areas.
  */
 export default async function CalendarPage({ params }: Props) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
-  const sessions = contactSessions(await listUpcomingSessions(getDb(), upcomingFrom(new Date())));
+  const db = getDb();
+  const [upcoming, areaRows] = await Promise.all([listUpcomingSessions(db, upcomingFrom(new Date())), listCourseAreas(db)]);
+  const sessions = contactSessions(upcoming);
+  const areaKey = new Map(areaRows.map((a) => [a.id, areaSlug(a.name)]));
+  const areas = areaChips(
+    areaRows.map((a) => ({ id: a.id, slug: areaSlug(a.name), label: pick(a.name, locale) })),
+    sessions.map((s) => s.course.areaId),
+  );
 
   const c = d.calendar;
   const word = { open: c.stateOpen, few: c.stateFew, full: c.stateFull, cancelled: c.stateCancelled };
@@ -50,6 +60,7 @@ export default async function CalendarPage({ params }: Props) {
     return {
       id: s.id,
       cityKey: citySlug(s.city),
+      areaKey: s.course.areaId === null ? null : (areaKey.get(s.course.areaId) ?? null),
       city: s.city.trim(),
       venue: s.venue.trim(),
       day: formatDayMonth(s.startsAt, locale),
@@ -74,11 +85,13 @@ export default async function CalendarPage({ params }: Props) {
       <CalendarList
         rows={rows}
         cities={calendarCities(sessions.map((s) => s.city))}
+        areas={areas}
         locale={locale}
         t={{
           all: d.catalogue.filterAll,
           cityLabel: c.cityLabel,
-          allCities: c.allCities,
+          areaLabel: c.areaLabel,
+          showAll: c.showAll,
           results: c.results,
           empty: c.empty,
           none: d.course.noSessions,

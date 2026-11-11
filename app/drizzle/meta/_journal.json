@@ -169,6 +169,13 @@
       "when": 1794381073836,
       "tag": "0023_certificate_designs",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794391348686,
+      "tag": "0024_course_areas",
+      "breakpoints": true
     }
   ]
 }

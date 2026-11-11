@@ -3,8 +3,8 @@ import { TERMS_PAGE_KEY } from "@/domain/course-terms";
 import { POPUP_PART, POST_PART } from "@/domain/site-entities";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
-import { campaign, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "../schema";
-import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "../schema";
+import { campaign, courseAreas, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "../schema";
+import type { Campaign, Course, CourseArea, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "../schema";
 import { seatsTaken } from "./seats";
 
 // Public (read-only) queries. Every function takes the Db as its first argument and never creates one itself.
@@ -114,6 +114,14 @@ export async function listUpcomingSessions(db: Db, fromDate: Date, only?: { slug
     .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
   const counts = await seatsTaken(db, rows.map((r) => r.session.id));
   return rows.map((r) => ({ ...r.session, course: r.course, taken: counts.get(r.session.id) ?? 0 }));
+}
+
+/**
+ * The course areas (Seaded → Valdkonnad; spec 2026-11-11-course-areas-filter-design.md) in Maria's order: the calendar's and the catalogue's area chips
+ * (each page keeps the ones its list has, domain/course-areas.ts areaChips) and the course editor's „Valdkond“. A course's own area is its `areaId`.
+ */
+export async function listCourseAreas(q: Q): Promise<CourseArea[]> {
+  return q.select().from(courseAreas).orderBy(asc(courseAreas.sort), asc(courseAreas.id));
 }
 
 // ---------- the site content in the admin's draft preview (admin UX pass piece 4a, Task 3; ruling R-f) ----------

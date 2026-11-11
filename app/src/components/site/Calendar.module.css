@@ -26,6 +26,19 @@
     border-color 0.2s;
 }
 
+/* The area chips (course areas §5.1), when there are two or more areas: a second row right under the city chips, 12px apart; the rows below keep
+   their 28px. Without it the calendar is as it was. */
+.chips + .chips {
+  margin-top: -16px;
+}
+
+/* The area chips are Maria's names (Seaded → Valdkonnad), so a long one (Russian runs long) wraps inside the page instead of widening it. */
+.chips + .chips .chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chip:hover {
   border-color: var(--fog);
 }

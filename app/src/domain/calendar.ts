@@ -33,6 +33,30 @@ export function parseCity(value: string | string[] | null | undefined, cities: s
   return v && cities.some((c) => citySlug(c) === v) ? v : null;
 }
 
+/**
+ * The calendar's rows the filters leave (course areas, spec 2026-11-11-course-areas-filter-design.md §5.1): the city's (?linn, `cityKey`) and the
+ * area's (?valdkond, `areaKey`: the slug of the course's area, null without one) together, AND; a null filter is every city or every area. A course
+ * without an area is only under „Kõik“.
+ */
+export function filterCalendar<R extends { cityKey: string; areaKey: string | null }>(rows: readonly R[], f: { city: string | null; area: string | null }): R[] {
+  return rows.filter((r) => (f.city === null || r.cityKey === f.city) && (f.area === null || r.areaKey === f.area));
+}
+
+/**
+ * The calendar's query after a chip or „Näita kõiki“: a copy of `live` (the address as it is now) with ?linn and ?valdkond set to a slug or removed
+ * (null); a filter not named stays as it is, and so does every other parameter.
+ */
+export function calendarQuery(live: URLSearchParams, change: { linn?: string | null; valdkond?: string | null }): URLSearchParams {
+  const next = new URLSearchParams(live);
+  for (const key of ["linn", "valdkond"] as const) {
+    const value = change[key];
+    if (value === undefined) continue;
+    if (value) next.set(key, value);
+    else next.delete(key);
+  }
+  return next;
+}
+
 /** Only contact courses have dates; e-learning starts any time, so it never appears in the calendar. */
 export function contactSessions<S extends { course: { type: "e_learning" | "contact" } }>(sessions: S[]): S[] {
   return sessions.filter((s) => s.course.type === "contact");
