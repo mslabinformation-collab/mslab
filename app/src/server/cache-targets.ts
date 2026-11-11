@@ -27,6 +27,8 @@ export type PublicChange =
   | { kind: "campaign" }
   /** Hüpikaken's offer published (piece 4b, R-c): the popup on the home page and its discount in the footer's sign-up block */
   | { kind: "popup" }
+  /** The welcome code's row of discount_codes saved, switched or deleted (F1): its value is in the footer of every page and its presence on the home page's popup button */
+  | { kind: "welcomeCode" }
   /** Seaded: contact (footer, every page), newsletter (the welcome code: the home page's popup button, piece 4b S4-Q4), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
   | { kind: "settings"; parts: string[] };
 
@@ -67,6 +69,9 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
     case "home":
     case "campaign":
       return [HOME];
+    case "welcomeCode":
+      // the value in the footer of every page (the layout covers the home page's popup button too)
+      return [EVERY_PAGE];
     case "popup":
       // the discount is in the footer of every page (the layout covers the home page's popup too)
       return [EVERY_PAGE];

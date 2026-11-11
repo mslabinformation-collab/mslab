@@ -135,7 +135,7 @@ describe("a dark hero slide's phone focal point (item 6)", () => {
 
 describe("shell settings keep only https social links", () => {
   test("an older javascript: or http value is not linked", () => {
-    const s = shellSettings({ contact: { email: "a@example.ee", instagram: "javascript:alert(1)", facebook: "https://facebook.com/mslab" } });
+    const s = shellSettings({ contact: { email: "a@example.ee", instagram: "javascript:alert(1)", facebook: "https://facebook.com/mslab" } }, "et", null);
     expect(s.contact).toEqual({ email: "a@example.ee", phone: "", instagram: "", facebook: "https://facebook.com/mslab" });
   });
 });

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import { eq, sql } from "drizzle-orm";
 import { capRows, makeTestDb, shownContractVersion } from "./helpers";
 import type { Db } from "@/db/client";
-import { clientLoginTokens, courses, courseSessions, mailQuota, practicePackages, registrations, requests, settings, subscribers } from "@/db/schema";
+import { clientLoginTokens, courses, discountCodes, courseSessions, mailQuota, practicePackages, registrations, requests, settings, subscribers } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
 import { CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, NEWSLETTER_MAIL_DAILY_CAP, issueClientLogin, redeemClientCode } from "@/server/client-auth";
 import { confirmSubscriber, unsubscribeByToken } from "@/server/newsletter";
@@ -454,13 +454,17 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
   // mail is the welcome mail, which carries the unsubscribe link. Every guard of the old confirmation mail still holds: sample address, Resend, 3 a day
   // per address, the once-a-year mark of the welcome and the newsletter's own daily counter.
   const signUp = (deps: Deps, email = "uus@example.com", locale = "et") => handleSubscribe(deps, form({ email, locale }));
-  const setCode = (welcomeCode: string) =>
-    db.insert(settings).values({ key: "newsletter", value: { discountLabel: "10%", welcomeCode } }).onConflictDoUpdate({ target: settings.key, set: { value: { discountLabel: "10%", welcomeCode } } });
+  // the welcome code is the `welcome` row of discount_codes (F1 Task 11)
+  const setCode = async (code: string) => {
+    await db.delete(discountCodes).where(eq(discountCodes.welcome, true));
+    await db.insert(discountCodes).values({ code, welcome: true, percent: 10, audience: "first", oncePerPerson: true });
+  };
   const WELCOME_RU = "Добро пожаловать в\u00a0MS LAB!";
   const OLD_CONFIRM = ["Kinnita MS LABi uudiskirjaga liitumine", "Подтвердите подписку на рассылку MS LAB"];
 
   beforeEach(async () => {
     await db.delete(settings).where(eq(settings.key, "newsletter"));
+    await db.delete(discountCodes).where(eq(discountCodes.welcome, true));
   });
 
   test("a new address is stored confirmed at once and gets the welcome mail in its language, with the unsubscribe link of its row; no confirmation mail", async () => {

@@ -1,19 +1,18 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
-import { readSetting } from "@/db/queries/public";
 import { clients, subscribers } from "@/db/schema";
 import type { Subscriber } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { codeDaysOf, welcomeCodeOf } from "@/domain/welcome-code";
 import { welcomeMail } from "./account-mail";
 import { reserveNewsletterMail } from "./client-auth";
+import { welcomeCode } from "./discount-codes";
 import { logFailure, logNote } from "./log";
 import { mailConfigured, sendMail, type Env } from "./notify";
 import { forgetKey, type TextKv } from "./ratelimit";
 import { isTokenShape, sha256 } from "./token";
 
 // The newsletter after the sign-up (phase 2c, spec 5; one step since 09.10): where an address stands (the admin's drawer, Minu andmed), the
-// welcome mail with Seaded's "Tervituskood" and the unsubscribe link, and the work of the two links a mailbox may hold: the unsubscribe link
+// welcome mail with the welcome code (the `welcome` row of discount_codes, F1) and the unsubscribe link, and the work of the two links a mailbox may hold: the unsubscribe link
 // of the welcome mail and the confirmation link of the old double opt-in. Without Next.js: the routes and the account API build the
 // dependencies; the tests pass PGlite, an in-memory KV and a stubbed Resend.
 
@@ -51,9 +50,9 @@ const WELCOME_ONCE_SEC = 365 * 24 * 60 * 60;
 const welcomeMarkKey = async (address: string) => `rl:welcome:${await sha256(address)}`;
 
 /**
- * The welcome mail to a newly subscribed address (the sign-up, "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", the old confirmation link): the greeting, Seaded's
- * welcome code when there is one (without a code the mail still goes out) with how many days it is valid when Hüpikaken has published them
- * (piece 4b S4-Q3 A), and the unsubscribe link of the address's row. Never throws, and
+ * The welcome mail to a newly subscribed address (the sign-up, "Soovin MS LABi sooduspakkumisi ja uudiskirju saada", the old confirmation link): the greeting, the
+ * welcome code while it is valid today (welcomeCode: the `welcome` row of discount_codes; without one the mail still goes out) with its value and how many days
+ * it is valid when the row has them (F1), and the unsubscribe link of the address's row. Never throws, and
  * logs no address, no token and no code. No mail when: the address is a sample one; Resend is not set up; the address has no subscriber row
  * (it unsubscribed meanwhile: there is no link to give); the address had its welcome this year (a KV mark, read first and written only once
  * the day's quota has a place for the mail; a store that fails lets the mail go, as the other limits do); the newsletter's daily cap is
@@ -69,9 +68,8 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
       console.info("[newsletter] welcome e-mail skipped: the address is no longer subscribed");
       return;
     }
-    // the published setting (Seaded's code, Hüpikaken's days): a draft on Hüpikaken is not mailed until it is published
-    const setting = await readSetting(deps.db, "newsletter");
-    const code = welcomeCodeOf(setting) || null;
+    // the welcome row as it stands today (its switch and dates; R10: not its scope or uses): a row that is paused or ended gives no code lines
+    const welcome = await welcomeCode(deps.db, deps.now);
     const mark = await welcomeMarkKey(address);
     try {
       if (await deps.env.KV.get(mark)) {
@@ -92,7 +90,7 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
     }
     let sent = false;
     try {
-      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token), codeDaysOf(setting)), { count: deps.db });
+      sent = await sendMail(deps.env, welcomeMail(address, welcome, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)), { count: deps.db });
     } catch (e) {
       logFailure("[newsletter] welcome e-mail failed to send", e);
     }
@@ -152,9 +150,9 @@ export async function confirmSubscriber(db: Db, token: string, now: Date): Promi
 }
 
 /**
- * The confirmation link of the old flow (/api/newsletter/confirm): the subscriber confirmed; on the first confirmation with a welcome code set,
+ * The confirmation link of the old flow (/api/newsletter/confirm): the subscriber confirmed; on the first confirmation with a welcome code valid today (A12),
  * the welcome mail after the response (`later`) and the code for the confirmed page (the redirect's fragment). Without a code set nothing is
- * mailed here, as before. A repeat confirmation gives no code and sends nothing. `locale`: the subscriber's, for the home page it lands on.
+ * mailed here, as before (A12). A repeat confirmation gives no code and sends nothing. `locale`: the subscriber's, for the home page it lands on.
  */
 export async function confirmNewsletter(
   deps: WelcomeDeps & { later: (task: () => Promise<unknown>) => void },
@@ -165,15 +163,16 @@ export async function confirmNewsletter(
   const locale = confirmed.sub.locale === "ru" ? "ru" : "et";
   if (!confirmed.first) return { outcome: "kinnitatud", locale, code: null };
   // The confirmation has stood by now, and the next click is no longer "first": a failing settings read must not turn this answer into
-  // an error or drop the welcome mail. The page then shows no code (the mail still carries it: sendWelcome reads the setting itself).
-  let code = "";
+  // an error or drop the welcome mail. The page then shows no code (the mail still carries it: sendWelcome reads the row itself).
+  let code: string | null = null;
   try {
-    code = welcomeCodeOf(await readSetting(deps.db, "newsletter"));
-    if (!code) return { outcome: "kinnitatud", locale, code: null }; // read fine, no code set: no mail either
+    const welcome = await welcomeCode(deps.db, deps.now);
+    if (!welcome) return { outcome: "kinnitatud", locale, code: null }; // read fine, no welcome code valid today: no mail either
+    code = welcome.code;
   } catch (e) {
-    logFailure("[newsletter] settings unavailable after the confirmation, no code on the page", e);
+    logFailure("[newsletter] welcome code unavailable after the confirmation, no code on the page", e);
   }
   const to = { email: confirmed.sub.email, locale };
   deps.later(() => sendWelcome(deps, to));
-  return { outcome: "kinnitatud", locale, code: code || null };
+  return { outcome: "kinnitatud", locale, code };
 }

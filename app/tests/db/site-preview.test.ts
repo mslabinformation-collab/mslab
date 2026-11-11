@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { getHomeData, getPost, getPracticePackages, getTrainerPage, listPosts } from "@/db/queries/public";
-import { campaign, contentDrafts, courses, posts, settings, type PracticePackage } from "@/db/schema";
+import { campaign, contentDrafts, courses, discountCodes, posts, settings, type PracticePackage } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
 import { newSlideDraft, type FaqDraft, type PackageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { PostPartValue, SiteEntity } from "@/domain/site-entities";
@@ -497,7 +497,10 @@ describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R
     await asAdmin();
     expect(popupOf(await homeTree())).toMatchObject({ n: { title: "Uus pakkumine" }, preview: true });
     state.draftOn = false;
+    // the welcome code is the `welcome` row of discount_codes (F1 Task 11): the stored setting says nothing any more
     await db.update(settings).set({ value: { discountLabel: "10%", welcomeCode: "TERE10" } }).where(eq(settings.key, "newsletter"));
+    expect(popupOf(await homeTree())?.t.form.submit).toBe("Liitu");
+    await db.insert(discountCodes).values({ code: "TERE10", welcome: true, percent: 10, audience: "first", oncePerPerson: true });
     expect(popupOf(await homeTree())?.t.form.submit).toBe("Saa kood");
     expect(popupOf(await homeTree("ru"))?.t.form.submit).toBe("Получить код");
     await show(false);

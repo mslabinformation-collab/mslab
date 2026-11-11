@@ -377,7 +377,9 @@ export const et = {
     eyebrow: "MS LABi kirjad",
     titleFirst: "Hea järgmine samm.",
     titleSecond: "Otse sinu postkasti.",
+    // `{discount}` is the welcome code's value as its row has it („10%“, „15 €“); with no welcome code valid today the footer and the popup say `bodyNoCode`
     body: "Uued koolitused, kasulikud mõtted ja {discount} tervitussoodustus sinu esimesele koolitusele.",
+    bodyNoCode: "Uued koolitused ja kasulikud mõtted.",
     emailLabel: "Sinu e-post",
     emailPlaceholder: "nimi@e-post.ee",
     submit: "Liitu",
@@ -388,8 +390,8 @@ export const et = {
     sentText: "Saatsime sulle tervituskirja.",
     // the newsletter popup's answer after a sign-up (components/site/NewsletterPopup.tsx, phase 2c): title and line in one
     popupSent: "Aitäh, oled liitunud! Saatsime sulle tervituskirja.",
-    // the newsletter popup's button while Seaded has a welcome code (admin UX pass piece 4b, S4-Q4 A: one will come in the welcome mail); without
-    // one it is `submit`, as the footer's form always is (components/site/NewsletterPopupCard.tsx popupFormTexts)
+    // the newsletter popup's button while there is a welcome code (the `welcome` row of discount_codes, valid today; F1: one will come in the
+    // welcome mail); without one it is `submit`, as the footer's form always is (components/site/NewsletterPopupCard.tsx popupFormTexts)
     popupSubmitCode: "Saa kood",
     // Home page notice after the unsubscribe link of the welcome mail (/?uudiskiri=loobutud).
     unsubscribedTitle: "Oled uudiskirjast loobunud.",
@@ -403,8 +405,8 @@ export const et = {
     // The notices after a confirmation link of the old flow, still in some mailboxes (/?uudiskiri=kinnitatud or =vigane).
     confirmedTitle: "Tere tulemast MS LABi!",
     confirmedText: "Sinu liitumine on kinnitatud.",
-    // the confirmed notice's line when Seaded has a welcome code (the confirmation link's #kood=…, phase 2c)
-    codeLine: "Sinu tervituskood: {code}. Lisa kood registreerimisel lahtrisse „Sõnum“.",
+    // the confirmed notice's line while the welcome code (the `welcome` row of discount_codes) is valid today (the confirmation link's #kood=…, phase 2c)
+    codeLine: "Sinu tervituskood: {code}. Kirjuta see registreerimisel või ostukorvis lahtrisse „Sooduskood“.",
     linkInvalid: "See kinnituslink ei kehti. Liitu uudiskirjaga uuesti lehe allosas.",
   },
 
@@ -414,11 +416,11 @@ export const et = {
     welcome: {
       subject: "Tere tulemast MS LABi!",
       intro: "Aitäh, et liitusid MS LABi uudiskirjaga.",
-      // the next three lines only when Seaded has a "Tervituskood"
+      // the next three lines only while the welcome code (the `welcome` row of discount_codes) is valid today; {soodustus} is its value as the row has it („10%“, „15 €“)
       codeIntro: "Sinu tervituskood:",
-      use: "Lisa kood registreerimisel lahtrisse „Sõnum“.",
-      invoice: "Maria arvestab soodustuse sinu arvelt maha.",
-      // after those three, when Hüpikaken has „Kood kehtib (päeva)“ (piece 4b S4-Q3 A); {n} the days, the form by i18n/format.ts pluralForm
+      use: "Kirjuta kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.",
+      value: "Kood annab {soodustus} soodustust sinu esimeselt koolituselt.",
+      // after those three, when the row has „Päevi pärast liitumist“ (it is enforced: the code stops working that many days after the sign-up); {n} the days, the form by i18n/format.ts pluralForm
       days: { one: "Kood kehtib {n} päev.", few: "Kood kehtib {n} päeva.", many: "Kood kehtib {n} päeva." },
       // the last line before the signature; {link} is the unsubscribe URL (/api/newsletter/loobu?t=<the subscriber's token>)
       unsubscribe: "Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: {link}",

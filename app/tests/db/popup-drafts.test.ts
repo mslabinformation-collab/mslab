@@ -7,7 +7,7 @@ import { setSetting } from "@/db/queries/admin";
 import { getHomeData, getSettings, readSetting } from "@/db/queries/public";
 import { campaign, contentDrafts, posts, settings } from "@/db/schema";
 import { applySeed } from "@/db/seed-apply";
-import { shellSettings } from "@/components/site/settings";
+import { discountPercentOf } from "@/domain/welcome-code";
 import type { PopupOfferValue } from "@/domain/site-entities";
 import { createSession } from "@/server/auth";
 import { makeTestDb } from "./helpers";
@@ -68,7 +68,7 @@ const save = async (patch: Partial<PopupOfferValue>) => writeSitePart(db, "popup
 const publishNow = async () => publishSite(db, "popup", { offer: (await offerOf()).version });
 const rowOf = async (id: number) => (await db.select().from(campaign).where(eq(campaign.id, id)))[0];
 const newsletter = () => readSetting(db, "newsletter");
-const footerDiscount = async () => shellSettings(await getSettings(db)).newsletter.discountPercent;
+const storedDiscount = async () => discountPercentOf(await newsletter());
 const popupDrafts = () => db.select().from(contentDrafts).where(eq(contentDrafts.entity, "popup"));
 const switchNow = async (on: boolean) => switchPopup(db, on, (await readPopupSwitch(db)).version, NOW);
 
@@ -98,18 +98,18 @@ describe("the editor's read (readSiteEditor „popup“)", () => {
     const discount = async () => (await offerOf()).value as PopupOfferValue;
     await setSetting(db, "newsletter", { discountLabel: "-15%", welcomeCode: "TERE10" });
     expect((await discount()).discountPercent).toBe("15");
-    expect(await footerDiscount()).toBe(15);
+    expect(await storedDiscount()).toBe(15);
     await setSetting(db, "newsletter", { discountLabel: "-15%", discountPercent: 20, codeDays: 30 });
     expect(await discount()).toMatchObject({ discountPercent: "20", codeDays: "30" });
-    expect(await footerDiscount()).toBe(20);
+    expect(await storedDiscount()).toBe(20);
     for (const value of [{}, { discountLabel: "kümme" }, { discountLabel: "150%" }, { discountPercent: 0 }, { discountPercent: 12.5 }, { discountPercent: "15" }]) {
       await setSetting(db, "newsletter", value);
       expect((await discount()).discountPercent, JSON.stringify(value)).toBe("10");
-      expect(await footerDiscount(), JSON.stringify(value)).toBe(10);
+      expect(await storedDiscount(), JSON.stringify(value)).toBe(10);
     }
     await db.delete(settings).where(eq(settings.key, "newsletter"));
     expect(await discount()).toMatchObject({ discountPercent: "10", codeDays: "" });
-    expect(await footerDiscount()).toBe(10);
+    expect(await storedDiscount()).toBe(10);
   });
 });
 
@@ -118,7 +118,7 @@ describe("a draft waits for „Avalda muudatused“ (S4-Q2 A, Review Focus 4)", 
     await setSetting(db, "newsletter", { discountLabel: "10%", welcomeCode: "TERE10" });
     const saved = await save({ discountPercent: "15", codeDays: "30" });
     expect(saved).toEqual({ ok: true, version: expect.stringMatching(/^d:\d+\.1$/), savedAt: NOW.toISOString() });
-    expect(await footerDiscount()).toBe(10);
+    expect(await storedDiscount()).toBe(10);
     expect(await newsletter()).toEqual({ discountLabel: "10%", welcomeCode: "TERE10" });
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
     // the editor holds the draft over live
@@ -127,7 +127,7 @@ describe("a draft waits for „Avalda muudatused“ (S4-Q2 A, Review Focus 4)", 
 
     expect(await publishNow()).toEqual({ stamp: expect.any(Number), published: ["offer"], blocked: [] });
     expect(await newsletter()).toEqual({ discountLabel: "10%", welcomeCode: "TERE10", discountPercent: 15, codeDays: 30 });
-    expect(await footerDiscount()).toBe(15);
+    expect(await storedDiscount()).toBe(15);
     expect(await popupDrafts()).toHaveLength(0);
     // the footer of every page and the popup (the home page): once, after the commit
     expect(pub.revalidatePublic).toHaveBeenCalledTimes(1);
@@ -410,6 +410,6 @@ describe("the queries of deploy.md §26, as printed there", () => {
     // no row at all (a database that never saved the setting): no row, and the footer says 10% (item 4)
     await db.delete(settings).where(eq(settings.key, "newsletter"));
     expect(await rows(q)).toEqual([]);
-    expect(await footerDiscount()).toBe(10);
+    expect(await storedDiscount()).toBe(10);
   });
 });

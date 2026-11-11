@@ -26,7 +26,7 @@ import { NEWSLETTER_LANDING_PARAM, newsletterPopupView, POPUP_PREVIEW_BAR, PREVI
 import { firstParagraph, nextSessionByCourse, nextSessions, pickHomeCourses } from "@/domain/home";
 import { linkFor } from "@/domain/site-editor";
 import { formatEUR } from "@/domain/money";
-import { welcomeCodeOf } from "@/domain/welcome-code";
+import { welcomeCode } from "@/server/discount-codes";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
@@ -102,7 +102,7 @@ export default async function Home({ params, searchParams }: Props) {
   // The home page's popup (phase 2c; admin UX pass piece 4b, D3, R-d): the newsletter sign-up, while Hüpikaken's „Lehel näidatakse“ is on; none when
   // off. This page is / and /ru, the only pages that show it (R-e). Its button follows Seaded's welcome code (S4-Q4): „Saa kood“ while there is one.
   const newsletterPopup = newsletterPopupView(home.popup, locale);
-  const welcomeCode = welcomeCodeOf(home.settings.newsletter) !== "";
+  const hasWelcomeCode = (await welcomeCode(db, new Date())) !== null;
 
   const statement = home.pages.statement;
   const bio = home.pages.trainer_bio;
@@ -278,7 +278,7 @@ export default async function Home({ params, searchParams }: Props) {
       <FlashNotice param={NEWSLETTER_LANDING_PARAM} notices={newsletterNotices} fragments={accountNotices} closeLabel={d.common.close} />
 
       {/* (the admin's draft preview opens it at once in any browser, signed up or not, and leaves the 30-day stamp alone: R-e, ruling c2) */}
-      {newsletterPopup && <NewsletterPopup n={newsletterPopup} locale={locale} preview={drafts} t={{ close: d.common.close, form: popupFormTexts(d, welcomeCode) }} />}
+      {newsletterPopup && <NewsletterPopup n={newsletterPopup} locale={locale} preview={drafts} t={{ close: d.common.close, form: popupFormTexts(d, hasWelcomeCode) }} />}
       {previewBar}
     </>
   );

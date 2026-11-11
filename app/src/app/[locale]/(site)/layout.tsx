@@ -4,7 +4,9 @@ import { Footer } from "@/components/site/Footer";
 import { Header } from "@/components/site/Header";
 import { SiteReady } from "@/components/site/SiteReady";
 import { shellSettings, type ShellSettings } from "@/components/site/settings";
+import { getDb } from "@/db/client";
 import { FEEDBACK_SCRIPT, REVIEW_TOOLS } from "@/lib/review-tools";
+import { welcomeCode } from "@/server/discount-codes";
 import { logFailure } from "@/server/log";
 import { getSiteSettings } from "@/server/site-data";
 import { isLocale, type Locale } from "@/i18n/locales";
@@ -19,13 +21,14 @@ import { isLocale, type Locale } from "@/i18n/locales";
  */
 export const revalidate = 86400;
 
-// Footer contact and newsletter discount come from the settings (a settings save revalidates every page). A failing
+// Footer contact comes from the settings, and the newsletter's discount from the welcome code's row (a settings save, and a change of that row, revalidate
+// every page: server/cache-targets.ts `welcomeCode`; the row's own dates are read with the render's `now`, and the daily refresh catches up). A failing
 // read is not replaced by defaults: the page is cached once rendered, and a footer without the contact details would
 // stay for a day. Failing, the render stores nothing: in the daily refresh the previous copy stays in use; for a page a
 // change has marked stale (or one never rendered), visitors get the error page until a render succeeds.
 async function loadShellSettings(locale: Locale): Promise<ShellSettings> {
   try {
-    return shellSettings(await getSiteSettings(), locale);
+    return shellSettings(await getSiteSettings(), locale, await welcomeCode(getDb(), new Date()));
   } catch (err) {
     logFailure("site shell: settings unavailable", err); // never the message (server/log.ts): it can name the database host
     throw err;

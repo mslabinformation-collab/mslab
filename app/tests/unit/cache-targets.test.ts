@@ -40,6 +40,11 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "posts" })).toEqual([`${SITE}/uudised (layout)`, `${SITE} (page)`]);
   });
 
+  test("welcomeCode revalidates every page", () => {
+    // the welcome row's value is in the footer of every page and its presence on the home page's popup button (F1 Task 11)
+    expect(paths({ kind: "welcomeCode" })).toEqual([`${SITE} (layout)`]);
+  });
+
   test("areas (Seaded → Valdkonnad): their chips are on the calendar and the catalogue only (a course's own area is the courses' change)", () => {
     expect(paths({ kind: "areas" })).toEqual([`${SITE}/koolitused (page)`, `${SITE}/koolituskalender (page)`]);
   });
@@ -112,6 +117,7 @@ describe("the revalidation map", () => {
       { kind: "home" },
       { kind: "campaign" },
       { kind: "popup" },
+      { kind: "welcomeCode" },
       { kind: "practice" },
       { kind: "posts" },
       { kind: "areas" },

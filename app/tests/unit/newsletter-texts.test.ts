@@ -63,6 +63,27 @@ describe("the page behind the unsubscribe link (GET /api/newsletter/loobu)", () 
   });
 });
 
+// F1 Task 11 (the spec's texts table): the welcome code's lines follow its row. Russian: the no-break space after в, as the typography rule asks.
+describe("the welcome code's texts (they follow the welcome row)", () => {
+  test("Estonian", () => {
+    expect(et.mail.welcome.use).toBe("Kirjuta kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.");
+    expect(et.mail.welcome.value).toBe("Kood annab {soodustus} soodustust sinu esimeselt koolituselt.");
+    expect(Object.keys(et.mail.welcome)).not.toContain("invoice");
+    expect(et.mail.welcome.days.many).toBe("Kood kehtib {n} päeva.");
+    expect(et.newsletter.codeLine).toBe("Sinu tervituskood: {code}. Kirjuta see registreerimisel või ostukorvis lahtrisse „Sooduskood“.");
+    expect(et.newsletter.bodyNoCode).toBe("Uued koolitused ja kasulikud mõtted.");
+  });
+
+  test("Russian", () => {
+    expect(ru.mail.welcome.use).toBe("Введите код при регистрации или в корзине в поле «Промокод».");
+    expect(ru.mail.welcome.value).toBe("Код даёт скидку {soodustus} на ваш первый курс.");
+    expect(Object.keys(ru.mail.welcome)).not.toContain("invoice");
+    expect(ru.mail.welcome.days.many).toBe("Код действует {n} дней.");
+    expect(ru.newsletter.codeLine).toBe("Ваш приветственный код: {code}. Введите его при регистрации или в корзине в поле «Промокод».");
+    expect(ru.newsletter.bodyNoCode).toBe("Новые курсы и полезные идеи.");
+  });
+});
+
 describe("Russian typography in the new strings", () => {
   const strings: [string, string][] = [
     ["newsletter.sentTitle", ru.newsletter.sentTitle],
@@ -71,6 +92,10 @@ describe("Russian typography in the new strings", () => {
     ["newsletter.unsubscribedTitle", ru.newsletter.unsubscribedTitle],
     ["newsletter.unsubscribedText", ru.newsletter.unsubscribedText],
     ["mail.welcome.unsubscribe", ru.mail.welcome.unsubscribe],
+    ["mail.welcome.use", ru.mail.welcome.use],
+    ["mail.welcome.value", ru.mail.welcome.value],
+    ["newsletter.codeLine", ru.newsletter.codeLine],
+    ["newsletter.bodyNoCode", ru.newsletter.bodyNoCode],
     ["newsletter.unsubscribePage.heading", ru.newsletter.unsubscribePage.heading],
     ["newsletter.unsubscribePage.lead", ru.newsletter.unsubscribePage.lead],
     ["newsletter.unsubscribePage.button", ru.newsletter.unsubscribePage.button],

@@ -189,27 +189,30 @@ export function passwordChangedMail(email: string, locale: Locale, contactEmail:
 
 /**
  * The welcome mail to a newly subscribed address (one step since 09.10; server/newsletter.ts sendWelcome): the greeting and a line of thanks,
- * then, only when Seaded has a "Tervituskood" (`code`; null for none), the code large (the login code's lilac box) and how to use it — with, when
- * Hüpikaken has „Kood kehtib (päeva)“ (`codeDays`; admin UX pass piece 4b, S4-Q3 A), one line after those saying how many days it is valid, in the
- * language's number form („Kood kehtib 30 päeva.“, „Код действует 2 дня.“) — and as the last line before the signature the way out: "loobu siit"
+ * then, only while the welcome code is valid today (`welcome`, from server/discount-codes.ts welcomeCode: the `welcome` row of discount_codes; null
+ * for none), the code large (the login code's lilac box), how to use it and what it gives (`welcome.value`: „10%“ or „15 €“, as the row's text has
+ * it) — with, when the row has „Päevi pärast liitumist“ (`welcome.days`; F1: the rule is enforced), one line after those saying how many days the
+ * code is valid, in the language's number form („Kood kehtib 30 päeva.“, „Код действует 2 дня.“) — and as the last line before the signature the way out: "loobu siit"
  * with `unsubscribeLink`, the subscriber's own link (newsletter.ts unsubscribeUrl). No button. Plain text and HTML. The caller never sends it to a
  * sample address or in development.
  */
-export function welcomeMail(email: string, code: string | null, locale: Locale, unsubscribeLink: string, codeDays: number | null = null): Mail {
+export function welcomeMail(email: string, welcome: { code: string; value: string; days: number | null } | null, locale: Locale, unsubscribeLink: string): Mail {
   const w = getDict(locale).mail.welcome;
   const mail = getDict(locale).account.mail;
   const [before, after = ""] = w.unsubscribe.split("{link}");
-  const days = code && codeDays ? [fill(w.days[pluralForm(codeDays, locale)], { n: codeDays })] : [];
+  const code = welcome?.code ?? null;
+  const days = welcome?.days ? [fill(w.days[pluralForm(welcome.days, locale)], { n: welcome.days })] : [];
+  const value = welcome ? fill(w.value, { soodustus: welcome.value }) : "";
   const text = [
     mail.greeting, "", w.intro, "",
-    ...(code ? [w.codeIntro, "", code, "", w.use, w.invoice, ...days, ""] : []),
+    ...(code ? [w.codeIntro, "", code, "", w.use, value, ...days, ""] : []),
     fill(w.unsubscribe, { link: unsubscribeLink }), "",
     mail.signature,
   ].join("\n");
   const html = mailCard(w.subject, locale, [
     greetingRow(mail.greeting),
     paragraphRow(w.intro),
-    ...(code ? [paragraphRow(w.codeIntro), codeRow(code), paragraphRow(w.use), paragraphRow(w.invoice, 8), ...days.map((line) => paragraphRow(line, 8))] : []),
+    ...(code ? [paragraphRow(w.codeIntro), codeRow(code), paragraphRow(w.use), paragraphRow(value, 8), ...days.map((line) => paragraphRow(line, 8))] : []),
     row(`padding:24px 28px 0;${textStyle(14)}`, `${esc(before)}<a href="${esc(unsubscribeLink)}" style="color:${INK};text-decoration:underline;word-break:break-all;">${esc(unsubscribeLink)}</a>${esc(after)}`),
     signatureRow(mail),
   ]);

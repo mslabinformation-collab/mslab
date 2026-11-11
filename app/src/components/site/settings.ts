@@ -1,24 +1,28 @@
 import { isHttpsUrl, portraitFraming } from "@/domain/site-editor";
-import { discountPercentOf } from "@/domain/welcome-code";
+import type { WelcomeCode } from "@/server/discount-codes";
 import { pick, type I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
 
 // The parts of the settings table the site shell needs, with safe defaults (keys: see db/schema.ts settings).
 
 export type FooterContact = { email: string; phone: string; instagram: string; facebook: string };
-/** The footer's sign-up block: Hüpikaken's published discount, a whole percentage (admin UX pass piece 4b, R-c; the footer says `{discountPercent}%`). */
-export type NewsletterSettings = { discountPercent: number };
+/**
+ * The footer's sign-up block: the welcome code's value as its row has it („10%“, „15 €“), or null while no welcome code is valid today (F1: the footer
+ * then says `newsletter.bodyNoCode`, with no discount to promise).
+ */
+export type NewsletterSettings = { discount: string | null };
 export type ShellSettings = { newsletter: NewsletterSettings; contact: FooterContact; trainerName: string };
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const https = (v: unknown): string => (isHttpsUrl(str(v)) ? str(v) : "");
 
-export function shellSettings(settings: Record<string, unknown>, locale: Locale = "et"): ShellSettings {
+/** `welcome`: the welcome code valid today (server/discount-codes.ts welcomeCode), read by the caller at the edge with the server's own `now`. */
+export function shellSettings(settings: Record<string, unknown>, locale: Locale, welcome: WelcomeCode | null): ShellSettings {
   const contact = obj(settings.contact);
   return {
-    // (the label Seaded stored before piece 4b is read as its number until Hüpikaken's publish writes one: domain/welcome-code.ts)
-    newsletter: { discountPercent: discountPercentOf(settings.newsletter) },
+    // (the stored `newsletter` setting says nothing here any more: the welcome code is a row of discount_codes)
+    newsletter: { discount: welcome ? welcome.value : null },
     // social links open in a new tab: https addresses only (the admin stores nothing else; anything older is dropped)
     contact: { email: str(contact.email), phone: str(contact.phone), instagram: https(contact.instagram), facebook: https(contact.facebook) },
     trainerName: pick(trainerNameOf(obj(settings.trainer).name), locale),

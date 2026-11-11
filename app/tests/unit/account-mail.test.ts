@@ -399,45 +399,45 @@ describe("HTML safety and design", () => {
   });
 });
 
-describe("the welcome mail (phase 2c; one step, 09.10)", () => {
+describe("the welcome mail (phase 2c; one step, 09.10; the code's lines follow its row, F1 Task 11)", () => {
   const LINK = "https://mslab.example/api/newsletter/loobu?t=tok-en_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const TERE = { code: "TERE10", value: "10%", days: null };
 
-  test("Estonian, with a code: the subject, the code large, how to use it, that Maria takes the discount off the invoice, and the unsubscribe line last before the signature", () => {
-    const mail = welcomeMail("uus@example.test", "TERE10", "et", LINK);
+  test("Estonian, with a code: the subject, the code large, how to use it, what it gives, and the unsubscribe line last before the signature", () => {
+    const mail = welcomeMail("uus@example.test", TERE, "et", LINK);
     expect(mail.to).toBe("uus@example.test");
     expect(mail.subject).toBe("Tere tulemast MS LABi!");
     expect(mail.text).toBe(
       [
         "Tere!", "", "Aitäh, et liitusid MS LABi uudiskirjaga.", "",
         "Sinu tervituskood:", "", "TERE10", "",
-        "Lisa kood registreerimisel lahtrisse „Sõnum“.", "Maria arvestab soodustuse sinu arvelt maha.", "",
+        "Kirjuta kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.", "Kood annab 10% soodustust sinu esimeselt koolituselt.", "",
         `Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: ${LINK}`, "",
         "MS LAB Koolituskeskus",
       ].join("\n"),
     );
     expect(mail.html).toContain(">TERE10</div>");
-    expect(mail.html).toContain("Lisa kood registreerimisel lahtrisse „Sõnum“.");
-    expect(mail.html).toContain("Maria arvestab soodustuse sinu arvelt maha.");
+    expect(mail.html).toContain("Kirjuta kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.");
+    expect(mail.html).toContain("Kood annab 10% soodustust sinu esimeselt koolituselt.");
   });
 
-  test("with the code's days (Hüpikaken „Kood kehtib (päeva)“, S4-Q3 A): one line after the code's lines, in the language's number form; none without a code", () => {
-    const mail = welcomeMail("uus@example.test", "TERE10", "et", LINK, 30);
+  test("the value is the row's text (an amount reads as it is); the row's days: one line after, in the language's number form; none without days or a code", () => {
+    const mail = welcomeMail("uus@example.test", { code: "TERE10", value: "15 €", days: 30 }, "et", LINK);
     expect(mail.text).toBe(
       [
         "Tere!", "", "Aitäh, et liitusid MS LABi uudiskirjaga.", "",
         "Sinu tervituskood:", "", "TERE10", "",
-        "Lisa kood registreerimisel lahtrisse „Sõnum“.", "Maria arvestab soodustuse sinu arvelt maha.", "Kood kehtib 30 päeva.", "",
+        "Kirjuta kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.", "Kood annab 15 € soodustust sinu esimeselt koolituselt.", "Kood kehtib 30 päeva.", "",
         `Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: ${LINK}`, "",
         "MS LAB Koolituskeskus",
       ].join("\n"),
     );
     expect(mail.html).toContain("Kood kehtib 30 päeva.");
-    expect(mail.html!.indexOf("Kood kehtib")).toBeGreaterThan(mail.html!.indexOf("arvestab soodustuse"));
-    expect(welcomeMail("uus@example.test", "TERE10", "et", LINK, 1).text).toContain("\nKood kehtib 1 päev.\n");
-    expect(welcomeMail("uus@example.test", "TERE10", "ru", LINK, 5).text).toContain("\nКод действует 5 дней.\n");
-    for (const [code, days] of [[null, 30], ["TERE10", null], ["TERE10", undefined]] as const) {
-      const other = welcomeMail("uus@example.test", code, "et", LINK, days);
-      expect(other.text + other.html, `${code} ${days}`).not.toContain("Kood kehtib");
+    expect(mail.html!.indexOf("Kood kehtib")).toBeGreaterThan(mail.html!.indexOf("Kood annab"));
+    expect(welcomeMail("uus@example.test", { ...TERE, days: 1 }, "et", LINK).text).toContain("\nKood kehtib 1 päev.\n");
+    expect(welcomeMail("uus@example.test", { ...TERE, days: 5 }, "ru", LINK).text).toContain("\nКод действует 5 дней.\n");
+    for (const other of [welcomeMail("uus@example.test", null, "et", LINK), welcomeMail("uus@example.test", TERE, "et", LINK)]) {
+      expect(other.text + other.html).not.toContain("Kood kehtib");
     }
   });
 
@@ -448,8 +448,8 @@ describe("the welcome mail (phase 2c; one step, 09.10)", () => {
     );
     for (const body of [mail.text, mail.html!]) {
       expect(body).not.toContain("Sinu tervituskood");
-      expect(body).not.toContain("Lisa kood");
-      expect(body).not.toContain("arvestab soodustuse");
+      expect(body).not.toContain("Sooduskood");
+      expect(body).not.toContain("soodustust");
     }
     expect(mail.html).not.toContain("letter-spacing"); // the code box is not there either
     expect(mail.html).toContain("loobu siit:");
@@ -457,7 +457,7 @@ describe("the welcome mail (phase 2c; one step, 09.10)", () => {
 
   test("the HTML body has the unsubscribe line as the last row before the signature, with the link clickable and escaped", () => {
     const tricky = "https://mslab.example/api/newsletter/loobu?t=a&b=\"<x>";
-    const html = welcomeMail("uus@example.test", "TERE10", "et", tricky).html!;
+    const html = welcomeMail("uus@example.test", TERE, "et", tricky).html!;
     expect(html).toContain(`<a href="${esc(tricky)}`);
     expect(html).not.toContain(tricky);
     expect(html.indexOf("loobu siit")).toBeGreaterThan(html.indexOf("TERE10"));
@@ -466,10 +466,10 @@ describe("the welcome mail (phase 2c; one step, 09.10)", () => {
   });
 
   test("Russian: the code lines when there is a code, the unsubscribe line in both cases, with no-break spaces where the rule asks (there is no one-letter word in it)", () => {
-    const mail = welcomeMail("uus@example.test", "TERE10", "ru", LINK);
-    expect(mail.subject).toBe("Добро пожаловать в\u00a0MS LAB!");
-    expect(mail.text).toContain(getDict("ru").mail.welcome.use); // "Укажите код при регистрации в поле «Сообщение»."
-    expect(mail.text).toContain("Мария вычтет скидку из вашего счёта.");
+    const mail = welcomeMail("uus@example.test", TERE, "ru", LINK);
+    expect(mail.subject).toBe("Добро пожаловать в MS LAB!");
+    expect(mail.text).toContain(getDict("ru").mail.welcome.use); // "Введите код при регистрации или в корзине в поле «Промокод»."
+    expect(mail.text).toContain("Код даёт скидку 10% на ваш первый курс.");
     const line = `Если вы не подписывались сами или больше не хотите получать письма MS LAB, отпишитесь здесь: ${LINK}`;
     expect(mail.text).toContain(line);
     expect(welcomeMail("uus@example.test", null, "ru", LINK).text).toBe(

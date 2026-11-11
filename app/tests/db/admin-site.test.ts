@@ -376,7 +376,7 @@ describe("trainer page", () => {
     expect(trainerSettings(await getSettings(db), "ru").name).toBe("Maria Sosnina"); // RU falls back to it
     await db.update(settings).set({ value: s.trainer }).where(eq(settings.key, "trainer"));
     expect(trainerSettings(await getSettings(db), "ru").name).toBe("Мария Соснина");
-    expect(shellSettings(await getSettings(db), "ru").trainerName).toBe("Мария Соснина");
+    expect(shellSettings(await getSettings(db), "ru", null).trainerName).toBe("Мария Соснина");
   });
 
   test("bio, works gallery and the two stories", async () => {

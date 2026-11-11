@@ -9,3 +9,15 @@ describe("the footer's tagline", () => {
     expect(ru.footer.tagline).toBe("Успех ученика — наша цель.");
   });
 });
+
+// F1 Task 11: the footer's sign-up line follows the welcome code's row; without a code there is no „tervitussoodustus“ to promise.
+describe("the footer's sign-up line", () => {
+  test("bodyNoCode without a welcome code", () => {
+    expect(et.newsletter.bodyNoCode).toBe("Uued koolitused ja kasulikud mõtted.");
+    expect(ru.newsletter.bodyNoCode).toBe("Новые курсы и полезные идеи.");
+    expect(et.newsletter.bodyNoCode).not.toContain("{discount}");
+    expect(ru.newsletter.bodyNoCode).not.toContain("{discount}");
+    expect(et.newsletter.body).toContain("{discount}");
+    expect(ru.newsletter.body).toContain("{discount}");
+  });
+});
