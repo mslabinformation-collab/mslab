@@ -97,6 +97,7 @@ export function MoneyCard({
   takesSeat,
   sellerReady,
   paymentLines,
+  discountRow,
   today,
 }: {
   /** The registration as the drawer shows it: what has come in, the price it is measured against (null: the course has none), its state, its choice. */
@@ -112,6 +113,8 @@ export function MoneyCard({
    * none. A node, not the rows: a payment's provider id, e-mail and name are not sent to the browser for the card to draw (the Task 5 review).
    */
   paymentLines: ReactNode;
+  /** The discount rows under the price (F1 Task 14; components/admin/RegistrationDiscount.tsx: „Hind“ and „Sooduskood“), or nothing: a course with no price has none. */
+  discountRow?: ReactNode;
   /** Today in Tallinn, "YYYY-MM-DD": the day a payment is recorded on unless she changes it, and the latest it may be. */
   today: string;
 }) {
@@ -248,6 +251,7 @@ export function MoneyCard({
           {priceCents === null ? adminEt.registrations.paidWord : fill(m.of, { price: euro(priceCents) })}
         </span>
       </p>
+      {discountRow}
       {priceCents === null || pool === null ? (
         <p className={`${ui.notice} ${styles.notice}`}>{t.noPrice}</p>
       ) : (

@@ -77,6 +77,11 @@ export function listCentsOf(course: PriceCourse): number | null {
   return listPrice(course, "group");
 }
 
+/** A registration's own list price (its kind's: the group or the individual price): what a discount is taken off, and what Eemalda restores; null when the course has none. */
+export function registrationListCents(course: PriceCourse, r: { kind: "group" | "individual" }): number | null {
+  return listPrice(course, r.kind);
+}
+
 /** A registration's total: its live list price minus the euros frozen on it; null when the course has no such price. */
 export function registrationTotal(course: PriceCourse, r: { kind: "group" | "individual"; discountCents: number }): number | null {
   const list = listPrice(course, r.kind);

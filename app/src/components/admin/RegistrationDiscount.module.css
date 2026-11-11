@@ -1,0 +1,110 @@
+/* The Raha card's two rows „Hind“ and „Sooduskood“ (F1 Task 14; the design „Raha-kaart“): rows of at least 44 px (the touch target) divided by real
+   1 px borders (var(--line)), on the same canvas as MoneyCard. „Eemalda sooduskood“ and „Lisa sooduskood“ are quiet underlined buttons of 44 px;
+   the field's form and the removal's question are drawn in place of the row's button. Nothing moves. */
+
+.rows {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.k {
+  color: var(--muted-2);
+}
+
+.v {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.list {
+  color: var(--muted-2);
+}
+
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 13px var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.label {
+  color: var(--muted-2);
+  font-size: 13px;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.input {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.sure {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.question {
+  margin: 0;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions > button {
+  min-height: 44px;
+  padding: 0 18px;
+  white-space: normal;
+}
+
+/* the refusal's line is in place from the start (a live region is announced when it fills); empty it takes no row */
+.refusal:empty {
+  display: none;
+}

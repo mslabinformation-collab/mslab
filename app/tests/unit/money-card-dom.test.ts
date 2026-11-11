@@ -107,6 +107,18 @@ describe("the card: the money, the 50 % marker and the seats", () => {
     expect(text($("[data-money-card]"))).toContain("Koolitusel pole hinda, staatust ei arvutata. Muuda staatust käsitsi.");
   });
 
+  test("the discount slot sits in the card under the price, and is absent when the page hands none (F1 Task 14)", async () => {
+    await show({ discountRow: createElement("div", { "data-slot": "" }, "rows") });
+    const card = $("[data-money-card]")!;
+    const slot = $("[data-slot]", card)!;
+    expect(text(slot)).toBe("rows");
+    // after the sum line (the price), before the bar
+    expect($("[data-money-total]", card)!.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect($("[data-money-bar]", card)!.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    await show({});
+    expect($("[data-slot]")).toBeNull();
+  });
+
   test("the online payments are listed in the card, under „Veebimaksed“: the page hands the card their lines drawn on the server, not the rows", async () => {
     const payment = {
       id: 3, reference: "MSLAB-M7", kind: "prepayment", amountCents: 14500, status: "pending", method: "", bank: "", checkReason: null,

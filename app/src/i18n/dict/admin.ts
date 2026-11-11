@@ -2188,6 +2188,30 @@ export const adminEt = {
       none: "Kasutusi veel pole.",
       marks: { cancelled: "tühistatud", unpaid: "maksmata", pending: "makse pooleli", failed: "makse ebaõnnestus", refunded: "tagastatud", gone: "kustutatud", admin: "lisas haldus" },
     },
+    // The registration drawer's Raha card (F1 Task 14; spec D11, §5; the design „Raha-kaart“): the rows „Hind“ and „Sooduskood“. {code} the code, {amount} the euros
+    // taken off, {price} the list price. The words are the spec's §5; Draft, mine: `price`, `code` (the field's label is the spec's „Sooduskood“, the row's too),
+    // `stale`, `cancelled`, `worthless` (R12) and `server`.
+    registration: {
+      price: "Hind",
+      code: "Sooduskood",
+      applied: "{code} · −{amount}",
+      add: "Lisa sooduskood",
+      submit: "Lisa",
+      remove: "Eemalda sooduskood",
+      removeQuestion: "Kas eemaldan sooduskoodi? Hind on jälle {price}.",
+      removeYes: "Jah, eemalda",
+      errors: {
+        paid: "Sooduskoodi saab lisada, kui midagi pole veel laekunud.",
+        unpaidInvoice: "Tühista enne maksmata arve.",
+        unknown: "Sellist sooduskoodi ei ole.",
+        // (Draft) the registration already has a code, or has none to remove, or is gone: the page has just been refreshed
+        stale: "Sooduskood muutus vahepeal. Vaata registreeringut uuesti.",
+        cancelled: "Registreering on tühistatud.",
+        // (Draft, R12) the code takes nothing off this price: the list price is 1,00 € or less (the total never drops below 1 €), or the course has no price
+        worthless: "Sellele hinnale sooduskood ei mõju.",
+        server: "Salvestamine ei õnnestunud. Proovi uuesti.",
+      },
+    },
   },
 
   newsletter: {

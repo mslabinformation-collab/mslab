@@ -47,6 +47,7 @@ vi.mock("@/components/admin/InvoiceRow", async (original) => {
   };
 });
 vi.mock("@/server/actions/admin-contracts", () => ({ requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
+vi.mock("@/server/actions/admin-discounts", () => ({ addRegistrationDiscountAction: vi.fn(), removeRegistrationDiscountAction: vi.fn() }));
 
 import InvoicesPage from "@/app/admin/(panel)/arved/page";
 import PaymentsPage from "@/app/admin/(panel)/maksed/page";

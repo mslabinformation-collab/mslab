@@ -44,6 +44,7 @@ vi.mock("@/server/actions/admin-invoices", () => ({
   updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(),
 }));
 vi.mock("@/server/actions/admin-contracts", () => ({ requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
+vi.mock("@/server/actions/admin-discounts", () => ({ addRegistrationDiscountAction: vi.fn(), removeRegistrationDiscountAction: vi.fn() }));
 
 import RegistrationsPage from "@/app/admin/(panel)/registreerimised/page";
 

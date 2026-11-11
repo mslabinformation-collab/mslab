@@ -11,6 +11,7 @@ import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/ListToolbar";
 import { Pager } from "@/components/admin/Pager";
 import { MoneyCard } from "@/components/admin/MoneyCard";
+import { RegistrationDiscount } from "@/components/admin/RegistrationDiscount";
 import { NoteSaveStatus, RegistrationCancel, RegistrationNote, StatusAndNote } from "@/components/admin/RegistrationForms";
 import { PaymentLines } from "@/components/admin/PaymentLines";
 import { adminTitle } from "@/components/admin/sections";
@@ -34,7 +35,7 @@ import { tallinnFormParts } from "@/domain/calendar";
 import { coveringInvoices, openAmounts, receiptTakeBack, sellerReady, uninvoicedOf } from "@/domain/invoice";
 import { euro, euroBare } from "@/domain/money-text";
 import { parsePage, parseSearch } from "@/domain/paging";
-import { registrationTotal } from "@/domain/discount-codes";
+import { registrationListCents, registrationTotal } from "@/domain/discount-codes";
 import type { RegStatus } from "@/domain/registration";
 import { holdsSeat } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
@@ -370,6 +371,8 @@ function RegistrationDetail({
   });
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationTotal(r.course, r);
+  // the course's price now, for the discount rows under it (spec §6 „The course price changes“: the list price, the code and the total)
+  const list = registrationListCents(r.course, r);
   // „Võta tasumine tagasi“ of a receipt (S3-f) says what it will do: the sum the server takes off Laekunud summa (capped at what no other paid invoice
   // covers) and whether a confirmed registration then falls under 50 % — domain/invoice.ts receiptTakeBack, the server's own rule
   const invoiceOf = (inv: AdminInvoice) => {
@@ -430,6 +433,11 @@ function RegistrationDetail({
           takesSeat={takesSeat}
           sellerReady={seller}
           paymentLines={payments.length > 0 ? <PaymentLines rows={payments} /> : null}
+          discountRow={
+            total === null || list === null ? undefined : (
+              <RegistrationDiscount registrationId={r.id} listCents={list} totalCents={total} code={r.discountCode === "" ? null : r.discountCode} cancelled={r.status === "cancelled"} />
+            )
+          }
           today={today}
         />
 

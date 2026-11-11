@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
 import { attemptEnds } from "@/db/queries/payments";
 import { dbErrorCode } from "@/db/safe-error";
-import { courses, discountCodeCourses, discountCodes } from "@/db/schema";
+import { lockForPayment } from "@/db/queries/seats";
+import { courses, discountCodeCourses, discountCodes, discountRedemptions, invoices, registrations, type Course, type Registration } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import { tallinnToday } from "@/domain/client-access";
 import {
@@ -15,14 +16,15 @@ import {
   highestListCents,
   type CodeFields,
 } from "@/domain/discount-code-fields";
-import { codeState, codeValueText, listCentsOf, normalizeCode, useMark, type CodeScope, type CodeState, type UseMark } from "@/domain/discount-codes";
+import { codeState, codeValueText, discountCents, listCentsOf, normalizeCode, registrationListCents, useMark, type CodeScope, type CodeState, type UseMark } from "@/domain/discount-codes";
+import { normalizeEmail } from "@/domain/email";
 import { centsToInput } from "@/domain/money";
 import { pick } from "@/i18n/field";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
 import { fieldCodes, refusedFields } from "./autosave-route";
-import { countingUse, lockCode, ruleOf, useJoins, type StoredCode } from "./discount-codes";
+import { countingUse, findCode, insertRedemption, lockCode, ruleOf, useJoins, type StoredCode } from "./discount-codes";
 import { revalidatePublic } from "./public-cache";
 
 // The Sooduskoodid page's server side (F1 Task 13, spec §4.10; R9, R16–R20). The drawer:
@@ -425,3 +427,75 @@ export async function codeUses(q: Q, codeId: number, now: Date): Promise<CodeUse
   });
 }
 
+
+// ---------- „Lisa sooduskood“ on a registration (D11) ----------
+
+/** Why Maria's add or remove was refused (spec §5, R12): `paid` (Laekunud summa above 0), `unpaidInvoice`, `cancelled`, `unknown` (no such code), `stale` (a code there already to add over, none to remove, or the registration gone), `worthless` (the code takes nothing off this price). */
+export type RegistrationDiscountError = "paid" | "unpaidInvoice" | "cancelled" | "unknown" | "stale" | "worthless";
+export type RegistrationDiscountResult = { ok: true } | { ok: false; error: RegistrationDiscountError };
+
+/**
+ * The checks both actions share, under the locks they hold: the registration with its course, then `cancelled`, `paid` (`paid_cents > 0`) and
+ * `unpaidInvoice` (any invoice of it with status `unpaid`: neither paid nor cancelled; D11's „Tühista enne maksmata arve.“). A registration that
+ * is gone is `stale`.
+ */
+async function openRegistration(tx: Tx, registrationId: number): Promise<{ error: Exclude<RegistrationDiscountError, "unknown" | "worthless"> } | { registration: Registration; course: Course }> {
+  const [found] = await tx.select({ registration: registrations, course: courses }).from(registrations).innerJoin(courses, eq(registrations.courseId, courses.id)).where(eq(registrations.id, registrationId)).limit(1);
+  if (!found) return { error: "stale" as const };
+  const r = found.registration;
+  if (r.status === "cancelled") return { error: "cancelled" as const };
+  if (r.paidCents > 0) return { error: "paid" as const };
+  const [open] = await tx.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.registrationId, registrationId), eq(invoices.status, "unpaid"))).limit(1);
+  if (open) return { error: "unpaidInvoice" as const };
+  return { registration: r, course: found.course };
+}
+
+/**
+ * Maria puts a code on an unpaid registration (D11; spec §10 answer 2: NO rule of the code is checked, not its dates, pause, limit, scope or person
+ * rules, only that it exists and takes something off this price). One transaction, in the booking's lock order (D8): lockForPayment (the session,
+ * then the registration), the checks, then the use's insert, which takes only the code row's key-share lock (the foreign key; `no key update` does
+ * not block it): never a session or advisory lock after a `discount_codes` lock. The use is written `via: "admin"` and counts like any other.
+ * `unknown`: no such code (or deleted between the read and the insert); `stale`: the registration has a code already; `worthless`: the discount is 0
+ * (discountCents caps it so that the total stays at MIN_TOTAL_CENTS, so a list price of 1,00 € or less gives 0; a course with no price too). The
+ * price a contract froze stays.
+ */
+export async function addRegistrationDiscount(db: Db, registrationId: number, typed: string, now: Date): Promise<RegistrationDiscountResult> {
+  try {
+    return await db.transaction(async (tx): Promise<RegistrationDiscountResult> => {
+      await lockForPayment(tx, registrationId);
+      const open = await openRegistration(tx, registrationId);
+      if ("error" in open) return { ok: false, error: open.error };
+      const { registration: r, course } = open;
+      const code = await findCode(tx, typed); // (takes no lock)
+      if (!code) return { ok: false, error: "unknown" };
+      if (r.discountCode !== "" || r.discountCents > 0) return { ok: false, error: "stale" };
+      const list = registrationListCents(course, r);
+      const off = list === null ? 0 : discountCents(ruleOf(code), list);
+      if (list === null || off === 0) return { ok: false, error: "worthless" };
+      await tx.update(registrations).set({ discountCents: off, discountCode: code.code }).where(eq(registrations.id, r.id));
+      await insertRedemption(tx, { codeId: code.id, email: normalizeEmail(r.email), clientId: r.clientId, courseId: r.courseId, registrationId: r.id, listCents: list, discountCents: off, via: "admin" }, now);
+      return { ok: true };
+    });
+  } catch (e) {
+    if (dbErrorCode(e) === "23503") return { ok: false, error: "unknown" }; // the code was deleted after it was read
+    if (dbErrorCode(e) === "23505") return { ok: false, error: "stale" }; // the registration has a use already
+    throw e;
+  }
+}
+
+/**
+ * „Eemalda sooduskood“: the same locks and refusals as the add; deletes exactly this registration's use (whatever its `via`) and zeroes
+ * `discount_cents` and `discount_code`. No code on the registration: `stale`. The code's own row is never locked.
+ */
+export async function removeRegistrationDiscount(db: Db, registrationId: number): Promise<RegistrationDiscountResult> {
+  return db.transaction(async (tx): Promise<RegistrationDiscountResult> => {
+    await lockForPayment(tx, registrationId);
+    const open = await openRegistration(tx, registrationId);
+    if ("error" in open) return { ok: false, error: open.error };
+    const r = open.registration;
+    if (r.discountCode === "" && r.discountCents === 0) return { ok: false, error: "stale" };
+    await tx.delete(discountRedemptions).where(eq(discountRedemptions.registrationId, r.id));
+    await tx.update(registrations).set({ discountCents: 0, discountCode: "" }).where(eq(registrations.id, r.id));
+    return { ok: true };
+  });
+}
