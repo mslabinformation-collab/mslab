@@ -1,0 +1,251 @@
+/* The Sooduskoodid drawer (F1 Task 13; Dim's approved canvas „Haldus-paneel“): the chip left of the drawer's ✕, the code in Jost 28 with the switch „Aktiivne“
+   beside it, the fields one under another with their hints, the value's Protsent | Eurod pills over its field, the scope's pills (and the courses' checklist),
+   the two days side by side, the limit, who, once per person, the note, then „Kasutused“ under a hairline and the delete (or its refusal) last. The pills are
+   PillChoice's, the checkbox rows editor.module.css's `.check`, the lines real 1 px borders (no stripes): colours are the palette's tokens. */
+
+.drawer {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.head {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* the chip on the row of the drawer's ✕, clear of it (as the Kalender drawer) */
+.chipRow {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-right: 56px;
+}
+
+button + .drawer > .head > .chipRow {
+  margin-top: -12px;
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  margin: 0;
+  font: 400 28px/1.15 var(--font-display);
+  overflow-wrap: anywhere;
+}
+
+/* the welcome code's tag beside its name: the list's neutral grey */
+.neutral {
+  border: 0;
+  background: #ebe8e9;
+  color: #5e5559;
+  font-family: var(--font-body);
+}
+
+/* the switch's row is as wide as its label and control (not the drawer) */
+.switch {
+  flex: none;
+}
+
+.switch > label {
+  width: auto;
+  gap: 12px;
+}
+
+p.notice {
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.fields {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* a group's name above its pills (the label of a field is ui.field's) */
+.name {
+  margin: 0;
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.sub {
+  margin: 4px 0 0;
+  font: 400 12px/1.4 var(--font-body);
+  color: #5e5359;
+}
+
+.short {
+  width: 140px;
+  max-width: 100%;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.courses {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  max-height: 260px;
+  margin: 0;
+  padding: 4px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.courses > legend {
+  padding: 0 4px;
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.fixed {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--paper, #f6f4f5);
+  color: #5e5359;
+  font-size: 13px;
+}
+
+.takenLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -12px 0;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.restore {
+  margin: 0;
+}
+
+.uses {
+  display: grid;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.usesTitle {
+  margin: 8px 0 4px;
+  font: 400 18px/1.3 var(--font-display);
+}
+
+.use {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.use:last-child {
+  border-bottom: 0;
+}
+
+.useWho {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* a use that links is a 44 px target (the text is its own line; the padding reaches over the row's) */
+a.useWho {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--fog);
+  text-underline-offset: 3px;
+}
+
+.useCourse {
+  color: #6f6469;
+}
+
+.useSum {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: #ebe8e9;
+  color: #5e5559;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.removeRow {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.removeRow > [data-confirm-panel] {
+  justify-self: stretch;
+}
+
+/* „Koodi on kasutatud — kustutada ei saa. Peata see.“: a note in the canvas's soft panel */
+.refusal {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--paper, #f6f4f5);
+  color: #5e5359;
+  font-size: 13px;
+}
+
+.createRow {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  button + .drawer > .head > .chipRow {
+    margin-top: -10px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+
+  .use {
+    grid-template-columns: 70px minmax(0, 1fr) auto;
+  }
+}

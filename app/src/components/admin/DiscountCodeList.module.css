@@ -1,0 +1,45 @@
+/* The Sooduskoodid list (F1 Task 13; Dim's approved canvas „Haldus-loend“): the shared admin list table (list-table.module.css and ui .table: real 1 px borders on
+   every cell, the row's tint one piece the width of the lines) with six columns: Kood (the name link, and „Tervituskood“ beside the welcome code), Soodustus,
+   Kehtib, Aeg, Kasutatud, Olek. The welcome code's row is tinted all the time (the list's own highlight colour, --row-highlight), the open one (the drawer) too. */
+
+/* the welcome row and the one whose drawer is open: the row's tint, set on the row so that it runs as wide as the lines (list-table.module.css) */
+tr.welcome,
+tr.selected {
+  background: var(--row-highlight);
+}
+
+.codeCell {
+  min-width: 150px;
+}
+
+.codeLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+/* the neutral tag: the list's grey (the status tags' #ebe8e9 / #5e5559) */
+.neutral {
+  border: 0;
+  background: #ebe8e9;
+  color: #5e5559;
+}
+
+.valueCell,
+.usedCell,
+.timeCell {
+  white-space: nowrap;
+}
+
+.scopeCell {
+  min-width: 140px;
+}
+
+@media (max-width: 760px) {
+  .valueCell,
+  .usedCell,
+  .timeCell {
+    white-space: normal;
+  }
+}

@@ -15,6 +15,8 @@ export type Section =
   | "clients"
   | "requests"
   | "practice"
+  // Sooduskoodid (F1 Task 13): the discount codes, in Koolitused after Praktika
+  | "codes"
   | "home"
   | "trainer"
   | "news"
@@ -39,6 +41,7 @@ export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconNam
   { key: "courses", href: "/admin/koolitused", icon: "book" },
   { key: "calendar", href: "/admin/kalender", icon: "calendar" },
   { key: "practice", href: "/admin/praktika", icon: "flower" },
+  { key: "codes", href: "/admin/sooduskoodid", icon: "percent" },
   { key: "home", href: "/admin/avaleht", icon: "home" },
   { key: "trainer", href: "/admin/koolitaja", icon: "user" },
   { key: "news", href: "/admin/uudised", icon: "edit" },
@@ -57,7 +60,7 @@ export type GroupId = "daily" | "courses" | "site" | "admin";
 export const GROUPS: readonly { id: GroupId | null; fold?: true; items: readonly Section[] }[] = [
   { id: null, items: ["overview"] },
   { id: "daily", items: ["registrations", "protocols", "assessment", "requests", "clients", "feedback", "payments"] },
-  { id: "courses", items: ["courses", "calendar", "practice"] },
+  { id: "courses", items: ["courses", "calendar", "practice", "codes"] },
   { id: "site", fold: true, items: ["home", "trainer", "news", "campaign", "newsletter"] },
   { id: "admin", items: ["settings", "testing"] },
 ];
@@ -81,6 +84,7 @@ const BY_SEGMENT: ReadonlyMap<string, Section> = new Map<string, Section>([
   ["opilased", "clients"],
   ["paringud", "requests"],
   ["praktika", "practice"],
+  ["sooduskoodid", "codes"],
   ["avaleht", "home"],
   ["koolitaja", "trainer"],
   ["uudised", "news"],

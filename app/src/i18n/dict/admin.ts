@@ -33,6 +33,15 @@ const fieldErrors = {
   phone: "Sisesta telefoninumber, nt +372 5555 0101.",
   focal: "Vali pildil fookuspunkt.",
   codeFormat: "Kasuta ainult tähti (A–Z), numbreid ja sidekriipsu.",
+  // Sooduskoodid (F1 Task 13, spec §5; Draft): the drawer's checks. `codeTaken` is shown with „Ava see kood“ (discounts.form.openTaken); `amountTooHigh` is R18
+  // (Draft, spec §12), a euro amount above the highest list price in the code's scope
+  codeRequired: "Kirjuta kood.",
+  codeTaken: "Selline kood on juba olemas.",
+  codeUsed: "Kasutatud koodi ei saa muuta: loo uus kood.",
+  amountEuro: "Sisesta summa eurodes.",
+  amountTooHigh: "Soodustus on suurem kui koolituse hind.",
+  endBeforeStart: "Lõpp ei saa olla enne algust.",
+  coursesRequired: "Vali vähemalt üks koolitus.",
   imageRequired: "Lisa pilt.",
   localeHref: "Kirjuta lehe aadress ilma keeleta, nt /koolitused: vene lehel lisatakse /ru ise.",
   iban: "Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.",
@@ -147,6 +156,7 @@ export const adminEt = {
     clients: "Õpilased",
     requests: "Päringud",
     practice: "Praktika",
+    codes: "Sooduskoodid",
     home: "Avaleht",
     trainer: "Koolitaja",
     news: "Uudised",
@@ -2087,6 +2097,96 @@ export const adminEt = {
       yes: "Jah, kustuta",
       // README B3 (strings.md D12, W2): in place of the button once the session has registrations (cancelled ones too, R-b)
       inUse: "Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.",
+    },
+  },
+
+  // The admin page „Sooduskoodid“ (F1 Task 13, spec §4.10 and §5; every text Draft for Dim's wording sheet; the ones marked (Draft, mine) are not in
+  // §5 and are this task's call): the list, the drawer, the delete, the code's uses.
+  discounts: {
+    eyebrow: "Koolitused",
+    title: "Sooduskoodid",
+    lead: "Koodid, mida õpilane saab sisestada registreerimisel ja ostukorvis. Soodustus arvestatakse hinnast kohe maha.",
+    add: "Uus sooduskood",
+    create: "Lisa sooduskood",
+    empty: "Sooduskoode pole veel.",
+    // the welcome code's tag, and its offer while no row exists (spec §4.10, the migration's note: „Lisa tervituskood“; the sentence is Draft, mine)
+    welcomeTag: "Tervituskood",
+    welcomeMissing: "Tervituskoodi veel pole.",
+    addWelcome: "Lisa tervituskood",
+    // the notices over the list after a create or a delete (Draft, mine)
+    added: "Sooduskood lisatud.",
+    deleted: "Sooduskood kustutatud.",
+    // the list's columns (spec §4.10)
+    col: { code: "Kood", value: "Soodustus", scope: "Kehtib", time: "Aeg", used: "Kasutatud", state: "Olek" },
+    scope: { all: "Kõigile koolitustele", ecourse: "Kõigile e-koolitustele", contact: "Kõigile kontaktkoolitustele", courses: "Valitud koolitustele" },
+    scopeCourses: "Valitud koolitustele: {n}",
+    unlimited: "Tähtajatu",
+    // a code with one day only (Draft, mine): the list's „Aeg“ says „alates 01.12.2026“ / „kuni 07.12.2026“; both days: „01.12.2026–07.12.2026“
+    from: "alates {date}",
+    until: "kuni {date}",
+    state: { active: "Aktiivne", paused: "Peatatud", upcoming: "Tulekul", ended: "Lõppenud", full: "Täis" },
+    // the row link's name for a screen reader (Draft, mine)
+    edit: "Ava sooduskood {code}",
+    drawer: {
+      newLabel: "Uus sooduskood",
+      newWelcomeLabel: "Uus tervituskood",
+      editLabel: "Sooduskood {code}",
+      notFound: "Seda sooduskoodi ei leitud.",
+      // SaveStatus „gone“ and the leave reason of a new one („Sooduskoodi pole veel lisatud.“)
+      thing: "sooduskoodi",
+      newThing: "Sooduskoodi",
+    },
+    form: {
+      code: "Kood",
+      codeHint: "Tähed A–Z, numbrid ja sidekriips, kuni 30 märki. Õpilane võib kirjutada ka väikeste tähtedega.",
+      codeUsedHint: "Kasutatud koodi ei saa muuta: loo uus kood.",
+      codeWelcomeHint: "Juba saadetud tervituskirjades on vana kood.",
+      // R20 (Draft): under „Selline kood on juba olemas.“, a link to the code that has the text
+      openTaken: "Ava see kood",
+      value: "Soodustus",
+      percent: "Protsent",
+      euro: "Eurod",
+      valuePercent: "Soodustus (%)",
+      valueEuro: "Soodustus (€)",
+      euroHint: "Tasuda jääb alati vähemalt 1 €.",
+      valueChanged: "Muudatus kehtib uutele registreeringutele ja ostudele.",
+      scope: "Kehtib",
+      // the checklist of „Valitud koolitustele“ (Draft, mine)
+      courses: "Valitud koolitused",
+      noCourses: "Koolitusi pole veel.",
+      startsOn: "Algab",
+      endsOn: "Lõpeb",
+      dates: "Tühjaks jättes kehtib kohe ja tähtajatult. Lõpu päev on kaasa arvatud.",
+      maxUses: "Kasutuskordi kokku",
+      maxUsesHint: "Tühjaks jättes piiranguta. Kasutuseks ei loe tühistatud registreeringut ega üle ööpäeva vana maksmata registreeringut.",
+      audience: "Kellele",
+      audiences: { all: "Kõigile", first: "Ainult esimesel koolitusel", returning: "Ainult varasematele õpilastele" },
+      oncePerPerson: "Üks kord inimese kohta",
+      oncePerPersonHint: "Inimene on tema e-posti aadress.",
+      days: "Kehtib pärast liitumist (päeva)",
+      daysHint: "Tervituskiri ütleb selle õpilasele. Tühjaks jättes tähtajatu.",
+      welcomeRules: "Tervituskood kehtib uudiskirjaga liitunud aadressil, esimesel koolitusel ja üks kord.",
+      note: "Märkus",
+      noteHint: "Näeb ainult haldus.",
+      active: "Aktiivne",
+    },
+    // the UndoBar of the switch turned off
+    paused: "Sooduskood peatatud.",
+    remove: {
+      button: "Kustuta sooduskood",
+      question: "Kas kustutan sooduskoodi {code}?",
+      yes: "Jah, kustuta",
+      // in place of the button once the code has a use (spec §4.10), and R19's own line when none of its uses counts (Draft)
+      used: "Koodi on kasutatud — kustutada ei saa. Peata see.",
+      usedNoCount: "Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, seega ei saa seda kustutada. Peata see.",
+    },
+    // „Kasutused ({n})“ (spec §4.10) with R20's „Soodustust kokku: {amount}“ (Draft); the marks of the uses that do not count (domain/discount-codes.ts useMark;
+    // „kustutatud“ — the registration or the payment of the use is gone — is Draft, mine) and Maria's own („lisas haldus“)
+    uses: {
+      title: "Kasutused ({n})",
+      total: "Soodustust kokku: {amount}",
+      none: "Kasutusi veel pole.",
+      marks: { cancelled: "tühistatud", unpaid: "maksmata", pending: "makse pooleli", failed: "makse ebaõnnestus", refunded: "tagastatud", gone: "kustutatud", admin: "lisas haldus" },
     },
   },
 

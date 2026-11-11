@@ -21,6 +21,9 @@ const BROWSER_FILES = [
   "src/domain/catalogue.ts",
   // F1, Task 1: the discount rules the forms share
   "src/domain/discount-codes.ts",
+  // F1, Task 13: the Sooduskoodid drawer's field rules, shared with the server
+  "src/domain/discount-code-fields.ts",
+  "src/components/admin/DiscountCodeDrawer.tsx",
   // Task 4
   "src/components/admin/ProtocolStagesEditor.tsx",
   // Task 5

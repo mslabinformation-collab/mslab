@@ -97,7 +97,7 @@ describe("the sidebar: groups", () => {
     await show();
     expect(labelsIn(aside())).toEqual(["Igapäevane töö", "Koolitused", "Koduleht ja uudiskiri", "Haldus"]);
     expect(itemsOf(aside(), "daily")).toEqual(["registrations", "protocols", "assessment", "requests", "clients", "feedback", "payments"]);
-    expect(itemsOf(aside(), "courses")).toEqual(["courses", "calendar", "practice"]);
+    expect(itemsOf(aside(), "courses")).toEqual(["courses", "calendar", "practice", "codes"]);
     expect(itemsOf(aside(), "site")).toEqual(["home", "trainer", "news", "campaign", "newsletter"]);
     expect(itemsOf(aside(), "admin")).toEqual(["settings", "testing"]);
   });

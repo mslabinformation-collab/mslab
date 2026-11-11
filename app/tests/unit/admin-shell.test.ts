@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { menuOf } from "@/components/admin/menu";
 import { Shell } from "@/components/admin/Shell";
+import { activeSection, GROUPS, sectionHref } from "@/components/admin/sections";
 import { emptyCounts } from "@/db/queries/admin";
 
 // The admin shell's first paint (final review, I1): the menu's badge counts are one database read in the layout above every admin page, and a
@@ -68,6 +69,22 @@ describe("Shell", () => {
     const logged = JSON.stringify(errors.mock.calls);
     expect(logged).not.toContain(EMAIL);
     expect(logged).not.toContain("mslab");
+  });
+});
+
+describe("the menu's order", () => {
+  it("Sooduskoodid sits after Praktika in Koolitused", async () => {
+    mocks.getAdminCounts.mockResolvedValue(emptyCounts());
+    const html = await paint();
+    const at = (href: string) => html.indexOf(`href="${href}"`);
+    expect(at("/admin/praktika")).toBeGreaterThan(-1);
+    expect(at("/admin/sooduskoodid")).toBeGreaterThan(at("/admin/praktika"));
+    // (the group „Koolitused“ ends there: the next entry is Avaleht's, a group of its own)
+    expect(at("/admin/avaleht")).toBeGreaterThan(at("/admin/sooduskoodid"));
+    expect(GROUPS.find((g) => g.id === "courses")!.items).toEqual(["courses", "calendar", "practice", "codes"]);
+    expect(activeSection("/admin/sooduskoodid", new URLSearchParams())).toBe("codes");
+    expect(sectionHref("codes")).toBe("/admin/sooduskoodid");
+    expect(html).toContain("Sooduskoodid");
   });
 });
 

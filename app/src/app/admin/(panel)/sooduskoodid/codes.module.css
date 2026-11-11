@@ -1,0 +1,11 @@
+/* Sooduskoodid: the offer to make the welcome code while none exists (a notice with its button beside the words; one line where it fits) */
+.offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.offer p {
+  margin: 0;
+}
