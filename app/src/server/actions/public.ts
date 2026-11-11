@@ -3,6 +3,8 @@
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { getDb } from "@/db/client";
+import type { CheckAnswer } from "@/domain/discount-codes";
+import { checkDiscount } from "../discount-check";
 import { serverEnv } from "../env";
 import { serverKv } from "../kv";
 import { logFailure } from "../log";
@@ -30,31 +32,43 @@ import {
 // Result: { ok: true, paymentUrl? } | { ok: false; errors: Record<field, code> } — codes in ../forms.ts; form "rate" when rate
 // limited, form "server" when storage failed.
 
+/** The deps of a form's submission: the database, the environment with its KV, the visitor, and what runs after the answer. */
+async function publicDeps(form: string): Promise<Deps> {
+  const env = { ...serverEnv(), KV: serverKv() };
+  const h = await headers();
+  return {
+    db: getDb(),
+    env,
+    // Without x-forwarded-for (never on Vercel) `next dev` uses one local bucket.
+    ip: clientIp(h) ?? (process.env.NODE_ENV === "development" ? "local" : null),
+    siteUrl: linkBase(requestOrigin(h), env.SITE_URL),
+    now: new Date(),
+    // Notifications run after the response (next/server after()) and never fail or slow the form.
+    later: (task) => after(() => task().catch((e) => logFailure(`[forms] ${form}: notification failed`, e))),
+    // a registration or waitlist entry: the calendar and the course page show the session's seats. They are
+    // revalidated before the answer, so the very next request shows the new count (server/public-cache.ts).
+    changed: revalidatePublic,
+    // online payments (phase 2b): null without the keys, and the forms are today's
+    montonio: paymentProvider(),
+  };
+}
+
 async function run(form: FormName, handler: (deps: Deps, formData: FormData) => Promise<ActionResult>, formData: FormData): Promise<ActionResult> {
-  return runSubmission(
-    form,
-    async (): Promise<Deps> => {
-      const env = { ...serverEnv(), KV: serverKv() };
-      const h = await headers();
-      return {
-        db: getDb(),
-        env,
-        // Without x-forwarded-for (never on Vercel) `next dev` uses one local bucket.
-        ip: clientIp(h) ?? (process.env.NODE_ENV === "development" ? "local" : null),
-        siteUrl: linkBase(requestOrigin(h), env.SITE_URL),
-        now: new Date(),
-        // Notifications run after the response (next/server after()) and never fail or slow the form.
-        later: (task) => after(() => task().catch((e) => logFailure(`[forms] ${form}: notification failed`, e))),
-        // a registration or waitlist entry: the calendar and the course page show the session's seats. They are
-        // revalidated before the answer, so the very next request shows the new count (server/public-cache.ts).
-        changed: revalidatePublic,
-        // online payments (phase 2b): null without the keys, and the forms are today's
-        montonio: paymentProvider(),
-      };
-    },
-    handler,
-    formData,
-  );
+  return runSubmission(form, () => publicDeps(form), handler, formData);
+}
+
+/**
+ * The live check of a typed discount code (the „Rakenda“ button of the registration form and the cart). Fields: course (slug), code. It answers
+ * what the code would take off the course now, or why not (domain CheckAnswer); it reads no e-mail. Any failure answers "server"; the log
+ * line carries no code text.
+ */
+export async function checkDiscountCode(formData: FormData): Promise<CheckAnswer> {
+  try {
+    return await checkDiscount(await publicDeps("discount-check"), formData);
+  } catch (e) {
+    logFailure("[forms] discount check failed", e);
+    return { ok: false, error: "server" };
+  }
 }
 
 /** Home and contact page message to Maria. Fields: name, email, message, locale, website (honeypot). */

@@ -119,7 +119,7 @@ type Stored = {
 };
 
 /** A rate limit that fails open: when KV is unavailable (or over its daily write quota) the submission goes through. */
-async function allowed(env: Env, key: string, limit: number, windowSec: number): Promise<boolean> {
+export async function allowed(env: Env, key: string, limit: number, windowSec: number): Promise<boolean> {
   try {
     return await rateLimit(env.KV, key, limit, windowSec);
   } catch (e) {

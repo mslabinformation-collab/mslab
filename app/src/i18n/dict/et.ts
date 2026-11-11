@@ -1092,8 +1092,31 @@ export const et = {
 
   // Discount codes (F1): the words the account card and the forms share. Draft (the design's wording).
   discount: {
+    // the registration form and the cart: the opener, the field, the buttons (Draft)
+    open: "Mul on sooduskood",
+    label: "Sooduskood",
+    apply: "Rakenda",
+    remove: "Eemalda",
     // a card's line: the code of the registration and the euros it took off the list price
     applied: "Sooduskood {code}: −{amount}",
+    // the one total line of the form and the cart
+    total: "Kokku {total}",
+    // under the field: what the code asks of the person
+    hintWelcome: "Kehtib uudiskirjaga liitunud aadressil ja ainult esimesel koolitusel.",
+    hintFirst: "Kehtib ainult esimesel koolitusel.",
+    hintReturning: "Kehtib MS LABi varasematele õpilastele.",
+    // the check's refusals (rate and server reuse forms.errorTooMany and the form's generic error); `person` covers every person rule
+    errors: {
+      empty: "Kirjuta sooduskood.",
+      unknown: "Sellist sooduskoodi ei ole.",
+      paused: "See sooduskood ei kehti enam.",
+      ended: "See sooduskood ei kehti enam.",
+      notYet: "See sooduskood kehtib alates {date}.",
+      usedUp: "Selle sooduskoodi kasutuskorrad on otsas.",
+      scope: "See sooduskood ei kehti sellele koolitusele.",
+      person: "Seda sooduskoodi ei saa selle e-posti aadressiga kasutada.",
+      changed: "Sooduskood muutus vahepeal. Vaata uus hind üle ja proovi uuesti.",
+    },
   },
 
   // The coming-soon page (app/tulekul/[locale]): all a visitor sees until the launch (SITE_GATE, lib/site-gate.ts).
