@@ -4,7 +4,8 @@ import { certificateFileName, formatCertificateNumber, readCertificateSettings, 
 import { clientEmail, takeTerms } from "./account";
 import { adminReady, seadedAutosave, seadedStatus, signInAsAdmin, type CreatedRows } from "./admin-login";
 import {
-  completedCourse, highestIssuedSeq, insertCertificate, NUMBER_LOCK, storedCertificate, storedCertificateSetting, storedCourseCertificate, type StoredCertificate,
+  completedCourse, designIdByName, highestIssuedSeq, insertCertificate, NUMBER_LOCK, removeDesigns, storedCertificate, storedCertificateDesign, storedCertificateSetting,
+  storedCourseCertificate, storedCoursePick, storedDesign, type StoredCertificate,
 } from "./certificate";
 import type { CompletionCourse } from "./completion";
 import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
@@ -24,6 +25,8 @@ import { expect, submitsForms, test } from "./test";
 // database's: see the lock in certificate.ts. The locks of the issue itself on real Postgres are certificate-race.spec.ts.
 
 const made = new Set<string>();
+/** The certificate designs a test added in Seaded („Lisa kujundus“): deleted by id after it, once its courses are gone. */
+const designsMade = new Set<number>();
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
 let restoreTerms: (() => Promise<void>) | null = null;
 
@@ -47,6 +50,8 @@ test.afterEach(async () => {
   try {
     for (const email of made) await removeClientRows(email);
     made.clear();
+    await removeDesigns([...designsMade]);
+    designsMade.clear();
     await removeAdminRows(created).catch(() => {});
     created.tokens.clear();
     created.sessions.clear();
@@ -285,6 +290,144 @@ test("§6 Seaded → Tunnistus: the trainer's name is the signature (no picture 
   expect((await storedCertificateSetting())?.trainerName ?? null).toBe(before?.trainerName ?? null);
 });
 
+/** A design row's autosave (POST /api/admin/tunnistuse-kujundus/<id>): runs `act` and waits for the save it makes. */
+async function designSave(page: Page, id: number, act: () => Promise<unknown>) {
+  const answer = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === `/api/admin/tunnistuse-kujundus/${id}`, { timeout: 30_000 });
+  await act();
+  return answer;
+}
+
+test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a design, names it, darkens it, draws its sample, deletes it; „Hele“'s sample draws its photo", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "Seaded's designs are the whole site's: the desktop project looks at them, once");
+  info.setTimeout(150_000);
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto("/admin/seaded");
+  await adminReady(page);
+  const card = page.locator("[data-certificate-designs]");
+  await expect(card.locator("h2")).toHaveText("Kujundused");
+  // the migration's two, the first the default
+  const rows = card.locator("[data-design-row]");
+  await expect(rows.first().locator("[data-design-name]")).toHaveValue("Hele");
+  await expect(rows.first().locator("[data-design-first]")).toHaveText("Koolitus, millel kujundust valitud pole, kasutab seda kujundust.");
+  expect(await card.locator("[data-design-name]").evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))).toEqual(expect.arrayContaining(["Hele", "Tume"]));
+
+  // „Lisa kujundus“: a light design without a photo, last, its name field focused
+  const add = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/admin/tunnistuse-kujundus");
+  await card.locator("[data-design-add]").click();
+  const answer = await add;
+  expect(answer.status()).toBe(201);
+  const { id } = (await answer.json()) as { id: number };
+  designsMade.add(id);
+  const row = card.locator(`[data-design-row="${id}"]`);
+  await expect(row.locator("[data-design-name]")).toBeFocused({ timeout: 30_000 });
+  await expect(row.locator("[data-design-name]")).toHaveValue(/^Uus kujundus/);
+  await expect(row.locator('[data-design-tone="light"]')).toBeChecked();
+  await expect(row.locator("[data-no-image]")).toBeVisible();
+  await expect(row.locator('input[type="file"]')).toHaveAttribute("accept", "image/jpeg");
+  await expect(row).toContainText("JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.");
+
+  // named (typed: saved when left) and darkened (saved at once)
+  const name = `E2E kujundus ${runName(info)}`.slice(0, 40);
+  const named = await designSave(page, id, async () => {
+    await row.locator("[data-design-name]").fill(name);
+    await row.locator("[data-design-name]").press("Tab");
+  });
+  expect(named.status()).toBe(200);
+  const darkened = await designSave(page, id, () => row.locator('[data-design-tone="dark"]').check());
+  expect(darkened.status()).toBe(200);
+  await expect.poll(() => storedDesign(id)).toMatchObject({ name, tone: "dark", backgroundKey: "" });
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
+  // another design's name is refused in the field, nothing stored
+  const taken = await designSave(page, id, async () => {
+    await row.locator("[data-design-name]").fill("Tume");
+    await row.locator("[data-design-name]").press("Tab");
+  });
+  expect(taken.status()).toBe(400);
+  await expect(row).toContainText("Sellise nimega kujundus on juba olemas.");
+  expect((await storedDesign(id))?.name).toBe(name);
+  await designSave(page, id, async () => {
+    await row.locator("[data-design-name]").fill(name);
+    await row.locator("[data-design-name]").press("Tab");
+  });
+
+  // its sample: the card's values in this design, a PDF; „Hele“'s draws its photo (the test JPEG on this machine: a DCT image in the PDF)
+  const sample = row.locator("[data-design-sample]");
+  await expect(sample).toHaveText("Vaata näidist");
+  await expect(sample).toHaveAttribute("href", new RegExp(`&design=${id}$`));
+  const pdf = await page.request.get((await sample.getAttribute("href"))!);
+  expect([pdf.status(), pdf.headers()["content-type"], (await pdf.body()).subarray(0, 5).toString("latin1")]).toEqual([200, "application/pdf", "%PDF-"]);
+  expect((await pdf.body()).includes("/DCTDecode")).toBe(false); // no photo
+  const light = await page.request.get((await rows.first().locator("[data-design-sample]").getAttribute("href"))!);
+  expect(light.status()).toBe(200);
+  if ((await storedDesign((await designIdByName("Hele"))!))?.backgroundKey) expect((await light.body()).includes("/DCTDecode")).toBe(true);
+
+  // „Kustuta“: asked first, then gone (no course uses it)
+  await row.locator("[data-design-remove]").click();
+  const panel = row.locator("[data-confirm-panel]");
+  await expect(panel).toContainText(`Kas kustutan kujunduse „${name}“?`);
+  await expect(panel).toContainText("Väljastatud tunnistused jäävad selliseks, nagu need väljastati.");
+  const removed = page.waitForResponse((r) => r.request().method() === "DELETE" && new URL(r.url()).pathname === `/api/admin/tunnistuse-kujundus/${id}`);
+  await panel.getByRole("button", { name: "Jah, kustuta" }).click();
+  expect((await removed).status()).toBe(200);
+  await expect(row).toHaveCount(0, { timeout: 30_000 });
+  await expect(card.locator("[data-design-add]")).toBeFocused();
+  expect(await storedDesign(id)).toBeNull();
+  designsMade.delete(id);
+});
+
+test("certificate designs: the course card's „Kujundus“ picks „Tume“; the certificate issued freezes it, keeps it when the course picks another, and downloads", async ({ page, context, visitorIp, browser }, info) => {
+  info.setTimeout(240_000 + LOCK_WAIT_MS); // the number series may be held by another test (and holdTerms adds the terms' wait)
+  const dark = await designIdByName("Tume");
+  const light = await designIdByName("Hele");
+  test.skip(dark === null || light === null, "the migration's „Hele“ and „Tume“ are renamed in this database");
+  const s = await student("design", info);
+
+  // Maria: „Tunnistus“ → „Kujundus“ shows the first design while none is picked; „Tume“ picked saves at once (an unpublished course: straight to it)
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto(`/admin/koolitused/${s.courseId}`);
+  await adminReady(page);
+  const card = page.locator("[data-certificate-card]");
+  const select = card.locator('select[data-field="certificateDesignId"]');
+  await expect(card.locator("[data-certificate-design] label")).toHaveText("Kujundus");
+  await expect(card.locator("[data-certificate-design]")).toContainText("Kujundusi muudad: Seaded → Tunnistus.");
+  expect(await storedCoursePick(s.courseId)).toBeNull();
+  await expect(select).toHaveValue(String(light));
+  await select.selectOption({ label: "Tume" });
+  await expect.poll(() => storedCoursePick(s.courseId)).toBe(dark);
+  await expect(page.locator("[data-save-status]")).toHaveAttribute("data-save-kind", "saved");
+
+  // the student confirms her name: the certificate keeps „Tume“'s look
+  await holdTerms(info);
+  const her = await studentPage(browser, s.email, visitorIp);
+  await her.page.goto(coursePage(s));
+  const row = her.page.locator("[data-certificate]");
+  let stored!: StoredCertificate;
+  const unlock = await holdLocalLock(NUMBER_LOCK);
+  try {
+    await row.locator("[data-certificate-issue]").click();
+    await expect(row.locator("[data-certificate-number]")).toBeVisible({ timeout: 30_000 });
+    stored = (await storedCertificate(s.accessId))!;
+  } finally {
+    await unlock();
+  }
+  expect(await storedCertificateDesign(s.accessId)).toEqual({ tone: "dark", backgroundKey: (await storedDesign(dark!))!.backgroundKey });
+  const [download] = await Promise.all([her.page.waitForEvent("download"), row.locator("[data-certificate-download]").click()]);
+  expect(pdfHead(readFileSync(String(await download.path())))).toBe("%PDF-");
+  await releaseTerms();
+
+  // the course picks „Hele“ afterwards: the certificate issued keeps its own copy, and still downloads (hers and Maria's)
+  await page.reload();
+  await adminReady(page);
+  await select.selectOption({ label: "Hele" });
+  await expect.poll(() => storedCoursePick(s.courseId)).toBe(light);
+  expect(await storedCertificateDesign(s.accessId)).toMatchObject({ tone: "dark" });
+  const hers = await her.page.request.get(`/api/konto/tunnistus/${stored.id}`);
+  expect([hers.status(), pdfHead(await hers.body())]).toEqual([200, "%PDF-"]);
+  const maria = await page.request.get(`/api/admin/tunnistus/${stored.id}`);
+  expect([maria.status(), pdfHead(await maria.body())]).toEqual([200, "%PDF-"]);
+  await her.close();
+});
+
 test("the student's row, Seaded's card, the drawer's line and the register at 390, 834, 1194 and 1440 px — no sideways scroll, every target 44 px", async ({ page, context, visitorIp, browser, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   await holdTerms(info); // the e-course page is two of the screens
@@ -299,6 +442,8 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
     { page: herA.page, url: coursePage(a), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-name]", "[data-certificate-issue]"] },
     { page: herB.page, url: coursePage(b), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-number]", "[data-certificate-download]"] },
     { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-next-seq]", "[data-cert-trainer]"] },
+    // „Kujundused“ (certificate designs): its rows' fields, the photo's upload and „Lisa kujundus“
+    { page, url: "/admin/seaded", scope: "[data-certificate-designs]", admin: true, shows: ["[data-design-name]", "[data-design-tone]", "[data-design-sample]", "[data-design-add]"] },
     { page, url: `/admin/opilased?id=${b.clientId}`, scope: `[data-access="${b.courseId}"]`, admin: true, shows: ["[data-access-certificate]", "[data-reissue]"] },
     { page, url: "/admin/tunnistused", scope: "[data-certificate-register]", admin: true, shows: ["[data-tab-pills]", `[data-register-row="${cert.id}"]`] },
   ];
