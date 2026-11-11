@@ -218,6 +218,8 @@ export type PaymentNotice = {
   restCents?: number;
   /** An e-course that was opened: the last moment of her access. */
   until?: Date | null;
+  /** F1: the code the payment was made with and what it took off (the payment row's frozen discount); left out or null: none. */
+  discount?: { code: string; cents: number } | null;
 };
 
 /**
@@ -247,6 +249,7 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
       [
         ["Makse", PAYMENT_KIND[p.part ?? p.kind]],
         ["Summa", amount],
+        ...(p.discount ? ([["Sooduskood", `${p.discount.code} (−${euro(p.discount.cents)})`]] as Row[]) : []),
         ["Koolitus", ecourse ? p.course : what],
         ["Maksja", p.name],
         ["E-post", p.email],

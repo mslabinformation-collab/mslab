@@ -41,6 +41,9 @@ export type NewPayment = {
    * out: none ('', as every row before the methods), which reads as the bank.
    */
   method?: string;
+  /** F1: the discount frozen with the payment (its `amountCents` is already the total, list − discount) and the code's spelling; left out: none (0, ''). */
+  discountCents?: number;
+  discountCode?: string;
 };
 
 /** A method (a column, or an aliased one) that is the järelmaks, by domain/financing.ts isHirePurchase's rule (case and spaces aside). */

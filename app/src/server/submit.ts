@@ -8,7 +8,7 @@ import type { Contract, Course, CourseSession, Registration } from "@/db/schema"
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { contractCourseName, filledContract } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { listCentsOf, normalizeCode, registrationTotal } from "@/domain/discount-codes";
+import { listCentsOf, normalizeCode, registrationTotal, totalWith } from "@/domain/discount-codes";
 import { attemptWindowMs } from "@/domain/financing";
 import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
@@ -410,7 +410,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
     // the way the payment starts (instalments, §4): „Järelmaks (Inbank)“ is Montonio's hirePurchase, the other choices the bank link
     const method = data.paymentChoice === "financing" ? "hirePurchase" : "paymentInitiation";
-    // One transaction under the session's lock (the first lock of the order course_sessions → registrations → payments, db/queries/seats.ts):
+    // One transaction under the session's lock (the first lock of the order course_sessions → discount_codes → registrations → payments, db/queries/seats.ts, which has the note on the code's row lock):
     // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock. With online
     // payments the registration is stored already holding its seat (its attempt's window: 30 minutes, 60 for a järelmaks): whoever is queued on
     // the lock behind it then counts that seat, and "full" is told to the one who really finds none, instead of a second registration being
@@ -616,7 +616,7 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * Without payments nothing is read for the contract at all: form "unavailable", as before.
  */
 export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
-  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms, contractVersion, method }) => {
+  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms, contractVersion, method, discountCode, discountCents }) => {
     void _terms;
     const [course] = await deps.db
       .select()
@@ -630,7 +630,12 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
       console.info("[forms] ecourse: the contract's text changed since the cart was loaded: nothing started");
       return { result: CONTRACT_CHANGED };
     }
-    const shown = filledContract(template, { name, email, course: contractCourseName(course.title, template.locale), session: null, priceCents: course.price, choice: null, locale: template.locale });
+    // A code (F1): the contract shows the price she pays (list − the discount the cart showed); the start checks the code under its lock and
+    // refuses `changed` when the discount is not that one, which starts nothing (so a wrong figure here never reaches a stored row).
+    const typed = normalizeCode(discountCode ?? "");
+    const shownCents = discountCents === undefined ? null : Number(discountCents);
+    const discount = typed === "" ? null : { typed, shownCents };
+    const shown = filledContract(template, { name, email, course: contractCourseName(course.title, template.locale), session: null, priceCents: discount ? totalWith(course.price, shownCents ?? 0) : course.price, choice: null, locale: template.locale });
     const started = await startEcoursePayment(
       { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio },
       {
@@ -642,8 +647,10 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
         newsletter: wantsNewsletter,
         contract: { version: template.version, locale: template.locale, ...shown, acceptedAt: deps.now.toISOString() },
         method,
+        discount,
       },
     );
+    if (started.kind === "discount") return { result: fail({ discountCode: started.error }) };
     if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
     // a järelmaks not allowed for this price now (instalments, §4): the cart says so at its choice, and the bank stays
     if (started.kind === "financing") return { result: fail({ method: started.reason === "off" ? "financingOff" : "financing" }) };

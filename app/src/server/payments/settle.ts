@@ -713,7 +713,7 @@ async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
 async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until" | "part">): Promise<void> {
   const ctx = await contextOf(deps, p.id);
   const s = paymentSummary(
-    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
+    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, discount: p.discountCents > 0 ? { code: p.discountCode, cents: p.discountCents } : null, ...outcome },
     adminUrl(deps.siteUrl),
   );
   const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });

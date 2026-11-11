@@ -35,6 +35,14 @@ describe("Maria's notice of a payment", () => {
     expect(s.text).toContain("Admin: https://mslab.example/admin");
   });
 
+  test("Uus makse prints Sooduskood after Summa, only when the payment had a code", () => {
+    const ecourse = { ...NOTICE, kind: "ecourse" as const, startsAt: null, outcome: "opened" as const, amountCents: 17100 };
+    const text = paymentSummary({ ...ecourse, discount: { code: "PROOV-1", cents: 1900 } }, ADMIN).text;
+    expect(text).toContain("Summa: 171 €\nSooduskood: PROOV-1 (−19 €)\n");
+    expect(paymentSummary({ ...ecourse, discount: null }, ADMIN).text).not.toContain("Sooduskood");
+    expect(paymentSummary(ecourse, ADMIN).text).not.toContain("Sooduskood");
+  });
+
   test("„Makse“ is what it paid: a whole sum is „Kogu summa“ (its invoice's kind, full test 08.11); without one, the kind's word", () => {
     expect(paymentSummary({ ...NOTICE, part: "full" }, ADMIN).text).toContain("Makse: Kogu summa");
     expect(paymentSummary({ ...NOTICE, part: "prepayment" }, ADMIN).text).toContain("Makse: Ettemaks");

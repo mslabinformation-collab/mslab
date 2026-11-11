@@ -76,7 +76,8 @@ export type RegistrationInput = Omit<z.output<typeof registrationSchema>, "terms
  */
 export const discountFields = {
   discountCode: z.string().max(60).optional(),
-  discountCents: z.string().regex(/^\d{1,7}$/).optional(),
+  // an empty hidden field is none (a page with no code checked sends ""), never `changed`
+  discountCents: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^\d{1,7}$/).optional()),
 };
 
 /** The group registration form (ContactRegister): the course comes as its slug and is resolved in the database. */
@@ -122,6 +123,7 @@ export const ecoursePurchaseSchema = z.object({
   locale,
   contractVersion,
   method: z.enum(["paymentInitiation", "hirePurchase"]).default("paymentInitiation"),
+  ...discountFields,
 });
 
 export const practiceSchema = z.object({
@@ -217,13 +219,15 @@ export const parsePurchaseInterest = (fd: FormData) =>
 /**
  * The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi sooduspakkumisi ja uudiskirju saada"),
  * contractVersion (the e-course contract's version the cart showed, contracts R6), method (the way to pay, instalments §4: a value the cart
- * cannot send is form "invalid"), locale.
+ * cannot send is form "invalid"), discountCode and discountCents (as the group registration's, F1; both optional), locale.
  */
 export const parseEcoursePurchase = (fd: FormData) =>
-  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale", "contractVersion", "method"), wantsNewsletter: "newsletter" }, {
+  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale", "contractVersion", "method", "discountCode", "discountCents"), wantsNewsletter: "newsletter" }, {
     ...slugPlacement,
     ...versionPlacement,
     method: ["form", "invalid"],
+    discountCode: ["discountCode", "unknown"],
+    discountCents: ["discountCode", "changed"],
   });
 
 /** Practice request. Fields: package, name, email, phone, city (Pärnu or Tallinn), course (optional), times, locale. */

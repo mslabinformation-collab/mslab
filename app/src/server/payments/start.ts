@@ -8,8 +8,9 @@ import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
 import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingRefusal, isHirePurchase, readFinancingSettings, type BillingAddress, type FinancingRefusal } from "@/domain/financing";
 import { payableDue } from "@/domain/payments";
-import { registrationTotal } from "@/domain/discount-codes";
+import { discountCents, registrationTotal, totalWith, type SubmitCodeError } from "@/domain/discount-codes";
 import { holdUntil } from "@/domain/sessions";
+import { findCode, insertRedemption, redeem } from "../discount-codes";
 import { unpaidInvoiceOf } from "../invoices";
 import { logNote } from "../log";
 import { MontonioError, type Montonio, type OrderMethod } from "./montonio";
@@ -116,7 +117,8 @@ export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl
  * Montonio's 30 minutes for the bank, the järelmaks' 60; `updated_at` is the row's insert or its last re-send: nothing else touches an open
  * row's, its replacement neither). null: there is none, and the start is a new attempt — also while an attempt of the other method is open
  * (instalments, §4). A replaced row found here is the open attempt again (startRegistrationPayment restores it): one Inbank application per
- * registration, however often she switches between the loan and the bank inside its window.
+ * registration, however often she switches between the loan and the bank inside its window. An e-course's attempt is also of the same code
+ * (`code`, F1: the empty string for none): the same amount under another code, or with none, is another purchase.
  */
 async function liveAttempt(
   q: Q,
@@ -124,6 +126,7 @@ async function liveAttempt(
   amountCents: number,
   method: OrderMethod,
   now: Date,
+  code = "",
 ): Promise<Payment | null> {
   const which =
     "registrationId" in of
@@ -133,7 +136,7 @@ async function liveAttempt(
           of.invoiceId === null ? isNull(payments.invoiceId) : eq(payments.invoiceId, of.invoiceId),
           inArray(payments.status, OPEN_ORDER),
         )
-      : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email), eq(payments.status, "pending"));
+      : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email), eq(payments.status, "pending"), eq(payments.discountCode, code));
   const sameMethod = method === "hirePurchase" ? hirePurchaseRow : not(hirePurchaseRow);
   const [row] = await q
     .select()
@@ -329,8 +332,11 @@ export async function lockEcoursePurchase(tx: Tx, courseId: number, email: strin
  */
 export const ECOURSE_REPAY_WINDOW_MS = 30 * 60_000;
 
-/** What an e-course start can answer: StartResult's, and `alreadyPaid` (the address paid this course in the last ECOURSE_REPAY_WINDOW_MS). */
-export type EcourseStartResult = StartResult | { kind: "alreadyPaid" };
+/**
+ * What an e-course start can answer: StartResult's, `alreadyPaid` (the address paid this course in the last ECOURSE_REPAY_WINDOW_MS), and
+ * `discount` (F1: the typed code was refused, nothing started).
+ */
+export type EcourseStartResult = StartResult | { kind: "alreadyPaid" } | { kind: "discount"; error: SubmitCodeError };
 
 /**
  * Did this address pay this e-course in the last ECOURSE_REPAY_WINDOW_MS? A `paid` row counts from its paid_at, a `held` one (the money is at
@@ -367,40 +373,80 @@ async function paidRecently(q: Q, courseId: number, email: string, now: Date): P
  * `method` (instalments, §4): the bank link by default; "hirePurchase" (Järelmaks (Inbank)) only while financingRefusedNow allows it for this
  * price, else `financing` (no row, no order), after the alreadyPaid check. Its re-send window is the järelmaks' 60 minutes, a press of the
  * other method is another purchase (liveAttempt), and its order carries her name and e-mail for Inbank's form (the cart asks for no phone, D8).
+ * `discount` (F1): the code she typed and the discount the cart showed for it. `amountCents` is always the list price; the row's amount is the
+ * total (list − discount, domain/discount-codes.ts totalWith), and the row freezes the discount and the code. The order under the purchase's
+ * lock: paidRecently; the code (a code that is refused, `discount`, starts nothing); the total; the järelmaks check on the total; the open
+ * attempt of that total, method and code; and a new attempt inserts its row and its use (`cart`) in this transaction. A re-send of the open
+ * attempt (A7) is the same use: when the code still gives the discount the open attempt has and the cart showed it, nothing is redeemed again
+ * — so the last use of a code under maxUses 1 is not refused to the very person who holds it.
  */
 export async function startEcoursePayment(
   deps: StartDeps,
-  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean; contract?: ContractSnapshot | null; method?: OrderMethod },
+  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean; contract?: ContractSnapshot | null; method?: OrderMethod; discount?: { typed: string; shownCents: number | null } | null },
 ): Promise<EcourseStartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
   const method: OrderMethod = input.method ?? "paymentInitiation";
   const email = normalizeEmail(input.email);
-  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true } | { financing: FinancingRefusal }> => {
+  // a re-send: its window starts again now, and what she typed this time replaces what she typed before (the contract this press showed too)
+  const refreshed = async (tx: Tx, live: Payment): Promise<Payment> => {
+    const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, updatedAt: deps.now };
+    await tx.update(payments).set(fresh).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
+    return { ...live, ...fresh };
+  };
+  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true } | { financing: FinancingRefusal } | { discount: SubmitCodeError }> => {
     await lockEcoursePurchase(tx, input.courseId, email);
     if (await paidRecently(tx, input.courseId, email, deps.now)) return { alreadyPaid: true };
-    // a järelmaks only while it is allowed for this price (nothing of it is paid: a purchase is paid whole or not at all)
+    const typed = input.discount?.typed ?? "";
+    const shownCents = input.discount?.shownCents ?? null;
+    // A re-send of the open attempt is not a new use (A7): its own use counts against the code's limit already, so redeem would refuse the last use
+    // to the person who holds it. It is a re-send only while the code still gives the discount the attempt has and the cart showed it.
+    if (typed !== "") {
+      const found = await findCode(tx, typed);
+      if (found) {
+        const d0 = discountCents(found, input.amountCents);
+        const total0 = totalWith(input.amountCents, d0);
+        const open = await liveAttempt(tx, { courseId: input.courseId, email }, total0, method, deps.now, found.code);
+        if (open && shownCents === d0 && open.discountCents === d0) {
+          // (a re-send of a järelmaks is still refused when it is switched off since: the same check as for a new attempt)
+          if (method === "hirePurchase") {
+            const refusal = await financingRefusedNow(tx, { priceCents: total0, paidCents: 0, dueCents: total0 });
+            if (refusal !== null) return { financing: refusal };
+          }
+          return { payment: await refreshed(tx, open), again: true };
+        }
+      }
+    }
+    let d = 0;
+    let code = "";
+    let redeemed: { codeId: number } | null = null;
+    if (typed !== "") {
+      const r = await redeem(tx, { typed, shownCents, email, courseId: input.courseId, courseType: "e_learning", listCents: input.amountCents, subscribing: input.newsletter }, deps.now);
+      if (!r.ok) return { discount: r.error };
+      d = r.discountCents;
+      code = r.code;
+      redeemed = { codeId: r.codeId };
+    }
+    const total = totalWith(input.amountCents, d);
+    // a järelmaks only while it is allowed for this price (nothing of it is paid: a purchase is paid whole or not at all), the price she pays
     if (method === "hirePurchase") {
-      const refusal = await financingRefusedNow(tx, { priceCents: input.amountCents, paidCents: 0, dueCents: input.amountCents });
+      const refusal = await financingRefusedNow(tx, { priceCents: total, paidCents: 0, dueCents: total });
       if (refusal !== null) return { financing: refusal };
     }
-    const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, method, deps.now);
-    if (live) {
-      // its window starts again now, and what she typed this time replaces what she typed before (the contract this press showed too)
-      const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, updatedAt: deps.now };
-      await tx.update(payments).set(fresh).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
-      return { payment: { ...live, ...fresh }, again: true };
-    }
+    const live = await liveAttempt(tx, { courseId: input.courseId, email }, total, method, deps.now, code);
+    if (live) return { payment: await refreshed(tx, live), again: true };
     const payment = await insertPayment(
       tx,
-      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, method },
+      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: total, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, method, discountCents: d, discountCode: code },
       deps.now,
       montonio.referencePrefix,
     );
+    if (redeemed) await insertRedemption(tx, { codeId: redeemed.codeId, email, clientId: null, courseId: input.courseId, paymentId: payment.id, listCents: input.amountCents, discountCents: d, via: "cart" }, deps.now);
     return { payment, again: false };
   });
   if ("alreadyPaid" in ready) return { kind: "alreadyPaid" };
   if ("financing" in ready) return { kind: "financing", reason: ready.financing };
+  if ("discount" in ready) return { kind: "discount", error: ready.discount };
   // her details for Inbank's form (D8), as she typed them this time: a järelmaks order's only
   const billing = method === "hirePurchase" ? billingAddressOf({ name: input.name, email }) : null;
   return order({ ...deps, montonio }, ready.payment, ready.again, billing);
