@@ -34,7 +34,7 @@ import { removeCampaignsById } from "./newsletter";
 // also run against a deployment.
 
 // the grouped menu (admin UX pass, README §1.1), in the order it is drawn
-const MENU = ["Ülevaade", "Registreerimised", "Protokollid", "Hindamine", "Päringud", "Õpilased", "Tagasiside", "Maksed ja arved", "Koolitused", "Kalender", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded", "Testimine"];
+const MENU = ["Ülevaade", "Registreerimised", "Protokollid", "Hindamine", "Päringud", "Õpilased", "Tagasiside", "Maksed ja arved", "Koolitused", "Kalender", "Praktika", "Sooduskoodid", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded", "Testimine"];
 const GROUPS = ["Igapäevane töö", "Koolitused", "Koduleht ja uudiskiri", "Haldus"];
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };

@@ -7,6 +7,7 @@ import { adminReady, editLang, seadedAutosave, seadedStatus, signInAsAdmin } fro
 import { holdContractTexts, holdLegalDraft, legalDraftOf } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePopupDrafts, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 import { holdNewsletter } from "./newsletter";
+import { takeWelcomeCode } from "./welcome-code";
 
 // Task 13B: the site content editors (home page, practice, trainer, news, the popup, settings), each followed through to
 // the public site. They change shared seed content, so they run after every other test (playwright.config.ts: the
@@ -857,19 +858,21 @@ test.describe("news", () => {
 
 // C4 Hüpikaken on the draft layer (admin UX pass piece 4b, Task 4; README §4 C4, the Part 4 C4 frame; piece4-texts S4-25…S4-30; rulings R-c, R-d,
 // R-e): the instant „Lehel näidatakse“ with its UndoBar, the offer's fields autosaved into the popup's draft and published by „Avalda muudatused“, the
-// preview following the page's ET | RU; the home page's popup then shows the new title after the site's own 8 s. These tests change the popup row,
+// preview following the page's ET | RU; the home page's popup then shows the new title after the site's own 8 s. F1 (Task 12): the offer holds the popup row
+// only (a picture, a title, a text); the welcome code and its discount are a row of Sooduskoodid (the footer and the popup's button read it). These tests change the popup row,
 // which campaign.spec.ts reads, so they run in this file's late projects; one popup row: the desktop project changes it, the phone only looks.
 test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
   test.use({ campaignPopup: "site" }); // (the visitor's tab waits the site's own 8 s)
   const switchAnswer = (page: Page) => page.waitForResponse((r) => r.url().endsWith("/api/admin/hupikaken/naita") && r.request().method() === "POST");
   const offerSaved = (page: Page) => page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/popup/0/osa/offer") && r.request().method() === "POST" && r.status() === 200);
   const popupRow = () => one((sql) => sql<{ active: boolean; title: { et: string; ru?: string }; image: string }[]>`select active, title, image_key as image from campaign where id = 2`);
-  const discount = () => one((sql) => sql<{ n: string | null }[]>`select value->>'discountPercent' as n from settings where key = 'newsletter'`);
 
-  test("„Lehel näidatakse“ off → „Hüpikaken peidetud.“ → „Võta tagasi“ → on; a picture, a title and a discount wait for „Avalda muudatused“ (the preview follows ET | RU); published, the home page's popup shows them after 8 s and the footer the discount; at 375 px the preview is under the card and nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+  test("„Lehel näidatakse“ off → „Hüpikaken peidetud.“ → „Võta tagasi“ → on; a picture and a title wait for „Avalda muudatused“ (the preview follows ET | RU); published, the home page's popup shows them after 8 s and the footer the welcome code's discount; at 375 px the preview is under the card and nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "one popup row: desktop changes it");
     test.slow(); // one long flow: the switch, the offer, a publish, the site's 8 s and a second width
-    await changing(["campaign"], ["settings", { column: "key", value: "newsletter" }]);
+    await changing(["campaign"]);
+    // the welcome code (a row of discount_codes, one at a time: welcome-code.ts takes its turn and puts the row back exactly): the footer says its value, 17%
+    undo.push(await takeWelcomeCode(info, { code: "E2E-HUPIK", percent: 17 }));
     await removePopupDrafts();
     undo.push(removePopupDrafts);
     // the seed's popup, shown (the old campaign offer, row 1, off: at most one is on)
@@ -906,7 +909,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     expect((await popupRow()).active).toBe(true);
     await expect(publishBar(page)).toHaveCount(0);
 
-    // the offer: a new picture, title and discount autosave into the popup's draft; the bar names them; live keeps its own
+    // the offer: a new picture and title autosave into the popup's draft; the bar names them; live keeps its own
     const card = page.locator("#pakkumine");
     const preview = page.locator("[data-newsletter-preview]");
     const image = page.locator('[data-single-image="popup"]');
@@ -923,14 +926,12 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await title.blur();
     await saved;
     await expect(preview.getByRole("heading", { level: 2 })).toHaveText("E2E hüpikaken");
-    const percent = card.getByRole("textbox", { name: "Soodustus (%)", exact: true });
-    saved = offerSaved(page);
-    await percent.fill("17");
-    await percent.blur();
-    await saved;
     await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
-    await expect(barWords(page)).toHaveText(draftWords("Pealkiri, Pilt, Soodustus"));
-    await expect(card.getByText("Koodi saad muuta: Seaded → „Tervituskood“.")).toBeVisible();
+    await expect(barWords(page)).toHaveText(draftWords("Pealkiri, Pilt"));
+    // the offer has no discount fields any more: its hint leads to the welcome code's own page
+    await expect(card.getByText("Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.")).toBeVisible();
+    await expect(card.getByRole("textbox", { name: "Soodustus (%)", exact: true })).toHaveCount(0);
+    await expect(preview.getByText("17% tervitussoodustus")).toBeVisible(); // (the welcome row's value, not a number typed here)
     expect(await popupRow()).toEqual(before);
     // the preview follows the page's ET | RU, with the rules line under it
     await editLang(page, "ru");
@@ -946,7 +947,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     expect((await preview.locator("[data-newsletter-notice]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expect(page.locator("[data-popup-rules]")).toHaveText("Reeglid: kood saadetakse e-postiga kohe pärast liitumist; üks kasutus tellija kohta; ei liitu teiste soodustustega.");
 
-    // „Eelvaade ↗“ (ruling c1): the home page in draft mode, the popup at once with its draft, under the popup's own bar (popup/0's three changes, not
+    // „Eelvaade ↗“ (ruling c1): the home page in draft mode, the popup at once with its draft, under the popup's own bar (popup/0's two changes, not
     // Avaleht's); then draft mode off again, so this browser's visitor tab below is a visitor's
     const previewHref = await page.locator("[data-publish-preview]").getAttribute("href");
     expect(previewHref).toBe("/api/admin/eelvaade?tee=%2F%3Friba%3Dhupikaken");
@@ -954,19 +955,18 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await previewTab.goto(previewHref!);
     await expect(previewTab).toHaveURL((url) => url.pathname === "/" && url.search === "?riba=hupikaken");
     await expect(previewTab.getByRole("dialog", { name: "E2E hüpikaken" })).toBeVisible({ timeout: 5000 });
-    await expect(previewTab.locator("[data-preview-count]")).toHaveText("Avaldamata 3");
+    await expect(previewTab.locator("[data-preview-count]")).toHaveText("Avaldamata 2");
     await previewTab.goto(await previewTab.locator("[data-preview-exit]").getAttribute("href") ?? "/api/admin/eelvaade?lopeta=1");
     await previewTab.close();
 
-    // „Avalda muudatused“: the row and the discount go live, the bar goes
+    // „Avalda muudatused“: the row goes live, the bar goes
     const published = page.waitForResponse((r) => r.url().endsWith("/api/admin/sisu/popup/0/avalda") && r.request().method() === "POST");
     await page.locator("[data-publish-go]").click();
     expect((await published).status()).toBe(200);
     await expect(publishBar(page)).toHaveCount(0);
     expect(await popupRow()).toEqual({ active: true, title: { ...before.title, et: "E2E hüpikaken" }, image: src });
-    expect(await discount()).toEqual({ n: "17" });
 
-    // a visitor's tab: the popup after the site's 8 s, with the new title and picture (served from the store); the footer's discount
+    // a visitor's tab: the popup after the site's 8 s, with the new title and picture (served from the store); the footer's discount, the welcome row's
     const visitor = await context.newPage();
     const start = Date.now();
     await visitor.goto("/", { waitUntil: "commit" });
@@ -1127,7 +1127,7 @@ test.describe("the newsletter popup (phase 2c)", () => {
 });
 
 test.describe("settings", () => {
-  test("375 × 812: the section map is the „Jaotised ▾“ select under the header; a choice goes to its section below the phone bar; the old anchors land in „Maksmine“; nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+  test("375 × 812: the section map is the „Jaotised ▾“ select under the header; a choice goes to its section below the phone bar; the old anchors land in „Maksmine“ and #uudiskiri leads to Sooduskoodid; nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "the phone project");
     await page.setViewportSize({ width: 375, height: 812 });
     await signIn(page, context, visitorIp);
@@ -1137,7 +1137,7 @@ test.describe("settings", () => {
     await expect(select).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Jaotised" })).toBeHidden();
     await expect(select.locator("[data-section-face]")).toHaveText(/^Jaotised · Kontakt\s*▾$/);
-    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
+    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
     const box = (await select.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x).toBeGreaterThanOrEqual(16);
@@ -1165,6 +1165,11 @@ test.describe("settings", () => {
       await expect.poll(() => top("maksmine"), alias).toBeGreaterThanOrEqual(64);
       await expect.poll(() => top("maksmine"), alias).toBeLessThanOrEqual(64 + 24 + 4);
     }
+    // the old section „Uudiskiri“ is gone (F1 Task 12, R8): its anchor leads to where the welcome code is now
+    await page.goto("about:blank");
+    await page.goto("/admin/seaded#uudiskiri");
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/sooduskoodid");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sooduskoodid");
     await page.goto("about:blank");
     await page.goto("/admin/seaded#tunnistus");
     await adminReady(page);
@@ -1173,9 +1178,11 @@ test.describe("settings", () => {
     expect(await noOverflow(page)).toBe(true);
   });
 
-  test("contact links (https only) autosave (no „Salvesta“) and reach the footer and the contact page; „Uudiskiri“ has no discount field (piece 4b)", async ({ page, context, visitorIp }, info) => {
+  test("contact links (https only) autosave (no „Salvesta“) and reach the footer and the contact page; Seaded has no „Uudiskiri“ card any more (F1: the welcome code is on Sooduskoodid)", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the contact settings; the phone project the privacy page");
     await changing(["settings", { column: "key", value: "contact" }]);
+    // the footer says the welcome code's value (12%): the row is taken for the test and put back exactly
+    undo.push(await takeWelcomeCode(info, { code: "E2E-KONTAKT", percent: 12 }));
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);
@@ -1201,40 +1208,43 @@ test.describe("settings", () => {
     expect(saved.status()).toBe(200);
     await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
     await expect.poll(async () => (await stored()).value).toMatchObject({ instagram: "https://www.instagram.com/mslab.e2e", phone: "+372 5555 0199" });
-    // „Uudiskiri“ is the welcome code alone: the discount is Hüpikaken's „Soodustus (%)“ (piece 4b S4-Q2 A)
-    await expect(page.locator("[data-newsletter-card]").getByRole("textbox")).toHaveCount(1);
+    // Seaded holds no „Uudiskiri“ card, no „Tervituskood“ and no discount field: the welcome code is a row of Sooduskoodid (F1 Task 12)
+    await expect(page.locator("[data-newsletter-card]")).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Tervituskood", exact: true })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Tervitussoodustus", exact: true })).toHaveCount(0);
 
     await page.goto("/");
     const footer = page.locator("footer");
     await expect(footer.getByRole("link", { name: /Instagram/ })).toHaveAttribute("href", "https://www.instagram.com/mslab.e2e");
     await expect(footer.getByRole("link", { name: "+372 5555 0199" })).toHaveAttribute("href", "tel:+37255550199");
-    // (the footer's discount is Hüpikaken's published one, read as its number: `{discountPercent}%`, piece 4b R-c)
-    await expect(footer.getByText(/\d{1,2}% tervitussoodustus/)).toBeVisible();
+    // (the footer's discount is the welcome row's value: „12%“)
+    await expect(footer.getByText("12% tervitussoodustus")).toBeVisible();
     await page.goto("/kontakt");
     await expect(page.locator("[data-contact-details]").getByRole("link", { name: /instagram\.com\/mslab\.e2e/ })).toBeVisible();
   });
 
-  test("Tervituskood: saved in Seaded; the first confirmation link lands on the home page with the code, the second without", async ({ page, context, visitorIp }, info) => {
-    test.skip(phone(info), "desktop changes the newsletter setting");
+  test("Tervituskood: changed on Sooduskoodid (the welcome row's drawer); the first confirmation link lands on the home page with the code, the second without", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "desktop changes the welcome code");
     undo.push(await holdNewsletter(info)); // (the confirmed row it makes is a recipient of the newsletter e2e test's press: they take turns)
-    await changing(["settings", { column: "key", value: "newsletter" }]);
+    // the welcome row (F1: a row of discount_codes, not Seaded's setting): made or set to this test's code, and put back exactly (welcome-code.ts)
+    undo.push(await takeWelcomeCode(info, { code: "E2E-TERE-ENNE", percent: 10 }));
     await signIn(page, context, visitorIp);
-    await page.goto("/admin/seaded");
+    const [{ id }] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from discount_codes where welcome`, { marksPages: false });
+    // ?kood=tervituskood with a welcome row is that row's own drawer (R11); its text stays replaceable, used or not (T13-3)
+    await page.goto("/admin/sooduskoodid?kood=tervituskood");
     await adminReady(page);
-    const code = page.getByRole("textbox", { name: "Tervituskood", exact: true });
-    const saved = await seadedAutosave(page, "newsletter", async () => {
-      await code.fill("e2e-tere");
-      await code.press("Tab");
-    });
-    expect(saved.status()).toBe(200);
-    await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
-    expect(await one((sql) => sql<{ code: string }[]>`select value->>'welcomeCode' as code from settings where key = 'newsletter'`)).toEqual({ code: "E2E-TERE" });
+    await expect(page.locator("[data-code-drawer]")).toHaveAttribute("data-code-drawer", String(id));
+    const code = page.getByRole("textbox", { name: "Kood", exact: true });
+    const saved = page.waitForResponse((r) => r.url().endsWith(`/api/admin/sooduskood/${id}`) && r.request().method() === "POST");
+    await code.fill("e2e-tere");
+    await code.press("Tab");
+    expect((await saved).status()).toBe(200);
+    await expect.poll(() => one((sql) => sql<{ code: string }[]>`select code from discount_codes where id = ${id}`)).toEqual({ code: "E2E-TERE" });
     const addr = testEmail("welcome", info.project.name);
     const token = "w".repeat(40) + info.project.name.slice(0, 3).padEnd(3, "x");
     await onLocalDb((sql) => sql`insert into subscribers (email, locale, token) values (${addr}, 'et', ${token})`, { marksPages: false });
     await page.goto(`/api/newsletter/confirm?t=${token}`);
-    await expect(page.locator("[data-flash-code]")).toHaveText("Sinu tervituskood: E2E-TERE. Lisa kood registreerimisel lahtrisse „Sõnum“.");
+    await expect(page.locator("[data-flash-code]")).toHaveText("Sinu tervituskood: E2E-TERE. Kirjuta see registreerimisel või ostukorvis lahtrisse „Sooduskood“.");
     expect(new URL(page.url()).hash).toBe(""); // the fragment is gone from the address
     await page.goto(`/api/newsletter/confirm?t=${token}`);
     await expect(page.locator("[data-flash-notice]")).toHaveAttribute("data-flash-notice", "ok");

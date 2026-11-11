@@ -6,6 +6,7 @@ import { onLocalDb, removeAdminRows, sha256Hex, storedSubscriber, testEmail } fr
 import { GATE_PREVIEW_SECRET, GATE_URL, gateRun } from "./gate";
 import { deleteLocalComments, E2E_COMMENT } from "./local-kv";
 import { expect, submitsForms, test } from "./test";
+import { takeWelcomeCode } from "./welcome-code";
 
 // The coming-soon gate (hotfix 08.10) on a production build started with SITE_GATE=1: `npx playwright test -c
 // playwright.gate.config.ts` (it builds and starts the server itself, tests/e2e/gate.ts). Skipped in the main e2e run, whose
@@ -166,18 +167,17 @@ test.describe("a visitor", () => {
   });
 
   test("the welcome code (phase 2c): the first confirmation lands on the coming-soon page with #kood=… and the notice shows the code, in the subscriber's language; the second click shows none", async ({ page }, info) => {
-    test.skip(info.project.name !== "w1440", "sets Seaded's welcome code once, on the desktop project");
+    test.skip(info.project.name !== "w1440", "sets the welcome code row once, on the desktop project");
     submitsForms();
     const subscribers = [
-      { addr: testEmail("gate-code-et", info.project.name), locale: "et", token: "g".repeat(40) + "et1", line: "Sinu tervituskood: E2E-GATE. Lisa kood registreerimisel lahtrisse „Sõnum“.", path: "/" },
-      { addr: testEmail("gate-code-ru", info.project.name), locale: "ru", token: "g".repeat(40) + "ru1", line: "Ваш приветственный код: E2E-GATE. Укажите его при регистрации в поле «Сообщение».", path: "/ru" },
+      { addr: testEmail("gate-code-et", info.project.name), locale: "et", token: "g".repeat(40) + "et1", line: "Sinu tervituskood: E2E-GATE. Kirjuta see registreerimisel või ostukorvis lahtrisse „Sooduskood“.", path: "/" },
+      { addr: testEmail("gate-code-ru", info.project.name), locale: "ru", token: "g".repeat(40) + "ru1", line: "Ваш приветственный код: E2E-GATE. Введите его при регистрации или в корзине в поле «Промокод».", path: "/ru" },
     ];
-    // the setting as it was (the row may be missing): put back below. No public page shows the welcome code, so no page is marked stale.
-    const before = await onLocalDb((sql) => sql<{ value: object }[]>`select value from settings where key = 'newsletter'`, { marksPages: false });
+    // the welcome code is the `welcome` row of discount_codes (F1): made here when there is none, set to this test's code when there is one, and put back
+    // exactly (welcome-code.ts takes its turn: one row, shared). Its pages are marked stale by the take and the give-back; the confirmed notice reads it on the server.
+    const giveBack = await takeWelcomeCode(info, { code: "E2E-GATE", percent: 10 });
     try {
       await onLocalDb(async (sql) => {
-        const value = sql.json({ ...(before[0]?.value ?? { discountLabel: "10%" }), welcomeCode: "E2E-GATE" });
-        await sql`insert into settings (key, value) values ('newsletter', ${value}) on conflict (key) do update set value = excluded.value`;
         for (const s of subscribers) await sql`insert into subscribers (email, locale, token) values (${s.addr}, ${s.locale}, ${s.token})`;
       }, { marksPages: false });
       for (const s of subscribers) {
@@ -193,11 +193,13 @@ test.describe("a visitor", () => {
         await expect(page.locator("[data-flash-code]")).toHaveCount(0);
       }
     } finally {
-      await onLocalDb(async (sql) => {
-        if (before[0]) await sql`update settings set value = ${sql.json(before[0].value as never)} where key = 'newsletter'`;
-        else await sql`delete from settings where key = 'newsletter'`;
-        for (const s of subscribers) await sql`delete from subscribers where email = ${s.addr}`;
-      }, { marksPages: false });
+      try {
+        await onLocalDb(async (sql) => {
+          for (const s of subscribers) await sql`delete from subscribers where email = ${s.addr}`;
+        }, { marksPages: false });
+      } finally {
+        await giveBack();
+      }
     }
   });
 

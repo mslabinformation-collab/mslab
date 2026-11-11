@@ -6,7 +6,7 @@ import { test, expect } from "./test";
 // 2) — the old campaign offer (row 1) is shown nowhere. Only on / and /ru, 8 s after the page appears, once in 30 days per browser (localStorage
 // "mslab-popup", the time it was shown), never again in a browser that signed up ("mslab-nl"), never on any other page. A modal dialog: focus moves in
 // and stays inside, Esc, ✕, the backdrop and (on a phone, where it is a bottom sheet) a downward swipe close it, and focus goes back. Its button follows
-// Seaded's welcome code (S4-Q4): „Saa kood“ while there is one, else „Liitu“.
+// the welcome code (S4-Q4; the `welcome` row of Sooduskoodid): „Saa kood“ while there is a valid one, else „Liitu“.
 //
 // These tests only read the seed's popup („Hea järgmine samm. Otse sinu postkasti.“, the seed picture; global-setup.ts ensureSeedPopup shows it in a
 // database seeded before piece 4b). The tests that change it (Hüpikaken's switch and publish, a sign-up) are in admin-site.spec.ts, which runs after
@@ -20,10 +20,23 @@ const anyDialog = (page: Page) => page.getByRole("dialog");
 const stamp = (page: Page) => page.evaluate(() => localStorage.getItem("mslab-popup"));
 const forget = (page: Page) => page.evaluate(() => localStorage.removeItem("mslab-popup"));
 const scrollLocked = (page: Page) => page.evaluate(() => document.documentElement.style.overflow === "hidden");
-/** The popup's button as Seaded's code makes it (S4-Q4): read from the local database, which the tests of this file do not change. */
+/**
+ * The popup's button as the welcome code makes it (S4-Q4; F1: the `welcome` row of discount_codes, not Seaded's setting): „Saa kood“ while the row is valid today
+ * (active and inside its dates: server/discount-codes.ts welcomeCode, today on Tallinn's calendar), else „Liitu“. Read from the local database, which the tests of
+ * this file do not change (the tests that make or change the row take its turn, welcome-code.ts, and put it back).
+ */
 const submitWords = async (ru = false) => {
-  const [row] = await onLocalDb((sql) => sql<{ code: string | null }[]>`select value->>'welcomeCode' as code from settings where key = 'newsletter'`, { marksPages: false });
-  const code = /^[A-Z0-9-]{1,30}$/.test(row?.code ?? "");
+  const [row] = await onLocalDb(
+    (sql) => sql<{ valid: boolean }[]>`
+      select exists (
+        select 1 from discount_codes
+         where welcome and active
+           and (starts_on is null or starts_on <= (now() at time zone 'Europe/Tallinn')::date)
+           and (ends_on is null or ends_on >= (now() at time zone 'Europe/Tallinn')::date)
+      ) as valid`,
+    { marksPages: false },
+  );
+  const code = row?.valid === true;
   return ru ? (code ? "Получить код" : "Подписаться") : code ? "Saa kood" : "Liitu";
 };
 
