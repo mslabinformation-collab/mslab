@@ -2,9 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber } from "pdf-lib";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { CERT_LIMITS, checkCertificateName, readCertificateSettings } from "@/domain/certificate";
-import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
+import {
+  CERT_FONT_DIR, CERT_FONTS, DARK_LOOK, LOGO_FILES, loadCertificateAssets, loadCertificateBackground, renderCertificate, type CertificateAssets, type CertificateContent,
+  type CertificateLook,
+} from "@/server/certificate-pdf";
+import { fakeMediaStore } from "../fakes";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
@@ -505,6 +509,116 @@ describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
     expect([...letters].filter((c) => !revive.hasGlyphForCodePoint(c.codePointAt(0)!))).toEqual([]);
     // and the joiners between them (the typographic apostrophe is drawn as the straight one)
     for (const c of " -'.") expect(revive.hasGlyphForCodePoint(c.codePointAt(0)!), c).toBe(true);
+  });
+});
+
+describe("the designs' looks (2026-11-11 certificate designs, spec §4)", () => {
+  /** The test's own background photo (made for the tests, a soft gradient: 1200 × 900, 4:3, so it is cropped at the top and the bottom). */
+  const PHOTO = new Uint8Array(readFileSync("tests/fixtures/certificate-background.jpg"));
+  /** And a wide one (1800 × 600, 3:1, wider than the page), cropped at its sides. */
+  const PHOTO_WIDE = new Uint8Array(readFileSync("tests/fixtures/certificate-background-wide.jpg"));
+  const LIGHT: CertificateLook = { tone: "light", background: null };
+  /** Every image drawn, in the order drawn: its name and its box (pdf-lib writes the move, a rotation of 0, the scale and a skew of 0 as four matrices). */
+  const drawnImages = (ops: string) =>
+    [...ops.matchAll(/q\n1 0 0 1 ([-\d.]+) ([-\d.]+) cm\n1 0 0 1 0 0 cm\n([\d.]+) 0 0 ([\d.]+) 0 0 cm\n1 0 0 1 0 0 cm\n\/(\S+) Do\nQ/g)].map((m) => ({
+      name: m[5],
+      x: Number(m[1]),
+      y: Number(m[2]),
+      width: Number(m[3]),
+      height: Number(m[4]),
+      at: m.index,
+    }));
+  const imageStream = (page: { node: { Resources(): PDFDict | undefined } }, name: string) => rawStream(page.node.Resources()!.lookup(PDFName.of("XObject"), PDFDict).lookup(PDFName.of(name)));
+
+  test("no look and the dark look are the same file: today's page, white on black, the white logo (an older certificate's design is null)", async () => {
+    expect(DARK_LOOK).toEqual({ tone: "dark", background: null });
+    expect(Buffer.from(await renderCertificate(FIXTURE, ASSETS, DARK_LOOK)).equals(Buffer.from(await renderCertificate(FIXTURE, ASSETS)))).toBe(true);
+  });
+
+  test("light: a white page, every text, bullet and line black, the black logo where the white one stands", async () => {
+    const bytes = await renderCertificate(FIXTURE, ASSETS, LIGHT);
+    expect(bytes.length).toBeLessThan(300 * 1024);
+    const { page, ops, runs, circles } = await readPdf(bytes);
+    // the whole page is filled white first; the texts and the lines are black, nothing is white but the page
+    expect(ops.trimStart().startsWith("q\n1 1 1 rg")).toBe(true);
+    expect(ops).toContain("0 0 m\n0 595 l\n842 595 l\n842 0 l\nh\nf");
+    expect(ops.match(/1 1 1 rg/g)).toHaveLength(1);
+    expect(ops).not.toContain("1 1 1 RG");
+    expect(ops).toContain("0 0 0 RG");
+    expect(circles.map((c) => c.color)).toEqual(Array(6).fill("0 0 0"));
+    // the same texts in the same places as the dark page
+    const dark = await readPdf(await renderCertificate(FIXTURE, ASSETS));
+    expect(runs).toEqual(dark.runs);
+    // the logo: one image, the black one (every pixel black, its shape in the soft mask), drawn where the white one stands
+    expect(imagesOf(page)).toHaveLength(1);
+    const [logo] = drawnImages(ops);
+    expect([logo.x, logo.y, logo.width]).toEqual([97, 84.4, 148.4]);
+    expect(decodePDFRawStream(imageStream(page, logo.name)).decode().every((b) => b === 0)).toBe(true);
+  });
+
+  test("a background photo is drawn first, covering the page: scaled in its own proportions to fill it, centred, cropped (never stretched)", async () => {
+    for (const tone of ["light", "dark"] as const) {
+      const { page, ops } = await readPdf(await renderCertificate(FIXTURE, ASSETS, { tone, background: PHOTO }));
+      const images = drawnImages(ops);
+      expect(images, tone).toHaveLength(2);
+      const [photo, logo] = images;
+      // first on the page: no page colour under it, nothing drawn before it
+      expect(ops.slice(0, photo.at).trim(), tone).toBe("");
+      expect(ops).not.toContain("0 0 m\n0 595 l\n842 595 l\n842 0 l\nh\nf");
+      // 1200 × 900 on 842 × 595: the width sets the scale (842 / 1200), the height overflows by 36.5 pt, half above and half below
+      expect(photo.width).toBeCloseTo(842, 3);
+      expect(photo.height).toBeCloseTo(900 * (842 / 1200), 3);
+      expect(photo.x).toBeCloseTo(0, 3);
+      expect(photo.y).toBeCloseTo((595 - 900 * (842 / 1200)) / 2, 3);
+      expect(photo.width / photo.height).toBeCloseTo(1200 / 900, 5);
+      // embedded as it was uploaded: the JPEG's own bytes (DCTDecode), no image processing
+      const stream = imageStream(page, photo.name);
+      expect(stream.dict.lookup(PDFName.of("Filter"))?.toString()).toBe("/DCTDecode");
+      expect(Buffer.from(stream.contents).equals(Buffer.from(PHOTO))).toBe(true);
+      // the logo of the tone over it
+      expect(decodePDFRawStream(imageStream(page, logo.name)).decode().every((b) => b === (tone === "light" ? 0 : 255)), tone).toBe(true);
+    }
+    // a photo wider than the page is cropped at its sides instead: the height sets the scale (595 / 600), half the overflow left, half right
+    const wide = await readPdf(await renderCertificate(FIXTURE, ASSETS, { tone: "light", background: PHOTO_WIDE }));
+    const [photo] = drawnImages(wide.ops);
+    expect(photo.height).toBeCloseTo(595, 3);
+    expect(photo.width).toBeCloseTo(1800 * (595 / 600), 3);
+    expect(photo.y).toBeCloseTo(0, 3);
+    expect(photo.x).toBeCloseTo((842 - 1800 * (595 / 600)) / 2, 3);
+  });
+
+  test("the size: a design with a photo stays under 300 KB plus the photo plus 50 KB", async () => {
+    const bytes = await renderCertificate(FIXTURE, ASSETS, { tone: "light", background: PHOTO });
+    expect(bytes.length).toBeLessThan(300 * 1024 + PHOTO.length + 50 * 1024);
+  });
+
+  test("a background that is no JPEG fails the render (the download fails and is tried again; never a different-looking certificate)", async () => {
+    await expect(renderCertificate(FIXTURE, ASSETS, { tone: "light", background: LOGO })).rejects.toThrow();
+  });
+});
+
+describe("loadCertificateBackground", () => {
+  const PHOTO = new Uint8Array(readFileSync("tests/fixtures/certificate-background.jpg"));
+  const KEY = "img/0f8c2a4e-1b3d-4c5e-8f9a-0123456789ab.jpg";
+
+  test("the photo's bytes from the store, read once per process by key", async () => {
+    const store = fakeMediaStore();
+    await store.put(KEY, PHOTO.slice().buffer, "image/jpeg");
+    const a = await loadCertificateBackground(KEY, store);
+    expect(Buffer.from(a).equals(Buffer.from(PHOTO))).toBe(true);
+    expect(await loadCertificateBackground(KEY, store)).toBe(a);
+    expect(store.requested).toEqual([KEY]);
+  });
+
+  test("a photo that cannot be read — no such object, the store down, no store — throws, and is read again next time", async () => {
+    const key = "img/1f8c2a4e-1b3d-4c5e-8f9a-0123456789ab.jpg";
+    const store = fakeMediaStore();
+    await expect(loadCertificateBackground(key, store)).rejects.toThrow();
+    await expect(loadCertificateBackground(key, null)).rejects.toThrow();
+    const down = { get: vi.fn(async () => Promise.reject(new Error("R2 down"))) };
+    await expect(loadCertificateBackground(key, down)).rejects.toThrow("R2 down");
+    await store.put(key, PHOTO.slice().buffer, "image/jpeg");
+    expect((await loadCertificateBackground(key, store)).length).toBe(PHOTO.length);
   });
 });
 
