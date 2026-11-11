@@ -35,11 +35,25 @@ export type Badge = { label: BadgeLabel; bg: string; fg: string } | null;
 /** A course badge as it may be stored: rows written before round 2 have a plain Estonian label (domain/badge.ts reads both). */
 export type StoredBadge = Badge | { label: string; bg: string; fg: string };
 
+/**
+ * The training areas („Valdkonnad“, migration 0023; spec 2026-11-11-course-areas-filter-design.md): Maria's list in Seaded → Valdkonnad, by which a
+ * student narrows the calendar and the catalogue (?valdkond=<slug of the Estonian name>, domain/course-areas.ts). Both names are required, at most 60
+ * characters, the Estonian ones unique by their slug (server/course-areas.ts); `sort` is her order. The migration seeded „Kulmukoolitused“ and
+ * „Ripsmekoolitused“.
+ */
+export const courseAreas = pgTable("course_areas", {
+  id: serial("id").primaryKey(),
+  name: jsonb("name").$type<I18n>().notNull(),
+  sort: integer("sort").notNull().default(0),
+});
+
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),
   type: courseType("type").notNull(),
   level: courseLevel("level").notNull(),
+  /** The course's training area (course_areas, „Valdkond“ in „Põhiinfo“); null: none, the course shows only under „Kõik“. An area a course uses is never deleted. */
+  areaId: integer("area_id").references(() => courseAreas.id, { onDelete: "restrict" }),
   title: jsonb("title").$type<I18n>().notNull(),
   summary: jsonb("summary").$type<I18n>().notNull(),
   body: jsonb("body").$type<I18n>().notNull(),
