@@ -5,7 +5,7 @@
     {
       "id": "enne",
       "name": "Enne alustamist",
-      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Proov 9 kuni Proov 15 on järelmaksu kontrollide õpilased: iga kontroll ütleb, millist ta kasutab. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Proov 9 kuni Proov 15 on järelmaksu kontrollide õpilased: iga kontroll ütleb, millist ta kasutab. Proov 16 registreerib sooduskoodiga, Proov 17 proovib tervituskoodi ja Proov 18 ostab e-koolituse sooduskoodiga. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
       "checks": false
     },
     {
@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“ ja kinnita „Jah, tühista“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Maksmine“ → „Arve järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“ ja kinnita „Jah, tühista“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Peata lehel „Sooduskoodid“ iga proovis tehtud kood (PROOV-16 ja teised PROOV-… koodid) lülitiga „Aktiivne“ ja kirjuta need allpool olevasse kontrolli: Dim kustutab need koos kasutustega täpse koodi järgi, mitte mustri järgi. Seejärel paneb Maria Seaded → „Maksmine“ → „Arve järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -472,6 +472,31 @@
       "markedAt": "2026-11-10T12:39:03.177Z"
     },
     {
+      "id": "avalik-jalus-tervituskood",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Jaluse tervitussoodustus",
+      "href": "/",
+      "steps": [
+        "Ava avaleht ja keri lehe lõppu plokini „MS LABi kirjad“.",
+        "Ava halduses „Sooduskoodid“ ja vajuta tervituskoodi reale.",
+        "Lülita „Aktiivne“ välja ja värskenda avalehte.",
+        "Ava avaleht uues privaatses aknas, oota 8 sekundit ja vaata hüpikakna nuppu.",
+        "Lülita tervituskood halduses uuesti sisse ja värskenda avalehte."
+      ],
+      "expect": [
+        "Jaluses on tervituskoodi soodustus, näiteks „10% tervitussoodustus“.",
+        "Peatatud tervituskoodiga on jaluses „Uued koolitused ja kasulikud mõtted.“ ja hüpikakna nupp „Liitu“.",
+        "Pärast sisselülitamist on jaluses jälle tervituskoodi soodustus."
+      ],
+      "why": "Leht ei tohi lubada soodustust, mida õpilane enam ei saa.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "avalik-uudiskiri",
       "area": "avalik",
       "who": "maria",
@@ -486,7 +511,7 @@
         "Ava halduses „Uudiskiri“."
       ],
       "expect": [
-        "Jaluse nupp on alati „Liitu“; hüpikakna nupp on „Saa kood“, kui Seadetes on „Tervituskood“.",
+        "Jaluse nupp on alati „Liitu“; hüpikakna nupp on „Saa kood“, kui lehel „Sooduskoodid“ on aktiivne tervituskood.",
         "Näed teadet „Aitäh, oled liitunud!“ ja „Saatsime sulle tervituskirja.“.",
         "Postkasti tuleb kiri „Tere tulemast MS LABi!“.",
         "Halduse tellijate loendis on see aadress."
@@ -495,7 +520,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-resend",
@@ -1953,54 +1978,108 @@
       "href": "/admin/kampaania",
       "steps": [
         "Avaldatud muudatus on kohe päris avalehel ja jaluses näha: tee see kontroll kiiresti ja pane kõik kohe tagasi.",
-        "Ava „Hüpikaken“ ja kirjuta selle kontrolli märkusesse praegune „Pealkiri“ ja „Soodustus (%)“.",
+        "Ava „Hüpikaken“ ja kirjuta selle kontrolli märkusesse praegune „Pealkiri“ ja „Tekst“.",
         "Lülita „Lehel näidatakse“ välja ja vajuta all ribal „Võta tagasi“.",
-        "Kirjuta „Pealkiri“ lõppu: proov ja „Soodustus (%)“: 15, siis liigu väljalt edasi.",
+        "Kirjuta „Pealkiri“ lõppu: proov ja „Tekst“ lõppu: proov, siis liigu väljalt edasi.",
         "Vali päises RU ja vaata eelvaadet, siis vali uuesti ET.",
         "Vajuta „Eelvaade ↗“, vaata avanenud avalehte ja sulge see vahekaart.",
         "Vajuta „Avalda muudatused“, ava avaleht uues privaatses aknas ja oota 8 sekundit.",
-        "Pane „Pealkiri“ ja „Soodustus (%)“ tagasi endiseks ja vajuta „Avalda muudatused“."
+        "Pane „Pealkiri“ ja „Tekst“ tagasi endiseks ja vajuta „Avalda muudatused“."
       ],
       "expect": [
         "„Lehel näidatakse“ all on rida „Avaneb uuele külastajale 8 s pärast · üks kord 30 päeva jooksul“.",
         "Välja lülitades tuleb all riba „Hüpikaken peidetud.“; „Võta tagasi“ lülitab akna uuesti sisse.",
-        "Päise all on „Avaldamata muudatused: 2 · Pealkiri, Soodustus“; avalehel on veel vana pealkiri.",
+        "Päise all on „Avaldamata muudatused: 2 · Pealkiri, Tekst“; avalehel on veel vana pealkiri.",
         "RU valikul on eelvaates venekeelne tekst ja nupp, ET valikul eestikeelne.",
         "Eelvaates avaneb aken kohe uue pealkirjaga ja eelvaate riba ütleb „Avaldamata 2“.",
-        "Umbes 8 sekundi pärast avaneb aken uue pealkirjaga ja jaluses on „15% tervitussoodustus“.",
+        "Umbes 8 sekundi pärast avaneb aken uue pealkirja ja tekstiga.",
+        "Väljade all on vihje, mis viib lehele „Sooduskoodid“; välja „Soodustus (%)“ pole.",
         "Lehel pole nuppu „Salvesta“ ega kuskil sõna „kampaania“."
       ],
-      "why": "Maria otsustab, kas avaleht pakub uudiskirja ja millise soodustusega.",
+      "why": "Maria otsustab, kas avaleht pakub uudiskirja ja mida pakkumine ütleb.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "markedAt": "deploy"
     },
     {
-      "id": "haldus-hupikaken-numbrid",
+      "id": "haldus-sooduskoodid-uus",
       "area": "haldus",
-      "who": "dim",
+      "who": "maria",
       "device": "arvuti",
-      "title": "Hüpikaken: soodustuse ja päevade piirid",
-      "href": "/admin/kampaania",
+      "title": "Sooduskoodid: uus kood",
+      "href": "/admin/sooduskoodid",
       "steps": [
-        "Ava „Hüpikaken“ ja jäta meelde praegune „Soodustus (%)“ ja „Kood kehtib (päeva)“.",
-        "Kirjuta „Soodustus (%)“: 100 ja liigu väljalt edasi.",
-        "Kirjuta „Soodustus (%)“: 7,5 ja liigu väljalt edasi.",
-        "Kirjuta „Kood kehtib (päeva)“: 366 ja liigu väljalt edasi.",
-        "Pane mõlemad väljad tagasi endiseks ja liigu väljalt edasi."
+        "Ava halduses „Sooduskoodid“ ja vajuta „Uus sooduskood +“.",
+        "Kirjuta „Kood“: proov-16, jäta „Protsent“ valituks ja kirjuta „Soodustus (%)“: 10.",
+        "Võta „Üks kord inimese kohta“ ära, jäta muu nii, nagu on, ja vajuta „Lisa sooduskood“.",
+        "Vajuta uuesti „Uus sooduskood +“, kirjuta „Kood“: PROOV-16 ja „Soodustus (%)“: 10 ning vajuta „Lisa sooduskood“.",
+        "Kirjuta „Soodustus (%)“: 100 ja vajuta „Lisa sooduskood“.",
+        "Muuda „Kood“ väärtuseks PROOV-16X, vali „Eurod“, kirjuta „Soodustus (€)“: 100000 ja vajuta „Lisa sooduskood“."
       ],
       "expect": [
-        "Pärast 100 on välja all „Soodustus peab olema 1–99%.“.",
-        "Pärast 7,5 on välja all „Sisesta täisarv.“.",
-        "Pärast 366 on välja all „Kood saab kehtida 1–365 päeva.“.",
-        "Endiste väärtustega kaovad teated; avalehel ja jaluses ei muutu midagi."
+        "„Uus sooduskood +“ avab akna, mille all on nupp „Lisa sooduskood“.",
+        "Kood PROOV-16 on loendis olekuga „Aktiivne“ ja kasutusi on 0.",
+        "Sama kood uuesti annab teate „Selline kood on juba olemas.“.",
+        "„Soodustus (%)“: 100 annab teate „Soodustus peab olema 1–99%.“.",
+        "Teate „Selline kood on juba olemas.“ all on link „Ava see kood“.",
+        "Eurodele vahetades on väli „Soodustus (€)“ tühi ja 100000 annab teate „Soodustus on suurem kui koolituse hind.“.",
+        "Koodi PROOV-16X ei lisata."
       ],
-      "why": "Vale arvu korral ütleb väli, mis vahemikus arv olema peab.",
-      "risk": "low",
+      "why": "Maria teeb ise koodi, mida õpilane registreerimisel või ostukorvis kasutab.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-sooduskoodid-tervituskood",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Sooduskoodid: tervituskood",
+      "href": "/admin/sooduskoodid",
+      "steps": [
+        "Ava halduses „Sooduskoodid“, vaata loendi esimest rida ja kirjuta märkusesse selle kood ja soodustus.",
+        "Vajuta tervituskoodi reale ja vaata akent.",
+        "Ava „Seaded“ ja vaata jaotiste loendit.",
+        "Ava „Hüpikaken“ ja vaata välju."
+      ],
+      "expect": [
+        "Esimene rida on märgiga „Tervituskood“, sama koodi ja protsendiga nagu enne.",
+        "Seadetes pole jaotist „Uudiskiri“ ja Hüpikaknas pole välja „Soodustus (%)“.",
+        "Tervituskoodil on alati „Ainult esimesel koolitusel“ ja „Üks kord inimese kohta“.",
+        "Aknas on väli „Kehtib pärast liitumist (päeva)“.",
+        "Hüpikaknas on välja all vihje, mis viib lehele „Sooduskoodid“."
+      ],
+      "why": "Tervituskood on Maria päris kood ja asub nüüd samal lehel teiste koodidega.",
+      "risk": "med",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-11-06T07:47:30.496Z"
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-uudiskiri-kood-hoiatus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Uudiskirja kood ja sooduskoodid",
+      "href": "/admin/uudiskiri",
+      "steps": [
+        "Ava halduses „Uudiskiri“, vali vaade „Kirjad“ ja vajuta „Uus kiri +“.",
+        "Kirjuta „Nimi“: Proov 3 kood ja „Kood“: TUNDMATU-KOOD.",
+        "Kirjuta „Kood“: PROOV-16 (tehtud kontrollis „Sooduskoodid: uus kood“).",
+        "Vajuta „Kustuta mustand“ ja „Jah, kustuta“."
+      ],
+      "expect": [
+        "Tundmatu koodiga on välja all hoiatus „Sellist aktiivset sooduskoodi pole. …“.",
+        "Koodiga PROOV-16 hoiatust pole."
+      ],
+      "why": "Kiri ei tohi lubada koodi, mida õpilane ei saa kasutada.",
+      "risk": "low",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -2026,33 +2105,6 @@
       "writes": false,
       "mark": "redo",
       "markedAt": "2026-10-26T11:12:35.436Z"
-    },
-    {
-      "id": "haldus-seaded-uudiskiri",
-      "area": "haldus",
-      "who": "maria",
-      "device": "tahvel",
-      "title": "Seaded: tervituskood",
-      "href": "/admin/seaded",
-      "steps": [
-        "See on päris tervituskood, mille iga uus liituja kohe saab: tee kontroll kiiresti ja pane kood kohe tagasi.",
-        "Ava „Seaded“ ja vali jaotiste loendist „Uudiskiri“.",
-        "Kirjuta selle kontrolli märkusesse praegune „Tervituskood“.",
-        "Kirjuta „Tervituskood“: proov-1 ja liigu väljalt edasi.",
-        "Värskenda lehte ja vali jaotiste loendist uuesti „Uudiskiri“.",
-        "Pane „Tervituskood“ tagasi endiseks ja liigu väljalt edasi."
-      ],
-      "expect": [
-        "Kaardil „Uudiskiri“ on ainult väli „Tervituskood“: soodustuse protsent on nüüd lehel „Hüpikaken“.",
-        "Välja all on vihje „Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; …“.",
-        "Väljalt edasi liikudes ütleb päis „Salvestatud …“; nuppu „Salvesta“ pole.",
-        "Pärast värskendamist on väljal kood suurtähtedega: PROOV-1."
-      ],
-      "why": "Tervituskood läheb igale uuele tellijale tervituskirjas.",
-      "risk": "med",
-      "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
       "id": "haldus-seaded-valdkonnad",
@@ -3001,6 +3053,65 @@
       "markedAt": "2026-10-30T02:29:49.820Z"
     },
     {
+      "id": "haldus-sooduskoodid-kasutused",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Sooduskoodid: kasutused ja piir",
+      "href": "/admin/sooduskoodid",
+      "steps": [
+        "Tee see kontroll pärast kontrolle „Registreerimine sooduskoodiga“ ja „E-koolituse ost sooduskoodiga“: need annavad koodile kasutused.",
+        "Ava „Sooduskoodid“ ja vajuta koodile PROOV-16.",
+        "Vaata plokki „Kasutused“ ja kirjuta märkusesse, mis read seal on.",
+        "Kirjuta „Kasutuskordi kokku“: loendi veerus „Kasutatud“ näidatud arv, ja liigu väljalt edasi.",
+        "Ava kontaktkoolituse registreerimisvorm ja kirjuta „E-post“: proov.piir@example.test.",
+        "Vajuta „Mul on sooduskood“, kirjuta PROOV-16 ja vajuta „Rakenda“, vormi saatmata.",
+        "Tühjenda „Kasutuskordi kokku“, liigu väljalt edasi ja lülita „Aktiivne“ välja.",
+        "Vaata riba, vajuta „Võta tagasi“ ja vaata kustutamisnupu asemel olevat teksti."
+      ],
+      "expect": [
+        "Koodi aknas on „Kasutused“ all Proov 16 registreering ja Proov 18 ost.",
+        "Plokis „Kasutused“ on rida „Soodustust kokku: …“ koos summaga.",
+        "Kui „Kasutuskordi kokku“ on täis, saab järgmine teate „Selle sooduskoodi kasutuskorrad on otsas.“.",
+        "„Aktiivne“ välja lülitades tuleb riba „Sooduskood peatatud.“ ja nupp „Võta tagasi“.",
+        "Kasutatud koodil on tekst „Koodi on kasutatud — kustutada ei saa. Peata see.“.",
+        "Kui kõik kasutused on tühistatud, ütleb tekst „Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, …“."
+      ],
+      "why": "Maria näeb, kes koodi kasutas, ja saab selle kasutuskordi piirata või koodi peatada.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-sooduskood-registreeringule",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Sooduskood registreeringule",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Tee see kontroll pärast kontrolli „Registreerimine sooduskoodiga“: vajad Proov 16 registreeringut ja kontot.",
+        "Ava „Registreerimised“, vajuta nimele Proov 16 ja vaata kaarti „Raha“.",
+        "Vajuta „Eemalda sooduskood“ ja „Jah, eemalda“.",
+        "Vajuta „Lisa sooduskood“, kirjuta PROOV-16 ja vajuta „Lisa“.",
+        "Logi teises aknas sisse kui Proov 16 ja ava „Minu koolitused“.",
+        "Vajuta halduses „Lisa laekumine“, vali „Muu summa“, kirjuta 1 ja vajuta „Lisa …“.",
+        "Vajuta „Eemalda sooduskood“ ja „Jah, eemalda“."
+      ],
+      "expect": [
+        "„Lisa sooduskood“ muudab hinna ja summa õpilase konto nupul „Maksa“.",
+        "„Eemalda sooduskood“ toob täishinna tagasi; „Hind“ näitab soodushinda täishinna kõrval.",
+        "Õpilase konto kaardil on rida „Sooduskood PROOV-16: −… €“.",
+        "Laekunud rahaga on teade „Sooduskoodi saab lisada, kui midagi pole veel laekunud.“."
+      ],
+      "why": "Maria parandab hinna ise, kui õpilane unustas koodi kirjutada.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -3010,6 +3121,7 @@
       "steps": [
         "Ava oma kontaktkoolituse leht.",
         "Vajuta „Registreeru“ ilma midagi täitmata.",
+        "Vajuta „Mul on sooduskood“ ja „Rakenda“ ilma midagi kirjutamata.",
         "Vali kuupäev ja vajuta uuesti „Registreeru“."
       ],
       "expect": [
@@ -3017,13 +3129,14 @@
         "Nime, telefoni ja lepingu ruudu juures on „See väli on kohustuslik.“.",
         "E-posti all on „Sisesta korrektne e-posti aadress.“.",
         "Pärast kuupäeva valimist kaob kuupäeva viga, teised jäävad.",
+        "Tühja koodivälja juures annab „Rakenda“ teate „Kirjuta sooduskood.“.",
         "Midagi ei salvestata ja leht ei liigu edasi."
       ],
       "why": "Vigane vorm peab ütlema, mida parandada.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-leping",
@@ -3134,13 +3247,160 @@
         "Hetkeks näed teadet „Registreerimine on vastu võetud. …“.",
         "Siis avaneb Montonio makseleht poole koolituse hinnaga.",
         "Postkasti tuleb kiri „Registreering on vastu võetud — …“ koos koodiga ja lepingu PDF-iga.",
-        "Maria postkasti tuleb teade „Registreerimine: …“ nimega Proov 1."
+        "Maria postkasti tuleb teade „Registreerimine: …“ nimega Proov 1.",
+        "Väljal „Sõnum“ all on vaikne nupp „Mul on sooduskood“."
       ],
       "why": "Registreerimine on lehe kõige tähtsam töö.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-sooduskood",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Registreerimine sooduskoodiga",
+      "href": "/koolitused",
+      "steps": [
+        "Tee enne kontroll „Sooduskoodid: uus kood“: lehel „Sooduskoodid“ peab olema aktiivne kood PROOV-16.",
+        "Ava oma kontaktkoolituse leht, vali tulevane kuupäev ja kirjuta „Nimi“: Proov 16.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov16, ja oma „Telefon“.",
+        "Vajuta „Mul on sooduskood“, kirjuta PROOV-16 ja vajuta „Rakenda“.",
+        "Vajuta ruudu all „Loe lepingut“.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“ ja märgi „Loo mulle kohe konto MS LAB keskkonda“.",
+        "Märgi lepingu ruut, vajuta „Registreeru“, kirjuta Montonio testpanga summa märkusesse ja katkesta makse.",
+        "Ava halduses „Registreerimised“ ja Proov 16, vaata kaarti „Raha“ ja ava kiri „Registreering on vastu võetud — …“."
+      ],
+      "expect": [
+        "Pärast „Rakenda“ on rida „Sooduskood PROOV-16: −… €“ ja väiksem „Kokku“.",
+        "„Loe lepingut“ näitab hinnana soodushinda.",
+        "Valikuga „50% registreerimisel + 50% koolituspäeval“ on testpanga summa pool soodushinnast.",
+        "Halduses on kaardil „Raha“ rida „Sooduskood“ ja soodushind.",
+        "Kinnituskirjas on rida „Sooduskood PROOV-16: −… €“."
+      ],
+      "why": "Õpilane näeb soodushinda enne maksmist ja maksab täpselt selle.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-sooduskood-vead",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Sooduskoodi vead",
+      "href": "/koolitused",
+      "steps": [
+        "Lisa lehel „Sooduskoodid“ neli 10% koodi: PROOV-16P, PROOV-16L, PROOV-16H ja PROOV-16K.",
+        "Ava need koodid: PROOV-16P „Aktiivne“ välja, PROOV-16L „Lõpeb“ eile, PROOV-16H „Algab“ homme, PROOV-16K „Kõigile e-koolitustele“.",
+        "Ava oma kontaktkoolituse leht, vali tulevane kuupäev ja vajuta „Mul on sooduskood“.",
+        "Kirjuta ükshaaval tundmatu kood, PROOV-16P, PROOV-16L, PROOV-16H ja PROOV-16K ning vajuta iga järel „Rakenda“.",
+        "Kirjuta proov-16 ja vajuta „Rakenda“; vajuta „Eemalda“, kirjuta „proov - 16“ ja vajuta „Rakenda“.",
+        "Muuda teises aknas PROOV-16 „Soodustus (%)“: 20; täida siis vorm (Proov 16, +proov16 aadress, telefon, lepingu ruut).",
+        "Vajuta „Registreeru“; pärast teadet vajuta „Eemalda“, kirjuta PROOV-16 ilma „Rakenda“ vajutamata ja vajuta „Registreeru“.",
+        "Kirjuta Montonio testpanga summa märkusesse ja katkesta makse, nagu Dimi märkus ütleb."
+      ],
+      "expect": [
+        "Tundmatu kood annab teate „Sellist sooduskoodi ei ole.“.",
+        "Peatatud või lõppenud kood annab teate „See sooduskood ei kehti enam.“.",
+        "Homme algav kood annab teate „See sooduskood kehtib alates …“.",
+        "Ainult e-koolituste kood annab siin teate „See sooduskood ei kehti sellele koolitusele.“.",
+        "Väikeste tähtedega kirjutatud kood rakendub samamoodi.",
+        "Tühikutega kirjutatud „proov - 16“ rakendub samuti.",
+        "Rakendamata koodiga saatmisel rakendub kood ise ja Montonio summa on soodushind.",
+        "Pärast „Rakenda“ muudetud soodustusega annab saatmine teate „Sooduskood muutus vahepeal. …“ ja uue hinna."
+      ],
+      "why": "Iga vale kood ütleb õpilasele, mis on valesti, ja hinda ei muudeta märkamatult.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-tervituskood",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Tervituskood: esimene koolitus, üks kord",
+      "href": "/koolitused",
+      "steps": [
+        "Veendu, et lehel „Sooduskoodid“ on aktiivne tervituskood, ja kirjuta märkusesse selle kood.",
+        "Liitu avalehe jaluses uudiskirjaga aadressiga, kuhu lisad enne @-märki +proov17, ja ava kiri „Tere tulemast MS LABi!“.",
+        "Ava kontaktkoolituse vorm, vali tulevane kuupäev ja kirjuta „Nimi“: Proov 17, sama „E-post“ ja oma „Telefon“.",
+        "Vajuta „Mul on sooduskood“, kirjuta kirjast tervituskood ja vajuta „Rakenda“.",
+        "Märgi lepingu ruut, vajuta „Registreeru“ ja katkesta Montonio makse, nagu Dimi märkus ütleb.",
+        "Saada sama vorm samale koolitusele ja kuupäevale uuesti, kood „Rakenda“-ga, ja katkesta makse.",
+        "Proovi koodi teise koolituse vormil aadressidega +proov17 ja +proov1: vajuta „Rakenda“ ja vaata teadet.",
+        "Proovi koodi vormil aadressiga proov.liitumata@example.test, jäta uudiskirja ruut märkimata ja vajuta „Rakenda“."
+      ],
+      "expect": [
+        "Proov 17 esimene registreerimine tervituskoodiga õnnestub soodushinnaga.",
+        "Proov 17 sama koolituse uus saatmine enne maksmist saab tervituskoodi uuesti.",
+        "Proov 17 registreerimine teisele koolitusele annab teate „Seda sooduskoodi ei saa selle e-posti aadressiga kasutada.“.",
+        "Proov 1 aadressiga on sama teade ja tervituskoodi vihje jääb selle alla näha.",
+        "Liitumata aadress ilma uudiste kastita saab sama teate."
+      ],
+      "why": "Tervituskood kehtib ainult uudiskirjaga liitunud aadressil, esimesel koolitusel ja üks kord.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-sooduskood-tuhistamine",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Tühistamine annab koodi tagasi",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava halduses „Sooduskoodid“ ja kirjuta märkusesse tervituskoodi „Kasutatud“ arv.",
+        "Ava „Registreerimised“ ja vajuta Proov 17 esimese koolituse registreeringule.",
+        "Vajuta „Tühista registreerimine“ ja „Jah, tühista“.",
+        "Ava „Sooduskoodid“ uuesti ja vaata tervituskoodi „Kasutatud“.",
+        "Ava teise koolituse vorm, kirjuta Proov 17 andmed ja tervituskood ning vajuta „Rakenda“."
+      ],
+      "expect": [
+        "Samal päeval: pärast „Tühista registreerimine“ väheneb koodi „Kasutatud“ ühe võrra.",
+        "Sama aadress saab tervituskoodi kasutada ka teisel koolitusel."
+      ],
+      "why": "Tühistatud registreering ei võta koodi kasutuskorda ega inimese ainsat võimalust.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-sooduskood-jarelmaks",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Sooduskood ja järelmaks",
+      "href": "/koolitused",
+      "steps": [
+        "Veendu, et Seaded → „Järelmaks (Inbank)“ on sees; vali kontaktkoolitus, mille grupihind on 200–500 €.",
+        "Lisa lehel „Sooduskoodid“ kood PROOV-16J: „Eurod“, „Soodustus (€)“ on selle hind miinus 90.",
+        "Ava selle koolituse vorm, vali teine tulevane kuupäev kui kontrollis „Registreerimine sooduskoodiga“ ja kirjuta „Nimi“: Proov 16.",
+        "Kirjuta „E-post“: oma aadress +proov16 ja oma Eesti „Telefon“; vali „Järelmaks (Inbank)“.",
+        "Vajuta „Mul on sooduskood“, kirjuta PROOV-16J ja vajuta „Rakenda“.",
+        "Vajuta „Eemalda“, kirjuta PROOV-16 ja vajuta „Rakenda“.",
+        "Märgi lepingu ruut ja vajuta „Registreeru“; kinnita Inbanki lehel isikukoodiga 10101010005 ja SMS-koodiga 0000.",
+        "Kirjuta märkusesse Inbanki summa ja tühista halduses see Proov 16 registreering („Jah, tühista“)."
+      ],
+      "expect": [
+        "Kui soodushind jääb alla 100 €, kaob valik „Järelmaks (Inbank)“ ja näed piiri rida.",
+        "Piiri rida on „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“.",
+        "Pärast koodi PROOV-16 on valik „Järelmaks (Inbank)“ tagasi ja valitud.",
+        "Inbanki testis on taotluse summa soodushind."
+      ],
+      "why": "Soodushind võib viia hinna Inbanki piirist alla, ja vorm peab seda õpilasele ütlema.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-ettemaks",
@@ -3558,7 +3818,7 @@
       "title": "Arve pangaülekandeks",
       "href": "/admin/registreerimised",
       "steps": [
-        "Registreeri samale kuupäevale: „Nimi“ Proov 6 ja „Telefon“ oma number.",
+        "Registreeri samale kuupäevale: „Nimi“ Proov 6 ja „Telefon“ oma number; vajuta „Mul on sooduskood“, kirjuta PROOV-16 ja „Rakenda“.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov6.",
         "Vali „50% registreerimisel + 50% koolituspäeval“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
@@ -3567,17 +3827,18 @@
         "Vajuta arve real „Laadi alla (PDF)“."
       ],
       "expect": [
-        "Enne koostamist pakub „Koosta arve“ summasid „Ettemaks 50%“ ja „Kogu summa (100%)“.",
+        "Enne koostamist pakub „Koosta arve“ summasid „Ettemaks 50%“ ja „Kogu summa (100%)“, arvutatud soodushinnast.",
         "Plokis on uus arve numbriga, näiteks MSL2026-001, märkega „Tasumata“ ja tähtajaga.",
         "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu Seaded → „Maksmine“.",
+        "Ettemaksu arve PDF-il on väike rida „Hind … − sooduskood PROOV-16 … = …“.",
         "Pärast koostamist pakub „Koosta arve“ ainult summat „Jääk 50%“.",
         "„Raha“ näitab nulli laekununa ja staatus on „Ootab ettemaksu“."
       ],
       "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -4832,20 +5093,21 @@
       "steps": [
         "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
         "Kirjuta „Nimi“: Proov 1.",
-        "Vajuta ruudu all „Loe lepingut“."
+        "Vajuta ruudu all „Loe lepingut“.",
+        "Vajuta „Mul on sooduskood“, kirjuta PROOV-16, vajuta „Rakenda“ ja ava „Loe lepingut“ uuesti."
       ],
       "expect": [
         "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega“, lõpus punkti pole.",
         "Uudiskirja ruudu tekst on „Soovin MS LABi sooduspakkumisi ja uudiskirju saada“.",
         "„Loe lepingut“ avab ostukorvis Seadetes kirjutatud e-koolituse tingimused.",
-        "Kui tekstis on {nimi} või {hind}, on seal sinu kirjutatud nimi ja koolituse hind.",
+        "Kui tekstis on {nimi} või {hind}, on seal sinu kirjutatud nimi ja koolituse hind; pärast koodi soodushind.",
         "Linki „Õppetingimused“ ostukorvis enam pole."
       ],
       "why": "Ostja loeb e-koolituse lepingu enne maksmist.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost",
@@ -4869,13 +5131,14 @@
         "Kirjas on read „Arve on lisatud.“ ja „Leping on lisatud.“ ning kaks PDF-faili.",
         "Kirja nupp „Logi sisse“ avab „Minu koolitused“ koos selle e-koolitusega.",
         "Maria postkasti tuleb „Uus makse: Proov 1, … (e-koolitus), …“.",
-        "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“."
+        "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“.",
+        "Ostukorvis on lahter „Mul on sooduskood“ ja „Kokku“ näitab koolituse hinda."
       ],
       "why": "E-koolituse ost peab avama ligipääsu ilma Maria abita.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -4898,6 +5161,33 @@
       "writes": false,
       "mark": "reworded",
       "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "ekursus-sooduskood",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse ost sooduskoodiga",
+      "href": "/koolitused",
+      "steps": [
+        "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
+        "Vajuta „Mul on sooduskood“, kirjuta PROOV-16 ja vajuta „Rakenda“.",
+        "Kirjuta „Nimi“: Proov 18 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov18.",
+        "Jäta valituks „Pangalink“ (kui valik on olemas), märgi lepingu ruut ja vajuta „Maksa …“.",
+        "Tee makse testpangas, nagu Dimi märkus ütleb, ja kirjuta märkusesse testpanga summa.",
+        "Vajuta tagasi lehel „Ava e-koolitus“.",
+        "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja selle arve PDF."
+      ],
+      "expect": [
+        "Pärast „Rakenda“ on „Kokku“ soodushind ja nupul „Maksa …“ sama summa.",
+        "Montonio testpangas on sama summa.",
+        "Arvel on rida „Sooduskood …“ miinusmärgiga ja „Kokku“ on soodushind."
+      ],
+      "why": "E-koolituse ostja maksab täpselt selle hinna, mille ostukorv talle näitas.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-jarelmaks",
@@ -6623,16 +6913,18 @@
       "expect": [
         "Saatja on MS LAB.",
         "Kirjas on „Aitäh, et liitusid MS LABi uudiskirjaga.“.",
-        "Kui Seadetes on tervituskood, on kood kirjas.",
-        "Kui Hüpikaknas on täidetud „Kood kehtib (päeva)“, on koodi all rida „Kood kehtib … päeva.“.",
+        "Kui tervituskood on aktiivne, on kirjas „Sinu tervituskood:“ ja kood.",
+        "Kirjas on ka juhis kirjutada kood registreerimisel või ostukorvis lahtrisse „Sooduskood“.",
+        "Koodi all on „Kood annab … soodustust sinu esimeselt koolituselt.“.",
+        "Kui tervituskoodil on „Kehtib pärast liitumist (päeva)“, on kirjas rida „Kood kehtib … päeva.“.",
         "Link avab lehe „Uudiskirjast loobumine“.",
         "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“ ja halduses pole Proov 1 aadressi."
       ],
       "why": "Igal uudiskirjal peab olema lihtne loobumine.",
       "risk": "med",
       "writes": true,
-      "mark": "redo",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-parool",
@@ -7135,23 +7427,25 @@
       "area": "koristamine",
       "who": "koos",
       "device": "any",
-      "title": "Proovi-aadressid ja -nimed",
+      "title": "Proovi-aadressid, -nimed ja -koodid",
       "steps": [
         "Kirjuta selle kontrolli märkusesse iga proovi-aadress, mida kasutasid.",
         "Kirjuta märkusesse iga „Proov“ nimega registreeringu nimi ja koolituspäev.",
+        "Peata lehel „Sooduskoodid“ iga proovis tehtud kood lülitiga „Aktiivne“ ja kirjuta see märkusesse.",
         "Kontrolli, et ühtegi aadressi pole puudu.",
         "Kui loend on täielik, vajuta „Läbitud“."
       ],
       "expect": [
         "Märkuses on iga aadress täpselt nii, nagu see vormi kirjutati.",
         "Märkuses on iga proovi-registreering nimega.",
-        "Dim kustutab enne avamist need read, ka proovi-arved ja -lepingud, täpse aadressi järgi."
+        "Märkuses on iga proovi-sooduskood täpselt nii, nagu see lehel „Sooduskoodid“ on.",
+        "Dim kustutab enne avamist need read ja koodid koos kasutustega, ka proovi-arved ja -lepingud, täpse aadressi ja koodi järgi."
       ],
       "why": "Proovi-andmed ei tohi jääda päris õpilaste ja registreeringute sekka.",
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "markedAt": "deploy"
     }
   ]
 }

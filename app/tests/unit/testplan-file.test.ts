@@ -729,9 +729,13 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     const welcome = item("kirjad-tervituskiri");
     expect(welcome.steps[0]).toContain("Proov 1");
     expect(welcome.expect.join("\n")).toContain("pole Proov 1 aadressi");
-    // admin UX pass piece 4b (S4-Q3 A): the mail says how long the code is valid, when Hüpikaken has the days — to be checked again
+    // admin UX pass piece 4b (S4-Q3 A): the mail says how long the code is valid, when the welcome code has the days (F1: „Kehtib pärast liitumist (päeva)“ on Sooduskoodid) — to be checked again
     expect(welcome.expect.join("\n")).toContain("„Kood kehtib … päeva.“");
-    expect(welcome.mark).toBe("redo");
+    // F1 Task 17: the code, its value and the use line follow the welcome code on „Sooduskoodid“, not Seaded or Hüpikaken
+    expect(welcome.expect.join("\n")).toContain("„Sinu tervituskood:“");
+    expect(welcome.expect.join("\n")).toContain("„Kehtib pärast liitumist (päeva)“");
+    expect(welcome.expect.join("\n")).not.toMatch(/Seadetes|Hüpikaknas/);
+    expect(welcome.mark).toBe("reworded");
     expect(markedSince(welcome.markedAt)).toBe(true);
     // Proov 3 unsubscribes in the campaign check, before the welcome mail's; Proov 1 subscribes in konto-andmed, between the two
     expect(at("avalik-uudiskiri-kampaania-loobu")).toBeLessThan(at("konto-andmed"));
@@ -873,8 +877,9 @@ describe("the instalments checks (instalments, Task 8)", () => {
       expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
       expect(text(id), id).not.toContain(et.forms.payFinancingRange);
     }
-    // (the range sentence is for a price outside 100–5000 €, which no check edits a price to see)
-    expect(plan.items.flatMap((c) => [...c.steps, ...c.expect]).filter((l) => l.includes(et.forms.payFinancingRange))).toEqual([]);
+    // (the range sentence is for a price outside 100–5000 €: only the discount-code check, whose code takes the total below 100 €, says it)
+    const saying = plan.items.filter((c) => [...c.steps, ...c.expect].some((l) => l.includes(et.forms.payFinancingRange))).map((c) => c.id);
+    expect(saying).toEqual(["registreerimine-sooduskood-jarelmaks"]);
   });
 
   test("Seaded's toggle comes before every check that needs it on; the course-page check, which comes first, switches it on itself", () => {
@@ -1445,31 +1450,18 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     const check = item("haldus-hupikaken");
     expect(check).toMatchObject({ mark: "redo", href: "/admin/kampaania" });
     expect(markedSince(check.markedAt)).toBe(true);
-    for (const words of [t.shown, t.shownHint, t.hidden, adminEt.common.undo, t.discount, adminEt.publish.publish, "8 sekundit", "privaatses aknas"]) expect(whole("haldus-hupikaken"), words).toContain(words);
+    for (const words of [t.shown, t.shownHint, t.hidden, adminEt.common.undo, adminEt.nav.codes, adminEt.publish.publish, "8 sekundit", "privaatses aknas"]) expect(whole("haldus-hupikaken"), words).toContain(words);
+    // F1 Task 12: the popup has no „Soodustus (%)“ field any more (the welcome code is on Sooduskoodid), so no step types in it and the check says where the hint leads
+    expect(check.steps.join("\n")).not.toContain("„Soodustus (%)“");
+    expect(check.expect.find((l) => l.startsWith("Väljade all on vihje"))).toContain(`„${adminEt.nav.codes}“`);
+    expect(check.expect.find((l) => l.startsWith("Päise all"))).toContain("„Avaldamata muudatused: 2 · Pealkiri, Tekst“");
     // the three-way choice and „Salvesta“ are gone, and no admin screen says „kampaania“ (only this check, which asks for it to be missing)
     expect(whole("haldus-hupikaken")).not.toMatch(/Väljas|„Kampaania“|„Uudiskiri“|„Salvesta“ ja|6 sekund/);
     // „Eelvaade ↗“ (ruling c1): the popup at once under the popup's own bar, which counts the two drafted fields
     const preview = check.steps.findIndex((s) => s.includes("„Eelvaade ↗“"));
-    expect(preview).toBeGreaterThan(check.steps.findIndex((s) => s.includes("„Soodustus (%)“: 15")));
+    expect(preview).toBeGreaterThan(check.steps.findIndex((s) => s.includes("„Tekst“ lõppu")));
     expect(preview).toBeLessThan(check.steps.findIndex((s) => s.startsWith("Vajuta „Avalda muudatused“")));
     expect(check.expect.find((l) => l.startsWith("Eelvaates"))).toContain("„Avaldamata 2“");
-  });
-
-  test("haldus-hupikaken-numbrid (new, piece 4c Task 7): Dim's range words of 29.10 at the two numbers, and „Sisesta täisarv.“ for no whole number", () => {
-    const check = item("haldus-hupikaken-numbrid");
-    expect(check).toMatchObject({ mark: "redo", who: "dim", href: "/admin/kampaania", writes: false });
-    expect(markedSince(check.markedAt)).toBe(true);
-    expect(plan.items.findIndex((c) => c.id === "haldus-hupikaken-numbrid")).toBe(plan.items.findIndex((c) => c.id === "haldus-hupikaken") + 1);
-    const errors = adminEt.courseEditor.errors;
-    // („Kood kehtib (päeva)“ is no dict text any more, F1 Task 12: the check still names it until Task 17 reworks it)
-    for (const words of [t.discount, "Kood kehtib (päeva)", `„${errors.discountRange}“`, `„${errors.codeDaysRange}“`, `„${errors.whole}“`]) expect(whole("haldus-hupikaken-numbrid"), words).toContain(words);
-    // each value typed has its words: 100 and 366 out of their range, 7,5 no whole number
-    for (const [typed, words] of [["100", errors.discountRange], ["7,5", errors.whole], ["366", errors.codeDaysRange]]) {
-      expect(check.steps.some((s) => s.includes(`: ${typed} `)), typed).toBe(true);
-      expect(check.expect.find((l) => l.startsWith(`Pärast ${typed} `)), typed).toContain(words);
-    }
-    // nothing is published: the last step puts both back
-    expect(whole("haldus-hupikaken-numbrid")).not.toContain(adminEt.publish.publish);
   });
 
   test("avalik-hupikaken (redo): 8 s, once in 30 days per browser, the home page only — new visitors in a private window", () => {
@@ -1486,25 +1478,17 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     expect(check.expect[0]).toContain("ainult avalehel");
   });
 
-  test("avalik-uudiskiri (reworded): the footer's button stays „Liitu“; the popup's follows Seaded's code (S4-Q4)", () => {
+  test("avalik-uudiskiri (reworded): the footer's button stays „Liitu“; the popup's follows the active welcome code on Sooduskoodid (S4-Q4, F1)", () => {
     const check = item("avalik-uudiskiri");
     expect(check).toMatchObject({ mark: "reworded" });
     expect(markedSince(check.markedAt)).toBe(true);
     const line = check.expect.find((l) => l.includes(`„${et.newsletter.popupSubmitCode}“`));
     expect(line).toContain(`„${et.newsletter.submit}“`);
-    expect(line).toContain("„Tervituskood“");
+    expect(line).toContain(`„${adminEt.nav.codes}“`);
+    expect(line).toContain("aktiivne tervituskood");
+    expect(line).not.toContain("Seadetes");
     // a step shows the popup's button (review m2): the home page in a new private window, the site's 8 s
     expect(check.steps[0]).toMatch(/^Ava avaleht uues privaatses aknas, oota 8 sekundit, vaata hüpikakna nuppu/);
-  });
-
-  test("haldus-seaded-uudiskiri: the code in capitals is checked after a reload (the save's answer carries no value); still a new check", () => {
-    const check = item("haldus-seaded-uudiskiri");
-    expect(check).toMatchObject({ mark: "new" });
-    expect(markedSince(check.markedAt)).toBe(true);
-    const reload = check.steps.findIndex((s) => /^Värskenda lehte/.test(s));
-    expect(reload).toBeGreaterThan(check.steps.findIndex((s) => s.includes("proov-1")));
-    expect(reload).toBeLessThan(check.steps.findIndex((s) => s.includes("tagasi endiseks")));
-    expect(check.expect.find((l) => l.includes("PROOV-1"))).toMatch(/^Pärast värskendamist/);
   });
 });
 
@@ -1616,12 +1600,12 @@ describe("course areas (spec 2026-11-11)", () => {
     }
   });
 
-  test("in order: the course's „Valdkond“, then the two public rows, then Seaded; the course check after „Koolituse tekst“, Seaded's after its „Uudiskiri“", () => {
+  test("in order: the course's „Valdkond“, then the two public rows, then Seaded; the course check after „Koolituse tekst“, Seaded's after its „Kontakt“ (F1 Task 17: the „Uudiskiri“ section is gone)", () => {
     expect(at("haldus-koolitus-tekst")).toBeLessThan(at("haldus-koolitus-valdkond"));
     expect(at("haldus-koolitus-valdkond")).toBeLessThan(at("haldus-kalender-valdkond"));
     expect(at("haldus-kalender-valdkond")).toBeLessThan(at("haldus-koolitused-valdkond"));
     expect(at("haldus-koolitused-valdkond")).toBeLessThan(at("haldus-seaded-valdkonnad"));
-    expect(at("haldus-seaded-valdkonnad")).toBe(at("haldus-seaded-uudiskiri") + 1);
+    expect(at("haldus-seaded-valdkonnad")).toBe(at("haldus-seaded-kontakt") + 1);
     for (const id of ["haldus-kalender-valdkond", "haldus-koolitused-valdkond"]) expect(find(id).steps[0], id).toContain("„Koolituse valdkond“");
   });
 
@@ -1644,5 +1628,102 @@ describe("course areas (spec 2026-11-11)", () => {
   test("the old calendar empty state's words are gone from the plan", () => {
     const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((line) => `${c.id}: ${line}`));
     expect(lines.filter((line) => /Selles linnas hetkel koolitusi pole|„Kõik linnad“/.test(line))).toEqual([]);
+  });
+});
+
+// F1 Task 17 (discount codes, spec §8): twelve new checks, six redone and two reworded, two removed; the checks quote the screens' words, so a text
+// that changes in the dictionary fails here before the plan tells Maria the old one.
+describe("discount codes (F1 Task 17)", () => {
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+  const d = adminEt.discounts;
+  const f = et.discount;
+  const NEW_ITEMS: Record<string, { area: string; who: string; device: string }> = {
+    "haldus-sooduskoodid-uus": { area: "haldus", who: "maria", device: "arvuti" },
+    "haldus-sooduskoodid-tervituskood": { area: "haldus", who: "maria", device: "tahvel" },
+    "registreerimine-sooduskood": { area: "registreerimine", who: "maria", device: "telefon" },
+    "registreerimine-sooduskood-vead": { area: "registreerimine", who: "dim", device: "arvuti" },
+    "registreerimine-tervituskood": { area: "registreerimine", who: "dim", device: "arvuti" },
+    "registreerimine-sooduskood-tuhistamine": { area: "registreerimine", who: "maria", device: "arvuti" },
+    "registreerimine-sooduskood-jarelmaks": { area: "registreerimine", who: "dim", device: "arvuti" },
+    "ekursus-sooduskood": { area: "ekursus", who: "maria", device: "telefon" },
+    "haldus-sooduskoodid-kasutused": { area: "haldus", who: "maria", device: "arvuti" },
+    "haldus-sooduskood-registreeringule": { area: "haldus", who: "maria", device: "arvuti" },
+    "avalik-jalus-tervituskood": { area: "avalik", who: "maria", device: "any" },
+    "haldus-uudiskiri-kood-hoiatus": { area: "haldus", who: "maria", device: "arvuti" },
+  };
+
+  test("the twelve new checks of §8 are there, new from the deploy, with the spec's area, who and device", () => {
+    for (const [id, want] of Object.entries(NEW_ITEMS)) {
+      expect(find(id), id).toMatchObject({ ...want, mark: "new" });
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+  });
+
+  test("the redone checks carry their mark from the deploy; the two replaced checks are gone", () => {
+    for (const id of ["haldus-hupikaken", "registreerimine-grupp", "registreerimine-vorm-vead", "ekursus-ost", "ekursus-ostukorv-leping", "registreerimine-arve-maksmiseks"]) {
+      expect(find(id).mark, id).toBe("redo");
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+    for (const id of ["avalik-uudiskiri", "kirjad-tervituskiri"]) {
+      expect(find(id).mark, id).toBe("reworded");
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+    for (const id of ["haldus-seaded-uudiskiri", "haldus-hupikaken-numbrid"]) expect(plan.items.some((c) => c.id === id), id).toBe(false);
+  });
+
+  test("the area notes name Proov 16–18 and the clean-up of the Proov codes (paused, written down, deleted by the exact code)", () => {
+    const note = (id: string) => String(plan.areas.find((a) => a.id === id)!.note);
+    for (const words of ["Proov 16 registreerib sooduskoodiga", "Proov 17 proovib tervituskoodi", "Proov 18 ostab e-koolituse sooduskoodiga"]) expect(note("enne"), words).toContain(words);
+    expect(note("koristamine")).toContain(`lülitiga „${d.form.active}“`);
+    expect(note("koristamine")).toContain("täpse koodi järgi, mitte mustri järgi");
+    expect(whole("koristamine-aadressid")).toContain(`lülitiga „${d.form.active}“`);
+  });
+
+  test("the admin checks quote the drawer's, the Raha card's and the editor's own words", () => {
+    const e = adminEt.courseEditor.errors;
+    for (const words of [`„${d.add} +“`, `„${d.create}“`, `„${d.form.valuePercent}“`, `„${d.form.valueEuro}“`, `„${d.form.euro}“`, `„${d.form.openTaken}“`, `„${e.codeTaken}“`, `„${e.discountRange}“`, `„${e.amountTooHigh}“`, `„${d.form.oncePerPerson}“`])
+      expect(whole("haldus-sooduskoodid-uus"), words).toContain(words);
+    for (const words of [`„${d.welcomeTag}“`, `„${d.form.audiences.first}“`, `„${d.form.oncePerPerson}“`, `„${d.form.days}“`]) expect(whole("haldus-sooduskoodid-tervituskood"), words).toContain(words);
+    for (const words of [`„${d.form.maxUses}“`, `„${d.paused}“`, `„${d.remove.used}“`, `„${d.uses.total.split(":")[0]}: …“`, `„${f.errors.usedUp}“`, "„Kasutused“"])
+      expect(whole("haldus-sooduskoodid-kasutused"), words).toContain(words);
+    for (const words of [`„${d.registration.add}“`, `„${d.registration.remove}“`, `„${d.registration.removeYes}“`, `„${d.registration.errors.paid}“`, `„${d.registration.submit}“`])
+      expect(whole("haldus-sooduskood-registreeringule"), words).toContain(words);
+    expect(whole("haldus-uudiskiri-kood-hoiatus")).toContain(`„${d.form.code}“`);
+    expect(whole("haldus-uudiskiri-kood-hoiatus")).toContain(`„${adminEt.newsletter.campaigns.codeNotActive.split(". ")[0]}. …“`);
+  });
+
+  test("the students' checks quote the field's refusals as the dictionary has them", () => {
+    for (const words of [`„${f.open}“`, `„${f.apply}“`, `„${f.remove}“`]) expect(whole("registreerimine-sooduskood-vead"), words).toContain(words);
+    for (const words of [f.errors.unknown, f.errors.paused, f.errors.scope, f.errors.changed.split(". ")[0]]) expect(find("registreerimine-sooduskood-vead").expect.join("\n"), words).toContain(words);
+    expect(find("registreerimine-sooduskood-vead").expect.join("\n")).toContain(f.errors.notYet.replace(" {date}.", ""));
+    expect(whole("registreerimine-tervituskood")).toContain(`„${f.errors.person}“`);
+    expect(whole("registreerimine-sooduskood-jarelmaks")).toContain(`„${et.forms.payFinancingRange}“`);
+    expect(whole("registreerimine-sooduskood")).toContain(f.applied.split(":")[0].replace("{code}", "PROOV-16"));
+    expect(whole("registreerimine-vorm-vead")).toContain(`„${f.errors.empty}“`);
+    expect(find("avalik-jalus-tervituskood").expect.join("\n")).toContain(`„${et.newsletter.bodyNoCode}“`);
+    expect(whole("avalik-jalus-tervituskood")).toContain(`„${et.newsletter.submit}“`);
+  });
+
+  test("Proov 16, 17 and 18 (and the old Proov 1); every address is a +proov one or an @example.test one", () => {
+    const all = Object.keys(NEW_ITEMS).map(whole).join("\n");
+    for (const n of ["+proov16", "+proov17", "+proov18"]) expect(all).toContain(n);
+    expect(all).not.toMatch(/\+proov(?!1[678]\b|1\b)\d+/);
+    for (const m of all.matchAll(/[\w.+-]+@[\w.-]*\w/g)) expect(m[0], m[0]).toMatch(/example\.test$/);
+  });
+
+  test("the checks stand where their data is made: the registration checks after the registration form's, the two that need the uses at the end of the admin area", () => {
+    const order = plan.items.map((c) => c.id);
+    const at = (id: string) => order.indexOf(id);
+    expect(at("haldus-sooduskoodid-uus")).toBe(at("haldus-hupikaken") + 1);
+    expect(at("registreerimine-sooduskood")).toBe(at("registreerimine-grupp") + 1);
+    expect(at("registreerimine-sooduskood")).toBeLessThan(at("registreerimine-sooduskood-vead"));
+    expect(at("registreerimine-tervituskood")).toBeLessThan(at("registreerimine-sooduskood-tuhistamine"));
+    expect(find("haldus-sooduskoodid-kasutused").steps[0]).toContain("pärast kontrolle „Registreerimine sooduskoodiga“ ja „E-koolituse ost sooduskoodiga“");
+    expect(find("haldus-sooduskood-registreeringule").steps[0]).toContain("pärast kontrolli „Registreerimine sooduskoodiga“");
   });
 });
