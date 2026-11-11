@@ -1,4 +1,4 @@
-import { eq, getTableName, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, getTableName, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { areaSlug } from "@/domain/course-areas";
 import type { Db } from "./client";
@@ -86,6 +86,29 @@ async function seedAreas(db: Db): Promise<Map<string, number>> {
     ids.set(slug, created.id);
   }
   return ids;
+}
+
+/**
+ * For the local e2e database only (tests/e2e/fixtures.ts ensureSeedAreas); applySeed never calls it. That database was seeded before the course areas
+ * and is never reset, so applySeed's course insert does nothing there and the seed's courses keep no area. This finds or adds the seed's areas by slug
+ * (as applySeed does) and gives each seed course its area where the course has none; a course with an area, and any course not in the seed, is left.
+ * Returns how many courses it gave one.
+ */
+export async function giveSeedCoursesAreas(db: Db): Promise<number> {
+  const ids = await seedAreas(db);
+  let given = 0;
+  for (const { slug, area } of courseSeeds) {
+    if (area === undefined) continue;
+    const id = ids.get(areaSlug({ et: area }));
+    if (id === undefined) continue;
+    const updated = await db
+      .update(courses)
+      .set({ areaId: id })
+      .where(and(eq(courses.slug, slug), isNull(courses.areaId)))
+      .returning();
+    given += updated.length;
+  }
+  return given;
 }
 
 export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<string, number>> {

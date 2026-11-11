@@ -3,7 +3,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "@playwright/test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import type { Db } from "../../src/db/client";
+import * as schema from "../../src/db/schema";
+import { giveSeedCoursesAreas } from "../../src/db/seed-apply";
 import { courseSeeds, pageSeeds } from "../../src/db/seed-data";
 import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
@@ -164,6 +168,23 @@ export async function ensureSeedPopup(): Promise<boolean> {
       await tx`update campaign set active = true where id = 2`;
       return true;
     });
+  } finally {
+    await sql.end();
+  }
+}
+
+// ---------- the seed courses' areas ----------
+// The seed gained the course areas („Valdkond“, spec 2026-11-11) after the local database was seeded, and that database is never reset, so applySeed's
+// course insert does nothing there and the six seed courses have no area: the calendar and the catalogue would show no area chips (pages.spec.ts,
+// catalogue.spec.ts read the seed's). Every run first finds or adds the seed's two areas by slug and gives each seed course its area where it has none
+// (db/seed-apply.ts giveSeedCoursesAreas, tested in tests/db/seed.test.ts); a course with an area is left. Only the LOCAL database, like every fixture here.
+
+/** Gives the local database's seed courses the seed's areas where they have none; returns how many courses it gave one. */
+export async function ensureSeedAreas(): Promise<number> {
+  const sql = connect();
+  try {
+    const db = drizzle(sql, { schema }) as unknown as Db;
+    return await db.transaction((tx) => giveSeedCoursesAreas(tx as unknown as Db));
   } finally {
     await sql.end();
   }
