@@ -511,3 +511,120 @@ describe("the individual request", () => {
     expect([fd.has("discountCode"), fd.has("discountCents")]).toEqual([false, false]);
   });
 });
+
+describe("fix round 1: what the submit shows and sends", () => {
+  const on = { financingSwitch: { enabled: true, paymentsOn: true }, contract: { ...base.contract, priceCents: 11000 } };
+
+  test("a typed code applied at submit that takes järelmaks out of range is not sent as järelmaks", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 1100, 11000));
+    mocks.registerContact.mockResolvedValue({ ok: true });
+    await render(on);
+    await act(async () => choices()[2].click());
+    await openField();
+    await type("tere10");
+    await fillIn();
+    await submit();
+    // nothing is sent: she sees the 99 €, the flipped choice and the range line first
+    expect(mocks.registerContact).not.toHaveBeenCalled();
+    expect($("[data-discount-total] strong")?.textContent).toBe("99 €");
+    expect(choices().map((c) => [c.value, c.checked])).toEqual([["full", true], ["half", false]]);
+    expect($("[data-financing-range]")).not.toBeNull();
+    expect(document.activeElement).toBe($("[data-financing-range]"));
+    // pressing Registreeru again sends it, as „100% kohe“, with the discount
+    await submit();
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("payment"), fd.get("discountCode"), fd.get("discountCents")]).toEqual(["full", "TERE10", "1100"]);
+  });
+
+  test("a typed code applied at submit sends with its discount when the effective choice did not change", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 1100, 11000));
+    mocks.registerContact.mockResolvedValue({ ok: true });
+    await render(on);
+    await openField();
+    await type("tere10");
+    await fillIn();
+    await submit();
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("payment"), fd.get("discountCode"), fd.get("discountCents")]).toEqual(["full", "TERE10", "1100"]);
+  });
+
+  test("a refused typed code at submit moves focus to the code input", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(refused("unknown"));
+    await render();
+    await openField();
+    await type("vale");
+    await fillIn();
+    await act(async () => $<HTMLButtonElement>("button[type='submit']")!.focus());
+    await submit();
+    expect(mocks.registerContact).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(codeInput());
+  });
+
+  test("a person refusal moves focus to the code's message", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 3500));
+    mocks.registerContact.mockResolvedValue({ ok: false, errors: { discountCode: "person" } });
+    await render();
+    await applyCode("tere10");
+    await fillIn();
+    await submit();
+    const message = $("[data-discount-error]")!;
+    expect(message.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(message);
+  });
+
+  test("a refusal for good puts focus in the box again", async () => {
+    mocks.checkDiscountCode.mockResolvedValueOnce(ok("SUVI", 3500)).mockResolvedValueOnce(refused("usedUp"));
+    mocks.registerContact.mockResolvedValue({ ok: false, errors: { discountCode: "usedUp" } });
+    await render();
+    await applyCode("suvi");
+    await fillIn();
+    await submit();
+    expect(document.activeElement).toBe(codeInput());
+  });
+});
+
+describe("fix round 1: late answers", () => {
+  test("remove() while a check is in flight: the late ok does not apply the code again", async () => {
+    let late!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockResolvedValueOnce(ok("TERE10", 3500)).mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (late = r)));
+    mocks.registerContact.mockResolvedValue({ ok: false, errors: { discountCode: "changed" } });
+    await render();
+    await applyCode("tere10");
+    await fillIn();
+    await submit(); // `changed`: the re-check is now in flight
+    await act(async () => $<HTMLButtonElement>("[data-discount-remove]")!.click());
+    await act(async () => late(ok("TERE10", 7000)));
+    await settle();
+    expect(appliedLine()).toBeNull();
+    expect(totalLine()).toBeNull();
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  test("the mount re-check racing a typed apply: the typed code's answer wins", async () => {
+    window.sessionStorage.setItem(KEY, "OLD");
+    let first!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (first = r))).mockResolvedValueOnce(ok("NEW", 3500));
+    await render();
+    await openField();
+    await type("new");
+    await apply();
+    expect(appliedLine()).toContain("NEW");
+    await act(async () => first(ok("OLD", 7000)));
+    await settle();
+    expect(appliedLine()).toContain("NEW");
+    expect(appliedLine()).not.toContain("OLD");
+    expect(window.sessionStorage.getItem(KEY)).toBe("NEW");
+  });
+
+  test("the mount re-check does not overwrite what the visitor started typing", async () => {
+    window.sessionStorage.setItem(KEY, "OLD");
+    let first!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (first = r)));
+    await render();
+    await openField();
+    await type("ne");
+    await act(async () => first(refused("ended")));
+    await settle();
+    expect(codeInput().value).toBe("ne");
+  });
+});

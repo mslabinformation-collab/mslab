@@ -5,6 +5,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState } f
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
 import { filledContract } from "@/domain/contract";
 import type { SubmitCodeError } from "@/domain/discount-codes";
+import { totalWith } from "@/domain/discount-codes";
 import { financingChoice } from "@/domain/financing";
 import type { PaymentChoice } from "@/domain/registration";
 import type { SeatState } from "@/domain/sessions";
@@ -188,6 +189,8 @@ export function ContactRegister({
   const sessionRefs = useRef(new Map<number, HTMLButtonElement>());
   const sentRef = useRef<HTMLDivElement>(null);
   const submitting = useRef(false);
+  // counts the times the visitor must be taken to the code field (a refusal at submit): the effect below runs after the screen has the new state
+  const [discountFocus, setDiscountFocus] = useState(0);
   const router = useRouter();
 
   const [state, formAction, pending] = useActionState<State, FormData>(async (_prev, formData) => {
@@ -219,7 +222,7 @@ export function ContactRegister({
         else errors[f as Field] = t.errorRequired;
       }
       // the code's refusal belongs to the field, which says it (and re-checks the code); it is not a form error
-      if (discountRefused) void discount.serverRefused(discountRefused);
+      if (discountRefused) void discount.serverRefused(discountRefused).then(() => setDiscountFocus((n) => n + 1));
       if (Object.keys(errors).length === 0 && !discountRefused) errors.form = t.errorGeneric;
       // The contract's text changed since the page was loaded (R6): her tick was for the old one, so the box is cleared, and the page is loaded
       // again for the new text (and its version) to read.
@@ -248,6 +251,16 @@ export function ContactRegister({
         : document.getElementById(first ? `${id}-${first}` : `${id}-form-error`);
     target?.focus();
   }, [state, id]);
+
+  // The code's refusal at „Registreeru“ sits above „Tasumine“, out of sight on a phone: focus goes to the box while it is there, else to what the
+  // field says (its message, or the range line when the submit's own check moved the total), and that is scrolled into view.
+  useEffect(() => {
+    if (discountFocus === 0) return;
+    const form = formRef.current;
+    const target = form?.querySelector<HTMLElement>("[data-discount] input") ?? form?.querySelector<HTMLElement>("[data-discount-error], [data-financing-range]");
+    target?.focus();
+    target?.scrollIntoView?.({ block: "center" });
+  }, [discountFocus]);
 
   // "Vali individuaalkoolitus" disappears with the group view: keep focus on the choice that was made.
   useEffect(() => {
@@ -345,7 +358,20 @@ export function ContactRegister({
           submitting.current = true;
           try {
             const d = await discount.beforeSubmit();
-            if (!d.send) return;
+            if (!d.send) {
+              setDiscountFocus((n) => n + 1);
+              return;
+            }
+            // The code the submit itself applied may have moved the total out of järelmaks' range: the choice then is "100% kohe", and it is not sent
+            // before she has seen that (the screen shows the flipped choice and the range line).
+            const sentChoice = formData.get("payment");
+            if (sentChoice !== null && contract.priceCents !== null) {
+              const after = financingChoice({ totalCents: totalWith(contract.priceCents, d.discountCents ?? 0), financingSwitch, chosen: chosenPayment }).choice;
+              if (after !== sentChoice) {
+                setDiscountFocus((n) => n + 1);
+                return;
+              }
+            }
             formData.set("discountCode", d.code ?? "");
             formData.set("discountCents", d.discountCents === null ? "" : String(d.discountCents));
           } finally {
@@ -509,7 +535,7 @@ export function ContactRegister({
               </div>
               {/* §4.4: a chosen järelmaks the total has taken out of 100–5000 € */}
               {fin.rangeLine && (
-                <p className={styles.financingLine} data-financing-range="">
+                <p className={styles.financingLine} data-financing-range="" tabIndex={-1}>
                   {t.financingRange}
                 </p>
               )}

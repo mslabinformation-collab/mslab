@@ -154,7 +154,7 @@ export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnTyp
       )}
       <div aria-live="polite">
         {errorText && (
-          <p id={errorId} className={styles.error} data-discount-error={error?.code}>
+          <p id={errorId} className={styles.error} data-discount-error={error?.code} tabIndex={-1}>
             {errorText}
           </p>
         )}

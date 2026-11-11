@@ -88,7 +88,8 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
       }
       if (mine !== seq.current) return null;
       setChecking(false);
-      setTypedState(answer.ok ? answer.code : code);
+      // the box shows the code as the check read it, unless she has typed on since the question was asked (a remembered code's re-check on load)
+      if (answer.ok) setTypedState((cur) => (cur === "" || cur === code ? answer.code : cur));
       if (answer.ok) {
         setApplied(answer);
         remember(course, answer.code);
