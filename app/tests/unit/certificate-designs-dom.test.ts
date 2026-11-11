@@ -53,7 +53,10 @@ const route = async (url: string, init: RequestInit | undefined): Promise<Respon
   versions[id] = `${versions[id]}+`;
   return Response.json({ ok: true, version: versions[id], savedAt: "2026-11-11T11:20:00.000Z" });
 };
-const saves = () => fetched.calls.filter((c) => c.method === "POST" && /tunnistuse-kujundus\/\d+$/.test(c.url)).map((c) => ({ url: c.url, ...(c.body as object) }));
+const saves = () =>
+  fetched.calls
+    .filter((c) => c.method === "POST" && /tunnistuse-kujundus\/\d+$/.test(c.url))
+    .map((c) => ({ url: c.url, ...(c.body as { version: string; patch: Record<string, unknown> }) }));
 
 const $ = <E extends Element = HTMLElement>(selector: string, within: ParentNode = container) => within.querySelector<E>(selector);
 const text = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();

@@ -7,12 +7,15 @@
 // --reset also refuses (--force does not help) while any lesson progress, course access, lesson video or lesson file exists: the
 // cascade would delete the students' progress and access, and the Bunny videos and R2 files would be left behind with nobody able
 // to delete them. Any refusal is printed as it is (SeedRefusal); every other error prints only a database error code.
+import { existsSync, readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { localStore } from "@/server/media-local";
 import * as schema from "./schema";
 import { targetMatches } from "./fill-ru";
 import { safeDbError } from "./safe-error";
 import { applySeed, SeedRefusal, type SeedOptions } from "./seed-apply";
+import { SEED_BACKGROUND_FILE } from "./seed-data";
 
 /** Why the seed must not run against `url` with these arguments, or null when it may. Never names the address. */
 export function seedRefusal(url: string, args: string[]): string | null {
@@ -27,11 +30,20 @@ export function seedRefusal(url: string, args: string[]): string | null {
   return null;
 }
 
+/**
+ * „Hele“'s test background for a database on this machine (2026-11-11 certificate designs, spec §3): our test JPEG, in the local media folder that
+ * `next dev` and the e2e build read (server/media-local.ts). None for any other database (Railway: Maria uploads hers in the admin).
+ */
+function localBackground(url: string): SeedOptions["background"] {
+  if (!targetMatches(url, "local") || !existsSync(SEED_BACKGROUND_FILE)) return undefined;
+  return { store: localStore(), bytes: new Uint8Array(readFileSync(SEED_BACKGROUND_FILE)) };
+}
+
 /** Applies the seed to the database at `url`: one connection, closed afterwards. */
 async function applyToDatabase(url: string, opts: SeedOptions): Promise<Record<string, number>> {
   const sql = postgres(url, { max: 1, onnotice: () => {} });
   try {
-    return await applySeed(drizzle(sql, { schema }), opts);
+    return await applySeed(drizzle(sql, { schema }), { ...opts, background: localBackground(url) });
   } finally {
     await sql.end({ timeout: 5 });
   }

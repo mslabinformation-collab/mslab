@@ -1,8 +1,9 @@
-import { eq, getTableName, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, getTableName, isNotNull, or, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import type { FileStore } from "@/server/media";
 import type { Db } from "./client";
-import { POPUP_ID, campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
-import { campaignSeed, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
+import { POPUP_ID, campaign, certificateDesigns, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
+import { campaignSeed, certificateDesignSeeds, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, SEED_BACKGROUND_KEY, settingSeeds, trainerWorks } from "./seed-data";
 
 // Applies the prototype content. Plain drizzle: no Cloudflare bindings, so it runs from the CLI (seed.ts) and from tests.
 //
@@ -19,7 +20,21 @@ export type SeedOptions = {
    * reset over students' lesson progress, course access, lesson videos or lesson files (see `studentData`).
    */
   force?: boolean;
+  /**
+   * This machine's (the local seed, seed.ts; the e2e setup): our test JPEG (`bytes`, seed-data.ts SEED_BACKGROUND_FILE) put in `store` at
+   * SEED_BACKGROUND_KEY, and „Hele“ given it while it has no photo (2026-11-11 certificate designs, spec §3). Never Maria's photo, never over hers.
+   */
+  background?: { store: FileStore; bytes: Uint8Array };
 };
+
+/** „Hele“'s test background (SeedOptions.background): the store gets the file once, the design its key only while it has none. */
+export async function seedDesignBackground(db: Db, { store, bytes }: { store: FileStore; bytes: Uint8Array }): Promise<void> {
+  if (!(await store.get(SEED_BACKGROUND_KEY))) await store.put(SEED_BACKGROUND_KEY, bytes.slice().buffer, "image/jpeg");
+  await db
+    .update(certificateDesigns)
+    .set({ backgroundKey: SEED_BACKGROUND_KEY })
+    .where(and(eq(certificateDesigns.name, "Hele"), eq(certificateDesigns.backgroundKey, "")));
+}
 
 const CONTENT_TABLES = ["courses", "course_images", "course_modules", "course_sessions", "registrations", "practice_packages", "hero_slides", "faq", "posts", "pages", "gallery_items", "campaign", "settings"];
 const TRAINER_WORKS = "trainer_works";
@@ -106,9 +121,12 @@ export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<
   await db.insert(campaign).values({ ...campaignSeed, id: POPUP_ID.campaign, kind: "campaign" }).onConflictDoNothing({ target: campaign.id });
   await db.insert(campaign).values({ ...newsletterPopupSeed, id: POPUP_ID.newsletter, kind: "newsletter" }).onConflictDoNothing({ target: campaign.id });
   await db.insert(settings).values(Object.entries(settingSeeds).map(([key, value]) => ({ key, value }))).onConflictDoNothing({ target: settings.key });
+  // the certificate designs (the migration seeds them; a list emptied by hand gets them again), and on this machine „Hele“'s test photo
+  if ((await total(db, certificateDesigns)) === 0) await db.insert(certificateDesigns).values(certificateDesignSeeds);
+  if (opts.background) await seedDesignBackground(db, opts.background);
 
   const counts: Record<string, number> = {};
-  for (const table of [courses, courseImages, courseModules, courseSessions, practicePackages, heroSlides, faq, posts, pages, galleryItems, campaign, settings]) {
+  for (const table of [courses, courseImages, courseModules, courseSessions, practicePackages, heroSlides, faq, posts, pages, galleryItems, campaign, settings, certificateDesigns]) {
     counts[getTableName(table)] = await total(db, table);
   }
   return counts;

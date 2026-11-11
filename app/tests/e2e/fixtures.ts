@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "@playwright/test";
 import postgres from "postgres";
-import { courseSeeds, pageSeeds } from "../../src/db/seed-data";
+import { courseSeeds, pageSeeds, SEED_BACKGROUND_FILE, SEED_BACKGROUND_KEY } from "../../src/db/seed-data";
 import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
@@ -141,6 +141,25 @@ export async function ensureCourseTermsPage(): Promise<boolean> {
       insert into pages (key, title, body) values (${seed.key}, ${sql.json(seed.title as never)}, ${sql.json(seed.body as never)})
       on conflict (key) do nothing returning key`;
     return added.length > 0;
+  } finally {
+    await sql.end();
+  }
+}
+
+// ---------- the certificate's light design ----------
+// 2026-11-11 certificate designs (spec §3): on this machine „Hele“ draws over our test JPEG (tests/fixtures/certificate-background.jpg, a gradient
+// we made; never Maria's photo), as the local seed gives it (seed-apply.ts seedDesignBackground). A local database migrated to 0023 before that seed
+// has „Hele“ without a photo: every run puts the JPEG in the local media folder the e2e server reads and gives it to „Hele“ while it has none (a
+// photo uploaded there stays). Only the LOCAL database and folder, like every fixture here.
+
+/** „Hele“'s test background in the local store and database; true when the design got it now. */
+export async function ensureDesignBackground(): Promise<boolean> {
+  const store = localStore();
+  if (!(await store.get(SEED_BACKGROUND_KEY))) await store.put(SEED_BACKGROUND_KEY, new Uint8Array(readFileSync(SEED_BACKGROUND_FILE)).buffer, "image/jpeg");
+  const sql = connect();
+  try {
+    const set = await sql`update certificate_designs set background_key = ${SEED_BACKGROUND_KEY} where name = 'Hele' and background_key = '' returning id`;
+    return set.length > 0;
   } finally {
     await sql.end();
   }
