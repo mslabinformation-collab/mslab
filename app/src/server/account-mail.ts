@@ -366,6 +366,8 @@ export type RegistrationConfirmationInput = {
   login: LoginCode | null;
   /** The registration's contract goes with the mail as a PDF (contracts, spec §4, D7): the line „Leping on lisatud.“. */
   contractAttached?: boolean;
+  /** The discount code taken on the registration (F1): its line goes before the next step; `priceCents` is already the total. */
+  discount?: { code: string; cents: number } | null;
 };
 
 /**
@@ -382,6 +384,7 @@ export function registrationConfirmationMail(input: RegistrationConfirmationInpu
   const due = input.priceCents === null ? 0 : prepaymentDue(input.priceCents, input.paymentChoice);
   const transfer = hasPrepayment(input.prepayment) && due > 0 ? input.prepayment : null;
   const sections: Section[] = [];
+  if (input.discount) sections.push({ text: fill(dict.discount.applied, { code: input.discount.code, amount: formatEUR(input.discount.cents, input.locale) }) });
   const amount = formatEUR(due, input.locale);
   const transferRows = (pay: PrepaymentInfo): Section => {
     const labels = dict.account.dashboard.payment;

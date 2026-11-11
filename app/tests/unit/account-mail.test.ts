@@ -85,6 +85,16 @@ describe("registration confirmation, Estonian", () => {
     expect(text).toContain("Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist.");
   });
 
+  test("the confirmation mail carries the code line before the next step", () => {
+    const discounted = registrationConfirmationMail(registration({ priceCents: 35100, discount: { code: "PROOV-16", cents: 3900 } }));
+    const text = lines(discounted.text);
+    const code = text.indexOf("Sooduskood PROOV-16: −39 €");
+    expect(code).toBeGreaterThan(-1);
+    expect(code).toBeLessThan(text.findIndex((l) => l.startsWith("Koha kinnitamiseks tasu ettemaks")));
+    expect(text).toContain("Koha kinnitamiseks tasu ettemaks 175,50 €.");
+    expect(lines(registrationConfirmationMail(registration()).text).some((l) => l.startsWith("Sooduskood"))).toBe(false);
+  });
+
   test("full payment asks for the whole price", () => {
     const full = registrationConfirmationMail(registration({ paymentChoice: "full" }));
     expect(lines(full.text)).toContain("Koha kinnitamiseks tasu ettemaks 390 €.");

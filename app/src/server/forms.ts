@@ -69,6 +69,16 @@ export const registrationSchema = z
   .refine((v) => v.kind === "individual" || v.courseSessionId != null, { path: ["courseSessionId"], message: "session" });
 export type RegistrationInput = Omit<z.output<typeof registrationSchema>, "terms">;
 
+/**
+ * The two fields of a form with a discount code (F1): the typed code, and the discount in cents the page showed for it (the live check's
+ * answer). The submit checks the code again and refuses `changed` when the discount is not the one shown. Shared by the group registration
+ * and the e-course purchase.
+ */
+export const discountFields = {
+  discountCode: z.string().max(60).optional(),
+  discountCents: z.string().regex(/^\d{1,7}$/).optional(),
+};
+
 /** The group registration form (ContactRegister): the course comes as its slug and is resolved in the database. */
 export const groupRegistrationFormSchema = z.object({
   course: slug,
@@ -77,10 +87,11 @@ export const groupRegistrationFormSchema = z.object({
   paymentChoice,
   /** "Soovin MS LABi sooduspakkumisi ja uudiskirju saada" (phase 2c): ticked, the newsletter's own sign-up follows the registration. */
   wantsNewsletter: flag,
-  /** The optional "Sõnum" (phase 2c): the welcome code is written there. */
+  /** The optional "Sõnum" (phase 2c). */
   message: z.string().trim().max(MAX.message).default(""),
   /** The contact contract's version the page showed (R6). */
   contractVersion,
+  ...discountFields,
 });
 
 /** Individual contact course: a request to Maria with the preferred period; she agrees the time and payment (P12). */
@@ -180,12 +191,14 @@ export const parseSubscribe = (fd: FormData) => parseForm(subscribeSchema, fd, s
 /**
  * Group registration. Fields: course (slug), session, name, email, phone, payment, modelHelp, account, newsletter ("Soovin MS LABi
  * uudiseid ja pakkumisi", phase 2c), message (optional, phase 2c), terms, contractVersion (the contract text's version the page showed,
- * contracts R6), locale.
+ * contracts R6), discountCode and discountCents (the typed code and the discount the page showed for it, F1; both optional), locale.
  */
 export const parseGroupRegistration = (fd: FormData) =>
-  parseForm(groupRegistrationFormSchema, fd, { ...contactCourseForm, courseSessionId: "session", paymentChoice: "payment", message: "message", contractVersion: "contractVersion" }, {
+  parseForm(groupRegistrationFormSchema, fd, { ...contactCourseForm, courseSessionId: "session", paymentChoice: "payment", message: "message", contractVersion: "contractVersion", discountCode: "discountCode", discountCents: "discountCents" }, {
     ...slugPlacement,
     ...versionPlacement,
+    discountCode: ["discountCode", "unknown"],
+    discountCents: ["discountCode", "changed"],
     courseSessionId: ["session", "required"],
     paymentChoice: ["payment", "required"],
   });

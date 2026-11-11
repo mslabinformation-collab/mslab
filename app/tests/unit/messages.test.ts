@@ -20,6 +20,16 @@ describe("registrationSummary: how she pays, in Maria's words", () => {
   });
 });
 
+describe("registrationSummary with a code", () => {
+  const registration = { ...who, course: "Kulmude lamineerimine", startsAt: session.startsAt, city: session.city, venue: session.venue, wantsModelHelp: false, wantsAccount: false, message: "", paymentChoice: "full" as const };
+  test("registrationSummary prints Sooduskood and Kokku after Tasumine when a code was used", () => {
+    const lines = registrationSummary({ ...registration, discount: { code: "PROOV-16", cents: 3500, totalCents: 31500 } }, ADMIN).text.split("\n");
+    const pay = lines.indexOf("Tasumine: 100% kohe");
+    expect(lines.slice(pay, pay + 3)).toEqual(["Tasumine: 100% kohe", "Sooduskood: PROOV-16 (−35 €)", "Kokku: 315 €"]);
+    expect(registrationSummary(registration, ADMIN).text).not.toContain("Sooduskood");
+  });
+});
+
 describe("changeRequestSummary", () => {
   test("a cancellation: the course, date and place, the registration number, who asks, the message, and that nothing was changed", () => {
     const s = changeRequestSummary({ ...who, registrationId: 12, course: "Kulmude lamineerimine", session, kind: "cancel", message: "Haigestusin.\nPalun tühistada." }, ADMIN);

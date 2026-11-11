@@ -8,7 +8,7 @@ import type { Contract, Course, CourseSession, Registration } from "@/db/schema"
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { contractCourseName, filledContract } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { registrationTotal } from "@/domain/discount-codes";
+import { listCentsOf, normalizeCode, registrationTotal } from "@/domain/discount-codes";
 import { attemptWindowMs } from "@/domain/financing";
 import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
@@ -43,6 +43,7 @@ import type { Montonio } from "./payments/montonio";
 import { startEcoursePayment, startRegistrationPayment } from "./payments/start";
 import { RATE_LIMIT, RATE_WINDOW_SEC, rateKey, rateLimit } from "./ratelimit";
 import type { PublicChange } from "./cache-targets";
+import { insertRedemption, redeem } from "./discount-codes";
 import { sendWelcome } from "./newsletter";
 import { newToken, sha256 } from "./token";
 import { upcomingFrom } from "@/domain/calendar";
@@ -278,7 +279,12 @@ export async function runSubmission(
  * A registration to store: the form's fields, and (phase 2b) the end of the seat hold it starts with. `seatHoldUntil` is written in the
  * insert, so a registration that is stored under the session's lock already holds its seat when the lock is let go.
  */
-export type NewRegistration = RegistrationInput & { seatHoldUntil?: Date | null };
+export type NewRegistration = RegistrationInput & {
+  seatHoldUntil?: Date | null;
+  /** The discount frozen with the registration (F1): the cents off the list price and the code that gave them; none: 0 and "". */
+  discountCents?: number;
+  discountCode?: string;
+};
 
 /** Stores a contact-course registration. The status is always `awaiting_prepayment` (a place is confirmed only
  *  after at least 50% prepayment, P15) and nothing has been paid. Its "Maksa" token is a fresh newToken() (phase 2b).
@@ -308,6 +314,8 @@ export async function createRegistration(q: Q, input: NewRegistration): Promise<
         status: "awaiting_prepayment",
         paidCents: 0,
         seatHoldUntil: input.seatHoldUntil ?? null,
+        discountCents: input.discountCents ?? 0,
+        discountCode: input.discountCode ?? "",
         payToken: newToken(),
       })
       .returning();
@@ -396,7 +404,7 @@ const CONTRACT_CHANGED: ActionResult = { ok: false, errors: { terms: "changed" }
  * its seat held for 60 minutes; refused by the start, the registration stands and the answer is `{ ok: true, financing: "refused" }`.
  */
 export function handleRegistration(deps: Deps, formData: FormData): Promise<ActionResult> {
-  return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, contractVersion, ...data }) => {
+  return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, contractVersion, discountCode, discountCents, ...data }) => {
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
@@ -416,7 +424,30 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
         if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
         if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
         const seatHoldUntil = deps.montonio ? holdUntil(deps.now, attemptWindowMs(method)) : null;
-        const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
+        // A code (F1, D8): checked under its own lock, after the seat check, in this transaction; whatever it refuses leaves nothing stored.
+        // The discount is checked against the live list price (`changed` when the page showed another) and frozen with the registration.
+        const typed = normalizeCode(discountCode ?? "");
+        const listCents = listCentsOf(course)!; // (a published contact course with a group price, checked above)
+        let discount: { codeId: number; code: string; cents: number } | null = null;
+        if (typed !== "") {
+          const shownCents = discountCents === undefined ? null : Number(discountCents);
+          const redeemed = await redeem(tx, { typed, shownCents, email: data.email, courseId: course.id, courseType: "contact", listCents, subscribing: wantsNewsletter }, deps.now);
+          if (!redeemed.ok) return { status: "refused" as const, result: fail({ discountCode: redeemed.error }) };
+          discount = { codeId: redeemed.codeId, code: redeemed.code, cents: redeemed.discountCents };
+        }
+        const registration = await createRegistration(tx, {
+          ...data,
+          courseId: course.id,
+          courseSessionId: session.id,
+          kind: "group",
+          preferredPeriod: "",
+          seatHoldUntil,
+          discountCents: discount?.cents ?? 0,
+          discountCode: discount?.code ?? "",
+        });
+        if (discount) {
+          await insertRedemption(tx, { codeId: discount.codeId, email: registration.email, clientId: registration.clientId, courseId: course.id, registrationId: registration.id, listCents, discountCents: discount.cents, via: "form" }, deps.now);
+        }
         // the contract, from the text her page showed (R6: ContractChanged otherwise, which rolls the registration back)
         const contract = await registrationContract(tx, registration, contractVersion, deps.now);
         return { status: "stored" as const, session, registration, contract };
@@ -453,7 +484,17 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     }
     await deps.changed?.({ kind: "seats", course: course.slug });
     const summary = registrationSummary(
-      { ...data, course: pick(course.title, "et"), startsAt: session.startsAt, city: session.city, venue: session.venue },
+      {
+        ...data,
+        course: pick(course.title, "et"),
+        startsAt: session.startsAt,
+        city: session.city,
+        venue: session.venue,
+        discount:
+          registration.discountCents > 0
+            ? { code: registration.discountCode, cents: registration.discountCents, totalCents: registrationTotal(course, { kind: "group", discountCents: registration.discountCents }) ?? 0 }
+            : null,
+      },
       admin(deps),
     );
     // the contract's PDF, rendered with the confirmation's content (none until then, and none when it failed)
@@ -481,6 +522,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
             payLink: deps.montonio ? payLinkUrl(deps.siteUrl, registration.payToken) : null,
             login,
             contractAttached: attached !== null,
+            discount: registration.discountCents > 0 ? { code: registration.discountCode, cents: registration.discountCents } : null,
           });
           return attached ? { ...mail, attachments: [contractAttachment(contract.id, attached)] } : mail;
         };

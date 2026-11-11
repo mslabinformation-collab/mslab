@@ -4,7 +4,7 @@
 import type { PaymentKind } from "@/db/schema";
 import type { InvoiceKind } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
-import { euroBare } from "@/domain/money-text";
+import { euro, euroBare } from "@/domain/money-text";
 import { paymentMethodLabel } from "@/domain/payments";
 import type { PaymentChoice } from "@/domain/registration";
 import { formatDate } from "@/i18n/format";
@@ -65,7 +65,7 @@ const sessionRows = (s: SessionInfo): Row[] => [
 const sessionShort = (s: SessionInfo) => `${s.course} · ${sessionWhen(s.startsAt)} · ${s.city}`;
 
 export function registrationSummary(
-  s: SessionInfo & Visitor & { paymentChoice: PaymentChoice; wantsModelHelp: boolean; wantsAccount: boolean; message: string },
+  s: SessionInfo & Visitor & { paymentChoice: PaymentChoice; wantsModelHelp: boolean; wantsAccount: boolean; message: string; discount?: { code: string; cents: number; totalCents: number } | null },
   adminUrl: string,
 ): Summary {
   const title = "Uus registreerimine (grupikoolitus)";
@@ -77,6 +77,7 @@ export function registrationSummary(
         ...sessionRows(s),
         ...person(s),
         ["Tasumine", PAYMENT[s.paymentChoice]],
+        ...(s.discount ? ([["Sooduskood", `${s.discount.code} (−${euro(s.discount.cents)})`], ["Kokku", euro(s.discount.totalCents)]] as Row[]) : []),
         ["Abi modellide leidmisel", yesNo(s.wantsModelHelp)],
         ["Loo konto", yesNo(s.wantsAccount)],
         ["Sõnum", s.message, true],
