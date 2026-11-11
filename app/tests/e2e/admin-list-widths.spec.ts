@@ -516,3 +516,75 @@ test("Koolitused keeps its cells inside its card from 390 to 1440 px: eight colu
     }
   }
 });
+
+// Dim 11.11 (the Registreerimised table at 125 %): the tint of a row under the pointer was 12 px longer than the lines over and under it on each side, and
+// the line stepped by a pixel where the first column met the second (the first and last cells drew their line as a 1 px stripe of their background, the
+// others as a border). So in the table layout every line under the heading and under a row runs the row's whole width, the tint's, in one piece at one
+// height and one thickness; Koolitused' rows the same (its row bleeds 8 px into the card, its grid draws the line).
+test("a row's tint and the lines over and under it are one width, each line one piece (Registreerimised, Koolitused)", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  info.setTimeout(info.timeout + 60_000);
+  // two rows, so one of them has a line under it (the last row of a table has none)
+  const name = `Liis Joon ${info.project.name}`;
+  const first = await seedStudent(info, "lines-a", `${name} A`, "Liis Joon", { score: 9 });
+  const second = await seedStudent(info, "lines-b", `${name} B`, "Liis Joon", { score: 9 });
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await page.goto(`/admin/registreerimised?otsi=${encodeURIComponent(name)}`);
+  await adminReady(page);
+  await expect(page.locator(`tr[data-registration="${first.registrationId}"]`)).toBeVisible();
+  await expect(page.locator(`tr[data-registration="${second.registrationId}"]`)).toBeVisible();
+  const row = page.locator(`tr[data-registration="${first.registrationId}"]:not(:last-child), tr[data-registration="${second.registrationId}"]:not(:last-child)`);
+  await expect(row).toHaveCount(1);
+  const table = await row.evaluate((tr) => {
+    // a cell's line: its bottom border, where it has one that shows; the lines of a row's cells, joined
+    const line = (cells: Element[]) => {
+      const parts = cells.map((c) => {
+        const r = c.getBoundingClientRect();
+        const s = getComputedStyle(c);
+        const shows = parseFloat(s.borderBottomWidth) > 0 && s.borderBottomStyle !== "none" && s.borderBottomColor !== "rgba(0, 0, 0, 0)";
+        return { shows, left: r.left, right: r.right, width: s.borderBottomWidth, stripe: s.backgroundImage !== "none" };
+      });
+      return {
+        all: parts.every((p) => p.shows),
+        widths: [...new Set(parts.map((p) => p.width))],
+        stripes: parts.filter((p) => p.stripe).length,
+        left: parts[0].left,
+        right: parts[parts.length - 1].right,
+      };
+    };
+    const t = tr.closest("table")!;
+    const r = tr.getBoundingClientRect();
+    return {
+      display: getComputedStyle(t).display,
+      tint: { left: r.left, right: r.right },
+      head: line(Array.from(t.querySelectorAll("thead th"))),
+      row: line(Array.from(tr.querySelectorAll("td"))),
+    };
+  });
+  expect(table.display, "Registreerimised at 1440 px: the table layout").toBe("table");
+  for (const [name, l] of [["the heading's line", table.head], ["the row's line", table.row]] as const) {
+    expect(l.all, `Registreerimised: ${name} is every cell's border`).toBe(true);
+    expect(l.stripes, `Registreerimised: ${name} has no background stripes`).toBe(0);
+    expect(l.widths, `Registreerimised: ${name} is one thickness`).toHaveLength(1);
+    expect(Math.abs(l.left - table.tint.left), `Registreerimised: ${name} starts where the tint starts`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(l.right - table.tint.right), `Registreerimised: ${name} ends where the tint ends`).toBeLessThanOrEqual(0.5);
+  }
+
+  await page.goto("/admin/koolitused");
+  await adminReady(page);
+  const grid = page.locator("[data-course-row]").first();
+  await expect(grid).toBeVisible();
+  const list = await grid.evaluate((g) => {
+    const li = g.closest("li")!.getBoundingClientRect();
+    const r = g.getBoundingClientRect();
+    const head = document.querySelector("[data-course-head]")!.getBoundingClientRect();
+    return { tint: { left: li.left, right: li.right }, line: { left: r.left, right: r.right, width: getComputedStyle(g).borderBottomWidth }, head: { left: head.left, right: head.right } };
+  });
+  expect(list.line.width, "Koolitused: the row's line").not.toBe("0px");
+  expect(Math.abs(list.line.left - list.tint.left), "Koolitused: the row's line starts where the tint starts").toBeLessThanOrEqual(0.5);
+  expect(Math.abs(list.line.right - list.tint.right), "Koolitused: the row's line ends where the tint ends").toBeLessThanOrEqual(0.5);
+  expect(Math.abs(list.head.left - list.tint.left), "Koolitused: the heading's line starts where the tint starts").toBeLessThanOrEqual(0.5);
+  expect(Math.abs(list.head.right - list.tint.right), "Koolitused: the heading's line ends where the tint ends").toBeLessThanOrEqual(0.5);
+});

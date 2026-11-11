@@ -352,6 +352,14 @@ describe("CourseList: the layout (the stylesheets)", () => {
     expect(rule(css, band, ".grid.plain")).toMatch(/grid-template-columns:\s*56px minmax\(150px, 1fr\) 100px 124px 108px 164px;/);
   });
 
+  it("a row's tint and its divider are one width (Dim 11.11): the row bleeds 8 px into the card's padding and the grid, which draws the divider, takes those 8 px as its own padding; the heading's line too", () => {
+    expect(rule(css, "", ".row")).toMatch(/margin:\s*0 -8px;/);
+    expect(rule(css, "", ".row")).toMatch(/padding:\s*0;/);
+    expect(css).toMatch(/\.grid \{\s*grid-template-areas: "handle arrows thumb title type price badge status";\s*min-height: 84px;\s*padding: 14px 8px;\s*border-bottom: 1px solid var\(--line\);/);
+    expect(rule(css, "", ".head")).toMatch(/padding:\s*0 8px 8px;/);
+    expect(rule(css, "", ".head")).toMatch(/margin:\s*0 -8px 2px;/);
+  });
+
   it("the phone: each course a white 18 px card of its own, 12 px apart (Part 4), and the section's own card goes (the page's box is the container)", () => {
     const phone = "@container (max-width: 760px)";
     expect(rule(css, phone, ".row")).toMatch(/background:\s*#fff;/);
