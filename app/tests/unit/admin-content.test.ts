@@ -154,6 +154,9 @@ describe("drafts", () => {
       certificateTitle: "Kulmumeistri baaskoolitus",
     });
     expect(newCourseDraft()).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
+    // „Kujundus“ (2026-11-11 certificate designs): none picked (or a caller without it) is null, the first design; a pick as stored
+    expect([d.certificateDesignId, newCourseDraft().certificateDesignId]).toEqual([null, null]);
+    expect(draftFromCourse({ ...stored, certificateDesignId: 7 }).certificateDesignId).toBe(7);
   });
 
   test("moveItem moves one item and leaves the input alone", () => {

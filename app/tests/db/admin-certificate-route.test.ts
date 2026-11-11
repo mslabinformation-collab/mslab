@@ -1,13 +1,15 @@
+import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { certificates, courseAccess, settings } from "@/db/schema";
+import { certificateDesigns, certificates, courseAccess, settings } from "@/db/schema";
 import { createSession } from "@/server/auth";
 import { formatCertificateNumber, tallinnYear } from "@/domain/certificate";
 import { sampleCertificatePdf } from "@/server/certificate-sample";
 import { certificatePdf } from "@/server/certificates";
 import { at, ecourse, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
+import { fakeMediaStore } from "../fakes";
 import { readPdf } from "../pdf-read";
 
 // GET /api/admin/tunnistus/<id> (phase 3d, spec §6): Maria's download of any certificate, a revoked access's too — signed-in admins only; the
@@ -22,7 +24,9 @@ const onlyTheLogo = (pdf: Buffer) => {
   expect(text.match(/\/Width 1280\b/g) ?? []).toHaveLength(2);
 };
 
-const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
+const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, store: null as unknown }));
+// the image store (a design's background photo): an in-memory fake, none unless a test sets one
+vi.mock("@/server/media-store", () => ({ mediaStore: () => state.store }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (name === "__Host-mslab_admin" && state.cookie !== undefined ? { name, value: state.cookie } : undefined),
@@ -76,6 +80,7 @@ beforeAll(async () => {
 beforeEach(() => {
   state.db = db;
   state.cookie = undefined;
+  state.store = null;
   vi.stubEnv("ADMIN_EMAILS", "admin@example.test");
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -222,5 +227,45 @@ describe("GET /api/admin/naidistunnistus: the sample from the card's values", ()
 
   test("a hung call does not hold the function: maxDuration 30", () => {
     expect(sampleMaxDuration).toBe(30);
+  });
+
+  // 2026-11-11 certificate designs, spec §4: each design row's „Vaata näidist“ is this sample in its design (?design=<id>)
+  test("?design=<id>: the sample in that design's tone and photo; none, or an id of no design, the first design; without designs, today's dark page", async () => {
+    await signIn();
+    const [hele, tume] = await db.select().from(certificateDesigns).orderBy(certificateDesigns.sort);
+    const designOf = () => vi.mocked(sampleCertificatePdf).mock.calls.at(-1)![2];
+    const pageColour = async (res: Response) => (await readPdf(new Uint8Array(await res.arrayBuffer()))).ops.slice(0, 12);
+    expect(await pageColour(await sample(`?design=${tume.id}`))).toBe("q\n0 0 0 rg\n0");
+    expect(designOf()).toEqual({ tone: "dark", backgroundKey: "" });
+    expect(await pageColour(await sample(`?design=${hele.id}`))).toBe("q\n1 1 1 rg\n0");
+    expect(designOf()).toEqual({ tone: "light", backgroundKey: "" });
+    for (const query of ["", "?design=999999", "?design=abc"]) {
+      expect((await sample(query)).status, query).toBe(200);
+      expect(designOf(), query).toEqual({ tone: "light", backgroundKey: "" });
+    }
+    // a design with a photo: the photo from the store, drawn first (one image more than the logo and its mask)
+    const key = "img/4f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
+    state.store = fakeMediaStore({ [key]: { bytes: [...readFileSync("tests/fixtures/certificate-background.jpg")], contentType: "image/jpeg" } });
+    await db.update(certificateDesigns).set({ backgroundKey: key }).where(eq(certificateDesigns.id, tume.id));
+    try {
+      const res = await sample(`?design=${tume.id}`);
+      expect(res.status).toBe(200);
+      expect(Buffer.from(await res.arrayBuffer()).toString("latin1").match(/\/Subtype \/Image\b/g) ?? []).toHaveLength(3);
+      // the photo gone from the store: no sample (500), never one without it
+      state.store = fakeMediaStore();
+      await db.update(certificateDesigns).set({ backgroundKey: "img/5f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg" }).where(eq(certificateDesigns.id, tume.id));
+      expect((await sample(`?design=${tume.id}`)).status).toBe(500);
+    } finally {
+      await db.update(certificateDesigns).set({ backgroundKey: "" }).where(eq(certificateDesigns.id, tume.id));
+    }
+    // no design at all (the rows deleted by hand): the dark page
+    const all = await db.select().from(certificateDesigns);
+    await db.delete(certificateDesigns);
+    try {
+      expect(await pageColour(await sample())).toBe("q\n0 0 0 rg\n0");
+      expect(designOf()).toBeNull();
+    } finally {
+      await db.insert(certificateDesigns).values(all);
+    }
   });
 });

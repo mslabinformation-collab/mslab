@@ -44,6 +44,8 @@ export type FieldError =
   | "imageRequired"
   | "localeHref"
   | "iban"
+  // „Kujundus“ on an e-course's „Tunnistus“ card (2026-11-11 certificate designs): an id that is no design (deleted meanwhile)
+  | "certificateDesign"
   // "Teadmiste test" (e-course completion): the question list's problems (domain/completion.ts checkQuestions), on the field `test`
   | "testTooMany"
   | "testEmpty"

@@ -1,10 +1,11 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { makeTestDb } from "./helpers";
+import { fakeMediaStore } from "../fakes";
 import type { Db } from "@/db/client";
-import { campaign, clients, courseAccess, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
+import { campaign, certificateDesigns, clients, courseAccess, courseModules, courseSessions, courses, lessonFiles, lessonProgress, lessons, registrations } from "@/db/schema";
 import { runSeed } from "@/db/seed";
 import { applySeed, SeedRefusal, studentDataRefusal } from "@/db/seed-apply";
 import * as seedData from "@/db/seed-data";
@@ -39,6 +40,7 @@ describe("prototype seed", () => {
       gallery_items: 7,
       campaign: 2,
       settings: 3,
+      certificate_designs: 2,
     });
   });
 
@@ -347,6 +349,55 @@ describe("seed modes", () => {
       const { db } = await world({ access: true, progress: true, video: "current" });
       await expect(applySeed(db)).resolves.toMatchObject({ courses: 6 });
     });
+  });
+});
+
+describe("the certificate designs (2026-11-11 certificate designs, spec §3)", () => {
+  const FIXTURE = readFileSync("tests/fixtures/certificate-background.jpg");
+  const designs = (db: Db) => db.select().from(certificateDesigns).orderBy(asc(certificateDesigns.sort), asc(certificateDesigns.id));
+
+  test("„Hele“ and „Tume“ as the migration has them; a list emptied is filled again, one Maria has is left alone", async () => {
+    const db = await makeTestDb();
+    await applySeed(db);
+    expect((await designs(db)).map((d) => [d.name, d.tone, d.backgroundKey, d.sort])).toEqual([
+      ["Hele", "light", "", 1],
+      ["Tume", "dark", "", 2],
+    ]);
+    await db.delete(certificateDesigns);
+    await applySeed(db);
+    expect((await designs(db)).map((d) => d.name)).toEqual(["Hele", "Tume"]);
+    await db.update(certificateDesigns).set({ name: "Valge" }).where(eq(certificateDesigns.name, "Hele"));
+    await applySeed(db);
+    expect((await designs(db)).map((d) => d.name)).toEqual(["Valge", "Tume"]);
+  });
+
+  test("on this machine „Hele“ gets our test JPEG in the store (never over a photo it has); without a store no photo", async () => {
+    const db = await makeTestDb();
+    const store = fakeMediaStore();
+    await applySeed(db, { background: { store, bytes: new Uint8Array(FIXTURE) } });
+    expect(seedData.SEED_BACKGROUND_KEY).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+    expect([...store.objects.keys()]).toEqual([seedData.SEED_BACKGROUND_KEY]);
+    expect(store.objects.get(seedData.SEED_BACKGROUND_KEY)).toMatchObject({ contentType: "image/jpeg" });
+    expect(Buffer.from(store.objects.get(seedData.SEED_BACKGROUND_KEY)!.bytes).equals(FIXTURE)).toBe(true);
+    expect((await designs(db)).map((d) => [d.name, d.backgroundKey])).toEqual([
+      ["Hele", seedData.SEED_BACKGROUND_KEY],
+      ["Tume", ""],
+    ]);
+    // a photo uploaded since stays
+    await db.update(certificateDesigns).set({ backgroundKey: "img/11111111-1111-4111-8111-111111111111.jpg" }).where(eq(certificateDesigns.name, "Hele"));
+    await applySeed(db, { background: { store, bytes: new Uint8Array(FIXTURE) } });
+    expect((await designs(db))[0].backgroundKey).toBe("img/11111111-1111-4111-8111-111111111111.jpg");
+    // and a plain seed (another machine's, the CLI's Railway target) gives none
+    const plain = await makeTestDb();
+    await applySeed(plain);
+    expect((await designs(plain)).map((d) => d.backgroundKey)).toEqual(["", ""]);
+  });
+
+  test("the test JPEG is ours: small, a JPEG, no camera data", () => {
+    expect(FIXTURE.byteLength).toBeLessThan(64 * 1024);
+    expect([...FIXTURE.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+    // no Exif (APP1 "Exif") block
+    expect(FIXTURE.includes(Buffer.from("Exif"))).toBe(false);
   });
 });
 

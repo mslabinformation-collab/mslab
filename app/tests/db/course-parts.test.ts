@@ -7,7 +7,7 @@ import type { Db } from "@/db/client";
 import { getCourseForEdit } from "@/db/queries/admin";
 import { getCourseBySlug } from "@/db/queries/public";
 import * as schema from "@/db/schema";
-import { contentDrafts, courseImages, courseModules, courses, courseSessions, courseTests, lessonFiles, lessons, type TestQuestion } from "@/db/schema";
+import { certificateDesigns, contentDrafts, courseImages, courseModules, courses, courseSessions, courseTests, lessonFiles, lessons, type TestQuestion } from "@/db/schema";
 import { contentVersion } from "@/lib/version";
 import { readDrafts } from "@/server/drafts";
 import { makeTestDb } from "./helpers";
@@ -542,5 +542,38 @@ describe("the editor's start (Task 7): every card's part at once", () => {
     expect(off.parts.basics.value).toEqual(off.parts.basics.live);
     expect(off.outline).toEqual([]);
     expect(await readCourseEditor(db, 999_999)).toBeNull();
+  });
+});
+
+describe("„Kujundus“ on the „Tunnistus“ card (2026-11-11 certificate designs, spec §5.2)", () => {
+  const designs = () => db.select().from(certificateDesigns).orderBy(asc(certificateDesigns.sort));
+
+  test("a published e-course: none picked at first (the first design); the pick waits in the draft and goes live on publish; none again", async () => {
+    const [, tume] = await designs();
+    const live = await read(online.id, "certificate");
+    expect(live.value).toEqual({ certificateTitle: "", certificateSkills: [], certificateVolume: "", certificateDesignId: null });
+    expect((await write(online.id, "certificate", { certificateDesignId: tume.id }, live.version)).ok).toBe(true);
+    expect((await row(online.id)).certificateDesignId).toBeNull();
+    expect((await read(online.id, "certificate")).value).toMatchObject({ certificateDesignId: tume.id });
+    expect(await courseChanges(db, online.id)).toEqual([{ part: "certificate", labels: ["Tunnistus"] }]);
+    expect((await publishCourse(db, online.id, NOW)).published).toEqual(["certificate"]);
+    expect((await row(online.id)).certificateDesignId).toBe(tume.id);
+    // none again: the first design
+    expect((await write(online.id, "certificate", { certificateDesignId: null }, (await read(online.id, "certificate")).version)).ok).toBe(true);
+    await publishCourse(db, online.id, NOW);
+    expect((await row(online.id)).certificateDesignId).toBeNull();
+  });
+
+  test("an id of no design is refused (`certificateDesignId: certificateDesign`), as is anything but a row id or none; a contact course stores none", async () => {
+    const [hele] = await designs();
+    expect((await write(hidden.id, "basics", { type: "e_learning" }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
+    const version = (await read(hidden.id, "certificate")).version;
+    expect(await write(hidden.id, "certificate", { certificateDesignId: 999_999 }, version)).toEqual({ ok: false, error: "invalid", fields: { certificateDesignId: "certificateDesign" } });
+    expect(await write(hidden.id, "certificate", { certificateDesignId: "1" }, version)).toMatchObject({ ok: false, error: "invalid", fields: { certificateDesignId: expect.any(String) } });
+    expect((await write(hidden.id, "certificate", { certificateDesignId: hele.id }, version)).ok).toBe(true);
+    expect((await row(hidden.id)).certificateDesignId).toBe(hele.id);
+    // a course that becomes a contact course has no certificate: its pick goes with its lines
+    expect((await write(hidden.id, "basics", { type: "contact" }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
+    expect((await row(hidden.id)).certificateDesignId).toBeNull();
   });
 });

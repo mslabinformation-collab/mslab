@@ -549,3 +549,20 @@ export const settingSeeds: Record<string, unknown> = {
     ],
   },
 };
+
+// ---------- certificate designs (2026-11-11 certificate designs, spec §3) ----------
+
+/** The designs as migration 0023 seeds them: for a database whose list is empty (seed-apply.ts). „Hele“ has no photo here: Maria's is uploaded in the admin. */
+export const certificateDesignSeeds: { name: string; tone: "light" | "dark"; backgroundKey: string; sort: number }[] = [
+  { name: "Hele", tone: "light", backgroundKey: "", sort: 1 },
+  { name: "Tume", tone: "dark", backgroundKey: "", sort: 2 },
+];
+
+/**
+ * The key „Hele“'s background gets on this machine (the local seed, the e2e run): our generated test JPEG (tests/fixtures/certificate-background.jpg,
+ * a gradient we made), never Maria's photo. A media key like an upload's (lib/media.ts isMediaKey), so the certificate reads it from the store as any.
+ */
+export const SEED_BACKGROUND_KEY = "img/00000000-0000-4000-8000-00000000c3e1.jpg";
+
+/** Where that test JPEG is, from app/ (the seed CLI and the e2e setup run there). */
+export const SEED_BACKGROUND_FILE = "tests/fixtures/certificate-background.jpg";

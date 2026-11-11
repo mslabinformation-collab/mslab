@@ -28,7 +28,7 @@ export const isCoursePart = (part: string): part is CoursePart => (COURSE_PARTS 
  * - price: the rest of „Õppevorm ja hind“, both types' fields (only the course's type's are stored; the other type's are emptied);
  * - outline: „Moodulid ja õppetunnid“ / „Programm“, the order and the texts of the modules and lessons students see (OutlineValue);
  * - test: „Teadmiste test“, the e-course's questions with their answer key, the pass mark and the tries (course_tests, never on a public course);
- * - certificate: „Tunnistus“, the e-course's certificate title, lines and volume;
+ * - certificate: „Tunnistus“, the e-course's certificate title, lines and volume, and its design („Kujundus“, 2026-11-11 certificate designs);
  * - the lists and cards: their one field.
  */
 export const PART_FIELDS = {
@@ -39,7 +39,7 @@ export const PART_FIELDS = {
   includes: ["includes"],
   protocolStages: ["protocolStages"],
   test: ["questions", "passPercent", "tries"],
-  certificate: ["certificateTitle", "certificateSkills", "certificateVolume"],
+  certificate: ["certificateTitle", "certificateSkills", "certificateVolume", "certificateDesignId"],
   gallery: ["images"],
   recommendations: ["recommendationIds"],
   badge: ["badge"],
@@ -61,7 +61,7 @@ export type PartValues = {
   includes: Pick<CourseDraft, "includes">;
   protocolStages: Pick<CourseDraft, "protocolStages">;
   test: TestDraft;
-  certificate: Pick<CourseDraft, "certificateTitle" | "certificateSkills" | "certificateVolume">;
+  certificate: Pick<CourseDraft, "certificateTitle" | "certificateSkills" | "certificateVolume" | "certificateDesignId">;
   gallery: Pick<CourseDraft, "images">;
   recommendations: Pick<CourseDraft, "recommendationIds">;
   badge: Pick<CourseDraft, "badge">;
