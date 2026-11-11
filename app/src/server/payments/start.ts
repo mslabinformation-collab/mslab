@@ -8,9 +8,10 @@ import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
 import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingRefusal, isHirePurchase, readFinancingSettings, type BillingAddress, type FinancingRefusal } from "@/domain/financing";
 import { payableDue } from "@/domain/payments";
-import { discountCents, registrationTotal, totalWith, type SubmitCodeError } from "@/domain/discount-codes";
+import { codeRefusal, discountCents, registrationTotal, totalWith, type SubmitCodeError } from "@/domain/discount-codes";
 import { holdUntil } from "@/domain/sessions";
-import { findCode, insertRedemption, redeem } from "../discount-codes";
+import { tallinnToday } from "@/domain/client-access";
+import { findCode, insertRedemption, lockCode, redeem, ruleOf, usesOf } from "../discount-codes";
 import { unpaidInvoiceOf } from "../invoices";
 import { logNote } from "../log";
 import { MontonioError, type Montonio, type OrderMethod } from "./montonio";
@@ -408,6 +409,13 @@ export async function startEcoursePayment(
         const total0 = totalWith(input.amountCents, d0);
         const open = await liveAttempt(tx, { courseId: input.courseId, email }, total0, method, deps.now, found.code);
         if (open && shownCents === d0 && open.discountCents === d0) {
+          // The code's rules are checked again, under its lock (S3; the order: the purchase's lock, the code, the payments): a code paused, ended or
+          // out of scope since the first press refuses the re-send. The open attempt's own use is not counted against the limit. Nothing is written.
+          const locked = await lockCode(tx, found.id);
+          if (!locked) return { discount: "unknown" };
+          const uses = await usesOf(tx, locked.id, deps.now, { exceptPaymentId: open.id });
+          const refusal = codeRefusal(ruleOf(locked), { courseId: input.courseId, courseType: "e_learning", listCents: input.amountCents, today: tallinnToday(deps.now), uses });
+          if (refusal) return { discount: refusal };
           // (a re-send of a järelmaks is still refused when it is switched off since: the same check as for a new attempt)
           if (method === "hirePurchase") {
             const refusal = await financingRefusedNow(tx, { priceCents: total0, paidCents: 0, dueCents: total0 });
@@ -421,7 +429,7 @@ export async function startEcoursePayment(
     let code = "";
     let redeemed: { codeId: number } | null = null;
     if (typed !== "") {
-      const r = await redeem(tx, { typed, shownCents, email, courseId: input.courseId, courseType: "e_learning", listCents: input.amountCents, subscribing: input.newsletter }, deps.now);
+      const r = await redeem(tx, { typed, shownCents, email, courseId: input.courseId, courseType: "e_learning", listCents: input.amountCents, subscribing: input.newsletter, exceptOwnPending: true }, deps.now);
       if (!r.ok) return { discount: r.error };
       d = r.discountCents;
       code = r.code;
@@ -434,7 +442,8 @@ export async function startEcoursePayment(
       if (refusal !== null) return { financing: refusal };
     }
     const live = await liveAttempt(tx, { courseId: input.courseId, email }, total, method, deps.now, code);
-    if (live) return { payment: await refreshed(tx, live), again: true };
+    // (a live attempt of the same total and code but another discount is not this order: a new attempt, with its own use)
+    if (live && live.discountCents === d) return { payment: await refreshed(tx, live), again: true };
     const payment = await insertPayment(
       tx,
       { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: total, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, method, discountCents: d, discountCode: code },

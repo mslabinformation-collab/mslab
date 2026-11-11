@@ -92,9 +92,17 @@ export function countingUse(now: Date): SQL {
 /** The uses `d` with their registration `r` and payment `p`: countingUse works only over this join (the admin's use list reuses it). */
 export const useJoins = sql`discount_redemptions d left join registrations r on r.id = d.registration_id left join payments p on p.id = d.payment_id`;
 
-/** How many uses of the code count against its limit at `now` (D7). */
-export async function usesOf(q: Q, codeId: number, now: Date): Promise<number> {
-  const result = await q.execute(sql`select count(*)::int as n from ${useJoins} where d.code_id = ${codeId} and ${countingUse(now)}`);
+/**
+ * How many uses of the code count against its limit at `now` (D7). Two uses can be left out, for an e-course start that is the same order again:
+ * `exceptPaymentId`: the use of that payment (the open attempt being re-sent); `exceptPendingOf`: the person's own live pending attempts of that
+ * course, whatever their method (`email` normalised), so that her switch between the bank and järelmaks is not refused by her own open attempt.
+ */
+export async function usesOf(q: Q, codeId: number, now: Date, except: { exceptPaymentId?: number; exceptPendingOf?: { email: string; courseId: number } } = {}): Promise<number> {
+  const own = except.exceptPendingOf
+    ? sql` and not (d.registration_id is null and p.status = 'pending' and p.course_id = ${except.exceptPendingOf.courseId} and d.email = ${normalizeEmail(except.exceptPendingOf.email)} and ${attemptEnds} > ${ts(now)})`
+    : sql``;
+  const paid = except.exceptPaymentId !== undefined ? sql` and d.payment_id is distinct from ${except.exceptPaymentId}` : sql``;
+  const result = await q.execute(sql`select count(*)::int as n from ${useJoins} where d.code_id = ${codeId} and ${countingUse(now)}${own}${paid}`);
   return Number(rowsOf(result)[0]?.n ?? 0);
 }
 
@@ -149,6 +157,8 @@ export type RedeemInput = {
   listCents: number;
   /** True when this very submit signs the person up to the newsletter. */
   subscribing: boolean;
+  /** An e-course start only (S4): her own live pending attempts of this course do not count against the limit. */
+  exceptOwnPending?: boolean;
 };
 export type Redeemed = { ok: true; codeId: number; code: string; discountCents: number } | { ok: false; error: SubmitCodeError };
 
@@ -166,7 +176,7 @@ export async function redeem(tx: Tx, rawInput: RedeemInput, now: Date): Promise<
   if (!c) return { ok: false, error: "unknown" };
   const today = tallinnToday(now);
   const rule = ruleOf(c);
-  const refusal = codeRefusal(rule, { courseId: input.courseId, courseType: input.courseType, listCents: input.listCents, today, uses: await usesOf(tx, c.id, now) });
+  const refusal = codeRefusal(rule, { courseId: input.courseId, courseType: input.courseType, listCents: input.listCents, today, uses: await usesOf(tx, c.id, now, input.exceptOwnPending ? { exceptPendingOf: { email: input.email, courseId: input.courseId } } : {}) });
   if (refusal) return { ok: false, error: refusal };
   const facts = await personFacts(tx, input.email, { codeId: c.id, courseId: input.courseId }, now);
   if (personRefusal(rule, facts, { subscribing: input.subscribing, today })) return { ok: false, error: "person" };

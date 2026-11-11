@@ -261,6 +261,44 @@ describe("an e-course start with a code (Task 7)", () => {
     expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, email())).toEqual({ ok: false, errors: { discountCode: "usedUp" } });
   });
 
+  it("a re-send after the code was paused answers paused and reuses nothing", async () => {
+    const code = await makeCode();
+    const m = stubMontonio();
+    const who = email();
+    expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, who)).toMatchObject({ ok: true });
+    const [before] = await paymentsOf(who);
+    await db.update(discountCodes).set({ active: false }).where(eq(discountCodes.id, code.id));
+    expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, who, new Date(NOW.getTime() + 60_000))).toEqual({ ok: false, errors: { discountCode: "paused" } });
+    expect(await paymentsOf(who)).toEqual([before]);
+    expect(await usesOf(code.id)).toHaveLength(1);
+    expect(m.state.orders).toHaveLength(1);
+  });
+
+  it("switching method under maxUses 1 is not usedUp against her own open attempt", async () => {
+    await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+    const code = await makeCode({ maxUses: 1 });
+    const m = stubMontonio();
+    const who = email();
+    expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, who)).toMatchObject({ ok: true });
+    expect(await buy(m, { method: "hirePurchase", discountCode: code.code, discountCents: "1900" }, who, new Date(NOW.getTime() + 60_000))).toMatchObject({ ok: true });
+    expect((await paymentsOf(who)).map((r) => r.method).sort()).toEqual(["hirePurchase", "paymentInitiation"]);
+    // another person still meets the full code
+    expect(await buy(m, { discountCode: code.code, discountCents: "1900" }, email())).toEqual({ ok: false, errors: { discountCode: "usedUp" } });
+  });
+
+  it("a järelmaks re-send with its code is refused when järelmaks was switched off meanwhile, and the row is unchanged", async () => {
+    await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+    const code = await makeCode();
+    const m = stubMontonio();
+    const who = email();
+    expect(await buy(m, { method: "hirePurchase", discountCode: code.code, discountCents: "1900" }, who)).toMatchObject({ ok: true });
+    const [before] = await paymentsOf(who);
+    await db.delete(settings).where(eq(settings.key, "financing"));
+    expect(await buy(m, { method: "hirePurchase", discountCode: code.code, discountCents: "1900" }, who, new Date(NOW.getTime() + 60_000))).toEqual({ ok: false, errors: { method: "financingOff" } });
+    expect(await paymentsOf(who)).toEqual([before]);
+    expect(await usesOf(code.id)).toHaveLength(1);
+  });
+
   it("a re-send with another code is a new attempt", async () => {
     const a = await makeCode();
     const b = await makeCode({ amountCents: 1900, percent: null });

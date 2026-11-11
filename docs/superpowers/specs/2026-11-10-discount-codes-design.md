@@ -98,6 +98,7 @@ Today no code reaches the money path:
     - a use on an e-course payment of the **same course** that is not `paid` or `held`, the pending window included.
     - A `pending` payment of **another** course counts inside its window (`attemptEnds`), so two tabs on two e-courses cannot both use a once-per-person code; after its window, or once it fails, it gives the use back.
     - So her re-send is the same order again: a booking sent twice, or a cart paid again after Back or a failed payment, gets the code again.
+    - **A re-sent e-course order** (the open attempt of the same code, total and method, inside its window) is not a new use: its own use is left out of the count, so the last use under a limit is not refused to the person who holds it. Her other live pending attempts of the same course, of either method, are left out too when she starts a new one, so switching between the bank and järelmaks is not `usedUp` against her own open attempt.
     - An unpaid booking of **another** course still holds her use until it is cancelled (§6).
   - **Nothing else changes.** Settle, `failPayment`, `setRegistrationStatus` and the refund path need no change for codes.
   - **An earlier training** decides `first` and `returning`. It is any of these, for the same e-mail, leaving out the order being made:
@@ -107,6 +108,7 @@ Today no code reaches the money path:
 - **D8. Races** (my call).
   - Every use is written under the code's row lock (`select … for no key update` on `discount_codes`), in the transaction that makes the booking or starts the payment. `no key update` rather than `update`: the foreign-key check of another transaction's insert into `discount_redemptions` (D11's, say) takes a key-share lock on the code row, which `for update` would block and `for no key update` does not.
   - So two orders by one person, and the last use under a limit, are decided one after the other. **What this guarantees** (my call): no two uses that both count at the moment of booking break the limit or once per person.
+    - **A re-sent e-course order** takes the code's lock too and checks its rules again (paused, ended, not yet, scope, limit with its own use left out) before it is sent again; a refusal sends nothing and leaves the open attempt as it was. The person's rules are not run again: it is the same order of the same person.
     - **What it does not.** A use that has stopped counting can count again when it is paid late: a booking older than 24 hours, a re-sent order, a pending e-course payment. Its order then keeps its price, even over the rule (§6).
   - **The lock order:**
     - a registration: `course_sessions` → `discount_codes` → the `registrations` insert → the contract;
