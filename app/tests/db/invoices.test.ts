@@ -1466,7 +1466,7 @@ describe("the total of a discounted registration (F1): the list price less the f
     // the receipt of „Lisa laekumine“ (issueReceiptInTx) names the part by the total as well: 157,50 € is the half
     const typed = await registrationOn(db, c, { email: "kviitung@example.test", ...DISCOUNT });
     expect(await addManualPayment(db, { registrationId: typed.id, cents: 15750, paidOn: "2026-10-15", method: "bank", receipt: true, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed" });
-    expect((await allInvoices()).find((i) => i.registrationId === typed.id)).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%" } });
+    expect((await allInvoices()).find((i) => i.registrationId === typed.id)).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%", discount: { code: "TERE10", listCents: 35000, cents: 3500 } } });
   });
 });
 
