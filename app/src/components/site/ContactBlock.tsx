@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
+import { circleCrop } from "@/domain/site-editor";
 import type { Locale } from "@/i18n/locales";
 import { submitContact } from "@/server/actions/public";
 import { Icon } from "./Icon";
@@ -12,7 +13,6 @@ export type ContactTexts = {
   eyebrow: string;
   title: string;
   lead: string;
-  reply: string;
   name: string;
   email: string;
   message: string;
@@ -34,7 +34,7 @@ type State = { status: "idle" } | { status: "sent" } | { status: "error"; errors
  * that posts to the `submitContact` server action (stored as a contact request, then Maria is notified). Used on the home page
  * and on /kontakt. After a failed submit focus goes to the first field with an error, after success to the confirmation.
  */
-export function ContactBlock({ locale, t, person }: { locale: Locale; t: ContactTexts; person: { name: string; photo: string } }) {
+export function ContactBlock({ locale, t, person }: { locale: Locale; t: ContactTexts; person: { name: string; photo: string; crop?: { pos: string; zoom: number } | null } }) {
   const id = useId();
   const [values, setValues] = useState({ name: "", email: "", message: "" });
   const sentRef = useRef<HTMLDivElement>(null);
@@ -92,12 +92,13 @@ export function ContactBlock({ locale, t, person }: { locale: Locale; t: Contact
             <p className={`${ui.lead} ${styles.lead}`}>{t.lead}</p>
             {person.name && (
               <div className={styles.who}>
-                {person.photo && <Image className={styles.avatar} src={person.photo} alt="" width={52} height={52} unoptimized />}
-                <span>
-                  <b>{person.name}</b>
-                  <br />
-                  {t.reply}
-                </span>
+                {/* (the contact photo cut as Koolitaja's circle frames it: UX pass 11.11 P7; the reply time is the lead's, said once: P8) */}
+                {person.photo && (
+                  <span className={styles.avatar} data-contact-avatar="">
+                    <Image src={person.photo} alt="" width={52} height={52} unoptimized style={person.crop ? circleCrop(person.crop.pos, person.crop.zoom) : undefined} />
+                  </span>
+                )}
+                <b>{person.name}</b>
               </div>
             )}
           </div>

@@ -424,7 +424,7 @@ test("a review from the student's tick to her withdrawal: answered with her perm
     const text = form.locator('[data-review-field="text"]');
     await expect(text).toHaveValue(MANUAL_WORDS);
     await text.fill(EDITED_WORDS);
-    await expect(form.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+    await expect(form.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud kell \d{2}:\d{2}/, { timeout: 30_000 });
     expect(await storedReview(manualId)).toMatchObject({ text: EDITED_WORDS, status: "published" });
     await page.locator("dialog[data-drawer]").getByRole("button", { name: "Sulge" }).click();
     await expect(page.locator("dialog[data-drawer]")).toHaveCount(0);

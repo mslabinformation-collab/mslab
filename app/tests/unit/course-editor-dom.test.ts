@@ -13,6 +13,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { contentVersion } from "@/lib/version";
 import type { AdminModule } from "@/server/admin-lessons";
 import { stubFetch } from "../fakes";
+import ui from "@/components/admin/ui.module.css";
 
 // The course editor (admin UX pass piece 3a, Task 7; README B2, §1.8; piece3-texts S3-P3-a, b, g, P-2…P-6), in a browser-like document with the
 // course's routes answered here: every card autosaves its part (POST api/admin/koolitus/<id>/osa/<part>), a published course's changes wait in its
@@ -292,12 +293,12 @@ describe("a published course: the cards save to its draft, the PublishBar names 
       ["price", "l:price", { price: "99" }],
     ]);
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud 12:41");
+    expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud kell 12:41");
     // the preview is the public page at the course's live address, in draft mode
     expect($<HTMLAnchorElement>("[data-publish-preview]")!.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${SLUG}`)}`);
   });
 
-  it("„Valdkond“ (course areas): „Määramata“ first, then the areas, the hint; a pick saves at once into the draft and the bar names „Valdkond“; an area deleted meanwhile is said under it", async () => {
+  it("„Valdkond“ (course areas): „Määramata“ first, then the areas, beside the language with the hint under both; a pick saves at once into the draft and the bar names „Valdkond“; an area deleted meanwhile is said under it", async () => {
     await show();
     const select = $<HTMLSelectElement>('select[data-field="areaId"]')!;
     expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
@@ -306,8 +307,16 @@ describe("a published course: the cards save to its draft, the PublishBar names 
       ["2", "Ripsmekoolitused"],
     ]);
     expect(select.value).toBe("");
-    const box = select.closest("[data-unpublished], div")!;
-    expect(text(box)).toContain("Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.");
+    // UX pass 11.11 A4: beside „Koolituse keel“ in one row, the hint under the row across the card, its link to Seaded → Valdkonnad
+    const language = $<HTMLSelectElement>('select[data-field="language"]')!;
+    const row = select.closest("[data-basics-pair]")!;
+    expect(row.contains(language)).toBe(true);
+    expect(row.firstElementChild!.contains(language) && row.lastElementChild!.contains(select)).toBe(true);
+    const hint = $("[data-area-hint]")!;
+    expect(row.contains(hint)).toBe(false);
+    expect(text(hint)).toBe("Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valik ilmub kodulehele, kui vähemalt kahel koolitusel on eri valdkond. Valdkondi muudad: Seaded → Valdkonnad.");
+    expect(hint.querySelector("a")!.getAttribute("href")).toBe("/admin/seaded#valdkonnad");
+    expect(select.getAttribute("aria-describedby")!.split(" ")).toContain(hint.id);
     await act(async () => {
       select.value = "2";
       select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -432,7 +441,7 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     await show({ course: data({ parts: partsOf(after, { basics: { version: "l:basics-live" } }) }) });
     expect(bar()).toBeNull();
     // the chip: no longer the draft's words, and the publish's time (piece3-texts §4: „Mustand salvestatud“ → „Salvestatud {time}“)
-    expect(text(chip()!.querySelector("[role=status]"))).toMatch(/^Salvestatud \d\d:\d\d$/);
+    expect(text(chip()!.querySelector("[role=status]"))).toMatch(/^Salvestatud kell \d\d:\d\d$/);
     await type(field("summary"), "Veel üks.");
     await leave(field("summary"));
     expect(remote.log.at(-1)).toMatchObject({ part: "basics", version: "l:basics-live" });
@@ -852,7 +861,7 @@ describe("an unpublished course: its cards save to the record", () => {
     expect(remote.log).toHaveLength(1);
     expect(bar()).toBeNull();
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    expect(text(chip()!.querySelector("[role=status]"))).toBe("Salvestatud 12:41");
+    expect(text(chip()!.querySelector("[role=status]"))).toBe("Salvestatud kell 12:41");
     expect(field("summary")!.closest("[data-i18n-box]")!.querySelector("[data-unpublished-tag]")).toBeNull();
   });
 
@@ -1128,6 +1137,21 @@ describe("the list editors (Task 8): drag and arrows, removal with the UndoBar, 
     expect(text(tagIn("[data-list-editor='outcomes'] h3"))).toBe("· avaldamata");
   });
 
+  it("every card's title is one size (UX pass 11.11 A3): the lists' cards and the side column's as „Põhiinfo“; a list inside a card keeps its smaller title", async () => {
+    await show();
+    const titleOf = (selector: string) => {
+      const box = $(selector);
+      expect(box, selector).not.toBeNull();
+      return box!.querySelector("h2, h3")!;
+    };
+    const big = (selector: string) => titleOf(selector).className.split(" ").includes(ui.h2);
+    expect(big("#course-basics")).toBe(true);
+    for (const selector of ["[data-list-editor='outcomes']", "[data-protocol-stages]", "[data-test-editor]", "[data-badge-editor]", "[data-publish-card]"])
+      expect(big(selector), selector).toBe(true);
+    // „Oskused tunnistusel“ is a list inside „Tunnistus“: not a card's title
+    expect(big("[data-certificate-skills]")).toBe(false);
+  });
+
   it("an unpublished course's lists save to the record: no „· avaldamata“", async () => {
     const draft: CourseDraft = { ...STORED, published: false };
     resetRemote(draft);
@@ -1225,7 +1249,7 @@ describe("the layout: the section map lists only this type's cards", () => {
     const card = $("[data-certificate-card]")!;
     expect(card.querySelector("[data-field]")!.getAttribute("data-field")).toBe("certificateTitle");
     expect(card.textContent).toContain("Pealkiri tunnistusel");
-    expect(card.textContent).toContain("Kui jätad tühjaks, kasutatakse koolituse nime.");
+    expect(card.textContent).toContain("Tühjaks jättes kasutatakse koolituse nime.");
     // each entry points at its card on the page
     for (const a of $$<HTMLAnchorElement>("nav[aria-label='Jaotised'] a")) expect(container.querySelector(a.getAttribute("href")!), a.getAttribute("href")!).not.toBeNull();
     // below 1180 px the same entries are the „Jaotised“ select
@@ -1522,8 +1546,8 @@ describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => 
 
 describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, spec §5.2)", () => {
   const DESIGNS = [
-    { id: 4, name: "Hele" },
-    { id: 7, name: "Tume" },
+    { id: 4, name: "Hele", tone: "light" as const, backgroundKey: "certificates/hele.webp" },
+    { id: 7, name: "Tume", tone: "dark" as const, backgroundKey: "" },
   ];
   const select = () => $<HTMLSelectElement>('[data-certificate-card] select[data-field="certificateDesignId"]');
   const pick = async (value: string) => {
@@ -1539,7 +1563,7 @@ describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, sp
     const box = $("[data-certificate-design]")!;
     expect(text(box.querySelector("label"))).toBe("Kujundus");
     expect(Array.from(select()!.options).map((o) => [o.value, text(o)])).toEqual([
-      ["4", "Hele"],
+      ["4", "Hele (vaikimisi)"],
       ["7", "Tume"],
     ]);
     expect(select()!.value).toBe("4");
@@ -1549,6 +1573,44 @@ describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, sp
     expect(remote.log).toEqual([{ part: "certificate", version: "l:certificate", patch: { certificateDesignId: 7 } }]);
     expect(select()!.value).toBe("7");
     expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(true);
+  });
+
+  it("the card's order (UX pass 11.11 A9): the title (the course's name as its placeholder), „Kujundus“ with its picture and sample, „Maht“, the lines last", async () => {
+    await show({ designs: DESIGNS });
+    const card = $("[data-certificate-card]")!;
+    expect(text(card.querySelector("h2 + p"))).toBe("E-koolituse tunnistus. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.");
+    // the fields in the board's order, the lines' list after them
+    expect($$("[data-certificate-card] [data-field]").map((e) => e.getAttribute("data-field"))).toEqual(["certificateTitle", "certificateDesignId", "certificateVolume"]);
+    const skills = card.querySelector("[data-certificate-skills]")!;
+    expect(card.querySelector("[data-field='certificateVolume']")!.compareDocumentPosition(skills) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // the title: empty, the course's name shows what the certificate prints
+    const title = card.querySelector<HTMLInputElement>("[data-field='certificateTitle']")!;
+    expect(title.placeholder).toBe("Kulmukuju ja sümmeetria");
+    // „Kujundus“: the design's picture, the select, its sample; the hint's link to Seaded → Tunnistus
+    const box = $("[data-certificate-design]")!;
+    const thumb = box.querySelector("[data-design-thumb]")!;
+    expect(thumb.getAttribute("role")).toBe("img");
+    expect(thumb.getAttribute("aria-label")).toBe("Kujunduse Hele pisipilt");
+    expect(thumb.querySelector("img")!.getAttribute("src")).toBe("/media/certificates/hele.webp");
+    const sample = box.querySelector<HTMLAnchorElement>("[data-design-sample]")!;
+    expect(text(sample)).toBe("Vaata näidist ↗");
+    expect(sample.getAttribute("href")).toBe("/api/admin/naidistunnistus?design=4");
+    expect(sample.getAttribute("target")).toBe("_blank");
+    expect(box.querySelector<HTMLAnchorElement>("p a")!.getAttribute("href")).toBe("/admin/seaded#tunnistus");
+    await pick("7");
+    // a design without a photo: its tone's colour
+    expect($("[data-design-thumb]")!.getAttribute("aria-label")).toBe("Kujunduse Tume pisipilt");
+    expect($("[data-design-thumb] img")).toBeNull();
+    expect($("[data-design-thumb]")!.getAttribute("data-tone")).toBe("dark");
+    expect($("[data-design-sample]")!.getAttribute("href")).toBe("/api/admin/naidistunnistus?design=7");
+    // „Maht“: an example as its placeholder, the hint says what empty does
+    const volume = card.querySelector<HTMLInputElement>("[data-field='certificateVolume']")!;
+    expect(volume.placeholder).toBe("nt 10 akadeemilist tundi");
+    expect(text(volume.parentElement)).toContain("Tühjaks jättes mahtu tunnistusel ei näidata.");
+    // the lines: one hint, no second line saying the same; their title a label, not a card's title
+    expect(text(skills)).toContain("Tühjana kasutatakse kaardi „Õpiväljundid“ read.");
+    expect(text(skills)).not.toContain("Ridu pole");
+    expect(skills.querySelector("h3")!.className.split(" ")).toContain(ui.legend);
   });
 
   it("the first design picked back is none picked (null): live without a pick, no „· avaldamata“ for it (review round 1)", async () => {

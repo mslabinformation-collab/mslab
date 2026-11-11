@@ -11,7 +11,7 @@ import { setCoursePublished, setCourseSample } from "@/server/actions/admin-cont
 import type { AdminModule } from "@/server/admin-lessons";
 import type { BlockedPart, SwitchResult } from "@/server/course-parts";
 import { PublishBar } from "../PublishBar";
-import { SaveStatus } from "../SaveStatus";
+import { SaveStatus, useSaveNews } from "../SaveStatus";
 import { blockedOf, LATE, orLate, usePublishPresses, stampOf, useEditorRestarts, useFormOnScreen, type Change as AnyChange, type Waits as EditorWaits } from "../useEditorRestarts";
 import ui from "../ui.module.css";
 import styles from "../CourseEditor.module.css";
@@ -155,10 +155,15 @@ export function SavedCourse(props: Shared) {
     }, SAVE_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [asking, waiting, router]);
+  // something has happened since the page opened (SaveStatus's useSaveNews), kept over the cards' restarts: the save's words stay
+  const [news, setNews] = useState(false);
+  const onNews = useCallback(() => setNews(true), []);
   return (
     <SavedForm
       key={generation}
       {...props}
+      news={news}
+      onNews={onNews}
       seeds={seeds}
       generation={generation}
       waiting={waiting}
@@ -185,7 +190,11 @@ function SavedForm({
   refocus,
   said,
   setSaid,
+  news: newsBefore,
+  onNews,
 }: Shared & {
+  news: boolean;
+  onNews: () => void;
   seeds: EditorParts;
   generation: number;
   /** A publish, a discard or the switch, or the page's new read, is on its way: the cards wait for it. */
@@ -396,6 +405,15 @@ function SavedForm({
   };
 
   const mapBlocked = blocked.map((b) => b.part);
+  // (the bar shows while there is something to publish: PublishBar's own rule, with no blocked list without a change)
+  const barShown = published && changed.length > 0;
+  const ownNews = useSaveNews(status);
+  useEffect(() => {
+    if (ownNews && !newsBefore) onNews();
+  }, [ownNews, newsBefore, onNews]);
+  const saveStatus = (
+    <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} />
+  );
 
   return (
     <OutlineTextsContext.Provider value={outlineTexts}>
@@ -403,12 +421,9 @@ function SavedForm({
         title={parts.basics.fields.title.et.trim() || t.newTitle}
         published={published}
         sample={asked.sample ?? data.isSample}
-        // the draft's words („Mustand salvestatud“) while something waits for „Avalda muudatused“; after the publish „Salvestatud {HH:MM}“ (§4)
-        status={
-          <span className={styles.statusSlot}>
-            <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} follow />
-          </span>
-        }
+        // the draft's words („Mustand salvestatud“) while something waits for „Avalda muudatused“; after the publish „Salvestatud kell {HH:MM}“ (§4);
+        // in the PublishBar while it shows, else in the header (UX pass 11.11 A1)
+        status={<span className={styles.statusSlot}>{!barShown && saveStatus}</span>}
         publicHref={published ? `/koolitused/${data.slug}` : null}
         notice={
           created ? (
@@ -427,6 +442,7 @@ function SavedForm({
               error={said.barError}
               // the cards wait (a publish, a discard or the switch, or its read): the bar's buttons do nothing meanwhile
               waiting={frozen}
+              status={saveStatus}
               onDiscard={discard}
               onPublish={publish}
             />

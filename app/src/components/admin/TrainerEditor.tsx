@@ -2,17 +2,18 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { looseTrainer, looseWorks } from "@/domain/site-checks";
-import { isBlankStat, portraitFraming, SITE_LIMITS, type PageDraft, type StatDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
+import { contactZoomOf, DEFAULT_CONTACT_POS, isBlankStat, SITE_LIMITS, type PageDraft, type StatDraft, type TrainerDraft, type WorkDraft } from "@/domain/site-editor";
 import type { SitePartState, TrainerPartValues } from "@/domain/site-entities";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { mediaUrl } from "@/lib/media";
-import { FocalPoint } from "./FocalPoint";
+import { ContactCircle, ContactSample, ContactZoom } from "./ContactCircle";
+import { FocalAxes, FocalPick } from "./FocalPoint";
 import { GalleryEditor } from "./GalleryEditor";
 import { I18nInput, lacksRu } from "./I18nInput";
+import { ImageField } from "./ImageField";
 import type { SectionEntry } from "./SectionMap";
-import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SiteApis } from "./site/SiteEditorPage";
@@ -25,8 +26,10 @@ import styles from "./TrainerEditor.module.css";
 // (PracticeEditor.tsx): page.tsx (requireAdmin, readSiteEditor) → this wrapper → SiteEditorPage (header, one chip, the PublishBar, the parts' autosave,
 // publish and discard, the 170 px section map of the five cards) → `render` → the cards, one component each, every one a SiteCard (site/SiteCard.tsx),
 // in the screen's marker `data-trainer-editor` (admin-inbox.spec.ts opens every content section from the menu by it). In the public page's order:
-// - „Portree ja tutvustus“ (S4-14) over the parts `trainer` and `bio` (R-a: no part is split): the portrait in a 240 px column with its focal point
-//   (the picture on top, 300 px tall for a portrait photo, radius 16, drawn), beside „Nimi“, „Amet“ (kept, builder notes §5) and „Tutvustus“;
+// - „Portree ja tutvustus“ (S4-14) over the parts `trainer` and `bio` (R-a: no part is split): two picture fields (UX pass 11.11, board 1: ImageField,
+//   the preview is the drop zone) — „Portree“, its focal point picked on its preview (the numbers beside it the keyboard's way), and „Kontaktifoto“,
+//   its circle zoomed with „Suurendus“ and dragged (A11) with the site's 46 px avatar beside it — then „Nimi“, „Amet“ (kept, builder notes §5) and
+//   „Tutvustus“;
 // - „Numbrid“: `trainer.stats` as three fixed pairs, a number and its label (builder notes §5); a pair left empty is no pair — the draft keeps none at
 //   its end, and the publish leaves out any (domain/site-editor.ts isBlankStat), so the public page never shows one;
 // - „Galerii“ (S4-14): the works as GalleryEditor's grid of tiles (R-g: drag both ways, ↑ / ↓, ✕ with the UndoBar „Pilt eemaldatud.“ and its undo, each
@@ -46,7 +49,9 @@ export type StoryTitles = Record<StoryPart, string>;
 /** The cards' ids (the section map's links), in the public page's order. */
 const CARD = { portrait: "portree", stats: "numbrid", works: "galerii", center_story: "lugu", trainer_journey: "teekond" } as const;
 /** The trainer card's fields that „Portree ja tutvustus“ shows (the rest, `stats`, is „Numbrid“). */
-const PORTRAIT_FIELDS = ["portraitKey", "portraitPos", "name", "role"];
+const PORTRAIT_FIELDS = ["portraitKey", "portraitPos", "contactPhotoKey", "contactPhotoPos", "contactPhotoZoom", "name", "role"];
+/** The fields of the card that have no label of their own on screen: a change of them marks the card (README §1.8). */
+const PICTURE_FIELDS = ["portraitKey", "portraitPos", "contactPhotoKey", "contactPhotoPos", "contactPhotoZoom"] as const;
 
 const blank = (f: I18n) => !f.et.trim() && !(f.ru ?? "").trim();
 /** A story with neither a title nor a text, in either language: its card folds. */
@@ -121,69 +126,88 @@ function TrainerCards({ apis, storyTitles }: { apis: SiteApis<Trainer>; storyTit
   );
 }
 
-/** „Portree ja tutvustus“: the portrait with its focal point in its column (an upload saves at once), beside the name, the role and the bio. */
+/**
+ * „Portree ja tutvustus“: the two picture fields (an upload saves at once; the point, the zoom and the circle when a drag, a key or the field ends),
+ * then the name, the role and the bio. A new contact photo starts its circle over: the old one framed another picture.
+ */
 function PortraitCard({ trainer, bio }: { trainer: SitePartApi<TrainerDraft>; bio: SitePartApi<{ body: I18n }> }) {
   const t = adminEt.trainer;
   const v = trainer.fields;
-  const framing = portraitFraming(v.portraitKey, v.portraitPos);
+  const zoom = contactZoomOf(v.contactPhotoZoom);
+  const done = () => void trainer.flush();
+  const contactError = trainer.error("contactPhotoKey") ?? trainer.error("contactPhotoPos") ?? trainer.error("contactPhotoZoom");
   return (
     <SiteCard
       id={CARD.portrait}
       title={t.card}
       parts={[trainer, bio]}
-      // the portrait and its focal point have no label of their own on screen: a change of them marks the card (README §1.8)
-      unpublished={trainer.unpublished("portraitKey") || trainer.unpublished("portraitPos") || trainer.unpublished("contactPhotoKey")}
+      unpublished={PICTURE_FIELDS.some((f) => trainer.unpublished(f))}
       className={`${styles.card} ${styles.portraitCard}`}
       titleClassName={styles.title}
     >
-      {/* (the picture and its focal point carry their fields' names, so „Jää siia“ and „Näita“ reach them: final review M-5) */}
-      <div className={styles.picture} data-portrait-column="">
-        {v.portraitKey && (
-          <FocalPoint
-            src={mediaUrl(v.portraitKey)}
-            zoom={framing.zoom}
-            field="trainer.portraitPos"
-            error={trainer.error("portraitPos")}
-            targets={[
-              {
-                label: t.portrait,
-                value: v.portraitPos,
-                onChange: (portraitPos) => trainer.set("portraitPos", portraitPos),
-                ratio: "4 / 5",
-                frames: [
-                  { label: t.portraitWide, ratio: "4 / 5" },
-                  { label: t.portraitNarrow, ratio: "4 / 3" },
-                ],
-                name: "portrait",
-              },
-            ]}
-          />
-        )}
-        <SingleImage
+      {/* (the pictures, the point and the circle carry their fields' names, so „Jää siia“ and „Näita“ reach them: final review M-5) */}
+      <div className={styles.imageRow} data-portrait-column="">
+        <ImageField
           label={t.portrait}
-          labelHidden
           value={v.portraitKey}
           onChange={(portraitKey) => trainer.commit("portraitKey", portraitKey)}
-          hint={t.portraitHint}
+          hints={[t.portraitHint, t.photoFiles]}
           error={trainer.error("portraitKey")}
-          ratio="4 / 5"
-          preview={false}
+          removable
+          size={{ width: "165px", height: "220px" }}
+          fluid
+          preview={(src) => <FocalPick src={src} value={v.portraitPos} onChange={(portraitPos) => trainer.commit("portraitPos", portraitPos)} name="portrait" />}
+          aside={
+            v.portraitKey ? (
+              <div
+                className={styles.focal}
+                role="group"
+                aria-label={adminEt.editor.focal.title}
+                onBlur={done}
+                data-focal-point=""
+                data-field="trainer.portraitPos"
+                data-invalid={trainer.error("portraitPos") ? "" : undefined}
+                tabIndex={-1}
+              >
+                <FocalAxes value={v.portraitPos} onChange={(portraitPos) => trainer.set("portraitPos", portraitPos)} name="portrait" />
+                {trainer.error("portraitPos") && <p className={ui.error}>{trainer.error("portraitPos")}</p>}
+              </div>
+            ) : undefined
+          }
           name="portrait"
           field="trainer.portraitKey"
         />
-        <div className={styles.contactPhoto}>
-          <SingleImage
-            label={t.contactPhoto}
-            value={v.contactPhotoKey}
-            onChange={(contactPhotoKey) => trainer.commit("contactPhotoKey", contactPhotoKey)}
-            hint={t.contactPhotoHint}
-            error={trainer.error("contactPhotoKey")}
-            ratio="1 / 1"
-            removable
-            name="contactPhoto"
-            field="trainer.contactPhotoKey"
-          />
-        </div>
+      </div>
+      <div className={styles.imageRow} data-contact-photo-row="">
+        <ImageField
+          label={t.contactPhoto}
+          value={v.contactPhotoKey}
+          onChange={(contactPhotoKey) => trainer.commit("contactPhotoKey", contactPhotoKey)}
+          onPicked={() => {
+            trainer.set("contactPhotoPos", DEFAULT_CONTACT_POS);
+            trainer.set("contactPhotoZoom", "100");
+          }}
+          hints={[t.contactPhotoHint, t.contactPhotoWhere]}
+          error={contactError}
+          removable
+          round
+          size={{ width: "160px", height: "160px" }}
+          preview={(src) => (
+            <ContactCircle src={src} pos={v.contactPhotoPos} zoom={zoom} onMove={(pos) => trainer.set("contactPhotoPos", pos)} onDone={done} field="trainer.contactPhotoPos" />
+          )}
+          under={
+            v.contactPhotoKey ? <ContactZoom value={zoom} onChange={(z) => trainer.set("contactPhotoZoom", z)} onDone={done} field="trainer.contactPhotoZoom" /> : undefined
+          }
+          aside={
+            <ContactSample
+              src={mediaUrl(v.contactPhotoKey || v.portraitKey)}
+              crop={v.contactPhotoKey ? { pos: v.contactPhotoPos, zoom } : null}
+              name={v.name.et.trim() || t.name}
+            />
+          }
+          name="contactPhoto"
+          field="trainer.contactPhotoKey"
+        />
       </div>
       <div className={styles.text} data-portrait-text="">
         <I18nInput label={t.name} value={v.name} onChange={(name) => trainer.set("name", name)} maxLength={SITE_LIMITS.trainerName} error={trainer.error("name")} name="trainer.name" unpublished={trainer.unpublished("name")} />

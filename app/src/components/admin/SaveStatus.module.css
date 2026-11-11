@@ -1,38 +1,33 @@
-/* SaveStatus (admin UX pass, README §1.4): a chip 32px tall, radius 99, 600 12px. Three tones:
-   saved #eaf0eb / #2f5d46 · neutral (dirty, saving, checking) #ebe8e9 / #5e5559 · error (retry, invalid, signedOut, conflict, gone) #f3e6e6 / #8a3b3b.
-   Where it stands (the H1 row, a drawer's header, under the H1 on a phone) is the screen's business. */
+/* SaveStatus (admin UX pass, README §1.4; UX pass 11.11 A1, board „Seaded“: „✓ Salvestatud kell 16:05“ beside the H1): quiet words, 500 12px, no
+   pill — saved in the green (var(--ok)), a save on its way in the soft ink, what she has to know in the red (var(--bad)). Where it stands (the H1
+   row, a drawer's header, an editor's PublishBar) is the screen's business. */
 
 .chip {
   position: relative;
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   box-sizing: border-box;
   max-width: 100%;
-  min-height: 32px;
-  padding: 0 14px;
-  border-radius: 99px;
-  font: 600 12px/1.25 var(--font-body);
+  font: 500 12px/1.35 var(--font-body);
 }
 
 .saved {
-  background: #eaf0eb;
   color: var(--ok);
 }
 
 .neutral {
-  background: #ebe8e9;
-  color: #5e5559;
+  color: var(--ink-soft);
 }
 
 .error {
-  background: #f3e6e6;
   color: var(--bad);
 }
 
-/* the words may wrap on a narrow screen; the chip then grows past its 32px rather than cut them */
+/* the words may wrap on a narrow screen */
 .text {
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 /* „logi uuesti sisse“ signed out (B19): underlined like „Näita“, a 44px-tall tap target that takes no height from the line */
@@ -45,30 +40,18 @@
   text-underline-offset: 2px;
 }
 
-/* „Näita“: a 44px tap target that takes no more height than the chip (the negative margin gives the chip's 32px back) */
+/* „Näita“: a 44px tap target that takes no more height than the line (the negative margin gives it back) */
 .show {
   flex: none;
   min-width: 44px;
   min-height: 44px;
-  margin: -6px -8px -6px 0;
-  padding: 0 8px;
+  margin: -12px 0;
+  padding: 0 6px;
   border: 0;
   background: none;
   color: inherit;
-  font: inherit;
+  font: 600 12px/1.2 var(--font-body);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
-}
-
-/* The following copy (`follow`, 06.11 polish board 3): fixed at the top of the window while the title row is scrolled away, at the chip's own right
-   edge (top and right are set inline: 16 px, or 8 px under the phone top bar). A ring of the page's colour and a soft shadow lift it off the cards.
-   It stands over the page and under the phone top bar (z-index 20) and every dialog (the top layer). */
-.follow {
-  position: fixed;
-  z-index: 19;
-  max-width: calc(100vw - 32px);
-  box-shadow:
-    0 0 0 3px var(--canvas),
-    0 4px 14px rgba(34, 34, 34, 0.14);
 }

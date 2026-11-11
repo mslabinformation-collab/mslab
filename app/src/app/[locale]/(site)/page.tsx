@@ -255,12 +255,11 @@ export default async function Home({ params, searchParams }: Props) {
 
       <ContactBlock
         locale={locale}
-        person={{ name: trainerName, photo: mediaUrl(trainer.contactPhotoKey) }}
+        person={{ name: trainerName, photo: mediaUrl(trainer.contactPhotoKey), crop: trainer.contactPhotoCrop }}
         t={{
           eyebrow: d.home.contactEyebrow,
           title: d.home.contactTitle,
           lead: d.home.contactLead,
-          reply: d.home.contactReply,
           name: d.forms.name,
           email: d.forms.email,
           message: d.forms.message,

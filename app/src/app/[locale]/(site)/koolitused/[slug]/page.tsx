@@ -123,6 +123,7 @@ export default async function CoursePage({ params }: Props) {
     text: firstParagraph(pick(bio?.body, locale)),
     portrait: mediaUrl(t.portraitKey),
     avatar: mediaUrl(t.contactPhotoKey),
+    avatarCrop: t.contactPhotoCrop,
     href: to("/koolitaja"),
   };
 
@@ -208,22 +209,27 @@ export default async function CoursePage({ params }: Props) {
           </ol>
         </nav>
 
+        {/* UX pass 11.11 P5 (Dim's call 2, the Telefon-kursus board): one grid for the gallery, the facts, the course's texts and a contact course's
+            form. On a computer the grid puts the form in the right column under the facts and the texts under both, as before; in one column (below
+            980 px) the page reads in its order: the facts, „Registreeru ↓“, the texts, then the form. */}
         <div className={styles.detail}>
-          <div className={styles.media}>
-            <Gallery
-              images={images}
-              t={{
-                label: c.galleryLabel,
-                thumbs: c.thumbsLabel,
-                prevThumbs: c.prevThumbs,
-                nextThumbs: c.nextThumbs,
-                open: d.common.openImage,
-                dialog: d.common.imageViewer,
-                close: d.common.close,
-                previous: d.common.previous,
-                next: d.common.next,
-              }}
-            />
+          <div className={styles.mediaCell}>
+            <div className={styles.media}>
+              <Gallery
+                images={images}
+                t={{
+                  label: c.galleryLabel,
+                  thumbs: c.thumbsLabel,
+                  prevThumbs: c.prevThumbs,
+                  nextThumbs: c.nextThumbs,
+                  open: d.common.openImage,
+                  dialog: d.common.imageViewer,
+                  close: d.common.close,
+                  previous: d.common.previous,
+                  next: d.common.next,
+                }}
+              />
+            </div>
           </div>
 
           <div className={styles.info}>
@@ -256,6 +262,64 @@ export default async function CoursePage({ params }: Props) {
                 />
               )
             ) : (
+              <p className={styles.jump}>
+                <a className={styles.jumpLink} href="#registreeru" data-register-jump="">
+                  {c.registerJump} <span aria-hidden="true">↓</span>
+                </a>
+                <span className={styles.jumpHint}>{c.registerJumpHint}</span>
+              </p>
+            )}
+          </div>
+
+          <section className={styles.bottom} aria-label={c.descriptionTitle}>
+            <div className={styles.column}>
+              {body.length > 0 && (
+                <div className={styles.block}>
+                  <h2 className={styles.h2}>{c.descriptionTitle}</h2>
+                  <div className={styles.prose}>
+                    {body.map((p, i) => (
+                      <p key={i}>{p}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {outcomes.length > 0 && (
+                <div className={styles.block}>
+                  <h2 className={styles.h2}>{c.outcomesTitle}</h2>
+                  <ul className={styles.checkList} data-outcomes="">
+                    {outcomes.map((x) => (
+                      <li key={x}>
+                        <Icon name="check" size={16} />
+                        {x}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className={styles.column}>
+              {includes.length > 0 && (
+                <div className={styles.block}>
+                  <h2 className={styles.h2}>{c.includesTitle}</h2>
+                  <IncludesList items={includes} />
+                  {/* P11: own models welcome, the centre helps when needed (the form has the matching checkbox). */}
+                  {!online && <p className={styles.notice}>{c.modelsNote}</p>}
+                </div>
+              )}
+              {modules.length > 0 && (
+                <div className={styles.block}>
+                  <h2 className={styles.h2}>{online ? c.modulesLabel : c.programmeTitle}</h2>
+                  <ModuleList items={modules} locked={online} lockedLabel={c.locked} />
+                </div>
+              )}
+            </div>
+          </section>
+
+          {!online && (
+            <section id="registreeru" className={styles.register} aria-labelledby="registreeru-title" data-course-register="">
+              <h2 id="registreeru-title" className={styles.registerTitle}>
+                {c.registerJump}
+              </h2>
               <ContactRegister
                 course={course.slug}
                 locale={locale}
@@ -316,54 +380,10 @@ export default async function CoursePage({ params }: Props) {
                   errorGeneric: d.forms.errorGeneric,
                 }}
               />
-            )}
-          </div>
+            </section>
+          )}
         </div>
       </div>
-
-      <section className={`${ui.wrap} ${styles.bottom}`} aria-label={c.descriptionTitle}>
-        <div className={styles.column}>
-          {body.length > 0 && (
-            <div className={styles.block}>
-              <h2 className={styles.h2}>{c.descriptionTitle}</h2>
-              <div className={styles.prose}>
-                {body.map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-              </div>
-            </div>
-          )}
-          {outcomes.length > 0 && (
-            <div className={styles.block}>
-              <h2 className={styles.h2}>{c.outcomesTitle}</h2>
-              <ul className={styles.checkList} data-outcomes="">
-                {outcomes.map((x) => (
-                  <li key={x}>
-                    <Icon name="check" size={16} />
-                    {x}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-        <div className={styles.column}>
-          {includes.length > 0 && (
-            <div className={styles.block}>
-              <h2 className={styles.h2}>{c.includesTitle}</h2>
-              <IncludesList items={includes} />
-              {/* P11: own models welcome, the centre helps when needed (the form has the matching checkbox). */}
-              {!online && <p className={styles.notice}>{c.modelsNote}</p>}
-            </div>
-          )}
-          {modules.length > 0 && (
-            <div className={styles.block}>
-              <h2 className={styles.h2}>{online ? c.modulesLabel : c.programmeTitle}</h2>
-              <ModuleList items={modules} locked={online} lockedLabel={c.locked} />
-            </div>
-          )}
-        </div>
-      </section>
 
       <ReviewList reviews={reviews} locale={locale} variant="course" />
 

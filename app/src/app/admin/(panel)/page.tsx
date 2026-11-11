@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { checkReasonLabel } from "@/components/admin/PaymentLines";
 import { adminTitle } from "@/components/admin/sections";
+import { SeatsMeter } from "@/components/admin/SeatsMeter";
 import { TestplanCard } from "@/components/admin/TestplanCard";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
@@ -183,9 +184,9 @@ export default async function Overview() {
                           <b>{pick(s.course.title, "et")}</b>
                           <span>{s.city}</span>
                         </span>
-                        <span className={`${styles.seats} ${left === 0 ? styles.full : ""}`}>
+                        <span className={styles.seats}>
                           <span className={ui.sr}>{t.upcoming.seats} </span>
-                          {left} / {s.capacity}
+                          <SeatsMeter capacity={s.capacity} taken={s.taken} />
                         </span>
                       </Link>
                     </li>

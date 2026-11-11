@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useReducer, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatTime } from "@/i18n/format";
@@ -89,7 +88,7 @@ function onMove(change: () => void): () => void {
  * before it are hidden (the status region says the whole sentence). The router moves without an event, so the page is read again when the link
  * is focused or pressed.
  */
-function SignInAgain({ copy = false }: { copy?: boolean }) {
+function SignInAgain() {
   const t = adminEt.autosave;
   const at = t.signedOut.lastIndexOf(t.signedOutLink);
   const [, readAgain] = useReducer((n: number) => n + 1, 0);
@@ -97,70 +96,48 @@ function SignInAgain({ copy = false }: { copy?: boolean }) {
   return (
     <>
       <span aria-hidden="true">{t.signedOut.slice(0, at)}</span>
-      <a className={styles.signIn} href={href} onFocus={readAgain} onPointerDown={readAgain} tabIndex={copy ? -1 : undefined}>
+      <a className={styles.signIn} href={href} onFocus={readAgain} onPointerDown={readAgain}>
         {t.signedOutLink}
       </a>
     </>
   );
 }
 
-/** The phone top bar's height (Sidebar.module.css .bar, below 900 px): a chip under it is out of view too. */
-const PHONE_BAR = 64;
+/** The saved time a status holds, as a number (null: none) — undefined for a state that is not "saved". */
+const savedAt = (status: AutosaveStatus): number | null | undefined => (status.kind === "saved" ? (status.at?.getTime() ?? null) : undefined);
 
 /**
- * Where the following copy stands (06.11 polish board 3) while the chip has gone up out of the window, or under the phone top bar: 16 px from the
- * window's top (below 900 px 8 px under the bar), at the chip's own right edge. Read on scroll and resize, once a frame; null while the chip is in
- * view, or has no box (hidden, not drawn).
+ * Whether anything has happened since the screen opened (UX pass 11.11 A17): false while the status is still the saved state it opened with, true
+ * from the first other state or save time on, for good. SaveStatus keeps its own; a screen that moves its SaveStatus from one place to another (an
+ * editor's header and its PublishBar) keeps it itself and hands it over as `news`, so the move does not start it over.
  */
-function useGoneUp(chip: RefObject<HTMLElement | null>, on: boolean): { right: number; top: number } | null {
-  const [gone, setGone] = useState<{ right: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!on) return;
-    let frame = 0;
-    const read = () => {
-      frame = 0;
-      const el = chip.current;
-      if (!el) return;
-      const box = el.getBoundingClientRect();
-      const phone = window.innerWidth < 900;
-      const up = box.height > 0 && box.bottom <= (phone ? PHONE_BAR : 0);
-      const right = Math.max(16, Math.round(window.innerWidth - box.right));
-      const top = phone ? PHONE_BAR + 8 : 16;
-      setGone((was) => (!up ? null : was && was.right === right && was.top === top ? was : { right, top }));
-    };
-    const ask = () => {
-      if (!frame) frame = requestAnimationFrame(read);
-    };
-    window.addEventListener("scroll", ask, { passive: true });
-    window.addEventListener("resize", ask);
-    read();
-    return () => {
-      window.removeEventListener("scroll", ask);
-      window.removeEventListener("resize", ask);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [chip, on]);
-  return on ? gone : null;
+export function useSaveNews(status: AutosaveStatus): boolean {
+  // (state set while rendering is applied before anything is shown)
+  const [opened] = useState(() => savedAt(status));
+  const [moved, setMoved] = useState(() => status.kind !== "saved");
+  const news = moved || status.kind !== "saved" || savedAt(status) !== opened;
+  if (news && !moved) setMoved(true);
+  return news;
 }
 
 /**
- * The one status chip of a screen (admin UX pass, README §1.4): what the autosave is doing, in words and in colour. It replaced the editors' save bars and every
- * status line. Placement is the screen's: the right end of the page's H1 row, the drawer's header left of ✕, under the H1 on a phone.
+ * The one status line of a screen (admin UX pass, README §1.4; UX pass 11.11, A1/A17): what the autosave is doing, in quiet words in the state's colour
+ * (no pill: it never stands over a button). Placement is the screen's: the page's header (its H1 row; under the H1 on a phone), a drawer's header left
+ * of ✕, and an editor's PublishBar while the bar shows (the editors give it its `status` slot).
  *
- * - `draft`: the saved state of an unpublished change: „Mustand salvestatud {HH:MM}“.
+ * It says nothing until something changes: the state a screen opens with (saved, at the time of the last save or none) is no news (A17: no
+ * „✓ Salvestatud“ the moment a drawer opens). From the first change on — typing, a save, a state that needs her — it stays.
+ *
+ * - `draft`: the saved state of an unpublished change: „Mustand salvestatud kell {HH:MM}“.
  * - `compact`: the phone page's short form of the saved state (strings.md D1); drawers keep the full one.
  * - `thing`: the partitive of what the screen edits, for „gone“: „Seda registreerimist enam ei ole. Tekst on selles seadmes alles.“
  * - `onShowInvalid`: the link „Näita“ of the invalid state; it focuses the first invalid field. Without it there is no link.
+ * - `news`: the screen's own useSaveNews, where it moves the line (see there).
  *
  * Signed out, the words „logi uuesti sisse“ are a link to the login page and back (SignInAgain, B19), on every screen.
  *
- * For a screen reader the visible chip is hidden and a separate status region speaks the whole sentence, and only when the KIND of status changes
+ * For a screen reader the visible words are hidden and a separate status region speaks the whole sentence, and only when the KIND of status changes
  * (typing, the clock of a second save, a longer list of invalid fields are not news). The ✓ is decoration.
- *
- * - `follow`: the page's own chip in its title row (06.11 polish board 3). While the title row is scrolled up out of the window, a copy of the chip
- *   stands fixed at the top of the window, at the chip's own right edge (useGoneUp), and goes when the chip is back in view. The copy says and does
- *   what the chip does („Näita“, „logi uuesti sisse“), out of the tab order and hidden from a screen reader: the chip's status region speaks, once.
- *   Drawers keep their chip in their header, without it.
  */
 export function SaveStatus({
   status,
@@ -168,70 +145,54 @@ export function SaveStatus({
   compact = false,
   thing,
   onShowInvalid,
-  follow = false,
+  news: given,
 }: {
   status: AutosaveStatus;
   draft?: boolean;
   compact?: boolean;
   thing?: string;
   onShowInvalid?: () => void;
-  follow?: boolean;
+  news?: boolean;
 }) {
   const full = wordsOf(status, draft, thing);
   const visible = compact ? shortWordsOf(status, draft, thing) : full;
-  // what the status region holds: renewed only when the kind of status changes (a state set while rendering is applied before anything is shown)
-  const [spoken, setSpoken] = useState({ kind: status.kind, words: full });
-  if (spoken.kind !== status.kind) setSpoken({ kind: status.kind, words: full });
-  const chip = useRef<HTMLSpanElement>(null);
-  const gone = useGoneUp(chip, follow);
-
-  /** The chip's words and its „Näita“; `copy`: the following copy's, out of the tab order. */
-  const body = (copy: boolean) => (
-    <>
-      {/* (signed out, the chip's text itself is not hidden: the link in it must be reachable, and SignInAgain hides the words before it) */}
-      <span className={styles.text} aria-hidden={status.kind === "signedOut" && !copy ? undefined : "true"} data-save-text="">
-        {status.kind === "saved" && (
-          <>
-            <span aria-hidden="true" data-save-check="">
-              ✓
-            </span>{" "}
-          </>
-        )}
-        {status.kind === "signedOut" ? <SignInAgain copy={copy} /> : visible}
-      </span>
-      {status.kind === "invalid" && onShowInvalid && (
-        <button type="button" className={styles.show} onClick={onShowInvalid} tabIndex={copy ? -1 : undefined}>
-          {adminEt.autosave.show}
-        </button>
-      )}
-    </>
-  );
+  const own = useSaveNews(status);
+  const news = given ?? own;
+  // what the status region holds: renewed only when the kind of status changes
+  const [spoken, setSpoken] = useState({ kind: status.kind, words: news ? full : "" });
+  if (news && (spoken.kind !== status.kind || spoken.words === "")) setSpoken({ kind: status.kind, words: full });
 
   return (
-    <span ref={chip} className={`${styles.chip} ${styles[toneOf(status)]}`} data-save-status="" data-save-kind={status.kind}>
-      {body(false)}
+    <span className={`${styles.chip} ${styles[toneOf(status)]}`} data-save-status="" data-save-kind={status.kind} data-save-quiet={news ? undefined : ""}>
+      {news && (
+        <>
+          {/* (signed out, the text itself is not hidden: the link in it must be reachable, and SignInAgain hides the words before it) */}
+          <span className={styles.text} aria-hidden={status.kind === "signedOut" ? undefined : "true"} data-save-text="">
+            {status.kind === "saved" && (
+              <>
+                <span aria-hidden="true" data-save-check="">
+                  ✓
+                </span>{" "}
+              </>
+            )}
+            {status.kind === "signedOut" ? <SignInAgain /> : visible}
+          </span>
+          {status.kind === "invalid" && onShowInvalid && (
+            <button type="button" className={styles.show} onClick={onShowInvalid}>
+              {adminEt.autosave.show}
+            </button>
+          )}
+        </>
+      )}
       <span role="status" className={ui.sr}>
         {spoken.words}
       </span>
-      {gone &&
-        createPortal(
-          <span
-            className={`${styles.chip} ${styles[toneOf(status)]} ${styles.follow}`}
-            style={{ top: gone.top, right: gone.right }}
-            aria-hidden="true"
-            data-save-follow=""
-            data-save-kind={status.kind}
-          >
-            {body(true)}
-          </span>,
-          document.body,
-        )}
     </span>
   );
 }
 
 /**
- * A line of the screen's own words in the chip's place and look (SaveStatus's neutral chip): a new record's drawer before its create button is pressed,
+ * A line of the screen's own words in the status line's place and look (SaveStatus's neutral words): a new record's drawer before its create button is pressed,
  * where nothing autosaves yet (admin polish F22: „Lisa arvustus +“, Kalender's „Lisa toimumine +“). It is the status region itself; `data-*` name it
  * for tests.
  */

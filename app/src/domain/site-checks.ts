@@ -1,6 +1,6 @@
 import { tallinnInstant } from "./calendar";
 import { Check, type FieldError } from "./field-check";
-import { isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
+import { CONTACT_ZOOM, isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
 import type { PopupOfferValue, PostPartValue } from "./site-entities";
 import { CODE_DAYS_MAX, CODE_DAYS_MIN, DISCOUNT_MAX, DISCOUNT_MIN } from "./welcome-code";
 import type { I18n } from "@/i18n/field";
@@ -86,6 +86,8 @@ export function looseTrainer(v: TrainerDraft): LooseProblems {
   c.image("portraitKey", v.portraitKey);
   c.focal("portraitPos", v.portraitPos);
   c.image("contactPhotoKey", v.contactPhotoKey);
+  c.focal("contactPhotoPos", v.contactPhotoPos);
+  c.zoom("contactPhotoZoom", v.contactPhotoZoom, CONTACT_ZOOM);
   c.text("name", v.name, L.trainerName);
   c.text("role", v.role, L.role);
   let stats = 0;

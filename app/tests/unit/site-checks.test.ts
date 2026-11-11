@@ -10,7 +10,7 @@ import { Check } from "@/server/edit-check";
 
 const UPLOAD = "img/0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
 const slide = (over: Partial<SlideDraft> = {}): SlideDraft => ({ ...newSlideDraft("n1"), imageKey: UPLOAD, title: { et: "Pealkiri" }, ...over });
-const trainer = (over: Partial<TrainerDraft> = {}): TrainerDraft => ({ portraitKey: UPLOAD, portraitPos: "50% 20%", contactPhotoKey: "", name: { et: "Maria" }, role: { et: "" }, stats: [], ...over });
+const trainer = (over: Partial<TrainerDraft> = {}): TrainerDraft => ({ portraitKey: UPLOAD, portraitPos: "50% 20%", contactPhotoKey: "", contactPhotoPos: "50% 20%", contactPhotoZoom: "100", name: { et: "Maria" }, role: { et: "" }, stats: [], ...over });
 const pkg = (over: Partial<PackageDraft> = {}): PackageDraft => ({ name: { et: "MAXI" }, tagline: { et: "" }, models: "4", durationLabel: { et: "8 ak" }, price: "150", items: [], ...over });
 /** The codes of a strict check of a part's draft. */
 const strict = (parts: typeof homeParts, part: string, value: unknown) => {
@@ -96,8 +96,8 @@ describe("what the strict check refuses besides is refused at the save, by the f
       [
         trainerParts,
         "trainer",
-        trainer({ portraitKey: "../etc/passwd", portraitPos: "x", contactPhotoKey: "img/not-an-upload.jpg", name: { et: "n".repeat(81) }, role: { et: "r".repeat(161) }, stats: [{ uid: "t0", value: "1234567890123", label: { et: "l".repeat(41) } }] }),
-        { portraitKey: "image", portraitPos: "focal", contactPhotoKey: "image", name: "tooLong", role: "tooLong", "stats.0.value": "tooLong", "stats.0.label": "tooLong" },
+        trainer({ portraitKey: "../etc/passwd", portraitPos: "x", contactPhotoKey: "img/not-an-upload.jpg", contactPhotoPos: "y", contactPhotoZoom: "301", name: { et: "n".repeat(81) }, role: { et: "r".repeat(161) }, stats: [{ uid: "t0", value: "1234567890123", label: { et: "l".repeat(41) } }] }),
+        { portraitKey: "image", portraitPos: "focal", contactPhotoKey: "image", contactPhotoPos: "focal", contactPhotoZoom: "whole", name: "tooLong", role: "tooLong", "stats.0.value": "tooLong", "stats.0.label": "tooLong" },
       ],
       [trainerParts, "works", [{ key: "img/not-an-upload.jpg", alt: { et: "a".repeat(201) } }], { "works.0.key": "image", "works.0.alt": "tooLong" }],
       [trainerParts, "center_story", { title: { et: "t".repeat(121) }, body: { et: "" } }, { title: "tooLong" }],

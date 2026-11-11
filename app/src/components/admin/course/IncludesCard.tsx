@@ -14,6 +14,7 @@ export function IncludesCard({ api }: { api: PartApi<"includes"> }) {
   return (
     <Card id={CARD_ID.includes} label={t.sections.includes} onLeave={api.flush} conflict={api.conflict} onRestore={api.restore}>
       <ListEditor
+        cardTitle
         title={t.sections.includes}
         itemLabel={t.fields.includes}
         hint={t.fields.includesHint}

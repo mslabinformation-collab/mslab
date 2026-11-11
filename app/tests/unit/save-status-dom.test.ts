@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { SaveStatus } from "@/components/admin/SaveStatus";
 
-// SaveStatus (admin UX pass, README §1.4, strings.md D1): the one status chip of a screen. The visible chip is aria-hidden and a separate
+// SaveStatus (admin UX pass, README §1.4, strings.md D1; UX pass 11.11 A1/A17): the one status line of a screen, quiet words with no floating copy.
+// It says nothing until something changes (the state a screen opens with is no news). The visible words are aria-hidden and a separate
 // visually-hidden status region speaks, and only when the KIND of status changes (the time of a save and the typing of a field are not news).
 // The colours are in the CSS module; here the class names tell the tone (saved green, neutral grey, error red).
 
@@ -18,10 +19,15 @@ let container: HTMLDivElement;
 let root: Root;
 
 type Props = Parameters<typeof SaveStatus>[0];
-const show = (props: Props) => act(async () => root.render(createElement(SaveStatus, props)));
 /** A new chip (another page or drawer): the status region starts from this state, as a page just opened does. */
 let pages = 0;
+const show = (props: Props) => act(async () => root.render(createElement(SaveStatus, { key: pages, ...props })));
 const open = (props: Props) => act(async () => root.render(createElement(SaveStatus, { key: ++pages, ...props })));
+/** A page just opened, then something changed: `props` is the state after it (what she sees from then on). */
+const changed = async (props: Props) => {
+  await open({ ...props, status: { kind: "dirty" } });
+  await show(props);
+};
 const $ = <E extends Element = HTMLElement>(selector: string) => container.querySelector<E>(selector);
 const chip = () => $("[data-save-status]")!;
 const visible = () => $("[data-save-text]")!;
@@ -43,7 +49,7 @@ afterEach(async () => {
 });
 
 const STATES: [AutosaveStatus, string][] = [
-  [{ kind: "saved", at: NOON }, "Salvestatud 12:04"],
+  [{ kind: "saved", at: NOON }, "Salvestatud kell 12:04"],
   [{ kind: "dirty" }, "Salvestamata muudatused"],
   [{ kind: "saving" }, "Salvestan…"],
   [{ kind: "checking" }, "Kontrollin salvestatud teksti…"],
@@ -55,7 +61,7 @@ const STATES: [AutosaveStatus, string][] = [
 
 describe("SaveStatus: the states", () => {
   it.each(STATES)("%o → %s", async (status, expected) => {
-    await show({ status });
+    await changed({ status });
     expect(live().textContent).toBe(expected);
     // what she sees: the same words (the saved chip with its ✓ in front)
     expect(visible().textContent).toBe(status.kind === "saved" ? `✓ ${expected}` : expected);
@@ -81,10 +87,10 @@ describe("SaveStatus: the states", () => {
     }
   });
 
-  it("draft: „Mustand salvestatud {HH:MM}“", async () => {
-    await show({ status: { kind: "saved", at: new Date("2026-10-21T11:02:00Z") }, draft: true });
-    expect(live().textContent).toBe("Mustand salvestatud 14:02");
-    expect(visible().textContent).toBe("✓ Mustand salvestatud 14:02");
+  it("draft: „Mustand salvestatud kell {HH:MM}“", async () => {
+    await changed({ status: { kind: "saved", at: new Date("2026-10-21T11:02:00Z") }, draft: true });
+    expect(live().textContent).toBe("Mustand salvestatud kell 14:02");
+    expect(visible().textContent).toBe("✓ Mustand salvestatud kell 14:02");
   });
 
   it("draft only changes the saved state", async () => {
@@ -106,32 +112,74 @@ describe("SaveStatus: the states", () => {
   });
 
   it("the time is Tallinn's, summer and winter, and the day's edge", async () => {
-    await open({ status: { kind: "saved", at: new Date("2026-12-01T10:00:00Z") } }); // UTC+2
-    expect(live().textContent).toBe("Salvestatud 12:00");
-    await open({ status: { kind: "saved", at: new Date("2026-06-30T21:30:00Z") } }); // UTC+3, already the next day
-    expect(live().textContent).toBe("Salvestatud 00:30");
+    await changed({ status: { kind: "saved", at: new Date("2026-12-01T10:00:00Z") } }); // UTC+2
+    expect(live().textContent).toBe("Salvestatud kell 12:00");
+    await changed({ status: { kind: "saved", at: new Date("2026-06-30T21:30:00Z") } }); // UTC+3, already the next day
+    expect(live().textContent).toBe("Salvestatud kell 00:30");
   });
 
-  it("saved with no time yet (the page was just opened): no clock, and no invented one", async () => {
-    await open({ status: { kind: "saved", at: null } });
+  it("saved with no time: no clock, and no invented one", async () => {
+    await changed({ status: { kind: "saved", at: null } });
     expect(live().textContent).toBe("Salvestatud");
     expect(visible().textContent).toBe("✓ Salvestatud");
-    await open({ status: { kind: "saved", at: null }, draft: true });
+    await changed({ status: { kind: "saved", at: null }, draft: true });
     expect(live().textContent).toBe("Mustand salvestatud");
     expect(visible().textContent).toBe("✓ Mustand salvestatud");
-    await open({ status: { kind: "saved", at: new Date(NaN) } });
+    await changed({ status: { kind: "saved", at: new Date(NaN) } });
     expect(live().textContent).toBe("Salvestatud");
+  });
+});
+
+describe("SaveStatus says nothing until something changes (UX pass 11.11 A17)", () => {
+  it("a page or a drawer just opened: no words, no ✓, an empty status region — with the time of the last save or none", async () => {
+    for (const status of [{ kind: "saved", at: null }, { kind: "saved", at: NOON }] as AutosaveStatus[]) {
+      await open({ status, draft: true });
+      expect($("[data-save-text]")).toBeNull();
+      expect($("[data-save-check]")).toBeNull();
+      expect(chip().hasAttribute("data-save-quiet")).toBe(true);
+      expect(chip().getAttribute("data-save-kind")).toBe("saved");
+      expect(live().textContent).toBe("");
+    }
+  });
+
+  it("from the first change on it speaks and stays, the saved state too", async () => {
+    await open({ status: { kind: "saved", at: null } });
+    await show({ status: { kind: "dirty" } });
+    expect(visible().textContent).toBe("Salvestamata muudatused");
+    expect(live().textContent).toBe("Salvestamata muudatused");
+    expect(chip().hasAttribute("data-save-quiet")).toBe(false);
+    await show({ status: { kind: "saved", at: NOON } });
+    expect(visible().textContent).toBe("✓ Salvestatud kell 12:04");
+    expect(live().textContent).toBe("Salvestatud kell 12:04");
+  });
+
+  it("a save that comes in without a change seen here (a new time) is news too", async () => {
+    await open({ status: { kind: "saved", at: null } });
+    await show({ status: { kind: "saved", at: NOON } });
+    expect(visible().textContent).toBe("✓ Salvestatud kell 12:04");
+  });
+
+  it("a state that needs her is said at once, even as the screen opens with it", async () => {
+    await open({ status: { kind: "conflict" } });
+    expect(visible().textContent).toBe("Muudeti teises aknas — vaata üle");
+    expect(live().textContent).toBe("Muudeti teises aknas — vaata üle");
+  });
+
+  it("no floating copy: nothing is put outside the line", async () => {
+    await changed({ status: { kind: "saved", at: NOON } });
+    expect(document.body.querySelectorAll("[data-save-status]")).toHaveLength(1);
+    expect(document.body.querySelector("[data-save-follow]")).toBeNull();
   });
 });
 
 describe("SaveStatus: the phone page's short form (strings.md D1)", () => {
   it("compact: „✓ {HH:MM}“ and „✓ Mustand {HH:MM}“; the spoken text stays whole", async () => {
-    await open({ status: { kind: "saved", at: new Date("2026-10-21T08:20:00Z") }, compact: true });
+    await changed({ status: { kind: "saved", at: new Date("2026-10-21T08:20:00Z") }, compact: true });
     expect(visible().textContent).toBe("✓ 11:20");
-    expect(live().textContent).toBe("Salvestatud 11:20");
-    await open({ status: { kind: "saved", at: new Date("2026-10-21T11:02:00Z") }, compact: true, draft: true });
+    expect(live().textContent).toBe("Salvestatud kell 11:20");
+    await changed({ status: { kind: "saved", at: new Date("2026-10-21T11:02:00Z") }, compact: true, draft: true });
     expect(visible().textContent).toBe("✓ Mustand 14:02");
-    expect(live().textContent).toBe("Mustand salvestatud 14:02");
+    expect(live().textContent).toBe("Mustand salvestatud kell 14:02");
   });
 
   it("compact shortens only the saved chip; the others keep their words", async () => {
@@ -144,16 +192,16 @@ describe("SaveStatus: the phone page's short form (strings.md D1)", () => {
   });
 
   it("compact with no time: the words alone", async () => {
-    await open({ status: { kind: "saved", at: null }, compact: true });
+    await changed({ status: { kind: "saved", at: null }, compact: true });
     expect(visible().textContent).toBe("✓ Salvestatud");
-    await open({ status: { kind: "saved", at: null }, compact: true, draft: true });
+    await changed({ status: { kind: "saved", at: null }, compact: true, draft: true });
     expect(visible().textContent).toBe("✓ Mustand");
   });
 });
 
 describe("SaveStatus: for a screen reader", () => {
   it("the visible chip and the ✓ are aria-hidden; the status region is the one that speaks", async () => {
-    await show({ status: { kind: "saved", at: NOON } });
+    await changed({ status: { kind: "saved", at: NOON } });
     expect(visible().getAttribute("aria-hidden")).toBe("true");
     const check = $("[data-save-check]")!;
     expect(check.textContent).toBe("✓");
@@ -172,24 +220,24 @@ describe("SaveStatus: for a screen reader", () => {
   });
 
   it("the live region changes only when the kind changes", async () => {
-    await show({ status: { kind: "saved", at: NOON } });
+    await changed({ status: { kind: "saved", at: NOON } });
     const region = live();
-    expect(region.textContent).toBe("Salvestatud 12:04");
+    expect(region.textContent).toBe("Salvestatud kell 12:04");
     // the same kind again, later (another save): what she sees moves on, what is spoken does not
     await show({ status: { kind: "saved", at: new Date("2026-10-21T09:07:00Z") } });
-    expect(visible().textContent).toBe("✓ Salvestatud 12:07");
+    expect(visible().textContent).toBe("✓ Salvestatud kell 12:07");
     expect(live()).toBe(region);
-    expect(region.textContent).toBe("Salvestatud 12:04");
+    expect(region.textContent).toBe("Salvestatud kell 12:04");
     // the same kind with other details: invalid with other fields, the draft flag
     await show({ status: { kind: "saved", at: new Date("2026-10-21T09:07:00Z") }, draft: true });
-    expect(region.textContent).toBe("Salvestatud 12:04");
+    expect(region.textContent).toBe("Salvestatud kell 12:04");
     // a new kind: spoken
     await show({ status: { kind: "dirty" } });
     expect(region.textContent).toBe("Salvestamata muudatused");
     await show({ status: { kind: "saving" } });
     expect(region.textContent).toBe("Salvestan…");
     await show({ status: { kind: "saved", at: new Date("2026-10-21T09:08:00Z") }, compact: true });
-    expect(region.textContent).toBe("Salvestatud 12:08");
+    expect(region.textContent).toBe("Salvestatud kell 12:08");
   });
 
   it("invalid with other fields is still the same news", async () => {
@@ -274,67 +322,9 @@ describe("SaveStatus: signed out, „logi uuesti sisse“ is the way to sign in 
 
   it("only the signed-out state has a link", async () => {
     for (const [status] of STATES.filter(([s]) => s.kind !== "signedOut")) {
-      await show({ status, onShowInvalid: () => {} });
+      await changed({ status, onShowInvalid: () => {} });
       expect($("[data-save-status] a"), status.kind).toBeNull();
       expect(visible().getAttribute("aria-hidden"), status.kind).toBe("true");
     }
-  });
-});
-
-describe("SaveStatus follow (06.11 polish board 3): the page chip comes along when its title row is scrolled away", () => {
-  const copy = () => document.body.querySelector<HTMLElement>("[data-save-follow]");
-  /** The chip's box: `bottom` px from the window's top, 32 px tall, its right edge 1400 px from the left (a 1440 window). */
-  const at = (bottom: number) => {
-    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1440);
-    chip().getBoundingClientRect = () => ({ top: bottom - 32, bottom, height: 32, left: 1240, right: 1400, width: 160, x: 1240, y: bottom - 32, toJSON: () => ({}) }) as DOMRect;
-  };
-  const scroll = () =>
-    act(async () => {
-      window.dispatchEvent(new Event("scroll"));
-      await new Promise((r) => setTimeout(r, 40));
-    });
-
-  it("in view, there is no copy; scrolled up out of the window, a fixed copy at the chip's right edge, 16 px down, hidden from a screen reader", async () => {
-    await open({ status: { kind: "saved", at: NOON }, follow: true });
-    at(120);
-    await scroll();
-    expect(copy()).toBeNull();
-    at(-40);
-    await scroll();
-    const c = copy()!;
-    expect(c.getAttribute("aria-hidden")).toBe("true");
-    expect(c.style.top).toBe("16px");
-    expect(c.style.right).toBe("40px");
-    expect(c.textContent).toContain("Salvestatud 12:04");
-    expect(c.querySelector('[role="status"]')).toBeNull();
-    // the state changes: the copy says the new one
-    await act(async () => root.render(createElement(SaveStatus, { key: pages, status: { kind: "saving" }, follow: true })));
-    expect(copy()!.textContent).toContain("Salvestan…");
-    at(200);
-    await scroll();
-    expect(copy()).toBeNull();
-  });
-
-  it("„Näita“ in the copy still shows the invalid field, out of the tab order; without `follow` no copy ever shows", async () => {
-    const showInvalid = vi.fn();
-    await open({ status: { kind: "invalid", fields: ["a"] } as AutosaveStatus, follow: true, onShowInvalid: showInvalid });
-    at(-40);
-    await scroll();
-    const button = copy()!.querySelector("button")!;
-    expect(button.tabIndex).toBe(-1);
-    await click(button);
-    expect(showInvalid).toHaveBeenCalledTimes(1);
-    await open({ status: { kind: "saved", at: NOON } });
-    at(-40);
-    await scroll();
-    expect(copy()).toBeNull();
-  });
-
-  it("below 900 px the copy stands 8 px under the phone top bar, and a chip under the bar counts as gone", async () => {
-    await open({ status: { kind: "dirty" }, follow: true });
-    vi.spyOn(window, "innerWidth", "get").mockReturnValue(390);
-    chip().getBoundingClientRect = () => ({ top: 20, bottom: 52, height: 32, left: 16, right: 200, width: 184, x: 16, y: 20, toJSON: () => ({}) }) as DOMRect;
-    await scroll();
-    expect(copy()!.style.top).toBe("72px");
   });
 });

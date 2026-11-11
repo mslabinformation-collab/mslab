@@ -144,7 +144,7 @@ test.describe("course editor", () => {
     await expect(chip(page)).toHaveAttribute("data-save-kind", "dirty");
     await title.blur();
     await saved;
-    await expect(spoken(page)).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(spoken(page)).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Koolituse nimi"));
     await expect(title.locator("xpath=ancestor::*[@data-i18n-box][1]").locator("[data-unpublished-tag]")).toHaveText("· avaldamata");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
@@ -952,7 +952,7 @@ test.describe("course editor", () => {
     await page.getByLabel("Individuaalkoolituse hind (€)").fill("250");
     await page.getByLabel("Individuaalkoolituse hind (€)").blur();
     await saved;
-    await expect(spoken(page)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+    await expect(spoken(page)).toHaveText(/^Salvestatud kell \d\d:\d\d$/);
     await expect(publishBar(page)).toHaveCount(0);
     expect(await onLocalDb((sql) => sql`select price_individual from courses where slug = ${slug}`)).toEqual([{ price_individual: 25000 }]);
     // an unpublished course's type changed: the server empties the contact fields (new versions), so the cards wait (inert) until the page is read

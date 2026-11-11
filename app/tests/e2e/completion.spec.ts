@@ -386,7 +386,7 @@ test("§9 e2e 5: open answers — Maria asks for one fix, she rewrites only that
   await box.fill("Kirjuta, millal katkestad töö ja mida kliendile soovitad.");
   await box.blur();
   // the chip: saved to the server (it shows the time once a save has been confirmed)
-  await expect(page.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+  await expect(page.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud kell \d{2}:\d{2}/, { timeout: 30_000 });
   expect((await storedMarks(first.id)).map((d) => d.value)).toEqual([
     {
       submittedAt: expect.any(String),
@@ -700,7 +700,7 @@ test("§9 e2e 10 (B15 and the Hindamine rows at 375 px): the attempts list keeps
   expect(chipBox.y, "the status chip is under the heading").toBeGreaterThanOrEqual(h1.y + h1.height - 1);
   await page.locator('[data-review-answer="q3"] [data-review-verdict="ok"]').click();
   await expect(page.locator("[data-review-send]")).toHaveText("Saada · 1 õige");
-  await expect(chip).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+  await expect(chip).toContainText(/Salvestatud kell \d{2}:\d{2}/, { timeout: 30_000 });
   expect((await storedMarks(reviewId)).map((d) => d.value.marks.q3)).toEqual([{ verdict: "ok", comment: "" }]);
   expect(await noOverflow(page)).toBe(true);
   expect(await smallTargets(page.locator("[data-test-review-page]"))).toEqual([]);

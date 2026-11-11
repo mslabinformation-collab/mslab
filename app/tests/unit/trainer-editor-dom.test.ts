@@ -33,6 +33,8 @@ const TRAINER: TrainerDraft = {
   portraitKey: "img/portree.jpg",
   portraitPos: "50% 30%",
   contactPhotoKey: "img/kontakt.jpg",
+  contactPhotoPos: "50% 20%",
+  contactPhotoZoom: "100",
   name: { et: "Maria Sosnina", ru: "Мария Соснина" },
   role: { et: "Kulmumeister ja koolitaja", ru: "Мастер и преподаватель" },
   stats: [
@@ -184,12 +186,26 @@ describe("the page (S4-13) and its five cards in the public page's order (the P4
     expect($("nav[aria-label='Jaotised']")!.className).toMatch(/narrow/);
   });
 
-  it("„Portree ja tutvustus“: the portrait with its focal point in its column, beside „Nimi“, „Amet“ and „Tutvustus“ (`trainer` and `bio`)", async () => {
+  it("„Portree ja tutvustus“ (UX pass 11.11, board 1): the two picture fields, „Portree“ and „Kontaktifoto“, then „Nimi“, „Amet“ and „Tutvustus“ (`trainer` and `bio`)", async () => {
     await show();
     const c = card("portree")!;
     const picture = c.querySelector("[data-portrait-column]")!;
     expect(picture.querySelector("[data-focal-point]")).not.toBeNull();
-    expect(picture.querySelector('[data-single-image="portrait"]')).not.toBeNull();
+    const portrait = picture.querySelector('[data-single-image="portrait"]')!;
+    expect(portrait).not.toBeNull();
+    // the preview is the drop zone, the point picked on it; „Vaheta pilt · Eemalda“ under it; the label and its two lines beside it
+    const zone = portrait.querySelector("[data-drop-zone]")!;
+    expect(zone.querySelector('[data-focal-pick="portrait"] img')!.getAttribute("src")).toBe("/media/img/portree.jpg");
+    expect(Array.from(portrait.querySelectorAll("label, button")).map((b) => text(b))).toContain("Vaheta pilt");
+    expect(button("Eemalda pilt: Portree", portrait)).not.toBeNull();
+    expect(Array.from(portrait.querySelectorAll("p")).map((p) => text(p)).filter(Boolean).slice(0, 3)).toEqual([
+      "Portree",
+      "Püstine foto sobib kõige paremini. Vajuta pildil kohale, mis peab alati näha jääma (fookuspunkt).",
+      "JPEG, PNG või WebP. Pilt vähendatakse kuni 2400 pikslini; asukoht ja kaamera andmed eemaldatakse.",
+    ]);
+    // the crop previews went (the board has none): the point's two numbers stay, the keyboard's way
+    expect(portrait.querySelector("[data-focal-preview]")).toBeNull();
+    expect(c.querySelector("[data-contact-photo-row]")!.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     const fields = c.querySelector("[data-portrait-text]")!;
     expect(Array.from(fields.querySelectorAll("label")).map((l) => text(l))).toEqual(["Nimi (eesti keeles)", "Amet (eesti keeles)", "Tutvustus (eesti keeles)"]);
     expect(field("trainer.name")!.value).toBe("Maria Sosnina");
@@ -210,26 +226,99 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     expect(text(card("portree")!.querySelector("h2"))).toBe("Portree ja tutvustus · avaldamata");
     await leave(x);
     expect(remote.log).toEqual([{ part: "trainer", version: "l:trainer", patch: { portraitPos: "30% 30%" } }]);
-    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 09:40");
+    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud kell 09:40");
   });
 
-  it("„Kontaktifoto“ (Maria 10.11): the small round photo by the contact forms is its own picture under the portrait; an upload and „Eemalda pilt“ save at once", async () => {
+  it("„Kontaktifoto“ (Maria 10.11): the small round photo by the contact forms is its own picture under the portrait; an upload and „Eemalda“ save at once", async () => {
     await show();
     const photo = card("portree")!.querySelector<HTMLElement>('[data-single-image="contactPhoto"]')!;
     expect(photo.getAttribute("data-field")).toBe("trainer.contactPhotoKey");
-    expect(text(photo.querySelector("p"))).toBe("Kontaktifoto");
-    expect(text(photo)).toContain("Väike ümar pilt kontaktivormi ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.");
-    expect(photo.querySelector("[data-current-image]")!.getAttribute("data-current-image")).toBe("img/kontakt.jpg");
+    expect(Array.from(photo.querySelectorAll("p")).map((p) => text(p)).filter(Boolean).slice(0, 3)).toEqual([
+      "Kontaktifoto",
+      "Vali näo lähifoto (pea ja õlad). Suurenda liuguriga ja lohista pilti ringis, kuni nägu on keskel.",
+      "Näidatakse väikese ringina kontaktivormi, avalehe ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.",
+    ]);
+    expect(photo.querySelector("[data-contact-circle] img")!.getAttribute("src")).toBe("/media/img/kontakt.jpg");
+    const zoom = photo.querySelector<HTMLInputElement>("[data-contact-zoom]")!;
+    await type(zoom, "180");
+    await leave(zoom);
+    expect(remote.log.at(-1)!.patch).toEqual({ contactPhotoZoom: "180" });
     const input = photo.querySelector<HTMLInputElement>('input[type="file"]')!;
     Object.defineProperty(input, "files", { configurable: true, value: [new File(["x"], "uus.jpg", { type: "image/jpeg" })] });
     await act(async () => void input.dispatchEvent(new Event("change", { bubbles: true })));
     await settle();
-    expect(remote.log.at(-1)).toEqual({ part: "trainer", version: "l:trainer", patch: { contactPhotoKey: "img/uus.jpg" } });
+    // a new photo starts its circle over (the old one framed another picture), in the same save
+    expect(remote.log.at(-1)).toMatchObject({ part: "trainer", patch: { contactPhotoZoom: "100", contactPhotoKey: "img/uus.jpg" } });
+    expect(Object.keys(remote.log.at(-1)!.patch).sort()).toEqual(["contactPhotoKey", "contactPhotoZoom"]);
     expect(barWords()).toBe(draft("Kontaktifoto"));
     expect(text(card("portree")!.querySelector("h2"))).toBe("Portree ja tutvustus · avaldamata");
-    await click(button("Eemalda pilt", photo));
+    await click(button("Eemalda pilt: Kontaktifoto", photo));
     await settle();
     expect(remote.log.at(-1)!.patch).toEqual({ contactPhotoKey: "" });
+    // none: the dashed zone, and the sample shows the portrait standing in
+    expect(text(photo.querySelector("[data-no-image]"))).toBe("Lohista pilt siiaVali pilt");
+    expect(photo.querySelector("[data-contact-zoom]")).toBeNull();
+    expect(photo.querySelector("[data-contact-sample] img")!.getAttribute("src")).toBe("/media/img/portree.jpg");
+  });
+
+  it("„Kontaktifoto“'s circle (A11): dragged until the face is in the middle, or moved with the arrows; saved when the drag or the key ends", async () => {
+    await show();
+    const photo = card("portree")!.querySelector<HTMLElement>('[data-single-image="contactPhoto"]')!;
+    const circle = photo.querySelector<HTMLElement>("[data-contact-circle]")!;
+    expect(circle.getAttribute("data-field")).toBe("trainer.contactPhotoPos");
+    expect(circle.getAttribute("tabindex")).toBe("0");
+    expect(circle.getAttribute("aria-label")).toBe("Pilt ringis: vasakult 50%, ülevalt 20%. Nooleklahvid nihutavad pilti.");
+    // a 400 × 600 photo in the 160 px circle: it fills the width (no room that way), 80 px to spare up and down
+    const img = circle.querySelector("img")!;
+    Object.defineProperty(img, "clientWidth", { configurable: true, value: 160 });
+    Object.defineProperty(img, "naturalWidth", { configurable: true, value: 400 });
+    Object.defineProperty(img, "naturalHeight", { configurable: true, value: 600 });
+    const pointer = (type: string, x: number, y: number) =>
+      act(async () => void circle.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 })));
+    await pointer("pointerdown", 100, 100);
+    await pointer("pointermove", 130, 108); // 30 px across (nothing to move), 8 px down: 10 % of the 80 px up
+    expect(img.style.objectPosition).toBe("50% 10%");
+    expect(barWords()).toBe(draft("Kontaktifoto"));
+    await pointer("pointerup", 130, 108);
+    await settle();
+    expect(remote.log.at(-1)).toEqual({ part: "trainer", version: "l:trainer", patch: { contactPhotoPos: "50% 10%" } });
+
+    await act(async () => void circle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    await act(async () => void circle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", shiftKey: true, bubbles: true })));
+    expect(circle.getAttribute("aria-label")).toBe("Pilt ringis: vasakult 52%, ülevalt 20%. Nooleklahvid nihutavad pilti.");
+    await act(async () => void circle.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true })));
+    await settle();
+    expect(remote.log.at(-1)!.patch).toEqual({ contactPhotoPos: "52% 20%" });
+  });
+
+  it("„Suurendus“ zooms the circle and the 46 px sample beside it („Nii näeb see lehel välja“: the avatar and the name, as the site shows them)", async () => {
+    await show();
+    const photo = card("portree")!.querySelector<HTMLElement>('[data-single-image="contactPhoto"]')!;
+    const zoom = photo.querySelector<HTMLInputElement>("[data-contact-zoom]")!;
+    expect(zoom.closest("label")!.textContent).toBe("Suurendus");
+    expect([zoom.type, zoom.min, zoom.max, zoom.value]).toEqual(["range", "100", "300", "100"]);
+    const sample = photo.querySelector("[data-contact-sample]")!;
+    expect(text(sample.querySelector("span"))).toBe("Nii näeb see lehel välja");
+    expect(text(sample.querySelector("b"))).toBe("Maria Sosnina");
+    expect(sample.querySelector("img")!.getAttribute("src")).toBe("/media/img/kontakt.jpg");
+    await type(zoom, "180");
+    expect(photo.querySelector<HTMLImageElement>("[data-contact-circle] img")!.style.transform).toBe("scale(1.8)");
+    expect(sample.querySelector("img")!.style.transform).toBe("scale(1.8)");
+    expect(sample.querySelector("img")!.style.transformOrigin).toBe("50% 20%");
+    await leave(zoom);
+    expect(remote.log.at(-1)).toEqual({ part: "trainer", version: "l:trainer", patch: { contactPhotoZoom: "180" } });
+    expect(barWords()).toBe(draft("Kontaktifoto"));
+  });
+
+  it("a click on the portrait's preview sets its point and saves it at once", async () => {
+    await show();
+    const pick = card("portree")!.querySelector<HTMLElement>('[data-focal-pick="portrait"]')!;
+    const img = pick.querySelector("img")!;
+    img.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 250, right: 200, bottom: 250, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    await act(async () => void pick.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 100 })));
+    await settle();
+    expect(remote.log.at(-1)).toEqual({ part: "trainer", version: "l:trainer", patch: { portraitPos: "25% 40%" } });
+    expect($<HTMLInputElement>('[data-focal-axis="portrait-x"]')!.value).toBe("25");
   });
 
   it("the bio typed and left: the bio's draft, the bar „Tutvustus“, the field marked „· avaldamata“", async () => {

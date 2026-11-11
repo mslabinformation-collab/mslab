@@ -28,6 +28,7 @@ import { PREPAYMENT_KEY } from "@/domain/account-cards";
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { nextTermsVersion, TERMS_PAGE_KEY, TERMS_PAGE_TITLE, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import {
+  CONTACT_ZOOM,
   contactDraft,
   copyI18n,
   faqDraft,
@@ -344,6 +345,8 @@ export const trainerParts: Parts = {
       portraitKey: text(400),
       portraitPos: text(20),
       contactPhotoKey: text(400),
+      contactPhotoPos: text(20),
+      contactPhotoZoom: text(4),
       name: i18n,
       role: i18n,
       stats: z.array(z.object({ uid, value: text(100), label: i18n })).max(20),
@@ -356,6 +359,8 @@ export const trainerParts: Parts = {
       const portraitKey = c.image(`${p}portraitKey`, v.portraitKey);
       const portraitPos = c.focal(`${p}portraitPos`, v.portraitPos);
       const contactPhotoKey = c.image(`${p}contactPhotoKey`, v.contactPhotoKey);
+      const contactPhotoPos = c.focal(`${p}contactPhotoPos`, v.contactPhotoPos);
+      const contactPhotoZoom = c.zoom(`${p}contactPhotoZoom`, v.contactPhotoZoom, CONTACT_ZOOM);
       const trainerName = c.text(`${p}name`, v.name, L.trainerName, { required: true });
       const role = c.text(`${p}role`, v.role, L.role);
       const stats: { value: string; label: I18n }[] = [];
@@ -367,11 +372,14 @@ export const trainerParts: Parts = {
       }
       if (stats.length > L.stats) c.fail(`${p}stats`, "tooMany");
       const value = (stored: unknown) => {
-        // other keys stay as they are; no contact photo is stored as none (the site then shows the portrait there)
-        const { role: _oldRole, contactPhotoKey: _oldPhoto, ...rest } = obj(stored);
+        // other keys stay as they are; no contact photo is stored as none (the site then shows the portrait there), and so is its circle
+        const { role: _oldRole, contactPhotoKey: _oldPhoto, contactPhotoPos: _oldPos, contactPhotoZoom: _oldZoom, ...rest } = obj(stored);
         void _oldRole;
         void _oldPhoto;
-        return { ...rest, portraitKey, portraitPos, ...(contactPhotoKey ? { contactPhotoKey } : {}), name: trainerName, ...(role ? { role } : {}), stats };
+        void _oldPos;
+        void _oldZoom;
+        const photo = contactPhotoKey ? { contactPhotoKey, contactPhotoPos, contactPhotoZoom: contactPhotoZoom ?? CONTACT_ZOOM.min } : {};
+        return { ...rest, portraitKey, portraitPos, ...photo, name: trainerName, ...(role ? { role } : {}), stats };
       };
       return writing((tx, stored) => setSetting(tx, "trainer", value(stored)), value);
     },

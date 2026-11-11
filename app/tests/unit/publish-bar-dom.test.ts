@@ -92,6 +92,16 @@ describe("PublishBar", () => {
     expect(text("[data-publish-fields]")).toBe(" · Slaid 2 pealkiri. Avalikul lehel on näha eelmine versioon.");
   });
 
+  it("`status` (UX pass 11.11 A1): the screen's save words before the buttons, in the bar; none given, no slot", async () => {
+    await show({ status: createElement("span", { "data-save-status": "" }, "✓ Mustand salvestatud kell 12:41") });
+    const slot = $("[data-publish-status]")!;
+    expect(slot.textContent).toBe("✓ Mustand salvestatud kell 12:41");
+    expect(slot.parentElement!.firstElementChild).toBe(slot);
+    expect(slot.compareDocumentPosition($("[data-publish-preview]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await show();
+    expect($("[data-publish-status]")).toBeNull();
+  });
+
   it("the phone's form (W9): „Avaldamata 3 · Eelvaade“ with the preview as its link, and „Avalda“; no „Loobu muudatustest“ there", async () => {
     await show();
     expect(text("[data-publish-phone]")).toBe("Avaldamata 3 · Eelvaade");

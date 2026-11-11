@@ -88,6 +88,7 @@ export default async function CataloguePage({ params }: Props) {
       <CatalogueFilters
         courses={courses}
         areas={areas}
+        locale={locale}
         formats={{
           e: { name: f.elearning.name, question: f.elearning.question, definition: f.elearning.definition, card: firstSentence(f.elearning.definition), steps: f.elearning.steps },
           k: { name: f.contact.name, question: f.contact.question, definition: f.contact.definition, card: firstSentence(f.contact.definition), steps: f.contact.steps },
@@ -111,7 +112,8 @@ export default async function CataloguePage({ params }: Props) {
           emptyTitle: c.emptyTitle,
           emptyText: c.emptyText,
           resetFilters: c.resetFilters,
-          results: c.results,
+          explainToggle: c.explainToggle,
+          count: c.count,
         }}
       />
       {previewBar}

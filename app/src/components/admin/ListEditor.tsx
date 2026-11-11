@@ -17,6 +17,8 @@ import styles from "./editor.module.css";
 type Props = {
   /** The heading of the list. */
   title: string;
+  /** The list is a card of its own (a label card: Õpiväljundid, Koolitus sisaldab): its heading has the cards' title size (UX pass 11.11 A3). */
+  cardTitle?: boolean;
   /** The label of one row, numbered: "Õpiväljund 2". */
   itemLabel: string;
   items: I18n[];
@@ -60,7 +62,7 @@ type Focus = { index: number } | { key: string } | "add" | null;
  * after an undo the row's own field (when the focus has nowhere else to be). With `enterAdds` (Praktika's points), Enter in the last row adds the
  * next one the same way.
  */
-export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
+export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
   const t = adminEt.list;
   const uid = useId();
   const rows = useRowKeys(items);
@@ -132,7 +134,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
       tabIndex={error ? -1 : undefined}
     >
       <div className={styles.listHead}>
-        <h3 id={`${uid}-title`} className={ui.h3}>
+        <h3 id={`${uid}-title`} className={cardTitle ? ui.h2 : ui.h3}>
           {title}
           {unpublished && (
             <>

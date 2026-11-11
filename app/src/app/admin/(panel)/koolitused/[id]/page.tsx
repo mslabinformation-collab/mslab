@@ -122,7 +122,7 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
         next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null}
         created={sp.loodud === "1"}
         modules={course ? modules : []}
-        designs={designs.map((d) => ({ id: d.id, name: d.name }))}
+        designs={designs.map((d) => ({ id: d.id, name: d.name, tone: d.tone, backgroundKey: d.backgroundKey }))}
       />
       {course && lesson && place && (
         <Drawer

@@ -197,7 +197,8 @@ export function TestEditor({
       tabIndex={listError ? -1 : undefined}
     >
       <div className={ed.listHead}>
-        <h3 id={`${uid}-title`} className={ui.h3}>
+        {/* a card of its own: the cards' title size (UX pass 11.11 A3) */}
+        <h3 id={`${uid}-title`} className={ui.h2}>
           {t.sections.test}
           {unpublished?.questions && (
             <>

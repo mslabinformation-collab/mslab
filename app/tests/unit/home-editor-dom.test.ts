@@ -317,7 +317,7 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(remote.log).toEqual([
       { part: "slides", version: "l:slides", patch: { slides: [SLIDES[0], { ...SLIDES[1], title: { et: "Täpsusest sünnib julgus.", ru: "" } }, SLIDES[2]] } },
     ]);
-    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 10:05");
+    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud kell 10:05");
   });
 
   it("„Tume“ chosen is saved at once (a choice), the row's tag follows it", async () => {

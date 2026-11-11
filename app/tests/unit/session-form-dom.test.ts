@@ -231,7 +231,7 @@ describe("the fields autosave (README B3, §1.3; R-a)", () => {
     await settle();
     expect(fetched.calls.map((c) => [c.method, c.url, c.body])).toEqual([["POST", `/api/admin/toimumine/${ID}`, { version: "s:v1", patch: { city: "Tartu" } }]]);
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    expect(text(chip()!.querySelector("[data-save-text]"))).toBe("✓ Salvestatud 14:03");
+    expect(text(chip()!.querySelector("[data-save-text]"))).toBe("✓ Salvestatud kell 14:03");
     expect(router.refresh).toHaveBeenCalledOnce();
   });
 

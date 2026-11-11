@@ -15,10 +15,10 @@ export const ru: Dict = {
     calendar: "Расписание",
     practice: "Практика",
     trainer: "Преподаватель",
-    news: "Новости",
+    news: "Новости и советы",
+    contact: "Контакты",
     login: "Войти",
     account: "Мой кабинет",
-    cart: "Корзина",
     menu: "Меню",
     langSwitch: "Сменить язык",
     mainLabel: "Главное меню",
@@ -51,7 +51,6 @@ export const ru: Dict = {
     contactEyebrow: "Контакты",
     contactTitle: "Не знаете, какой курс подойдёт?",
     contactLead: "Напишите Марии — я подберу для вас подходящий курс и формат обучения.",
-    contactReply: "обычно отвечает в течение одного рабочего дня",
   },
 
   formats: {
@@ -123,7 +122,8 @@ export const ru: Dict = {
     cardCta: "Программа курса",
     readMore: "Подробнее",
     hybridNote: "Хотите совместить онлайн- и очное обучение?",
-    results: "Найдено курсов: {n}",
+    explainToggle: "Чем отличаются онлайн-, очное и гибридное обучение?",
+    count: { one: "{n} курс", few: "{n} курса", many: "{n} курсов" },
   },
 
   course: {
@@ -143,6 +143,8 @@ export const ru: Dict = {
     // Draft, as the Estonian texts are
     financingLine: "Можно оплатить и в\u00a0рассрочку (Inbank).",
     buyNow: "Купить сразу",
+    registerJump: "Записаться",
+    registerJumpHint: "Дату и способ оплаты вы выберете в конце страницы.",
     checkoutSoon:
       "Оплата скоро появится — вы сможете купить курс, как только она откроется. Оставьте свой e-mail, и мы сообщим.",
     includesTitle: "Курс включает",
@@ -259,14 +261,14 @@ export const ru: Dict = {
   },
 
   news: {
-    eyebrow: "Блог",
+    eyebrow: "Новости",
     title: "Новости и советы",
     lead: "Советы, новые курсы и истории учеников. Каждая карточка ведёт к полной публикации.",
     all: "Все публикации",
     readMore: "Читать далее",
     more: "Читайте также",
     carouselLabel: "Карусель публикаций",
-    pageTitle: "Блог.",
+    pageTitle: "Новости и советы.",
     coursesCta: "Смотреть курсы",
   },
 
@@ -325,7 +327,7 @@ export const ru: Dict = {
     learnTitle: "Ваше обучение",
     allCourses: "Все курсы",
     orgTitle: "MS LAB",
-    news: "Новости и вдохновение",
+    news: "Новости и советы",
     contact: "Контакты и сотрудничество",
     meetTitle: "Встретимся на вашем следующем шаге.",
     cities: "Пярну · Таллинн · Тарту",

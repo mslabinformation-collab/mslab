@@ -141,7 +141,7 @@ test("Back from the index: the restored screen never says 'Salvestatud' over the
   await backToStaleScreen(page, fx.session.id, mari.id, { beforeBack: () => recordFrames(page) });
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
   await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "saved");
-  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud kell \d\d:\d\d$/);
   const frames = await stopFrames(page);
   info.annotations.push({ type: "frames after Back", description: JSON.stringify([...new Set(frames.map((f) => f.join(" | ")))]) });
   expect(frames.filter(([text, status]) => status === "saved" && text !== "Teine."), "frames that said 'saved' over an older text").toEqual([]);
@@ -160,7 +160,7 @@ test("Back from the index, the server's text not come yet: the old text is shown
   await expect(saveWords(page, mari.id)).toHaveText("Kontrollin salvestatud teksti…");
   refresh.release();
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
-  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud kell \d\d:\d\d$/);
   await expect(editor(page, mari.id).locator("[data-conflict]")).toHaveCount(0); // nothing of hers was lost, so nothing is told
   expect((await storedProtocol(mari.id))!.version).toBe(2); // and nothing was saved
 });

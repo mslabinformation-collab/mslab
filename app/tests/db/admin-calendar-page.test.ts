@@ -280,38 +280,41 @@ describe("the list", () => {
     expect(cells[3].textContent).toBe("Toimub"); // 2 confirmed and 1 live hold of 4: a seat is left
   });
 
-  test("the seats are the figure and the bar, as drawn (Dim, 25.10): „3 / 4“ on the table, „4/4“ on the phone card; no „kinnitatud“, no free seats, no „ootab ettemaksu“, no waitlist", async () => {
+  test("the seats in Ülevaade's wording (UX pass 11.11 A2, the Kohad board): „1 vaba 4-st“ over the bar, the same beside it on the phone card; no „kinnitatud“, no „ootab ettemaksu“, no waitlist", async () => {
     const doc = await open();
     const seats = (id: number) => rowOf(doc, id).querySelectorAll("td")[2];
-    expect(seats(s.booked).querySelector("[data-session-seats]")!.textContent).toBe("2 / 4");
-    expect(seats(s.booked).querySelector("[data-seats-short]")!.textContent).toBe("2/4"); // the phone card's figure
-    expect(seats(s.tartu).querySelector("[data-session-seats]")!.textContent).toBe("0 / 6");
-    expect(seats(s.tartu).querySelector("[data-seats-short]")!.textContent).toBe("0/6");
-    // the whole cell is the two figures and the bar: the session with 2 confirmed, 2 awaiting and 2 on the waitlist says none of it
-    expect(seats(s.booked).textContent).toBe("2 / 42/4");
+    // 2 confirmed and 1 live hold of 4: one seat is free (as the public pages count)
+    expect(seats(s.booked).querySelector("[data-session-seats]")!.textContent).toBe("1 vaba 4-st");
+    expect(seats(s.booked).querySelector("[data-seats-short]")!.textContent).toBe("1 vaba 4-st"); // the phone card's
+    expect(seats(s.tartu).querySelector("[data-session-seats]")!.textContent).toBe("6 vaba 6-st");
+    expect(seats(s.tartu).querySelector("[data-seats-short]")!.textContent).toBe("6 vaba 6-st");
+    // the whole cell is the two lines and the bar: the session with 2 confirmed, 2 awaiting and 2 on the waitlist says none of it
+    expect(seats(s.booked).textContent).toBe("1 vaba 4-st1 vaba 4-st");
     for (const id of [s.draft, s.booked, s.cancelled, s.tartu]) expect(rowOf(doc, id).textContent).not.toMatch(/kinnitatud|ootab ettemaksu|Vabu kohti|Ootenimekirjas/);
     expect(doc.querySelector("[data-seats-more]")).toBeNull();
   });
 
-  test("the bar fills with the confirmed seats; it is the warning colour when the session is full", async () => {
+  test("the bar fills with the taken seats (a live hold counts); it is the warning colour when the session is full, and the seats say „Täis“", async () => {
     const [full] = await db.insert(courseSessions).values({ courseId: course.lami, startsAt: new Date("2031-01-10T08:00:00Z"), city: "Narva", capacity: 2 }).returning();
     try {
       await db.insert(registrations).values([1, 2].map((n) => ({ courseId: course.lami, courseSessionId: full.id, kind: "group" as const, name: `N${n}`, email: `narva${n}@example.test`, paymentChoice: "half" as const, status: "confirmed" as const })));
       const doc = await open();
       const fill = (id: number) => rowOf(doc, id).querySelector("[data-seats-bar] > span")!;
-      expect(fill(s.booked).getAttribute("style")).toContain("width:50%");
+      expect(fill(s.booked).getAttribute("style")).toContain("width:75%");
       expect(fill(s.tartu).getAttribute("style")).toContain("width:0%");
       expect(fill(full.id).getAttribute("style")).toContain("width:100%");
       expect(rowOf(doc, full.id).querySelector("[data-seats-bar]")!.getAttribute("data-full")).toBe("");
       expect(rowOf(doc, s.booked).querySelector("[data-seats-bar]")!.getAttribute("data-full")).toBeNull();
-      expect(rowOf(doc, full.id).querySelector("[data-session-state]")!.textContent).toBe("Täis");
+      expect(rowOf(doc, full.id).querySelector("[data-session-seats]")!.textContent).toBe("Täis");
+      // „Täis“ is the seats' (UX pass 11.11 A2): the state says it takes place
+      expect(rowOf(doc, full.id).querySelector("[data-session-state]")!.textContent).toBe("Toimub");
     } finally {
       await db.delete(registrations).where(eq(registrations.courseSessionId, full.id));
       await db.delete(courseSessions).where(eq(courseSessions.id, full.id));
     }
   });
 
-  test("the state: Toimub, Täis (no seat left, a live hold counts), Tühistatud", async () => {
+  test("the state: Toimub (a full one too: „Täis“ is the seats'), Tühistatud", async () => {
     const doc = await open();
     const state_ = (id: number) => rowOf(doc, id).querySelector("[data-session-state]")!.textContent;
     expect(state_(s.booked)).toBe("Toimub"); // 2 confirmed + 1 live hold = 3 of 4

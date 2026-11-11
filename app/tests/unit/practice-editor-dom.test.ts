@@ -229,7 +229,7 @@ describe("the fields autosave into the package's draft; one bar for both package
     await leave(field("MAXI.price"));
     expect(remote.log).toEqual([{ part: "MAXI", version: "l:MAXI", patch: { price: "230" } }]);
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · MAXI hind. Avalikul lehel on näha eelmine versioon.");
-    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 13:15");
+    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud kell 13:15");
     // the changed field waits for „Avalda muudatused“: its box is marked (editor.module.css: the border in --rose, #9e8993), MINI's is not
     const box = (name: string) => field(name)!.closest("[data-unpublished], [data-plain-field], [data-i18n-box]")!;
     expect(box("MAXI.price").hasAttribute("data-unpublished")).toBe(true);

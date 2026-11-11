@@ -6,8 +6,8 @@ import { makeTestDb } from "./helpers";
 import { sectionOf } from "./seaded-page";
 
 // Seaded with its „Valdkonnad“ card (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx), rendered
-// from a real (PGlite) database to HTML: its own section after „Uudiskiri“, the migration's two areas in their order with both names, „Kustuta“ only
-// for the one no course uses and „Seda valdkonda kasutab {n} koolitust.“ for the other; „Lisa valdkond“ below.
+// from a real (PGlite) database to HTML: its own section after „Uudiskiri“, the migration's two areas in their order with both names, „Kustuta“
+// for each, greyed for the one courses use, with the count („2 koolitust“, „Pole kasutusel“); the dashed „Lisa valdkond +“ row below.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
@@ -42,8 +42,11 @@ test("the card in its own section „Valdkonnad“ after „Uudiskiri“: both a
   const card = html.slice(html.indexOf("data-areas-card"), html.indexOf("</section>", html.indexOf("data-areas-card")));
   for (const name of ["Kulmukoolitused", "Курсы по бровям", "Ripsmekoolitused", "Курсы по ресницам"]) expect(card).toContain(`value="${name}"`);
   expect(card.indexOf("Kulmukoolitused")).toBeLessThan(card.indexOf("Ripsmekoolitused"));
-  expect(card).toContain("Seda valdkonda kasutab 2 koolitust.");
-  expect(card.match(/data-area-delete/g)).toHaveLength(1);
-  expect(card).toContain("Lisa valdkond");
+  expect(card).toContain("2 koolitust");
+  expect(card).toContain("Pole kasutusel");
+  // one „Kustuta“ per row; the used area's greyed (aria-disabled)
+  expect(card.match(/data-area-delete/g)).toHaveLength(2);
+  expect(card.match(/aria-disabled="true"[^>]*data-area-delete/g)).toHaveLength(1);
+  expect(card).toContain("Lisa valdkond +");
   expect(card).not.toContain("Salvesta");
 });

@@ -1,6 +1,8 @@
-/* Seaded → Tunnistus → „Kujundused“ (2026-11-11 certificate designs, spec §5.1): a card of the Tunnistus section under the certificate's settings, one
-   row per design (a fieldset with a hairline between rows), „Lisa kujundus“ under them. A row's fields side by side where there is room (the name and
-   the tone over the photo's A4 landscape thumbnail), one column on a phone. Every control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → Tunnistus → „Kujundused“ (2026-11-11 certificate designs, spec §5.1; UX pass 11.11 board 1, A7/A8): one bordered box per design (1px
+   var(--line), radius 16), its header on one line where there is room — the name (200 px), „Vaikimisi“, the tone pills, then at the right end the count
+   and „Vaata näidist ↗“ — over the picture (ImageField: the 300 × 212 preview that is the drop zone, „Vaheta pilt · Eemalda“ under it) beside its
+   hint lines, „Kustuta“ at the bottom of the words. The dashed add row at the end is the same box. Every control is the admin's 44 px one; colours
+   from tokens.css only. */
 
 .card {
   min-width: 0;
@@ -8,66 +10,83 @@
 
 .rows {
   display: grid;
-  gap: 0;
+  gap: 14px;
 }
 
-.row {
+.design {
+  display: grid;
+  gap: 14px;
   min-width: 0;
   margin: 0;
-  padding: 20px 0;
-  border: 0;
-  border-top: 1px solid var(--line);
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
 }
 
-.row:first-child {
-  border-top: 0;
-  padding-top: 4px;
-}
-
-.fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px 20px;
-  align-items: start;
-}
-
-/* the photo across the row, under the name and the tone */
-.fields > :last-child {
-  grid-column: 1 / -1;
-  max-width: 420px;
-}
-
-@media (max-width: 640px) {
-  .fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.tone {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-}
-
-.tone > p {
-  margin: 0;
-}
-
-/* after a conflict: „Taasta minu tekst“ */
-.restore {
-  margin: 14px 0 0;
-}
-
-/* „Vaata näidist“ and „Kustuta“ (or why it cannot go, or its confirmation) */
-.actions {
+.head {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
   align-items: center;
-  margin-top: 16px;
+  gap: 10px 12px;
+  min-width: 0;
 }
 
-.actions > p {
+.name {
+  width: 200px;
+  max-width: 100%;
+  font-weight: 600;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 99px;
+  background: var(--first);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.used {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sample {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.line {
+  margin: 0;
+}
+
+/* „Kustuta“ (and why it is greyed) at the bottom right of the words, level with the picture's foot */
+.remove {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.remove > p {
   margin: 0;
 }
 
@@ -76,13 +95,32 @@
   outline-offset: 2px;
 }
 
+/* the add row: the same box, dashed, at the end */
 .add {
-  display: grid;
-  gap: 6px;
-  justify-items: start;
-  margin-top: 8px;
+  padding: 12px 18px;
+  border-style: dashed;
+  border-color: var(--fog);
+  background: var(--canvas);
 }
 
-.add > p {
-  margin: 0;
+.addLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.newName {
+  width: 260px;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .spacer {
+    display: none;
+  }
+
+  .remove {
+    justify-content: flex-start;
+  }
 }

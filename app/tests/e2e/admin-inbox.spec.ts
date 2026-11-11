@@ -480,7 +480,7 @@ test.describe("signed in", () => {
     // the note saves itself; the header's chip says when
     const chip = drawer.locator("header [data-save-status]");
     await drawer.getByRole("textbox", { name: "Märkus" }).fill("Maksis kohapeal sularahas");
-    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout: 20_000 });
+    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud kell \d\d:\d\d$/, { timeout: 20_000 });
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ status: "confirmed", note: "Maksis kohapeal sularahas", paidCents: 0 });
     // and the next status press does not touch it
     await expect(part.locator("[data-status-choice]")).not.toHaveAttribute("aria-busy", "true");
@@ -673,7 +673,7 @@ test.describe("signed in", () => {
       await context.setOffline(false);
     }
     // back online: the note goes, and ✕ closes at once
-    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout: 40_000 });
+    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud kell \d\d:\d\d$/, { timeout: 40_000 });
     expect((await storedAdminRegistration(f.registration.id)).note).toBe("Helistab reedel");
     await drawer.getByRole("button", { name: "Sulge", exact: true }).click();
     await expect(drawer).toBeHidden();

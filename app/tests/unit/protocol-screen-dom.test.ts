@@ -101,7 +101,7 @@ test("the students with their marks; the first is open; a note saves 1.5 s after
   await wait(1);
   expect(bodies()).toEqual([{ registrationId: 1, protocolId: null, version: 0, titles: TITLES, notes: ["Kulmud ühtlased", ""], generalNote: "" }]);
   await wait(0);
-  expect(shownText()).toBe("✓ Salvestatud 11:00");
+  expect(shownText()).toBe("✓ Salvestatud kell 11:00");
 });
 
 test("switching student is one tap: the one left saves at once, the next is shown without waiting for it", async () => {
@@ -210,7 +210,7 @@ test("B13: „Taasta minu tekst“ puts this screen's words back into their box 
   await wait(0);
   expect(bodies().map((b) => [b.version, b.notes])).toEqual([[2, ["minu tekst", ""]], [3, ["minu tekst", ""]]]);
   expect(kind()).toBe("saved");
-  expect(shownText()).toBe("✓ Salvestatud 11:02");
+  expect(shownText()).toBe("✓ Salvestatud kell 11:02");
   expect(localStorage.length).toBe(0); // the server has it: no copy, no notice left in this browser
 });
 
@@ -242,7 +242,7 @@ test("on a phone (below 900 px, the admin's phone layout) the saved chip is the 
   );
   await render({ single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" })] });
   expect(shownText()).toBe("✓ 11:00");
-  expect($("[data-save-status] [role='status']")!.textContent).toBe("Salvestatud 11:00");
+  expect($("[data-save-status] [role='status']")!.textContent).toBe("Salvestatud kell 11:00");
   media.mockRestore();
 });
 
@@ -334,7 +334,7 @@ test("shown, the screen reads the server's text again and says so instead of 'Sa
   expect(shownText()).toBe("Kontrollin salvestatud teksti…");
   await answered(answer(view.students));
   expect(kind()).toBe("saved");
-  expect(shownText()).toBe("✓ Salvestatud 11:00");
+  expect(shownText()).toBe("✓ Salvestatud kell 11:00");
 });
 
 test("the server's text newer: it is on the screen (and the student's mark), 'Salvestatud' with the server's time, nothing sent, no notice", async () => {
@@ -348,7 +348,7 @@ test("the server's text newer: it is on the screen (and the student's mark), 'Sa
   );
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Kolmas versioon.");
   expect(($("[data-general]") as HTMLTextAreaElement).value).toBe("Üldiselt hästi.");
-  expect(shownText()).toBe("✓ Salvestatud 11:05");
+  expect(shownText()).toBe("✓ Salvestatud kell 11:05");
   expect($("[data-student='1']")!.getAttribute("data-status")).toBe("changed"); // sent version 2 of 3
   expect($("[data-conflict]")).toBeNull();
   await wait(10_000);

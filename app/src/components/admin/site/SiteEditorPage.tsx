@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useRef, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { siteChangeLabels } from "@/domain/site-changes";
 import { siteRowOf, type SitePartState, type SiteTarget } from "@/domain/site-entities";
@@ -11,7 +11,7 @@ import { combineStatus } from "../course/course-view";
 import { usePhoneChip } from "../course/usePhoneChip";
 import { LangSwitch } from "../EditLang";
 import { PublishBar } from "../PublishBar";
-import { SaveStatus } from "../SaveStatus";
+import { SaveStatus, useSaveNews } from "../SaveStatus";
 import { SectionMap, type SectionEntry } from "../SectionMap";
 import {
   blockedOf,
@@ -158,6 +158,9 @@ type Form = Omit<SiteEditorProps, "parts" | "stamp"> & {
   setSaid: (update: (s: Said) => Said) => void;
   /** A save's word on reading the page again (readAfterSave), and the read. */
   heard: (part: string, patch: Record<string, unknown>, version: string) => void;
+  /** Something has happened on the page since it opened (SaveStatus's useSaveNews), kept over the cards' restarts: the save's words stay. */
+  news: boolean;
+  onNews: () => void;
 };
 
 export function SiteEditorPage<A extends SiteValues = SiteValues>(props: SiteEditorProps<A>) {
@@ -169,7 +172,9 @@ export function SiteEditorPage<A extends SiteValues = SiteValues>(props: SiteEdi
   const heard = (part: string, patch: Record<string, unknown>, version: string) => {
     if (rest.readAfterSave?.(part, patch, version) && !waits.waitingNow()) startTransition(() => router.refresh());
   };
-  const form: Form = { ...rest, seeds, generation, waiting, waits, refocus, said, setSaid, heard };
+  const [news, setNews] = useState(false);
+  const onNews = useCallback(() => setNews(true), []);
+  const form: Form = { ...rest, seeds, generation, waiting, waits, refocus, said, setSaid, heard, news, onNews };
   const names = Object.keys(seeds);
   // (every part's hook in a component of its own, one after another, so their number may follow the parts read; the last one draws the page)
   return names.length > 0 ? <PartHooks key={generation} {...form} names={names} index={0} apis={{}} /> : <SiteForm key={generation} {...form} apis={{}} />;
@@ -211,7 +216,8 @@ function SiteForm(props: Form & { apis: SiteApis }) {
   const [pointed, setPointed] = useState(0);
   useEffect(() => {
     if (pointed === 0) return;
-    const chip = chipSlot.current?.querySelector<HTMLElement>("[data-save-status]");
+    // (in the header, or in the PublishBar while it shows)
+    const chip = chipSlot.current?.closest("[data-site-editor]")?.querySelector<HTMLElement>("[data-save-status]");
     chip?.scrollIntoView?.({ block: "center" });
     chip?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }, [pointed]);
@@ -321,6 +327,14 @@ function SiteForm(props: Form & { apis: SiteApis }) {
 
   const entries = typeof sections === "function" ? sections(shown) : (sections ?? []);
   const map = entries.length >= 4;
+  // the save's words: in the PublishBar while it shows (as PublishBar shows itself: something to publish), else in the header (UX pass 11.11 A1)
+  const barShown = drafted && changed.length > 0;
+  const ownNews = useSaveNews(status);
+  const { news: newsBefore, onNews } = props;
+  useEffect(() => {
+    if (ownNews && !newsBefore) onNews();
+  }, [ownNews, newsBefore, onNews]);
+  const saveStatus = <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} />;
 
   return (
     <div className={ui.page} data-site-editor="">
@@ -344,7 +358,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
         <div className={`${ui.headAside} ${styles.aside}`} data-site-aside="">
           <LangSwitch />
           <span ref={chipSlot} className={styles.statusSlot} data-site-chip="">
-            <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} follow />
+            {!barShown && saveStatus}
           </span>
           {viewHref !== null && (
             <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={viewHref} target="_blank" rel="noopener" data-site-view="">
@@ -362,6 +376,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
           error={said.barError}
           // the cards wait (a publish or a discard, or its read): the bar's buttons do nothing meanwhile
           waiting={frozen}
+          status={saveStatus}
           onDiscard={discard}
           onPublish={publish}
         />

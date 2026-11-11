@@ -197,7 +197,7 @@
 .upRow {
   position: relative;
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 70px;
+  grid-template-columns: 90px minmax(0, 1fr) 120px;
   align-items: center;
   gap: 10px;
   min-height: 52px;
@@ -240,18 +240,9 @@
   font-size: 12px;
 }
 
+/* „Kohad“: SeatsMeter (UX pass 11.11 A2, the Kohad board: „2 vaba 6-st“ or „Täis“ over the bar), as Kalender's */
 .seats {
-  text-align: right;
-  font-weight: 600;
-}
-
-.upHead .seats {
-  font-weight: inherit;
-}
-
-/* no seat left */
-.full {
-  color: var(--bad);
+  min-width: 0;
 }
 
 .calendar {
@@ -311,6 +302,11 @@
     grid-template-columns: 40px minmax(0, 1fr) 16px;
     gap: 10px;
     min-height: 58px;
+  }
+
+  /* the date short, the seats („2 vaba 6-st“ and the bar) narrower: the course keeps its room */
+  .upRow {
+    grid-template-columns: 48px minmax(0, 1fr) 92px;
   }
 
   .count {

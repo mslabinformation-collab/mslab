@@ -96,7 +96,7 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     await price.blur();
     await saved;
     await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords(`${code} hind`));
     await expect(card.locator("[data-plain-field][data-unpublished] [data-unpublished-tag]")).toHaveText("· avaldamata");
     expect((await stored()).price, "live keeps its price").toBe(before.price);
@@ -324,7 +324,7 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await title.blur();
     await saved;
     await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Slaidid"));
     expect(await slideCount(), "live keeps its slides").toEqual({ n: 5 });
 
@@ -573,7 +573,7 @@ const shownWorks = (p: Page) => p.locator("[data-works] [data-work] img").evalua
 test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja on the draft layer)", () => {
   test.use({ trainerDrafts: "chromium-edit" });
 
-  test("two gallery tiles swapped by drag and a new portrait with its focal point wait in their drafts (the bar „Portree, Galerii“) until „Avalda muudatused“; /koolitaja then shows the new order and the portrait framed by its point; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+  test("two gallery tiles swapped by drag, a new portrait with its focal point and the contact photo zoomed wait in their drafts (the bar „Portree, Kontaktifoto, Galerii“) until „Avalda muudatused“; /koolitaja then shows the new order and the portrait framed by its point, /kontakt the zoomed avatar; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the trainer card and works; the phone project a story");
     test.slow(); // one long flow: the editor, the public pages, a publish and a second width
     await changing(["settings", { column: "key", value: "trainer" }], ["gallery_items", { column: "group", value: "trainer_works" }]);
@@ -612,7 +612,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     await saved;
     await expect(tiles.nth(0)).toHaveAttribute("data-gallery-item", second!);
     await expect(tiles.nth(1)).toHaveAttribute("data-gallery-item", first!);
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Galerii"));
     // the picture's description under its tile (kept, builder notes §5): saved into the gallery's draft when it is left
     const description = tiles.nth(0).getByRole("textbox", { name: "Pildi kirjeldus (eesti keeles)", exact: true });
@@ -631,12 +631,21 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     const focal = page.locator("#portree [data-focal-point]");
     await focal.locator('[data-focal-axis="portrait-x"]').fill("30");
     await focal.locator('[data-focal-axis="portrait-y"]').fill("25");
-    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("object-position", "30% 25%");
-    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("transform", "none"); // an upload: no zoom
+    // (the point is picked on the preview, UX pass 11.11 board 1: its marker there)
+    await expect(portrait.locator('[data-focal-pick="portrait"] > span')).toHaveAttribute("style", /left: 30%; top: 25%/);
     saved = trainerSaved(page, "trainer");
     await focal.locator('[data-focal-axis="portrait-y"]').blur();
     await saved;
     await expect(barWords(page)).toHaveText(draftWords("Portree, Galerii"));
+    // „Kontaktifoto“'s „Suurendus“ (A11): the circle and its 46 px sample zoom; saved when the slider is left
+    const photo = page.locator('#portree [data-single-image="contactPhoto"]');
+    saved = trainerSaved(page, "trainer");
+    await photo.locator("[data-contact-zoom]").fill("150");
+    await expect(photo.locator("[data-contact-circle] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
+    await expect(photo.locator("[data-contact-sample] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
+    await photo.locator("[data-contact-zoom]").blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Portree, Kontaktifoto, Galerii"));
     expect(await noOverflow(page)).toBe(true);
     expect(await storedTrainer(), "live keeps its portrait").toEqual(before);
     expect(await trainerDraftCount()).toEqual({ n: 2 });
@@ -654,7 +663,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     expect(await trainerDraftCount()).toEqual({ n: 0 });
     const after = await storedTrainer();
     expect(after.portraitKey).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
-    expect(after).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: before.contactPhotoKey, name: before.name });
+    expect(after).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: before.contactPhotoKey, contactPhotoZoom: 150, name: before.name });
     const key = after.portraitKey as string;
     await visitor.reload();
     expect(await shownWorks(visitor)).toEqual([works[1], works[0], ...works.slice(2)]);
@@ -667,6 +676,9 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     const teaser = visitor.locator(`img[src="/media/${key}"]`).first();
     await expect(teaser).toHaveCSS("object-position", "30% 25%");
     await expect(teaser).toHaveCSS("transform", "none");
+    // the contact form's avatar: the contact photo as the circle cut it (P7)
+    await visitor.goto("/kontakt");
+    await expect(visitor.locator("[data-contact-avatar] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
     await visitor.close();
 
     // 375 px: the tiles inside the screen, nothing scrolls sideways
@@ -808,7 +820,7 @@ test.describe("news", () => {
     await body.blur();
     await saved;
     await expect(barWords(page)).toHaveText(draftWords("Tekst"));
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(page.locator(`[data-post-row="${id}"] [data-post-state]`)).toHaveText(/^Avaldamata muudatused · \d\d\.\d\d$/);
     await visitor.reload();
     await expect(visitor.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik."]);
@@ -928,7 +940,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await percent.fill("17");
     await percent.blur();
     await saved;
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Pealkiri, Pilt, Soodustus"));
     await expect(card.getByText("Koodi saad muuta: Seaded → „Tervituskood“.")).toBeVisible();
     expect(await popupRow()).toEqual(before);

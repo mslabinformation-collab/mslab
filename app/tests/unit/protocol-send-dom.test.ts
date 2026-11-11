@@ -695,7 +695,7 @@ test("a restored screen: 'Saada' waits for the server's text; another text is sh
   expect(actions.sendProtocolAction).not.toHaveBeenCalled(); // the text on the screen changed under her: not sent unseen
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine.");
   expect($("[data-send-error]")!.textContent).toBe("Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.");
-  expect($("[data-save-text]")!.textContent).toBe("✓ Salvestatud 11:05");
+  expect($("[data-save-text]")!.textContent).toBe("✓ Salvestatud kell 11:05");
   expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
   expect(fetchMock).not.toHaveBeenCalled(); // and nothing was saved over it
   await click("[data-send='first']");

@@ -156,6 +156,33 @@ export function portraitFraming(key: string, pos: string | null | undefined): { 
   return { pos: parseFocal(pos) ? pos!.trim() : seed ? SEED_PORTRAIT_FOCAL : DEFAULT_FOCAL, zoom: seed };
 }
 
+// ---------- the contact photo's circle ----------
+
+/**
+ * The contact photo's circle (UX pass 11.11, A11/P7): Maria zooms the picture with „Suurendus“ (percent: 100 is the picture just filling the circle,
+ * at most 300) and drags it in the circle; `pos` is the point the circle is placed by (as a focal point, "x% y%"). A photo she has not framed yet
+ * stands as the small avatars cut it before the circle had a control (50% 20%, no zoom).
+ */
+export const CONTACT_ZOOM = { min: 100, max: 300 } as const;
+export const DEFAULT_CONTACT_POS = "50% 20%";
+
+/** A stored or typed zoom as the circle uses it: a whole number of percent within CONTACT_ZOOM, else 100. */
+export function contactZoomOf(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,3}$/.test(v.trim()) ? Number(v.trim()) : Number.NaN;
+  return Number.isInteger(n) && n >= CONTACT_ZOOM.min && n <= CONTACT_ZOOM.max ? n : CONTACT_ZOOM.min;
+}
+
+/**
+ * The one rule that cuts a picture into a round frame of any size (the admin's 160 px circle, its 46 px sample and the site's avatars): the picture
+ * covers the frame, placed by `pos` (CSS object-position), and is zoomed about that same point, so it never leaves a gap and looks the same at every
+ * size.
+ */
+export function circleCrop(pos: string, zoom: number): { objectPosition: string; transform?: string; transformOrigin?: string } {
+  const p = parseFocal(pos) ? pos.trim() : DEFAULT_CONTACT_POS;
+  const z = contactZoomOf(zoom);
+  return z > CONTACT_ZOOM.min ? { objectPosition: p, transform: `scale(${z / 100})`, transformOrigin: p } : { objectPosition: p };
+}
+
 // ---------- drafts ----------
 
 const empty = (): I18n => ({ et: "" });
@@ -252,8 +279,18 @@ export const isBlankStat = (s: { value: string; label: I18n }): boolean => !s.va
 /**
  * The trainer card's draft. `contactPhotoKey`: the small round photo by the contact forms (the home page's and /kontakt's) and on the course
  * page's „Koolitaja“ line (Maria 10.11: „Kontaktifoto“); "" for none, and the site then shows the portrait there (components/site/settings.ts).
+ * `contactPhotoPos` and `contactPhotoZoom` (whole percent as text, "100"–"300"): how the circle cuts it (circleCrop; UX pass 11.11, A11).
  */
-export type TrainerDraft = { portraitKey: string; portraitPos: string; contactPhotoKey: string; name: I18n; role: I18n; stats: StatDraft[] };
+export type TrainerDraft = {
+  portraitKey: string;
+  portraitPos: string;
+  contactPhotoKey: string;
+  contactPhotoPos: string;
+  contactPhotoZoom: string;
+  name: I18n;
+  role: I18n;
+  stats: StatDraft[];
+};
 
 /** settings.trainer → the trainer card's draft (the portrait's focal point defaults as the site frames it). */
 export function trainerDraft(value: unknown): TrainerDraft {
@@ -263,6 +300,8 @@ export function trainerDraft(value: unknown): TrainerDraft {
     portraitKey,
     portraitPos: portraitFraming(portraitKey, str(t.portraitPos)).pos,
     contactPhotoKey: str(t.contactPhotoKey),
+    contactPhotoPos: parseFocal(str(t.contactPhotoPos)) ? str(t.contactPhotoPos).trim() : DEFAULT_CONTACT_POS,
+    contactPhotoZoom: String(contactZoomOf(t.contactPhotoZoom)),
     // a plain string (before round 2) is the Estonian name
     name: typeof t.name === "string" ? { et: t.name } : i18nOf(t.name),
     role: i18nOf(t.role),

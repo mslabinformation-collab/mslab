@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { clientEmail, holdTerms, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
 import { LOCAL_FIXTURES, LOCK_WAIT_MS, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
@@ -319,6 +319,28 @@ test.describe("contact page", () => {
     const s = page.locator("[data-course-summary]");
     await expect(s).toContainText("2 päeva · 16 ak");
     await expect(s).toContainText("Pärnu, Tallinn");
+  });
+
+  test("on a phone the facts lead to „Registreeru ↓“ and the form comes after the course's texts; a computer keeps it beside the gallery (UX pass P5)", async ({ page, isMobile }) => {
+    test.skip(isMobile, "the desktop project sets each width");
+    const jump = page.locator("[data-register-jump]");
+    const form = page.locator("[data-register-form]");
+    const top = async (l: Locator) => (await l.boundingBox())!.y;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/koolitused/kulmumeistri-baaskoolitus");
+    await expect(jump).toBeVisible();
+    await expect(jump).toHaveText("Registreeru ↓");
+    await expect(page.getByText("Kuupäeva ja makseviisi valid lehe lõpus.")).toBeVisible();
+    expect(await top(form)).toBeGreaterThan(await top(page.locator("[data-modules]")));
+    await jump.click();
+    await expect(page).toHaveURL(/#registreeru$/);
+    await expect(page.getByRole("heading", { name: "Registreeru", level: 2, exact: true })).toBeInViewport();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(jump).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Registreeru", level: 2, exact: true })).toBeHidden();
+    const gallery = (await page.locator("[data-gallery-main]").boundingBox())!;
+    expect((await form.boundingBox())!.x).toBeGreaterThan(gallery.x + gallery.width);
+    expect(await top(form)).toBeLessThan(await top(page.locator("[data-modules]")));
   });
 });
 

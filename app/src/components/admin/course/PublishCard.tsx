@@ -33,7 +33,8 @@ export function PublishCard({
   const errorId = error ? `${uid}-error` : undefined;
   return (
     <section className={ui.card} aria-labelledby={`${uid}-publish`} aria-busy={busy || undefined} data-publish-card="">
-      <h2 id={`${uid}-publish`} className={`${ui.h3} ${styles.cardTitle}`}>
+      {/* the cards' title size (UX pass 11.11 A3) */}
+      <h2 id={`${uid}-publish`} className={`${ui.h2} ${styles.cardTitle}`}>
         {t.sections.publish}
       </h2>
       <Switch label={t.fields.published} checked={published} onChange={onPublished} describedBy={errorId} data-field="published" />

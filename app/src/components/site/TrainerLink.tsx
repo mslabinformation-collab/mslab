@@ -1,16 +1,31 @@
 import Image from "next/image";
 import Link from "next/link";
+import { circleCrop } from "@/domain/site-editor";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
 import styles from "./TrainerLink.module.css";
 
-export type TrainerInfo = { name: string; role: string; text: string; portrait: string; /** close-up for the small round avatar */ avatar: string; href: string };
+export type TrainerInfo = {
+  name: string;
+  role: string;
+  text: string;
+  portrait: string;
+  /** close-up for the small round avatar */
+  avatar: string;
+  /** how the avatar cuts it (Koolitaja's circle, UX pass 11.11 P7); none: the default framing (the portrait standing in) */
+  avatarCrop?: { pos: string; zoom: number } | null;
+  href: string;
+};
 
 /** Trainer name with a small portrait, linking to the trainer page (P7). Used in the course summary card. */
 export function TrainerLink({ trainer }: { trainer: TrainerInfo }) {
   return (
     <Link className={styles.link} href={trainer.href}>
-      {trainer.avatar && <Image className={styles.avatar} src={trainer.avatar} alt="" width={28} height={28} unoptimized />}
+      {trainer.avatar && (
+        <span className={styles.avatar} data-trainer-avatar="">
+          <Image src={trainer.avatar} alt="" width={28} height={28} unoptimized style={trainer.avatarCrop ? circleCrop(trainer.avatarCrop.pos, trainer.avatarCrop.zoom) : undefined} />
+        </span>
+      )}
       <span>{trainer.name}</span>
       <Icon name="up" size={15} />
     </Link>

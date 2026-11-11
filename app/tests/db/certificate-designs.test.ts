@@ -109,6 +109,16 @@ describe("„Lisa kujundus“", () => {
     ]);
     expect((await designs()).slice(2).map((d) => d.id)).toEqual([first.id, second.id]);
   });
+
+  test("a name typed in the add row (UX pass 11.11): trimmed to one line and taken; refused like a row's name (taken, too long), nothing added", async () => {
+    const lilled = await createCertificateDesign(db, "  Valged   lilled ");
+    expect(lilled).toEqual({ ok: true, id: expect.any(Number) });
+    expect(await createCertificateDesign(db, "tume")).toEqual({ ok: false, error: "taken" });
+    expect(await createCertificateDesign(db, "x".repeat(41))).toEqual({ ok: false, error: "tooLong" });
+    // an empty one is no name: the server's own
+    await createCertificateDesign(db, "   ");
+    expect((await designs()).map((d) => d.name)).toEqual(["Hele", "Tume", "Valged lilled", "Uus kujundus"]);
+  });
 });
 
 describe("a row's autosave", () => {

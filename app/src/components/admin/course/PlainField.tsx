@@ -20,6 +20,8 @@ export function PlainField({
   inputMode,
   maxLength = 40,
   unpublished,
+  placeholder,
+  short,
 }: {
   name: string;
   label: string;
@@ -30,6 +32,10 @@ export function PlainField({
   inputMode?: "decimal" | "numeric";
   maxLength?: number;
   unpublished?: boolean;
+  /** An example, or what an empty field stands for (UX pass 11.11 A9: the certificate's title shows the course's name). */
+  placeholder?: string;
+  /** A short value (the certificate's volume): the input at most 280 px wide, as the Kursus board draws it. */
+  short?: boolean;
 }) {
   const id = `${useId()}-${name}`;
   const describedBy = [unpublished ? `${id}-unpublished` : "", hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
@@ -41,9 +47,10 @@ export function PlainField({
       </div>
       <input
         id={id}
-        className={ui.input}
+        className={short ? `${ui.input} ${ed.short}` : ui.input}
         type="text"
         inputMode={inputMode}
+        placeholder={placeholder}
         autoComplete="off"
         maxLength={maxLength}
         value={value}

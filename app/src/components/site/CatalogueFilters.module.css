@@ -1,12 +1,12 @@
 /* Prototype B catalogue: .filter-bar (format pills + search), journey.css .level-filter on its own row (K3),
-   .course-grid (three columns), .empty. */
+   .course-grid (three columns), .empty. UX pass P6: the chip rows stand together (12px apart), then the explainer, the count and the grid. */
 
 .bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 30px;
+  margin-bottom: 12px;
 }
 
 .pills {
@@ -42,23 +42,30 @@
   color: var(--paper);
 }
 
-/* B .level-filter: below the explainer, a little smaller. */
+/* B .level-filter: under the format row (P6), a little smaller. */
 .levels {
-  margin: 0 0 34px;
+  margin: 0 0 24px;
 }
 
 .levels .pill {
   font-size: 13px;
 }
 
-/* The area chips (course areas §5.2), when there are two or more areas: a row right under the level chips, 12px apart, in their pill size; the
-   grid keeps its 34px. The names can be long: the row wraps, on phones too. Without it the catalogue is as it was. */
+/* The area chips (course areas §5.2), when there are two or more areas: a row right under the level chips, 12px apart, in their pill size. The
+   names can be long: the row wraps, on phones too. Without it the catalogue is as it was. */
 .levels + .areas {
-  margin-top: -22px;
+  margin-top: -12px;
 }
 
 .areas {
-  margin: 0 0 34px;
+  margin: 0 0 24px;
+}
+
+/* P6: the count above the courses („6 koolitust“), read out when a filter changes it. */
+.count {
+  margin: 16px 0 20px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* The area chips are Maria's names (Seaded → Valdkonnad), so a long one (Russian runs long) wraps inside the page instead of widening it. */
@@ -149,7 +156,7 @@
 @media (max-width: 640px) {
   .bar {
     gap: 16px;
-    margin-bottom: 24px;
+    margin-bottom: 12px;
   }
 
   /* B: the search comes first on phones, full width. */
@@ -173,15 +180,15 @@
     flex-wrap: nowrap;
     align-items: stretch;
     gap: 6px;
-    margin-bottom: 28px;
+    margin-bottom: 20px;
   }
 
   .levels + .areas {
-    margin-top: -18px;
+    margin-top: -12px;
   }
 
   .areas {
-    margin-bottom: 28px;
+    margin-bottom: 20px;
   }
 
   .areas .pill {

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { trainerSettings, shellSettings } from "@/components/site/settings";
 import {
+  circleCrop,
   contactDraft,
+  contactZoomOf,
   DARK_MOBILE_FOCAL,
   DEFAULT_FOCAL,
   mobileFocalForTone,
@@ -117,6 +119,33 @@ describe("focal points", () => {
   });
 });
 
+describe("the contact photo's circle (UX pass 11.11, A11/P7)", () => {
+  test("„Suurendus“ is a whole percent 100–300; anything else is the picture just filling the circle", () => {
+    expect(contactZoomOf("180")).toBe(180);
+    expect(contactZoomOf(" 300 ")).toBe(300);
+    expect(contactZoomOf(140)).toBe(140);
+    for (const bad of ["99", "301", "12.5", "", "x", null, undefined, 150.5, {}]) expect(contactZoomOf(bad), String(bad)).toBe(100);
+  });
+
+  test("one rule cuts every circle: covered, placed by the point, zoomed about that same point", () => {
+    expect(circleCrop("30% 40%", 100)).toEqual({ objectPosition: "30% 40%" });
+    expect(circleCrop("30% 40%", 200)).toEqual({ objectPosition: "30% 40%", transform: "scale(2)", transformOrigin: "30% 40%" });
+    // a broken point or zoom: the framing the avatars had before the circle had a control
+    expect(circleCrop("nonsense", 999)).toEqual({ objectPosition: "50% 20%" });
+  });
+
+  test("the trainer draft holds the circle; an old draft without it gets the old framing", () => {
+    expect(trainerDraft({ contactPhotoKey: "img/k.jpg", contactPhotoPos: "35% 25%", contactPhotoZoom: 160 })).toMatchObject({ contactPhotoPos: "35% 25%", contactPhotoZoom: "160" });
+    expect(trainerDraft({ contactPhotoKey: "img/k.jpg" })).toMatchObject({ contactPhotoPos: "50% 20%", contactPhotoZoom: "100" });
+  });
+
+  test("the site cuts the contact photo by its circle; the portrait standing in keeps the avatars' own framing", () => {
+    expect(trainerSettings({ trainer: { contactPhotoKey: "img/k.jpg", contactPhotoPos: "35% 25%", contactPhotoZoom: 160 } }).contactPhotoCrop).toEqual({ pos: "35% 25%", zoom: 160 });
+    expect(trainerSettings({ trainer: { contactPhotoKey: "img/k.jpg" } }).contactPhotoCrop).toEqual({ pos: "50% 20%", zoom: 100 });
+    expect(trainerSettings({ trainer: { portraitKey: "img/p.jpg", contactPhotoPos: "35% 25%", contactPhotoZoom: 160 } }).contactPhotoCrop).toBeNull();
+  });
+});
+
 describe("a dark hero slide's phone focal point (item 6)", () => {
   test("the default follows the tone; a point set by hand stays", () => {
     expect(DARK_MOBILE_FOCAL).toBe("90% 50%");
@@ -166,12 +195,14 @@ describe("drafts from stored values", () => {
       items: [{ et: "a", ru: "б" }],
     });
     expect(pageDraft(null)).toEqual({ title: { et: "" }, body: { et: "" } });
-    expect(trainerDraft(null)).toEqual({ portraitKey: "", portraitPos: "50% 50%", contactPhotoKey: "", name: { et: "" }, role: { et: "" }, stats: [] });
+    expect(trainerDraft(null)).toEqual({ portraitKey: "", portraitPos: "50% 50%", contactPhotoKey: "", contactPhotoPos: "50% 20%", contactPhotoZoom: "100", name: { et: "" }, role: { et: "" }, stats: [] });
     expect(trainerDraft({ name: { et: "Maria", ru: "Мария" } }).name).toEqual({ et: "Maria", ru: "Мария" });
     expect(trainerDraft({ portraitKey: "/seed/maria-standing.jpg", contactPhotoKey: "/seed/maria-seated.jpg", name: "M", stats: [{ value: "8+", label: { et: "aastat" } }, "junk"] })).toEqual({
       portraitKey: "/seed/maria-standing.jpg",
       portraitPos: "50% 20%",
       contactPhotoKey: "/seed/maria-seated.jpg", // the small round photo by the contact forms (Maria 10.11)
+      contactPhotoPos: "50% 20%", // its circle (UX pass 11.11 A11): none stored yet, the old framing
+      contactPhotoZoom: "100",
       name: { et: "M" }, // a plain string, as stored before round 2: the Estonian name
       role: { et: "" },
       stats: [

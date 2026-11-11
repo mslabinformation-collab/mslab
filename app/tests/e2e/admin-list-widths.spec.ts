@@ -368,10 +368,11 @@ test("Kalender keeps its cells inside its card from 880 to 1440 px, and each ses
     expect(m.month!.top, `${where}: the month under the day`).toBeGreaterThan(m.day!.top);
     expect(m.place!.top, `${where}: the place under the course`).toBeGreaterThanOrEqual(m.link!.top);
     expect(m.bar!.top, `${where}: the seat bar under the place`).toBeGreaterThanOrEqual(m.place!.bottom - 1);
-    expect(m.bar!.width, `${where}: the bar takes what the figure leaves (a 5 px line across the card)`).toBeGreaterThan(m.row.right - m.row.left - 56 - 12 - 32 - 8 - 40);
+    // (the words beside it, „5 vaba 6-st“, take up to 90 px: UX pass 11.11 A2)
+    expect(m.bar!.width, `${where}: the bar takes what the words leave (a 5 px line across the card)`).toBeGreaterThan(m.row.right - m.row.left - 56 - 12 - 32 - 8 - 90);
     expect(m.bar!.height, `${where}: the bar is a thin line`).toBeLessThanOrEqual(6);
-    expect(m.short!.left, `${where}: „{k}/{cap}“ beside the bar`).toBeGreaterThanOrEqual(m.bar!.right - 1);
-    expect(m.shortText, `${where}: the short figure`).toBe("1/6");
+    expect(m.short!.left, `${where}: „{n} vaba {cap}-st“ beside the bar`).toBeGreaterThanOrEqual(m.bar!.right - 1);
+    expect(m.shortText, `${where}: the free seats of the capacity`).toMatch(/^\d vaba 6-st$/);
     // what the card leaves out is not drawn: the table's figure and the state tag
     for (const gone of [m.long, m.state]) expect(gone === null || gone.width === 0, `${where}: left out of the card`).toBe(true);
     for (const part of [m.day, m.link, m.place, m.bar, m.short]) expect(part!.right, `${where}: inside the card`).toBeLessThanOrEqual(m.row.right + 1);

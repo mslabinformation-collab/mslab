@@ -320,7 +320,16 @@ describe("trainer page", () => {
     await draft("trainer", "trainer", trainer);
     expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
     const s = (await getSettings(db)).trainer;
-    expect(s).toEqual({ portraitKey: UPLOAD, portraitPos: "40% 30%", contactPhotoKey: "/seed/maria-seated.jpg", name: { et: "Maria S.", ru: "Мария С." }, role: { et: "Koolitaja", ru: "Тренер" }, stats: [{ value: "10+", label: { et: "aastat", ru: "лет" } }] });
+    expect(s).toEqual({
+      portraitKey: UPLOAD,
+      portraitPos: "40% 30%",
+      contactPhotoKey: "/seed/maria-seated.jpg",
+      contactPhotoPos: "50% 20%", // its circle, not framed yet (UX pass 11.11 A11)
+      contactPhotoZoom: 100,
+      name: { et: "Maria S.", ru: "Мария С." },
+      role: { et: "Koolitaja", ru: "Тренер" },
+      stats: [{ value: "10+", label: { et: "aastat", ru: "лет" } }],
+    });
     expect(((await read("trainer")).parts.trainer.value as TrainerDraft).portraitPos).toBe("40% 30%");
   });
 
@@ -333,9 +342,23 @@ describe("trainer page", () => {
 
     await draft("trainer", "trainer", { ...card, contactPhotoKey: "" });
     expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
-    // none stored: the site shows the portrait there (components/site/settings.ts trainerSettings)
-    expect(Object.hasOwn((await getSettings(db)).trainer as object, "contactPhotoKey")).toBe(false);
+    // none stored, nor its circle: the site shows the portrait there (components/site/settings.ts trainerSettings)
+    expect(Object.keys((await getSettings(db)).trainer as object).filter((k) => k.startsWith("contactPhoto"))).toEqual([]);
     expect(((await read("trainer")).parts.trainer.value as TrainerDraft).contactPhotoKey).toBe("");
+  });
+
+  test("„Kontaktifoto“'s circle (UX pass 11.11 A11): „Suurendus“ and the drag are published with the photo and cut the site's avatars; a broken one is refused", async () => {
+    const card = clone((await read("trainer")).parts.trainer.value as TrainerDraft);
+    expect(card).toMatchObject({ contactPhotoPos: "50% 20%", contactPhotoZoom: "100" });
+    await draft("trainer", "trainer", { ...card, contactPhotoPos: "35% 25%", contactPhotoZoom: "180" });
+    expect(await publishNow("trainer")).toMatchObject({ published: ["trainer"], blocked: [] });
+    expect((await getSettings(db)).trainer).toMatchObject({ contactPhotoPos: "35% 25%", contactPhotoZoom: 180 });
+    expect(trainerSettings(await getSettings(db)).contactPhotoCrop).toEqual({ pos: "35% 25%", zoom: 180 });
+    expect(((await read("trainer")).parts.trainer.value as TrainerDraft).contactPhotoZoom).toBe("180");
+
+    const version = (await read("trainer")).parts.trainer.version;
+    expect(await writeSitePart(db, "trainer", "trainer", { ...card, contactPhotoZoom: "301" }, version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { contactPhotoZoom: "whole" } });
+    expect(await writeSitePart(db, "trainer", "trainer", { ...card, contactPhotoPos: "keskel" }, version, ADMIN, NOW)).toMatchObject({ ok: false, error: "invalid", fields: { contactPhotoPos: "focal" } });
   });
 
   test("„Kontaktifoto“: an outside image is refused at its field, and a draft that holds one is held back", async () => {

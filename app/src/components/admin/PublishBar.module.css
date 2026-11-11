@@ -63,6 +63,14 @@
   padding: 0 16px;
 }
 
+/* the screen's save words before the buttons (UX pass 11.11 A1) */
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-right: 6px;
+}
+
 .actions .go {
   padding: 0 18px;
 }

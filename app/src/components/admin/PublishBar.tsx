@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useFootBar } from "./foot-bar";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -28,6 +28,8 @@ import styles from "./PublishBar.module.css";
  *   question open).
  * - `waiting`: the screen waits for something else that moves what the bar would publish (the course editor's cards while a switch's answer is on
  *   its way, final review P7-1): the bar is busy just the same — aria-busy, its buttons aria-disabled, a press does nothing.
+ * - `status`: the screen's SaveStatus while the bar shows (UX pass 11.11 A1: the save's words in the bar, before its buttons, never over them);
+ *   the screen keeps it in its header while there is no bar.
  */
 export function PublishBar({
   changed,
@@ -35,6 +37,7 @@ export function PublishBar({
   blocked,
   error,
   waiting = false,
+  status,
   onDiscard,
   onPublish,
 }: {
@@ -43,6 +46,7 @@ export function PublishBar({
   blocked?: { missing?: string[]; changed?: string[] };
   error?: string | null;
   waiting?: boolean;
+  status?: ReactNode;
   onDiscard(): Promise<void>;
   onPublish(): Promise<void>;
 }) {
@@ -117,6 +121,11 @@ export function PublishBar({
           </span>
         </p>
         <div className={styles.actions}>
+          {status && (
+            <span className={styles.status} data-publish-status="">
+              {status}
+            </span>
+          )}
           <a className={`${styles.preview} ${styles.wide}`} href={previewHref} target="_blank" rel="noopener" data-publish-preview="">
             {t.preview}
           </a>

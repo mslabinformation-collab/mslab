@@ -168,7 +168,7 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent("/uudised/uued-koolituskuupaevad-tartus")}`);
     expect(field("post.body")!.closest("[data-unpublished]")).not.toBeNull();
     expect(remote.log).toEqual([{ version: "l:post", patch: { body: { et: "Detsembris toome LAMI koolituse Tartusse.", ru: "В декабре в Тарту." } } }]);
-    expect(chipWords()).toMatch(/^Mustand salvestatud \d\d:\d\d$/);
+    expect(chipWords()).toMatch(/^Mustand salvestatud kell \d\d:\d\d$/);
   });
 
   it("the footer line: `Avaldatud {dd.mm.yyyy} · /uudised/{slug}` of what the public sees; the switch is on", async () => {
@@ -205,7 +205,7 @@ describe("a post that is not published (R-a): the same header, no bar", () => {
     expect(remote.log.at(-1)?.patch).toEqual({ category: { et: "Uudis" } });
     expect($("[data-publish-bar]")).toBeNull();
     expect($("[data-unpublished]")).toBeNull();
-    expect(chipWords()).toMatch(/^Salvestatud \d\d:\d\d$/);
+    expect(chipWords()).toMatch(/^Salvestatud kell \d\d:\d\d$/);
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(false);
   });
 

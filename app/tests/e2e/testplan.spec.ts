@@ -31,7 +31,7 @@ const chipText = (page: Page) => chip(page).locator("[data-save-text]");
  * A save of this page came back: „✓ Salvestatud HH:MM“. (The chip says „✓ Salvestatud“ with no time from the start once the answers were read,
  * review M-1, so the kind alone would pass before the save is over.)
  */
-const savedAt = (page: Page, timeout?: number) => expect(chipText(page)).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout });
+const savedAt = (page: Page, timeout?: number) => expect(chipText(page)).toHaveText(/^✓ Salvestatud kell \d\d:\d\d$/, { timeout });
 const check = (page: Page, id: string) => page.locator(`[data-check="${id}"]`);
 const VIEW_KEY = "mslab-testplan-view";
 const OUTBOX_KEY = "mslab-testplan-outbox";

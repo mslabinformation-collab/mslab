@@ -597,7 +597,7 @@ test.describe("trainer", () => {
 test.describe("blog", () => {
   test("list: D grid of cards that open the full post (B1)", async ({ page }) => {
     await page.goto("/uudised");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Blogi.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudised ja nõuanded.");
     const cards = page.locator("[data-news-card]");
     await expect(cards).toHaveCount(6);
     await expect(cards.first()).toContainText("22.09.2026 · Nõuanne");
@@ -609,7 +609,7 @@ test.describe("blog", () => {
 
   test("article: crumb, date and category, cover, paragraphs, Loe veel with three other posts", async ({ page }) => {
     await page.goto("/uudised/praktika-modellidega-mida-oodata");
-    await expect(page.getByRole("navigation", { name: "Lehe asukoht" }).getByRole("link", { name: "Uudised" })).toHaveAttribute("href", "/uudised");
+    await expect(page.getByRole("navigation", { name: "Lehe asukoht" }).getByRole("link", { name: "Uudised ja nõuanded" })).toHaveAttribute("href", "/uudised");
     await expect(page.locator("[data-article]")).toContainText("02.09.2026 · Praktika");
     await expect(page.locator("[data-article-cover] img")).toBeVisible();
     await expect(page.locator("[data-article-body] p")).toHaveCount(3);
@@ -628,7 +628,7 @@ test.describe("blog", () => {
 
   test("RU blog: RU interface text and the RU sample posts (G8)", async ({ page }) => {
     await page.goto("/ru/uudised");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Блог.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Новости и советы.");
     await expect(page.locator("[data-news-card]").first()).toHaveAttribute("href", /^\/ru\/uudised\//);
     await page.goto("/ru/uudised/praktika-modellidega-mida-oodata");
     await expect(page.locator("[data-article]")).toContainText("02.09.2026 · Практика");

@@ -94,12 +94,11 @@ export default async function ContactPage({ params }: Props) {
 
       <ContactBlock
         locale={locale}
-        person={{ name: trainer.name, photo: mediaUrl(trainer.contactPhotoKey) }}
+        person={{ name: trainer.name, photo: mediaUrl(trainer.contactPhotoKey), crop: trainer.contactPhotoCrop }}
         t={{
           eyebrow: d.home.contactEyebrow,
           title: d.forms.contactBlockTitle,
           lead: d.forms.contactBlockLead,
-          reply: d.home.contactReply,
           name: d.forms.name,
           email: d.forms.email,
           message: d.forms.message,

@@ -7,8 +7,8 @@ import type { AdminArea } from "@/server/course-areas";
 import { stubFetch } from "../fakes";
 
 // Seaded → „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx) in a browser-like
-// document (happy-dom): one row per area — „Nimi (eesti keeles)“, „Nimi (vene keeles)“, the handle and ↑ ↓, „Kustuta“ or, for an area courses use,
-// „Seda valdkonda kasutab {n} koolitust.“ in its place — and „Lisa valdkond“ below. A row's names autosave on api/admin/valdkond/<id> from its
+// document (happy-dom), as the UX pass (11.11, board 1) draws it: one box per area — the handle, „Nimi (eesti keeles)“, „Nimi (vene keeles)“, the
+// count („2 koolitust“, „Pole kasutusel“), ↑ ↓ and „Kustuta“ (greyed for an area courses use) — and the dashed add row „Lisa valdkond +“. A row's names autosave on api/admin/valdkond/<id> from its
 // version, held back in the browser while a name is empty or too long; the adds, moves and deletes are presses whose answer is the list.
 
 declare global {
@@ -79,29 +79,54 @@ afterEach(async () => {
 });
 
 describe("the card", () => {
-  test("its title and lead; a row per area with both names, the handle and ↑ ↓; „Kustuta“ only where no course uses it; „Lisa valdkond“ below", async () => {
+  test("its title and lead; one box per area: ⋮⋮, both names, how many courses use it, ↑ ↓ and „Kustuta“ (greyed where a course uses it); the dashed add row", async () => {
     await show();
     const card = $("[data-areas-card]")!;
     expect(text(card.querySelector("h2"))).toBe("Valdkonnad");
     expect(text(card)).toContain("Valdkonnad, mille järgi õpilane saab koolituskalendris ja koolituste lehel koolitusi valida. Koolituse valdkonna valid koolituse kaardil „Põhiinfo“.");
+    // the two names' column labels once, over the rows (each field keeps its own name for a screen reader)
+    expect(Array.from($("[data-area-columns]")!.children).map(text)).toEqual(["Nimi (eesti keeles)", "Nimi (vene keeles)"]);
+    expect($("[data-area-columns]")!.getAttribute("aria-hidden")).toBe("true");
     expect(rowNames()).toEqual(["Kulmukoolitused", "Ripsmekoolitused"]);
     expect(field(2, "ru").value).toBe("Курсы по ресницам");
     const labels = Array.from($('[data-area="1"]')!.querySelectorAll("label")).map(text);
     expect(labels).toEqual(["Nimi (eesti keeles)", "Nimi (vene keeles)"]);
     expect($('[data-area="1"] [data-drag-tool="handle"]')).not.toBeNull();
     expect($('[data-area="1"] [data-drag-tool="down"]')!.getAttribute("aria-label")).toContain("Kulmukoolitused");
-    expect($('[data-area="1"] [data-area-delete]')).toBeNull();
-    expect(text($('[data-area="1"] [data-area-used]'))).toBe("Seda valdkonda kasutab 2 koolitust.");
-    expect(text($('[data-area="2"] [data-area-delete]'))).toBe("Kustuta");
-    expect(text($("[data-area-add] button[type=submit]"))).toBe("Lisa valdkond");
+    expect(text($('[data-area="1"] [data-area-used]'))).toBe("2 koolitust");
+    expect(text($('[data-area="2"] [data-area-used]'))).toBe("Pole kasutusel");
+    // one delete style: the red-outlined „Kustuta“ at the row's end; a used area's is greyed, and says why
+    const used = $('[data-area="1"] [data-area-delete]')!;
+    expect(text(used)).toBe("Kustuta");
+    expect(used.getAttribute("aria-disabled")).toBe("true");
+    expect(used.getAttribute("aria-describedby")!.split(" ").map((id) => text(document.getElementById(id)))).toEqual([
+      "2 koolitust",
+      "Kasutusel olevat valdkonda ei saa kustutada: vali enne koolitustel teine valdkond.",
+    ]);
+    expect($('[data-area="2"] [data-area-delete]')!.getAttribute("aria-disabled")).toBeNull();
+    expect(text($("[data-area-rule]"))).toBe("Kasutusel olevat valdkonda ei saa kustutada: vali enne koolitustel teine valdkond.");
+    // the add row: the same box, dashed, at the end: the two names (their placeholders) and „Lisa valdkond +“
+    const add = $("[data-area-add]")!;
+    expect(add.getAttribute("data-add-row")).toBe("");
+    expect($<HTMLInputElement>('[data-field="area-new.et"]')!.placeholder).toBe("Uus valdkond");
+    expect($<HTMLInputElement>('[data-field="area-new.ru"]')!.placeholder).toBe("Новая область");
+    expect(text(add.querySelector("button[type=submit]"))).toBe("Lisa valdkond +");
   });
 
-  test("one course: „Seda valdkonda kasutab 1 koolitus.“; no areas at all: „Valdkondi veel pole.“ and the add form", async () => {
+  test("a used area's „Kustuta“ asks nothing", async () => {
+    await show();
+    await click($('[data-area="1"] [data-area-delete]'));
+    expect(text($('[data-area="1"]'))).not.toContain("Kas kustutan");
+    expect(fetched.calls).toEqual([]);
+  });
+
+  test("one course: „1 koolitus“; no areas at all: „Valdkondi veel pole.“ and the add row", async () => {
     await show([area(1, "Kulmukoolitused", "Брови", 1)]);
-    expect(text($('[data-area="1"] [data-area-used]'))).toBe("Seda valdkonda kasutab 1 koolitus.");
+    expect(text($('[data-area="1"] [data-area-used]'))).toBe("1 koolitus");
     await act(async () => root.render(createElement(AreasSettings, { key: "none", initial: [], onStatus })));
     expect(text($("[data-areas-card]"))).toContain("Valdkondi veel pole.");
     expect($("[data-area-add]")).not.toBeNull();
+    expect($("[data-area-columns]")).toBeNull();
   });
 });
 
@@ -199,7 +224,8 @@ describe("the presses", () => {
     await click(Array.from($('[data-area="2"]')!.querySelectorAll("button")).find((b) => text(b) === "Jah, kustuta")!);
     await settle();
     expect(rowNames()).toEqual(["Kulmukoolitused", "Ripsmekoolitused"]);
-    expect(text($('[data-area="2"] [data-area-used]'))).toBe("Seda valdkonda kasutab 1 koolitus.");
-    expect($('[data-area="2"] [data-area-delete]')).toBeNull();
+    expect(text($('[data-area="2"] [data-area-used]'))).toBe("1 koolitus");
+    expect($('[data-area="2"] [data-area-delete]')!.getAttribute("aria-disabled")).toBe("true");
+    expect(text($('[data-area="2"]'))).not.toContain("Kas kustutan");
   });
 });

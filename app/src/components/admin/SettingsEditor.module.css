@@ -54,3 +54,19 @@
     gap: 22px;
   }
 }
+
+/* „Kontaktandmed“'s last line: where the contact photo is changed (UX pass 11.11 A13, board 1), the soft ink, the link 500 */
+.photoWhere {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.photoLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 500;
+  text-underline-offset: 3px;
+}

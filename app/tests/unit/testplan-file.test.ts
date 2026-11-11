@@ -1393,15 +1393,16 @@ describe("piece 3b sweep (Task 8)", () => {
     return found!;
   };
 
-  test("registreerimine-kohad: the public free seats leave out a seat an unpaid registration holds, so they can be fewer than the admin's capacity less confirmed", () => {
+  test("registreerimine-kohad: the admin counts the free seats as the public calendar does (UX pass 11.11 A2), a seat an unpaid registration holds is free on neither", () => {
     const check = item("registreerimine-kohad");
-    expect(check).toMatchObject({ mark: "reworded" });
+    expect(check).toMatchObject({ mark: "redo" });
     expect(markedSince(check.markedAt)).toBe(true);
     const text = check.expect.join("\n");
-    expect(text).toContain("sama palju või vähem");
-    expect(text).toContain("tasumata registreering hoiab kohta kinni");
+    expect(text).toContain("sama palju kui halduse real");
+    expect(text).toContain("Tasumata registreering hoiab kohta kinni");
     expect(text).toContain("30 minutit");
-    expect(text).not.toContain("sama palju, kui halduse real on teine arv miinus esimene");
+    expect(text).toContain(`„${adminEt.seats.full}“`);
+    expect(text).not.toContain("vähem");
   });
 
   test("kirjad-halduse-link: the second open of the link is in a private window (the same window is signed in and lands on „Ülevaade“), marked reworded", () => {
@@ -1626,7 +1627,7 @@ describe("course areas (spec 2026-11-11)", () => {
 
   test("they quote the screens' words", () => {
     expect(find("haldus-koolitus-valdkond").title).toBe("Koolituse valdkond");
-    for (const words of [`„${f.area}“`, `„${f.areaNone}“`, "„Kulmukoolitused“", "„Ripsmekoolitused“", `„${f.areaHint.split(". ")[0]}. …“`, "„Avaldamata muudatused: 1 · Valdkond“", "„Põhiinfo“"])
+    for (const words of [`„${f.area}“`, `„${f.areaNone}“`, "„Kulmukoolitused“", "„Ripsmekoolitused“", `„${f.areaHint.split(". ")[0]}. …“`, `„${f.areaLink}“`, `„${f.language}“`, "„Avaldamata muudatused: 1 · Valdkond“", "„Põhiinfo“"])
       expect(whole("haldus-koolitus-valdkond"), words).toContain(words);
     for (const words of [`„${et.calendar.empty}“`, `„${et.calendar.showAll}“`, "„Kõik“"]) expect(whole("haldus-kalender-valdkond"), words).toContain(words);
     for (const words of [`„${et.catalogue.resetFilters}“`, "„E-õpe“", "„Kõik“", "vene keeles"]) expect(whole("haldus-koolitused-valdkond"), words).toContain(words);

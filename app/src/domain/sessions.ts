@@ -25,6 +25,12 @@ export function seatsLeft(capacity: number, taken: number): number {
   return Math.max(0, capacity - taken);
 }
 
+/** How full a session is, 0–100 (the admin's seat bar, UX pass 11.11 A2): the taken seats of the capacity, as the free seats count them; full is 100. */
+export function seatFill(capacity: number, taken: number): number {
+  if (seatsLeft(capacity, taken) === 0) return 100;
+  return Math.min(100, Math.round((taken / capacity) * 100));
+}
+
 export function seatState(s: { status: "scheduled" | "cancelled"; capacity: number }, taken: number): SeatState {
   if (s.status === "cancelled") return "cancelled";
   const left = seatsLeft(s.capacity, taken);
