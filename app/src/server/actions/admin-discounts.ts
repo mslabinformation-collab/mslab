@@ -40,7 +40,7 @@ export const setCodeActiveAction = adminAction(async (_admin, input: unknown): P
   const request = z.strictObject({ id, active: z.boolean(), version: z.string().max(100) }).safeParse(input);
   if (!request.success) return { ok: false, error: "invalid" };
   try {
-    const result = await setCodeActive(getDb(), request.data.id, request.data.active, request.data.version);
+    const result = await setCodeActive(getDb(), request.data.id, request.data.active, request.data.version, new Date());
     if (result.ok) refresh();
     return result;
   } catch (e) {

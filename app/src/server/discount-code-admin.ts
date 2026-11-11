@@ -225,7 +225,7 @@ type Done = { answer: SaveAnswer; wrote: boolean; welcome: boolean };
  * - a conflict with the stored version and value when `version` is not the code's (another tab saved a field or the switch first); a code deleted
  *   meanwhile: version "", value null;
  * - invalid with the fields' codes: each field's check over the stored row merged with the patch (R16), R18's ceiling when the kind, the euros or the
- *   scope are changed, `codeUsed` (the text of a used code), `codeTaken:<id>` (another code has the text), and `invalid` for the welcome row's audience and
+ *   scope are changed, `codeUsed` (the text of a used code, the welcome row excepted: T13-3), `codeTaken:<id>` (another code has the text), and `invalid` for the welcome row's audience and
  *   once per person (fixed rules).
  * A change to the welcome row revalidates every public page once, after the commit.
  */
@@ -258,7 +258,9 @@ export async function writeCode(db: Db, id: number, patch: Record<string, unknow
       const problems: Record<string, string> = { ...codeFieldProblems(merged, { welcome, highestCents }) };
       if (columns.code !== row.code) {
         if (!problems.code) {
-          if (await hasUse(tx, id)) problems.code = "codeUsed";
+          // T13-3: the welcome row stays replaceable (Seaded let Maria change it any time; its old text is in the mails already sent, which its hint says): its uses, and
+          // the frozen code text on its bookings, stay as they are
+          if (!welcome && (await hasUse(tx, id))) problems.code = "codeUsed";
           else {
             const other = await takenBy(tx, columns.code, id);
             if (other !== null) problems.code = takenCode(other);
@@ -340,14 +342,14 @@ export async function createCode(db: Db, input: unknown, at: { welcome: boolean 
  * The switch „Aktiivne“, instant: `active` from `version` (the drawer's), under the code's lock. Stale when the code was saved elsewhere since (the drawer
  * reads the page again); the same state answers the version and writes nothing. A change to the welcome row revalidates every public page.
  */
-export async function setCodeActive(db: Db, id: number, active: boolean, version: string): Promise<{ ok: true; version: string } | { ok: false; error: "stale" | "notFound" }> {
+export async function setCodeActive(db: Db, id: number, active: boolean, version: string, now: Date): Promise<{ ok: true; version: string } | { ok: false; error: "stale" | "notFound" }> {
   const done = await db.transaction(async (tx): Promise<{ answer: { ok: true; version: string } | { ok: false; error: "stale" | "notFound" }; wrote: boolean; welcome: boolean }> => {
     const row = await lockCode(tx, id);
     if (!row) return { answer: { ok: false, error: "notFound" }, wrote: false, welcome: false };
     const current = await versionOf(row);
     if (version !== current) return { answer: { ok: false, error: "stale" }, wrote: false, welcome: row.welcome };
     if (row.active === active) return { answer: { ok: true, version: current }, wrote: false, welcome: row.welcome };
-    await tx.update(discountCodes).set({ active, updatedAt: new Date() }).where(eq(discountCodes.id, id));
+    await tx.update(discountCodes).set({ active, updatedAt: now }).where(eq(discountCodes.id, id));
     return { answer: { ok: true, version: await versionOf({ ...row, active }) }, wrote: true, welcome: row.welcome };
   });
   if (done.wrote && done.welcome) revalidatePublic({ kind: "welcomeCode" });

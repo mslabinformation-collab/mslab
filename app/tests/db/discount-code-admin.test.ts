@@ -76,10 +76,10 @@ describe("create, edit, pause and delete", () => {
     expect((await readCode(db, created.id))!.value).toMatchObject({ kind: "euro", amount: "25,50", courseIds: [contact.course.id] });
 
     // pause and on again
-    const paused = await setCodeActive(db, created.id, false, await versionNow(created.id));
+    const paused = await setCodeActive(db, created.id, false, await versionNow(created.id), NOW);
     expect(paused).toEqual({ ok: true, version: await versionNow(created.id) });
     expect((await row(created.id)).active).toBe(false);
-    const back = await setCodeActive(db, created.id, true, await versionNow(created.id));
+    const back = await setCodeActive(db, created.id, true, await versionNow(created.id), NOW);
     expect(back.ok).toBe(true);
     expect((await row(created.id)).active).toBe(true);
 
@@ -187,6 +187,56 @@ describe("a used code", () => {
   });
 });
 
+describe("T13-3: the welcome row's text stays changeable", () => {
+  test("the welcome row's text changes after it was used; its uses stay", async () => {
+    const welcome = await make({ code: "TERE10" }, { welcome: true });
+    await bookedUse(welcome.id);
+    expect((await readCode(db, welcome.id))!.value.used).toBe(true);
+    expect((await write(welcome.id, { code: "uus 15" })).ok).toBe(true);
+    expect(await row(welcome.id)).toMatchObject({ code: "UUS15", welcome: true });
+    expect(await db.select().from(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id))).toHaveLength(1);
+    // a text another code has is still refused
+    const other = await make({ code: "MUU10" });
+    expect(await write(welcome.id, { code: "muu10" })).toEqual({ ok: false, error: "invalid", fields: { code: `codeTaken:${other.id}` } });
+  });
+});
+
+describe("the unique index (23505) answers codeTaken:<id>", () => {
+  /** A db whose „who has this text“ lookups (select({ id })) inside a transaction see nothing: the duplicate committed after the check. */
+  const blind = (real: Db): Db =>
+    new Proxy(real, {
+      get(target, prop, receiver) {
+        if (prop !== "transaction") return Reflect.get(target, prop, receiver);
+        return (fn: (tx: unknown) => unknown, ...rest: unknown[]) =>
+          (target.transaction as (f: (tx: Db) => unknown, ...r: unknown[]) => unknown)(async (tx) => {
+            const seen = new Proxy(tx, {
+              get(t, p, r) {
+                if (p !== "select") return Reflect.get(t, p, r);
+                return (shape?: Record<string, unknown>) => {
+                  if (shape && Object.keys(shape).length === 1 && "id" in shape) return { from: () => ({ where: () => ({ limit: async () => [] }) }) };
+                  return (t.select as (s?: unknown) => unknown).call(t, shape);
+                };
+              },
+            });
+            return fn(seen);
+          }, ...rest);
+      },
+    }) as Db;
+
+  test("on create", async () => {
+    const first = await make({ code: "SUVI10" });
+    expect(await createCode(blind(db), fields({ code: "suvi10" }), { welcome: false }, NOW)).toEqual({ ok: false, error: "invalid", fields: { code: `codeTaken:${first.id}` } });
+  });
+
+  test("on write", async () => {
+    const first = await make({ code: "SUVI10" });
+    const second = await make({ code: "SUVI11" });
+    const refused = await writeCode(blind(db), second.id, { code: "suvi10" }, await versionNow(second.id), NOW);
+    expect(refused).toEqual({ ok: false, error: "invalid", fields: { code: `codeTaken:${first.id}` } });
+    expect((await row(second.id)).code).toBe("SUVI11");
+  });
+});
+
 describe("the version and the stale write", () => {
   test("a stale version is 409 with what is stored", async () => {
     const { id, version } = await make({ code: "SUVI10" });
@@ -195,16 +245,16 @@ describe("the version and the stale write", () => {
     const stale = await write(id, { note: "B" }, version);
     expect(stale).toEqual({ ok: false, error: "conflict", version: stored.version, value: stored.value });
     expect((await row(id)).note).toBe("A");
-    expect(await setCodeActive(db, id, false, version)).toEqual({ ok: false, error: "stale" });
+    expect(await setCodeActive(db, id, false, version, NOW)).toEqual({ ok: false, error: "stale" });
     expect((await row(id)).active).toBe(true);
     expect(await writeCode(db, 999_999, { note: "x" }, "k:x", NOW)).toEqual({ ok: false, error: "conflict", version: "", value: null });
-    expect(await setCodeActive(db, 999_999, false, "k:x")).toEqual({ ok: false, error: "notFound" });
+    expect(await setCodeActive(db, 999_999, false, "k:x", NOW)).toEqual({ ok: false, error: "notFound" });
   });
 
   test("the version moves with the switch and with the chosen courses", async () => {
     const { id } = await make({ scope: "courses", courseIds: [contact.course.id] });
     const seen = new Set([await versionNow(id)]);
-    await setCodeActive(db, id, false, await versionNow(id));
+    await setCodeActive(db, id, false, await versionNow(id), NOW);
     seen.add(await versionNow(id));
     await write(id, { courseIds: [contact.course.id, ecourse.id] });
     seen.add(await versionNow(id));
@@ -312,7 +362,7 @@ describe("the welcome row (R9, R11)", () => {
     expect(pub.revalidatePublic).toHaveBeenCalledTimes(1);
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "welcomeCode" });
     pub.revalidatePublic.mockReset();
-    await setCodeActive(db, welcome.id, false, await versionNow(welcome.id));
+    await setCodeActive(db, welcome.id, false, await versionNow(welcome.id), NOW);
     expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "welcomeCode" });
     pub.revalidatePublic.mockReset();
     await write(welcome.id, { percent: "15" }); // (no change: nothing written, nothing revalidated)
@@ -323,7 +373,7 @@ describe("the welcome row (R9, R11)", () => {
     pub.revalidatePublic.mockReset();
     const other = await make({ code: "MUU10" });
     await write(other.id, { percent: "15" });
-    await setCodeActive(db, other.id, false, await versionNow(other.id));
+    await setCodeActive(db, other.id, false, await versionNow(other.id), NOW);
     await deleteCode(db, other.id);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
@@ -335,7 +385,7 @@ describe("listCodes", () => {
     const welcome = await make({ code: "TERE10" }, { welcome: true });
     await make({ code: "UUS-25", kind: "euro", amount: "25", scope: "courses", courseIds: [contact.course.id, ecourse.id], startsOn: "2026-12-01", endsOn: "2026-12-24" });
     const paused = await make({ code: "PAUS10", scope: "ecourse" });
-    await setCodeActive(db, paused.id, false, paused.version);
+    await setCodeActive(db, paused.id, false, paused.version, NOW);
     await bookedUse(old.id); // (the limit is 1: full)
     await bookedUse(old.id, { status: "cancelled" }); // (gives the use back: not counted)
     await bookedUse(welcome.id);

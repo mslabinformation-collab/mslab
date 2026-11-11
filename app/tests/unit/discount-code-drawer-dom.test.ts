@@ -515,3 +515,71 @@ describe("a new code", () => {
     expect(actions.createCodeAction.mock.calls[0][0]).toMatchObject({ welcome: true, fields: { code: "TERE10", percent: "10" } });
   });
 });
+
+describe("fix round 1", () => {
+  it("I-1: 10 % → Eurod 25 (saved) → Protsent 10 sends {kind: percent, percent: 10} and shows no error", async () => {
+    await show();
+    await click(radio("kind", "euro"));
+    await type(field("amount"), "25");
+    await leave(field("amount"));
+    await settle();
+    expect(fetched.calls.map((c) => c.body)).toEqual([{ version: "k:v1", patch: { kind: "euro", amount: "25" } }]);
+    // the page is read again: the stored code is a euro one now (the server cleared its percent)
+    await show({ version: "k:v2", value: { kind: "euro", percent: "", amount: "25" } });
+    await click(radio("kind", "percent"));
+    await type(field("percent"), "10");
+    await leave(field("percent"));
+    await settle();
+    expect(fetched.calls).toHaveLength(2);
+    expect(fetched.calls[1].body).toEqual({ version: "k:v2", patch: { kind: "percent", percent: "10" } });
+    expect(errorOf("percent")).toBe("");
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+  });
+
+  it("I-1 mirror: € 25 → Protsent 10 (saved) → Eurod 25 sends {kind: euro, amount: 25} and shows no error", async () => {
+    await show({ value: { kind: "euro", percent: "", amount: "25" } });
+    await click(radio("kind", "percent"));
+    await type(field("percent"), "10");
+    await leave(field("percent"));
+    await settle();
+    expect(fetched.calls.map((c) => c.body)).toEqual([{ version: "k:v1", patch: { kind: "percent", percent: "10" } }]);
+    await show({ version: "k:v2", value: { kind: "percent", percent: "10", amount: "" } });
+    await click(radio("kind", "euro"));
+    await type(field("amount"), "25");
+    await leave(field("amount"));
+    await settle();
+    expect(fetched.calls[1].body).toEqual({ version: "k:v2", patch: { kind: "euro", amount: "25" } });
+    expect(errorOf("amount")).toBe("");
+  });
+
+  it("M-3: after a save the field shows the server's normalised text (a trimmed note, suvi 10 as SUVI10)", async () => {
+    await show();
+    await type(field("note"), "  Märkus  ");
+    await leave(field("note"));
+    await settle();
+    expect(field("note").value).toBe("Märkus");
+    await type(field("code"), "suvi 10");
+    await leave(field("code"));
+    await settle();
+    expect(field("code").value).toBe("SUVI10");
+  });
+
+  it("M-7a: choosing a kind empties a field that held a typed, unsaved value", async () => {
+    await show();
+    await click(radio("kind", "euro"));
+    await type(field("amount"), "25"); // (typed, not saved: the 1.5 s have not passed)
+    expect(field("amount").value).toBe("25");
+    await click(radio("kind", "percent"));
+    await click(radio("kind", "euro"));
+    expect(field("amount").value).toBe("");
+  });
+
+  it("T13-3: a used welcome code's text field stays editable with the old-code hint; a used normal code's is disabled", async () => {
+    await show({ value: { welcome: true, code: "TERE10", audience: "first", used: true }, uses: [use(1)] });
+    expect(field("code").disabled).toBe(false);
+    expect(text($("[data-code-hint]"))).toContain("Juba saadetud tervituskirjades on vana kood.");
+    expect(text($("[data-code-hint]"))).not.toContain("Kasutatud koodi ei saa muuta");
+    await show({ value: { used: true }, uses: [use(1)] });
+    expect(field("code").disabled).toBe(true);
+  });
+});

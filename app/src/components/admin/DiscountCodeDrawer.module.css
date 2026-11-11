@@ -143,6 +143,12 @@ p.notice {
   text-underline-offset: 3px;
 }
 
+/* a used code's text: read-only grey (the canvas) */
+.locked:disabled {
+  background: var(--paper, #f6f4f5);
+  color: #5e5559;
+}
+
 .restore {
   margin: 0;
 }
@@ -181,6 +187,11 @@ p.notice {
 
 /* a use that links is a 44 px target (the text is its own line; the padding reaches over the row's) */
 a.useWho {
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 10px 0;
+  box-sizing: border-box;
+  align-content: center;
   color: var(--ink);
   text-decoration: underline;
   text-decoration-color: var(--fog);

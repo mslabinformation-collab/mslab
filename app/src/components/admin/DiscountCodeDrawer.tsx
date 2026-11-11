@@ -10,6 +10,7 @@ import {
   CODE_FIELDS,
   codeFieldProblems,
   discountGiven,
+  normalizedValue,
   emptyCodeFields,
   highestListCents,
   type CodeField,
@@ -200,7 +201,6 @@ function CodeFieldList({ view }: { view: FieldView }) {
         <input
           id={id("code")}
           name="code"
-          className={ui.input}
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
@@ -211,7 +211,7 @@ function CodeFieldList({ view }: { view: FieldView }) {
           onChange={(ev) => view.set("code", ev.target.value)}
           aria-invalid={view.error("code") ? true : undefined}
           aria-describedby={describedBy("code", true)}
-          style={view.used ? { background: "var(--paper, #f6f4f5)", color: "#5e5559" } : undefined}
+          className={view.used ? `${ui.input} ${styles.locked}` : ui.input}
         />
         <p id={id("code-hint")} className={ui.hint} data-code-hint="">
           {view.used ? t.form.codeUsedHint : view.welcome ? `${t.form.codeHint} ${t.form.codeWelcomeHint}` : t.form.codeHint}
@@ -420,6 +420,9 @@ export function DiscountCodeDrawer(p: DrawerProps) {
   const [switchConflict, setSwitchConflict] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
+  /** The form's fields and its `adopt` as of the newest render, for the save (which runs after renders; the engine is made after it). */
+  const latest = useRef<CodeFields>(stored);
+  const adopt = useRef<(name: string, value: unknown) => boolean>(() => false);
   const save = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/sooduskood/${p.id}`);
     return async (body, opts) => {
@@ -428,10 +431,24 @@ export function DiscountCodeDrawer(p: DrawerProps) {
       if (waiting) await waiting;
       const v = versions.current;
       const version = v.same.has(body.version) ? v.known : body.version;
-      const answer = await base({ ...body, version }, opts);
+      // I-1: a kind goes with its value, always (the engine may think the value confirmed while the server cleared it when the kind last changed: the server
+      // checks the stored row merged with the patch, and a kind alone would meet the empty value)
+      const kind = body.patch.kind;
+      const patch: Fields = kind === "percent" || kind === "euro" ? { ...body.patch, [kind === "percent" ? "percent" : "amount"]: latest.current[kind === "percent" ? "percent" : "amount"] } : body.patch;
+      const answer = await base({ ...body, patch, version }, opts);
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 200 && reply?.ok === true && typeof reply.version === "string") {
         versions.current = { known: reply.version, same: new Set([reply.version]) };
+        // after a save that changed the kind the server holds no value for the other one: the engine takes that as confirmed (nothing is sent for it); and
+        // every field saved is taken over as the server stores it (M-3), unless it was typed in again meanwhile (adopt's own rule)
+        const taken: [string, unknown][] = [];
+        if (kind === "percent" || kind === "euro") taken.push([kind === "percent" ? "amount" : "percent", ""]);
+        for (const [name, value] of Object.entries(patch)) {
+          const norm = normalizedValue(name as CodeField, value);
+          if (norm !== value) taken.push([name, norm]);
+        }
+        // (after the engine has taken this answer: a field it has just sent is not yet its confirmed text before that)
+        if (taken.length > 0) setTimeout(() => taken.forEach(([name, value]) => adopt.current(name, value)), 0);
         setRefused({});
         setSwitchConflict(false);
         if (reply.version !== version) startTransition(() => nav.current.refresh());
@@ -454,6 +471,10 @@ export function DiscountCodeDrawer(p: DrawerProps) {
   const auto = useAutosave({ owner: OWNER, key: String(p.id), version: p.version, fields: { ...stored }, save, validate, label: labelOf, focusField });
   const { setField, flush, restore } = auto;
   const fields = auto.fields as CodeFields;
+  useLayoutEffect(() => {
+    latest.current = fields;
+    adopt.current = auto.adopt;
+  });
 
   const held = auto.status.kind === "invalid";
   const local = problemsOf(fields, stored, { welcome: p.value.welcome, courses: p.courses });
@@ -462,7 +483,8 @@ export function DiscountCodeDrawer(p: DrawerProps) {
   const view: FieldView = {
     fields,
     welcome: p.value.welcome,
-    used: p.value.used,
+    // (T13-3: the welcome row's text stays changeable whatever its uses: the lock is for the other codes)
+    used: p.value.used && !p.value.welcome,
     valueNote: p.value.used,
     courses: p.courses,
     set: (f, value) => {

@@ -1,5 +1,5 @@
 import { addDays, CODE_MAX, DAYS_MAX, DAYS_MIN, isCode, normalizeCode, PERCENT_MAX, PERCENT_MIN, type Audience, type CodeScope, type UseMark } from "./discount-codes";
-import { parseEuroCents } from "./money";
+import { centsToInput, parseEuroCents } from "./money";
 
 // A discount code's fields as the Sooduskoodid drawer holds them and the server checks them (F1 Task 13, spec §4.10, R16–R18). Pure: no database, no
 // React. The server's checks (server/discount-code-admin.ts, under the code's lock, over the stored row merged with the patch: R16) and the drawer's own
@@ -182,3 +182,32 @@ export function codeColumns(v: CodeFields, welcome: boolean) {
 
 /** R20 „Soodustust kokku“: the cents the uses that count have taken off (a cancelled, unpaid, failed or refunded use gave its discount back). */
 export const discountGiven = (uses: readonly { cents: number; mark: UseMark }[]): number => uses.reduce((sum, u) => (u.mark === "counts" ? sum + u.cents : sum), 0);
+
+/**
+ * M-3: a saved field's text as the server stores and reads it back (codeColumns, server/discount-code-admin.ts fieldsOf): „tere 10“ is TERE10, a note and the
+ * days are trimmed, a number is written plainly („010“ → „10“), the euros as „25,50“. The drawer takes it over a field nobody typed in since, so the field
+ * and the title agree. A value that is not valid (it was never saved) is returned as it is.
+ */
+export function normalizedValue(field: CodeField, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  switch (field) {
+    case "code":
+      return normalizeCode(value);
+    case "percent":
+    case "maxUses":
+    case "daysAfterSignup": {
+      const t = value.trim();
+      return WHOLE.test(t) ? String(Number(t)) : value;
+    }
+    case "amount": {
+      const cents = amountCentsOf(value);
+      return cents === null ? value : centsToInput(cents);
+    }
+    case "startsOn":
+    case "endsOn":
+    case "note":
+      return value.trim();
+    default:
+      return value;
+  }
+}
