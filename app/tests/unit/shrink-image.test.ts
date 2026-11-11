@@ -217,7 +217,15 @@ describe("the admin's images (shrinkImage with ImageUpload's settings: its behav
 });
 
 describe("a certificate design's background (ImageUpload kind certificate-background: 2026-11-11 certificate designs, spec §4)", () => {
-  const BACKGROUND: ShrinkOptions = { maxEdge: 3508, quality: 0.9, lower: [0.82, 0.74, 0.66], maxBytes: 1.5 * MB, accept: ["image/jpeg"], output: "jpeg" };
+  const BACKGROUND: ShrinkOptions = {
+    maxEdge: 3508,
+    quality: 0.9,
+    lower: [0.82, 0.74, 0.66],
+    last: { maxEdge: 2480, quality: 0.8 },
+    maxBytes: 1.5 * MB,
+    accept: ["image/jpeg"],
+    output: "jpeg",
+  };
 
   test("a JPEG of at most 3508 px (A4 at 300 dpi) at 0.9, with a neutral name; a smaller one is never made larger", async () => {
     decodesAs(7016, 4960);
@@ -239,7 +247,27 @@ describe("a certificate design's background (ImageUpload kind certificate-backgr
     encodes = [];
     bytesOf = () => 1.5 * MB + 1;
     await expect(shrinkImage(picked("a.jpg", "image/jpeg"), BACKGROUND)).rejects.toMatchObject({ problem: "size" });
-    expect(encodes.map((e) => e.quality)).toEqual([0.9, 0.82, 0.74, 0.66]);
+    expect(encodes.map((e) => [e.width, e.quality])).toEqual([[3508, 0.9], [3508, 0.82], [3508, 0.74], [3508, 0.66], [2480, 0.8]]);
+  });
+
+  test("a detailed photo still over 1.5 MB at 0.66 is drawn smaller last: at most 2480 px at 0.8 (review round 1)", async () => {
+    decodesAs(7016, 4960);
+    bytesOf = (e) => (e.width > 2480 ? 1600 * 1024 : 1100 * 1024);
+    const out = await shrinkImage(picked("a.jpg", "image/jpeg"), BACKGROUND);
+    expect(encodes.map((e) => [e.width, e.height, e.quality])).toEqual([
+      [3508, 2480, 0.9],
+      [3508, 2480, 0.82],
+      [3508, 2480, 0.74],
+      [3508, 2480, 0.66],
+      [2480, 1753, 0.8],
+    ]);
+    expect([out.size, out.type, out.name]).toEqual([1100 * 1024, "image/jpeg", "pilt.jpg"]);
+    // a picture already within 2480 px is not tried at the last step (the same size at a higher quality is only larger): 'size'
+    encodes = [];
+    decodesAs(2000, 1414);
+    bytesOf = () => 1600 * 1024;
+    await expect(shrinkImage(picked("b.jpg", "image/jpeg"), BACKGROUND)).rejects.toMatchObject({ problem: "size" });
+    expect(encodes.map((e) => [e.width, e.quality])).toEqual([[2000, 0.9], [2000, 0.82], [2000, 0.74], [2000, 0.66]]);
   });
 
   test("only a JPEG is taken", async () => {

@@ -37,12 +37,6 @@
   max-width: 420px;
 }
 
-@container course-cards (max-width: 560px) {
-  .fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 640px) {
   .fields {
     grid-template-columns: minmax(0, 1fr);

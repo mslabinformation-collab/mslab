@@ -205,7 +205,8 @@ export function checkCourseCertificate(
 /**
  * „Kujundus“ (2026-11-11 certificate designs, spec §5.2): an e-course's design, none (null: the first design) or the id of one that exists, read FOR
  * KEY SHARE so that a deletion of it at the same moment waits for this save (and then finds the course using it), or went first (and this is
- * `certificateDesign`). A contact course has no certificate: none.
+ * `certificateDesign`). Its callers run it inside the write's transaction (a part's save, server/course-parts.ts; saveCourseForm reads it again in
+ * its own), so the lock is held until the write is done. A contact course has no certificate: none.
  */
 export async function checkCourseCertificateDesign(q: Q, c: Check, designId: number | null, type: CourseType): Promise<number | null> {
   if (type !== "e_learning" || designId === null) return null;
@@ -298,7 +299,11 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     ...certificate,
     certificateDesignId,
   };
-  const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
+  // the design picked, read again FOR KEY SHARE inside the save's transaction (the check above saw it outside): a delete at the same moment either
+  // waits for this save, and then finds the course using it, or went first, and the pick is the field's refusal (never a failed foreign key)
+  const designKept = async (tx: Q) => (await checkCourseCertificateDesign(tx, new Check(), certificateDesignId, d.type)) === certificateDesignId;
+  const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images, certificateDesignId === null ? undefined : designKept);
+  if (saved === "refused") return invalid({ certificateDesignId: "certificateDesign" });
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };
   return { ok: true, id: saved.id, created: d.id == null };
 }

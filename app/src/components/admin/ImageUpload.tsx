@@ -21,13 +21,15 @@ const QUALITY = 0.86;
 const SHRINK: ShrinkOptions = { maxEdge: MAX_EDGE, quality: QUALITY, maxBytes: MAX_BYTES, accept: ACCEPT, output: "keep" };
 /**
  * A certificate design's background (2026-11-11 certificate designs, spec §4; lib/media.ts BACKGROUND_UPLOAD): a JPEG only, at most 3508 px (A4
- * landscape at 300 dpi), at 0.9 and lower while it is over 1.5 MB. The PDF embeds it as it is uploaded, so the browser keeps it under the server's
- * limit; the canvas drops its metadata, as for every other picture.
+ * landscape at 300 dpi), at 0.9 and lower while it is over 1.5 MB, and last at most 2480 px (A4 at about 210 dpi) at 0.8, so that a detailed photo
+ * still fits. The PDF embeds it as it is uploaded, so the browser keeps it under the server's limit; the canvas drops its metadata, as for every
+ * other picture.
  */
 const BACKGROUND_SHRINK: ShrinkOptions = {
   maxEdge: 3508,
   quality: 0.9,
   lower: [0.82, 0.74, 0.66],
+  last: { maxEdge: 2480, quality: 0.8 },
   maxBytes: BACKGROUND_UPLOAD.maxBytes,
   accept: BACKGROUND_UPLOAD.types,
   output: "jpeg",

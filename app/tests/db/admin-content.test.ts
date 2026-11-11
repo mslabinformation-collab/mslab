@@ -688,6 +688,26 @@ describe("saveCourseForm: 'Tunnistus' (phase 3d, spec §6)", () => {
     expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: null });
   });
 
+  test("„Kujundus“: a design deleted between the checks and the save's transaction is the field's refusal, not a failed save; nothing is written", async () => {
+    const [spare] = await db.insert(certificateDesigns).values({ name: "Kustutatav", tone: "light", sort: 9 }).returning();
+    const before = await load(online.id);
+    // the delete lands as the save's transaction begins (after the checks outside it saw the design)
+    const racing = new Proxy(db, {
+      get(target, key) {
+        if (key === "transaction")
+          return async (work: unknown) => {
+            await target.delete(certificateDesigns).where(eq(certificateDesigns.id, spare.id));
+            return (target.transaction as unknown as (w: unknown) => Promise<unknown>).call(target, work);
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as Db;
+    const answer = await saveCourseForm(racing, form({ data: JSON.stringify({ ...before, certificateDesignId: spare.id, certificateVolume: "Muudetud maht" }) }));
+    expect(fieldsOf(answer)).toEqual({ certificateDesignId: "certificateDesign" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: before.certificateDesignId, certificateVolume: before.certificateVolume });
+  });
+
   test("a draft without them (an editor page opened before the deploy) still saves, with none", async () => {
     const older: Partial<CourseDraft> = { ...(await load(online.id)) };
     delete older.certificateSkills;

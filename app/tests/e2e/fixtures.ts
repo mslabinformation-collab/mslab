@@ -165,6 +165,31 @@ export async function ensureDesignBackground(): Promise<boolean> {
   }
 }
 
+/**
+ * The designs an interrupted certificate test left (certificate.spec.ts: „Lisa kujundus“ makes „Uus kujundus“ or „Uus kujundus {n}“, which it
+ * renames „E2E kujundus …“), in the LOCAL database only: the courses' picks of them and their drafted picks cleared first (a pick is restricted),
+ * as certificate.ts removeDesigns does. „Hele“ and „Tume“ (the seed's) are never touched. Returns how many it deleted.
+ */
+export async function removeLeftoverDesigns(): Promise<number> {
+  const sql = connect();
+  try {
+    return await sql.begin(async (tx) => {
+      const left = await tx<{ id: number }[]>`
+        select id from certificate_designs
+        where (name like 'E2E kujundus %' or name ~ '^Uus kujundus( [0-9]+)?$') and name not in ('Hele', 'Tume')`;
+      const ids = left.map((d) => d.id);
+      if (ids.length === 0) return 0;
+      await tx`update courses set certificate_design_id = null where certificate_design_id in ${tx(ids)}`;
+      await tx`update content_drafts set value = value - 'certificateDesignId'
+               where entity = 'course' and part = 'certificate' and (value ->> 'certificateDesignId')::int in ${tx(ids)}`;
+      await tx`delete from certificate_designs where id in ${tx(ids)}`;
+      return ids.length;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
 // ---------- the home page's popup ----------
 // Since admin UX pass piece 4b (spec D3, ruling R-d) the home page's one popup is the newsletter sign-up (campaign row 2), and the seed has it shown,
 // the old campaign offer (row 1) off. A local database seeded before that has row 1 on — which the site no longer shows — and row 2 off, so its

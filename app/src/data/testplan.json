@@ -1160,7 +1160,7 @@
         "„Kujundus“ loetleb Seadete kujundused samas järjekorras, esimene on „Hele“.",
         "Kui kujundust pole valitud, on valitud esimene kujundus.",
         "Välja all on vihje „Kujundusi muudad: Seaded → Tunnistus.“.",
-        "Avaldatud koolitusel on enne avaldamist välja juures „· avaldamata“.",
+        "Kui avaldatud koolitusel valid muu kujunduse kui praegune, on välja juures enne avaldamist „· avaldamata“.",
         "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
       ],
       "why": "Selle koolituse tunnistused tehakse valitud kujundusega.",
@@ -2090,7 +2090,7 @@
       "href": "/admin/seaded",
       "steps": [
         "Ava „Seaded“, vali „Tunnistus“ ja keri kaardini „Kujundused“.",
-        "Vajuta „Lisa kujundus“ ja kirjuta uue rea „Nimi“ asemele Proov 1.",
+        "Vajuta „Lisa kujundus“ ja kirjuta uue rea väljale „Nimi“: Proov 1.",
         "Vali „Toon“: „Tume taust, hele tekst“.",
         "Vajuta „Taustapilt“ juures „Vali pilt“ ja vali horisontaalne JPEG-pilt.",
         "Vajuta selle rea „Vaata näidist“.",
@@ -2099,7 +2099,7 @@
       "expect": [
         "Kaardil on kujundused „Hele“ ja „Tume“, igaühel „Nimi“, „Toon“, „Taustapilt“ ja „Vaata näidist“.",
         "Esimese kujunduse all on „Koolitus, millel kujundust valitud pole, kasutab seda kujundust.“.",
-        "Kasutusel kujundusel pole „Kustuta“, vaid „Seda kujundust kasutab … koolitust.“.",
+        "Kasutusel kujundusel pole „Kustuta“, vaid rida „Seda kujundust kasutab …“.",
         "Pildi juures on vihje „JPEG, kuni 1,5 MB, horisontaalne A4 …“.",
         "Näidis avaneb uues aknas: hele tekst tumedal taustal, taustapilt katab kogu lehe.",
         "Päises on pärast igat muudatust „Salvestatud“ koos kellaajaga.",

@@ -17,7 +17,8 @@ import type { CertificateDesignOption, PartApi } from "./types";
 /**
  * „Tunnistus“ (an e-course's card; phase 3d, spec §6): the certificate's title (empty: the course's), its lines (none: its „Õpiväljundid“ are printed, `outcomes`) and its volume,
  * and „Kujundus“ (2026-11-11 certificate designs, spec §5.2): the design its certificates are drawn in, from Seaded's list (`designs`, the first
- * first); none picked shows the first design, which is the one a certificate then gets. Lines added, moved, removed or brought back and a design
+ * first); none picked shows the first design, which is the one a certificate then gets, so picking the first saves none (null): a course without
+ * a pick that is set to it again equals live, with no „· avaldamata“ (review round 1). Lines added, moved, removed or brought back and a design
  * picked save now (the part's commit); the title and the volume when typing stops or the card is left.
  */
 export function CertificateCard({ api, outcomes, designs = [] }: { api: PartApi<"certificate">; outcomes: readonly I18n[]; designs?: readonly CertificateDesignOption[] }) {
@@ -74,7 +75,10 @@ export function CertificateCard({ api, outcomes, designs = [] }: { api: PartApi<
               id={`${uid}-design`}
               className={`${ui.input} ${ed.select}`}
               value={shown === undefined ? "" : String(shown)}
-              onChange={(e) => api.commit("certificateDesignId", Number(e.target.value))}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                api.commit("certificateDesignId", id === designs[0]?.id ? null : id);
+              }}
               aria-invalid={designError ? true : undefined}
               aria-describedby={describedBy}
               data-field="certificateDesignId"

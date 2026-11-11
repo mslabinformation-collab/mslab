@@ -1518,6 +1518,15 @@ describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, sp
     expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(true);
   });
 
+  it("the first design picked back is none picked (null): live without a pick, no „· avaldamata“ for it (review round 1)", async () => {
+    await show({ designs: DESIGNS });
+    await pick("7");
+    await pick("4");
+    expect(remote.log.map((r) => r.patch)).toEqual([{ certificateDesignId: 7 }, { certificateDesignId: null }]);
+    expect(select()!.value).toBe("4");
+    expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(false);
+  });
+
   it("a design deleted meanwhile is refused in its own words, in the field", async () => {
     remote.refuse = { part: "certificate", fields: { certificateDesignId: "certificateDesign" } };
     await show({ designs: DESIGNS });

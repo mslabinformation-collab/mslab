@@ -19,6 +19,8 @@ const KEY = "img/0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
 const PNG_KEY = "img/1f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
 const BIG_KEY = "img/2f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
 const MISSING_KEY = "img/3f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
+/** FF D8 FF and then nothing a JPEG decoder can read (no frame header): the signature passes, the embed does not. */
+const BROKEN_KEY = "img/4f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.jpg";
 
 let db: Db;
 let store: ReturnType<typeof fakeMediaStore>;
@@ -28,6 +30,7 @@ beforeEach(async () => {
     [KEY]: { bytes: PHOTO, contentType: "image/jpeg" },
     [PNG_KEY]: { bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], contentType: "image/jpeg" },
     [BIG_KEY]: { bytes: [0xff, 0xd8, 0xff, 0xe0, ...new Array(1.5 * 1024 * 1024).fill(0)], contentType: "image/jpeg" },
+    [BROKEN_KEY]: { bytes: [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...new Array(64).fill(0x20)], contentType: "image/jpeg" },
   });
 });
 
@@ -66,6 +69,31 @@ describe("the list", () => {
     await db.insert(courses).values({ ...base, slug: "k", type: "contact", title: { et: "K" }, priceGroup: 100 });
     const usage = await designUsage(db, await designs());
     expect([usage.get(hele.id), usage.get(tume.id)]).toEqual([3, 4]);
+  });
+
+  test("a contact course whose draft makes it an e-course uses its drafted pick (or, with none, the first); an e-course drafted to contact still its live one", async () => {
+    const hele = await byName("Hele");
+    const tume = await byName("Tume");
+    const draft = (courseId: number, part: string, value: Record<string, unknown>) =>
+      db.insert(contentDrafts).values({ entity: "course", entityId: courseId, part, value, baseVersion: "l:x", updatedBy: "maria@example.test" });
+    const contact = (slug: string) => db.insert(courses).values({ ...base, slug, type: "contact", title: { et: slug }, priceGroup: 100, published: true }).returning();
+    // drafted to an e-course with „Tume“ picked in its certificate draft
+    const [p] = await contact("p");
+    await draft(p.id, "basics", { type: "e_learning" });
+    await draft(p.id, "certificate", { certificateDesignId: tume.id });
+    // drafted to an e-course, no pick drafted: the first design
+    const [q] = await contact("q");
+    await draft(q.id, "basics", { type: "e_learning" });
+    // a contact course with a stray certificate draft and no drafted type: none
+    const [r] = await contact("r");
+    await draft(r.id, "certificate", { certificateDesignId: tume.id });
+    // a live e-course drafted to contact: its live pick until published
+    const s = await ecourse("s", { certificateDesignId: tume.id, published: true });
+    await draft(s.id, "basics", { type: "contact" });
+    const usage = await designUsage(db, await designs());
+    expect([usage.get(hele.id), usage.get(tume.id)]).toEqual([1, 2]);
+    // and „Kustuta“ is refused for „Tume“ while p's draft names it
+    expect(await deleteCertificateDesign(db, tume.id)).toEqual({ ok: false, error: "inUse", courses: 2 });
   });
 });
 
@@ -112,6 +140,8 @@ describe("a row's autosave", () => {
     expect(await fields({ backgroundKey: MISSING_KEY })).toEqual({ backgroundKey: "image" });
     expect(await fields({ backgroundKey: PNG_KEY })).toEqual({ backgroundKey: "image" });
     expect(await fields({ backgroundKey: BIG_KEY })).toEqual({ backgroundKey: "image" });
+    // starts as a JPEG but the PDF could not embed it (pdf-lib's embedJpg throws): never frozen into certificates
+    expect(await fields({ backgroundKey: BROKEN_KEY })).toEqual({ backgroundKey: "image" });
     // no store (production without R2): a photo cannot be checked, so none is taken
     expect(await writeCertificateDesign(db, tume.id, { backgroundKey: KEY }, (await read(tume.id)).version, null)).toEqual({ ok: false, error: "invalid", fields: { backgroundKey: "image" } });
     // a name of exactly 40 is fine; the design's own name in another case too

@@ -345,10 +345,11 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
   expect(taken.status()).toBe(400);
   await expect(row).toContainText("Sellise nimega kujundus on juba olemas.");
   expect((await storedDesign(id))?.name).toBe(name);
-  await designSave(page, id, async () => {
-    await row.locator("[data-design-name]").fill(name);
-    await row.locator("[data-design-name]").press("Tab");
-  });
+  // typed back to the stored name: nothing is sent (the engine has nothing to save), the refusal goes
+  await row.locator("[data-design-name]").fill(name);
+  await row.locator("[data-design-name]").press("Tab");
+  await expect(row.locator("[data-design-name]")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(seadedStatus(page)).toHaveAttribute("data-save-kind", "saved");
 
   // its sample: the card's values in this design, a PDF; „Hele“'s draws its photo (the test JPEG on this machine: a DCT image in the PDF)
   const sample = row.locator("[data-design-sample]");
@@ -415,11 +416,13 @@ test("certificate designs: the course card's „Kujundus“ picks „Tume“; th
   expect(pdfHead(readFileSync(String(await download.path())))).toBe("%PDF-");
   await releaseTerms();
 
-  // the course picks „Hele“ afterwards: the certificate issued keeps its own copy, and still downloads (hers and Maria's)
+  // the course picks „Hele“ afterwards (the first design: stored as none picked, review round 1): the certificate issued keeps its own copy, and
+  // still downloads (hers and Maria's)
   await page.reload();
   await adminReady(page);
   await select.selectOption({ label: "Hele" });
-  await expect.poll(() => storedCoursePick(s.courseId)).toBe(light);
+  await expect.poll(() => storedCoursePick(s.courseId)).toBeNull();
+  await expect(select).toHaveValue(String(light));
   expect(await storedCertificateDesign(s.accessId)).toMatchObject({ tone: "dark" });
   const hers = await her.page.request.get(`/api/konto/tunnistus/${stored.id}`);
   expect([hers.status(), pdfHead(await hers.body())]).toEqual([200, "%PDF-"]);

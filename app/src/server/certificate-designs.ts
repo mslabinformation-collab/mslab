@@ -1,4 +1,4 @@
-import { and, asc, eq, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, Q } from "@/db/client";
 import { certificateDesigns, contentDrafts, courses } from "@/db/schema";
@@ -38,28 +38,38 @@ const versionOf = async (d: DesignFields): Promise<string> => `k:${await content
 const fieldsOf = (d: DesignFields): DesignFields => ({ name: d.name, tone: d.tone, backgroundKey: d.backgroundKey });
 
 /**
- * How many courses use each design (the „Kustuta“ rule, spec §5.1: live or draft): an e-course's pick as stored, and the pick in its „Tunnistus“
- * draft when the draft names one; a pick of none (null) is the first design's. A contact course uses none. A course is counted once per design.
+ * How many courses use each design (the „Kustuta“ rule, spec §5.1: live or draft), each course once per design:
+ * - live: an e-course's pick as stored;
+ * - drafted: when the course is an e-course in its draft (its „Põhiinfo“ draft's type, else its live type), the pick its „Tunnistus“ draft names,
+ *   else its live pick — so a contact course drafted to an e-course uses what it will use once published;
+ * a pick of none (null) is the first design's. A course that is a contact course both live and drafted uses none.
  */
 export async function designUsage(q: Q, designs: readonly CertificateDesign[]): Promise<Map<number, number>> {
   const first = firstDesign(designs)?.id ?? null;
   const rows = await q.select({ id: courses.id, type: courses.type, pick: courses.certificateDesignId }).from(courses);
   const drafts = await q
-    .select({ courseId: contentDrafts.entityId, value: contentDrafts.value })
+    .select({ courseId: contentDrafts.entityId, part: contentDrafts.part, value: contentDrafts.value })
     .from(contentDrafts)
-    .where(and(eq(contentDrafts.entity, "course"), eq(contentDrafts.part, "certificate")));
-  const drafted = new Map<number, number | null>();
+    .where(and(eq(contentDrafts.entity, "course"), inArray(contentDrafts.part, ["certificate", "basics"])));
+  const draftedPick = new Map<number, number | null>();
+  const draftedType = new Map<number, unknown>();
   for (const d of drafts) {
     const value = d.value as Record<string, unknown> | null;
-    if (!value || typeof value !== "object" || !("certificateDesignId" in value)) continue;
+    if (!value || typeof value !== "object") continue;
+    if (d.part === "basics") {
+      if ("type" in value) draftedType.set(d.courseId, value.type);
+      continue;
+    }
+    if (!("certificateDesignId" in value)) continue;
     const pick = value.certificateDesignId;
-    if (pick === null || (typeof pick === "number" && Number.isInteger(pick))) drafted.set(d.courseId, pick);
+    if (pick === null || (typeof pick === "number" && Number.isInteger(pick))) draftedPick.set(d.courseId, pick);
   }
   const usage = new Map<number, number>(designs.map((d) => [d.id, 0]));
   for (const course of rows) {
-    if (course.type !== "e_learning") continue;
-    const used = new Set<number | null>([course.pick ?? first]);
-    if (drafted.has(course.id)) used.add(drafted.get(course.id) ?? first);
+    const used = new Set<number | null>();
+    if (course.type === "e_learning") used.add(course.pick ?? first);
+    const typeDrafted = draftedType.has(course.id) ? draftedType.get(course.id) : course.type;
+    if (typeDrafted === "e_learning") used.add((draftedPick.has(course.id) ? draftedPick.get(course.id) : course.pick) ?? first);
     for (const id of used) if (id !== null && usage.has(id)) usage.set(id, usage.get(id)! + 1);
   }
   return usage;
@@ -98,15 +108,25 @@ export async function readCertificateDesign(q: Q, id: number): Promise<{ version
 
 /**
  * Is the photo one a certificate can embed as it is (spec §4): a JPEG upload (img/<uuid>.jpg) that the store has, whose bytes start as a JPEG's,
- * of at most 1.5 MB? The upload route held it to that (POST /api/admin/upload?for=certificate-background); this holds a key from anywhere else to it
- * too, so a design can never make every download of its certificates fail or grow. No store: no photo can be checked, none is taken.
+ * of at most 1.5 MB, and that the PDF's own embed takes (pdf-lib's embedJpg, as server/certificate-pdf.ts draws it)? The upload route held it to the
+ * type and the size (POST /api/admin/upload?for=certificate-background); this holds a key from anywhere else to them too, and a JPEG the PDF could
+ * not embed is refused here, so a design can never make every download of its certificates fail or grow. No store: no photo can be checked, none
+ * is taken.
  */
 async function photoUsable(key: string, store: MediaSource | null): Promise<boolean> {
   if (!isBackgroundKey(key) || key === "" || !store) return false;
   const object = await store.get(key);
   if (!object) return false;
   const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
-  return bytes.byteLength > 0 && bytes.byteLength <= BACKGROUND_MAX_BYTES && hasImageSignature("image/jpeg", bytes.subarray(0, 16));
+  if (bytes.byteLength === 0 || bytes.byteLength > BACKGROUND_MAX_BYTES || !hasImageSignature("image/jpeg", bytes.subarray(0, 16))) return false;
+  // (pdf-lib only when a photo is saved: the rest of this module never needs it)
+  const { PDFDocument } = await import("pdf-lib");
+  try {
+    await (await PDFDocument.create()).embedJpg(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

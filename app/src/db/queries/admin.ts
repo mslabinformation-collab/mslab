@@ -180,8 +180,11 @@ export async function saveCourseWithImages(
   target: { id: number | null; expected?: Date },
   fields: CourseFields,
   images: ImageInput[],
-): Promise<AdminCourse | "notFound" | "stale"> {
+  /** Run first in the save's transaction (its locks held until it ends): false refuses the save, nothing written ("refused"). */
+  guard?: (tx: Tx) => Promise<boolean>,
+): Promise<AdminCourse | "notFound" | "stale" | "refused"> {
   return db.transaction(async (tx) => {
+    if (guard && !(await guard(tx))) return "refused";
     const { test, ...row } = fields;
     const values = { ...row, updatedAt: new Date() };
     let course: Course;
