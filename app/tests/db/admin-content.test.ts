@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
+import { clients, contentDrafts, courseAccess, courseAreas, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
 import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, listSessionCities, moveCourseTo, sessionCounts } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { startOfDayTallinn } from "@/domain/calendar";
@@ -51,6 +51,18 @@ describe("createCourseForm: „Lisa koolitus“ (piece 3a, Task 7: the editor's 
     expect(await getCourseForEdit(db, online.id)).toEqual(before);
     expect(await createCourseForm(db, form({ data: "{" }))).toEqual({ ok: false, error: "invalid" });
     expect(await createCourseForm(db, new FormData())).toEqual({ ok: false, error: "invalid" });
+  });
+
+  test("its „Valdkond“ (course areas §4.2): one of the areas is stored with the course; none is null; an area that is gone is the field's error", async () => {
+    const [kulm] = await db.select().from(courseAreas).where(sql`${courseAreas.name}->>'et' = 'Kulmukoolitused'`);
+    const create = (title: string, areaId: unknown) => createCourseForm(db, form({ data: JSON.stringify({ ...newCourseDraft(), title: { et: title }, areaId }) }));
+    const made = await create("Valdkonnaga", kulm.id);
+    expect(made).toMatchObject({ ok: true, created: true });
+    expect((await getCourseForEdit(db, (made as { id: number }).id))?.areaId).toBe(kulm.id);
+    const none = await create("Valdkonnata", null);
+    expect((await getCourseForEdit(db, (none as { id: number }).id))?.areaId).toBeNull();
+    expect(fieldsOf(await create("Kadunud valdkonnaga", 9999))).toEqual({ areaId: "area" });
+    expect(await create("Vale valdkonnaga", "1")).toEqual({ ok: false, error: "invalid" });
   });
 });
 
