@@ -401,10 +401,10 @@ describe("the course's type (README B2: the card follows the drafted „Õppevor
     await show({ modules: [moduleOf(1, "Alustame", [lesson(11, 1)])] });
     expect($("[data-lessons]")).not.toBeNull();
     expect($('[data-add-lesson="1"]')).not.toBeNull();
-    expect(text($("[data-add-module] button"))).toBe("+ Lisa moodul");
+    expect(text($("[data-add-module] button"))).toBe("Lisa moodul +");
     await show({ online: false, modules: [moduleOf(1, "Alustame", [lesson(11, 1)])] });
     expect($("[data-lessons]")).toBeNull();
     expect($("[data-add-lesson]")).toBeNull();
-    expect(text($("[data-add-module] button"))).toBe("+ Lisa punkt");
+    expect(text($("[data-add-module] button"))).toBe("Lisa punkt +");
   });
 });

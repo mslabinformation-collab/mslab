@@ -5,6 +5,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SectionMap, sectionCard } from "@/components/admin/SectionMap";
+import { adminEt } from "@/i18n/dict/admin";
 
 // SectionMap (the B screens, Task 1; README B2): from 1180 px a 190 px sticky list of links to the cards of the page, each with its count, „RU puudub“ or
 // „Kontrolli“ (#6b4f5c); below it a „Jaotised ▾“ select that scrolls to the chosen card. The page's cards carry the id of their entry and the class
@@ -100,6 +101,17 @@ describe("SectionMap: the list of links (from 1180 px)", () => {
     expect(text(link("kkk").querySelector("[data-section-status]"))).toBe("6 · 1 avaldamata");
     expect(text(link("x").querySelector("[data-section-status]"))).toBe("");
     expect(options().map((o) => o.textContent)).toEqual(["Lepingud ja tingimused · 2 avaldamata", "KKK · 6 · 1 avaldamata", "Muu"]);
+  });
+
+  // UX pass 11.11 A19 (the Vaiksed board): „Lepingud ja tingimused · 1 avaldamata“ wrapped onto two lines; the map says „Lepingud“ and the waiting
+  // texts are a small tag of their own
+  it("„avaldamata“ is a tag (a tinted pill); Seaded's section is „Lepingud“", async () => {
+    const css = readFileSync("src/components/admin/SectionMap.module.css", "utf8");
+    const tag = css.match(/\.status \[data-unpublished\]\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(tag).toMatch(/border-radius:\s*99px/);
+    expect(tag).toMatch(/background:/);
+    expect(tag).toMatch(/padding:/);
+    expect(adminEt.settings.sections.legal).toBe("Lepingud");
   });
 
   it("a word about the card (`note`: Koolitaja's empty story, „tühi“, piece4-texts S4-16) in the count's grey, after the count and before a flag; also in the select", async () => {

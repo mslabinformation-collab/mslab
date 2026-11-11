@@ -725,6 +725,8 @@ export const et = {
     // The login page /konto/sisene (components/account/LoginForm.tsx): the e-mail, then the 6-digit code from the e-mail.
     // {fixed} is the address with its domain corrected, {email} the address the code went to, {s} the seconds left.
     login: {
+      // UX pass P22: under the heading of the e-mail step, whom the page is for and what happens next
+      intro: "Õpilase konto: saadame su e-postile ühekordse koodi. Konto tekib e-koolituse ostu või registreerimisega.",
       email: "E-post",
       send: "Saada kood",
       typo: "Kas mõtlesid {fixed}?",

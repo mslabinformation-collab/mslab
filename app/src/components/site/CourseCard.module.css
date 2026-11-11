@@ -139,9 +139,10 @@
   }
 }
 
+/* the home page's cards on a phone: a 200 px photo (UX pass P21; at 350 px each card was a whole screen, four of them some 2,000 px) */
 @media (max-width: 640px) {
   .photo:not(.square) {
-    height: 350px;
+    height: 200px;
   }
 
   .title {

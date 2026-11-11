@@ -327,7 +327,7 @@ export function TestEditor({
                         onClick={() => addOption(i)}
                         data-option-add=""
                       >
-                        + {f.testOptionAdd}
+                        {f.testOptionAdd} +
                       </button>
                     </div>
                   ) : (
@@ -356,7 +356,7 @@ export function TestEditor({
         </p>
       )}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${ed.addBtn}`} aria-disabled={full || undefined} onClick={add} data-question-add="">
-        + {f.testAdd}
+        {f.testAdd} +
       </button>
       {full && <p className={ui.hint}>{f.testFull}</p>}
     </div>

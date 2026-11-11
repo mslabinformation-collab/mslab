@@ -183,7 +183,8 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect(drawer.getByRole("heading", { level: 2 })).toHaveText("Tere tulemast");
   // (README B2: its place as the card numbers it — Sissejuhatus is the second module now)
   await expect(drawer.locator("[data-lesson-place]")).toHaveText("Moodul 02 · Õppetund 2.1");
-  await expect(drawer.locator("[data-save-status]")).toBeVisible();
+  // (the drawer's save status is there but quiet until a change: no „✓ Salvestatud“ on opening, UX pass A17)
+  await expect(drawer.locator("[data-save-status]")).toHaveAttribute("data-save-quiet", "");
   await expect(drawer.getByRole("textbox", { name: "Õppetunni nimi" })).toHaveValue("Tere tulemast");
   const row = editor.locator(`[data-lesson="${first}"]`);
   await expect(editor.locator(`[data-module="${intro}"] [data-lesson]`)).toHaveCount(1); // the second module's first lesson
@@ -451,7 +452,7 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect(editor.locator("[data-lessons]")).toHaveCount(0);
   await expect(editor.getByRole("button", { name: "Lisa õppetund" })).toHaveCount(0);
   await expect(editor.locator("[data-add-module]").getByLabel("Uus programmi punkt")).toBeVisible();
-  await expect(editor.locator("[data-add-module] button")).toHaveText("+ Lisa punkt");
+  await expect(editor.locator("[data-add-module] button")).toHaveText("Lisa punkt +");
   await expect(editor.locator("[data-modules-summary]")).toHaveText("1 punkt"); // a programme counts its points (Dim 24.10 D-6)
   // a programme point's delete asks „Kas kustutan punkti „{title}“?“ (README B2)
   await editor.locator("[data-add-module]").getByLabel("Uus programmi punkt").fill("Lõpuarutelu");

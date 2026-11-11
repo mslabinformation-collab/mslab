@@ -5,6 +5,7 @@ import type { CampaignInput, CourseInput, HeroSlideInput, PostInput, PracticePac
 import { seedSessionStart } from "./seed-dates";
 import { DARK_MOBILE_FOCAL } from "@/domain/site-editor";
 import { TERMS_PAGE_KEY, TERMS_PAGE_TITLE } from "@/domain/course-terms";
+import { JOURNEY_PLACEHOLDER } from "@/domain/trainer-journey";
 
 /**
  * Prototype content that fills the site on day one (spec section 7). Texts come from prototype B (ET + RU)
@@ -493,10 +494,8 @@ export const pageSeeds: { key: string; title: I18n; body: I18n }[] = [
   {
     key: "trainer_journey",
     title: t("Koolitaja teekond", "Путь преподавателя"),
-    body: t(
-      "Siia tuleb Maria lugu: kuidas kulmu- ja ripsmemeistrist sai koolitaja ja mis teda iga päev edasi viib. Maria täiendab.",
-      "Здесь будет история Марии: как мастер бровей и ресниц стала преподавателем и что вдохновляет её каждый день. Мария дополнит.",
-    ),
+    // the note to Maria: the public page hides the block while it holds it (UX pass P1)
+    body: t(JOURNEY_PLACEHOLDER.et, JOURNEY_PLACEHOLDER.ru),
   },
   { key: "privacy", title: t("Privaatsus", "Конфиденциальность"), body: legalPlaceholder },
   { key: "terms", title: t("Õppetingimused", "Условия обучения"), body: legalPlaceholder },

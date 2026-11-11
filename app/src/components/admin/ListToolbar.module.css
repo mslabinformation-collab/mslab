@@ -136,12 +136,12 @@
   gap: 8px;
 }
 
-/* A light row (the prototype's form pills, the second filter): the chosen pill keeps the ink border but is the first-light fill with ink text,
-   so the status row, whose chosen pill is the ink fill, reads as the first filter. */
-.pills[data-tone="light"] a[aria-current="true"] {
-  border-color: var(--ink);
-  background: var(--first);
-  color: var(--ink);
+/* A row's caption („Olek:“, „Õppevorm:“; UX pass A15): a small grey word before its pills, the one way the rows are told apart. */
+.caption {
+  margin-right: 2px;
+  color: var(--muted);
+  font: 600 12px/1.2 var(--font-body);
+  white-space: nowrap;
 }
 
 /* ListEmpty: the two empty texts of a list, centred in its card. The button is the 44 px outline pill of the prototype. */

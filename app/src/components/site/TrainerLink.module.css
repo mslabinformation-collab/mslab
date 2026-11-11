@@ -44,17 +44,19 @@
   background: var(--canvas);
 }
 
+/* UX pass P12: the portrait on the card's own colour; its light backdrop multiplied into it, so no lighter box shows inside the card */
 .photo {
   position: relative;
   aspect-ratio: 4 / 5;
   overflow: hidden;
   border-radius: 20px;
-  background: #e6dfe0;
+  background: var(--canvas);
 }
 
 .image {
   object-fit: cover;
   object-position: 50% 20%;
+  mix-blend-mode: multiply;
 }
 
 .body {
@@ -75,8 +77,8 @@
   font: 500 14px/1.4 var(--font-body);
 }
 
+/* the card's full width (UX pass P12; it stopped at 620 px) */
 .text {
-  max-width: 620px;
   margin: 16px 0 0;
   color: #3a3437;
   font-size: 16px;

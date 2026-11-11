@@ -347,10 +347,11 @@ test.describe("signed in", () => {
     // the status pills count under the search: this one registration is awaiting its prepayment
     await expect(status.getByRole("link")).toHaveText([/^Kõik\s*1$/, /^Ootab ettemaksu\s*1$/, /^Kinnitatud\s*0$/, /^Tühistatud\s*0$/]);
     await expect(forms.getByRole("link")).toHaveText(["Kõik vormid", "E-õpe", "Kontaktõpe"]);
-    await expect(forms).toHaveAttribute("data-tone", "light");
-    // the chosen form pill is the light one (first-light fill, ink border), the chosen status pill the ink one
+    // UX pass A15: one chosen style, the ink fill, in both rows; „Olek:“ and „Õppevorm:“ before them
+    await expect(status.locator("[data-pill-caption]")).toHaveText("Olek:");
+    await expect(forms.locator("[data-pill-caption]")).toHaveText("Õppevorm:");
     const fill = (link: Locator) => link.evaluate((a) => getComputedStyle(a).backgroundColor);
-    expect(await fill(forms.getByRole("link", { name: "Kõik vormid" }))).toBe("rgb(235, 232, 233)");
+    expect(await fill(forms.getByRole("link", { name: "Kõik vormid" }))).toBe("rgb(34, 34, 34)");
     expect(await fill(status.getByRole("link", { name: /^Kõik/ }))).toBe("rgb(34, 34, 34)");
     await status.getByRole("link", { name: /^Kinnitatud/ }).click();
     await expect(page).toHaveURL(new RegExp(`otsi=${tag}.*staatus=kinnitatud|staatus=kinnitatud.*otsi=${tag}`));

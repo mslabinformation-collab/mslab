@@ -997,18 +997,20 @@ test.describe("course editor", () => {
     await page.goto("/admin/koolitused");
     await adminReady(page);
 
-    // the columns of the README: the heading row has "Järjekord", and "Muudetud" is gone; the title has "{tase} · /{slug}", the handle says "lohistatav"
+    // the columns of the README: the heading row has "Järjekord", and "Muudetud" is gone; the title has "{tase} · {valdkond} · /{slug}" (UX pass A5:
+    // the area when it has one), the handle says "lohistatav"
     const head = page.locator("[data-course-head]");
     await expect(head).toContainText("Järjekord");
     await expect(head).not.toContainText("Muudetud");
-    await expect(courseRow(page, c.slug).locator("[data-course-sub]")).toHaveText(new RegExp(`koolitus · /${c.slug}$`));
+    await expect(courseRow(page, c.slug).locator("[data-course-sub]")).toHaveText(new RegExp(`^(Baas|Täiend)koolitus( · [^·]+)? · /${c.slug}$`));
     await expect(handleOf(page, c.title)).toHaveAttribute("aria-roledescription", "lohistatav");
     expect(await noOverflow(page)).toBe(true);
-    // the pills carry their counts, and the two forms add up to the whole
+    // the pills carry their counts, and the two forms add up to the whole; the fourth (UX pass A5) counts the courses with no area
     const counts = await page.locator("[data-list-pills] a").evaluateAll((links) => links.map((a) => Number((a.textContent ?? "").replace(/\D+/g, ""))));
-    expect(counts).toHaveLength(3);
+    expect(counts).toHaveLength(4);
     expect(counts[1] + counts[2]).toBe(counts[0]);
     expect(counts[0]).toBeGreaterThanOrEqual(6);
+    expect(counts[3]).toBeLessThanOrEqual(counts[0]);
 
     // ↑ moves the course one place: stored, read out, the focus stays on the button, and the public catalogue has it
     await page.getByRole("button", { name: `Liiguta üles: ${c.title}` }).click();
@@ -1061,6 +1063,13 @@ test.describe("course editor", () => {
     await expect(page.locator("[data-drag-tool]")).toHaveCount(0);
     await expect(page.locator("[data-order-hint]")).toHaveText("Järjekorda saab muuta vaates „Kõik“.");
     await expect(page.locator("[data-list-pills] a[aria-current=true]")).toContainText("E-õpe");
+    // „Määramata valdkond“ (UX pass A5): as many rows as its count, none naming an area, and the same hint
+    await page.locator("[data-list-pills] a", { hasText: "Määramata valdkond" }).click();
+    await expect(page).toHaveURL(/\/admin\/koolitused\?valdkond=puudub$/);
+    await expect(page.locator("[data-list-pills] a[aria-current=true]")).toContainText("Määramata valdkond");
+    await expect(page.locator("[data-course-row]")).toHaveCount(counts[3]);
+    for (const sub of await page.locator("[data-course-sub]").allTextContents()) expect(sub).toMatch(/^(Baas|Täiend)koolitus · \//);
+    if (counts[3] > 0) await expect(page.locator("[data-order-hint]")).toHaveText("Järjekorda saab muuta vaates „Kõik“.");
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await expect(page.locator("[data-order-hint]")).toHaveCount(0);
@@ -1235,7 +1244,7 @@ test.describe("calendar", () => {
     const row = page.locator("[data-session-row][data-highlight]");
     await expect(row).toContainText(city);
     await expect(row).toContainText(when.shown);
-    await expect(row).toContainText("0 / 5"); // the seats as drawn: the figure and the bar
+    await expect(row).toContainText("5 vaba 5-st"); // the seats as drawn: the words and the bar (UX pass A2: „{vaba} vaba {kohti}-st“)
 
     // it autosaves (README B3): „Algus“ changed and left is stored, no „Salvesta toimumine“; nobody to tell, so no „Muudetud …“
     await expect(edit.getByRole("button", { name: "Salvesta toimumine" })).toHaveCount(0);
@@ -1375,7 +1384,7 @@ test.describe("calendar", () => {
     // the list does not say „ootab ettemaksu“ any more (Dim 25.10: the seats as drawn): 0 of 4 confirmed
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender$/);
-    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4");
+    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("4 vaba 4-st");
     await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
     // the drawer's header says it (Dim 25.10): her registration awaits its prepayment — with no seat hold (as a bank transfer's), it still counts
     await page.goto(`/admin/kalender?id=${id}`);

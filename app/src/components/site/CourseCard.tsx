@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ShownBadge } from "@/domain/badge";
+import { keepNameTogether } from "@/domain/title-breaks";
 import { Icon } from "./Icon";
 import styles from "./CourseCard.module.css";
 
@@ -46,7 +47,7 @@ export function CourseCard({ c, square, sizes = "(max-width: 640px) 100vw, (max-
           <Icon name="up" />
         </span>
       </div>
-      <h3 className={styles.title}>{c.title}</h3>
+      <h3 className={styles.title}>{keepNameTogether(c.title)}</h3>
       <p className={styles.summary}>{c.summary}</p>
       <div className={styles.meta}>
         {c.meta.lead ? (

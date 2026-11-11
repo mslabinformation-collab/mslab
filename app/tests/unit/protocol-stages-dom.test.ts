@@ -101,7 +101,7 @@ test("the certificate's lines (kind 'skills'): their own title, labels and hooks
   expect(container.textContent).toContain("Tühjana kasutatakse „Õpiväljundid“ ridu");
   expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
   const add = container.querySelector("[data-add-skill]")!;
-  expect(add.textContent).toBe("+ Lisa rida");
+  expect(add.textContent).toBe("Lisa rida +");
   await click(add);
   const [first] = fields("data-certificate-skill");
   expect(first.getAttribute("data-certificate-skill")).toBe("0");

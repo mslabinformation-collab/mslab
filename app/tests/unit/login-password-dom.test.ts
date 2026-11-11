@@ -325,3 +325,17 @@ test("the strings of the step in Russian, with a no-break space after the one-le
   await signIn();
   expect(replace).toHaveBeenCalledWith("/ru/konto");
 });
+
+// UX pass 11.11 P22 (the Vaiksed board): the e-mail step says whom the page is for and what happens next, under the heading; the other steps do not
+test("the e-mail step has the one line under „Logi sisse“; the password step has none", async () => {
+  await mount();
+  expect($("[data-login-intro]")?.textContent).toBe("Õpilase konto: saadame su e-postile ühekordse koodi. Konto tekib e-koolituse ostu või registreerimisega.");
+  await act(async () => $<HTMLButtonElement>("[data-login-to-password]")!.click());
+  await settle();
+  expect($("[data-login-intro]")).toBeNull();
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  window.history.replaceState(null, "", "/ru/konto/sisene");
+  await mount("ru");
+  expect($("[data-login-intro]")?.textContent).toBe("Кабинет ученика: мы отправим одноразовый код на ваш e-mail. Кабинет появляется после покупки онлайн-курса или регистрации.");
+});

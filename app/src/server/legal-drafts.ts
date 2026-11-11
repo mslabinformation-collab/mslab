@@ -225,6 +225,6 @@ const SAMPLE_TEXTS = ["titleEt", "titleRu", "bodyEt", "bodyRu"] as const;
  */
 export async function sampleTexts(q: Q, posted: ContractSampleValues): Promise<ContractSampleValues> {
   if (SAMPLE_TEXTS.some((name) => posted[name] !== undefined)) return posted;
-  const { value } = await readLegal(q, "contract_contact");
+  const { value } = await readLegal(q, posted.kind === "ecourse" ? "course_terms" : "contract_contact");
   return { ...posted, titleEt: value.title.et, titleRu: value.title.ru, bodyEt: value.body.et, bodyRu: value.body.ru };
 }

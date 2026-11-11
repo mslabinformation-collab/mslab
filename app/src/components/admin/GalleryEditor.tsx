@@ -197,7 +197,7 @@ function GalleryGrid({ images, onChange, error, hint, errorOf, addLabel = adminE
         after={
           <span className={tiles.add} data-gallery-add="" data-full={full ? "" : undefined} aria-busy={upload.busy || undefined}>
             <UploadPicker upload={upload} multiple name={adminEt.upload.choose} full={full} fullNote={maxNote}>
-              + {addLabel}
+              {addLabel} +
             </UploadPicker>
           </span>
         }

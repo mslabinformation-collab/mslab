@@ -97,7 +97,7 @@ test("'Lisa küsimus' adds a choice question with two options, its text takes th
   expect($('[data-question="0"] [data-option="0"] [data-option-text]')!.hasAttribute("maxlength")).toBe(false);
 });
 
-test("a choice question has 2–6 options: × is off at two, '+ Lisa vastusevariant' is off at six; a new option's field takes the focus", async () => {
+test("a choice question has 2–6 options: × is off at two, 'Lisa vastusevariant +' is off at six; a new option's field takes the focus", async () => {
   await render(draft([choice("q0000001", "Mis?", [["A", true], ["B", false]])]));
   const card = () => $('[data-question="0"]')!;
   const options = () => card().querySelectorAll("[data-option]");

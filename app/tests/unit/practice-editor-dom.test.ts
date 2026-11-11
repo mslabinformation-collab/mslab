@@ -171,7 +171,7 @@ describe("the page (S4-31, S4-32) and the two package cards (the P4 C5 frame, S4
       expect(text(c)).toContain("Iga rida on üks punkt paketi kaardil.");
       const list = c.querySelector(`[data-list-editor="${code}.items"]`)!;
       expect(text(list.querySelector("h3"))).toBe("Sisaldab");
-      expect(button("+ Lisa punkt (või Enter viimasel real)", list)).not.toBeNull();
+      expect(button("Lisa punkt + (või Enter viimasel real)", list)).not.toBeNull();
       expect(points(code)).toEqual(LIVE[code].items.map((i) => i.et));
       // each point's field is named by its row (the leave guard's „Jää siia“, SaveStatus's „Näita“)
       expect(labelOf(field(`${code}.items.1`))).toBe("Punkt 2 (eesti keeles)");

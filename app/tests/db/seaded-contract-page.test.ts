@@ -102,7 +102,9 @@ test("ruling R18: the two contracts' texts have the placeholder chips „+ nimi�
   const chips = (key: string) => [...cardOf(html, key).matchAll(/data-placeholder-chip="([^"]+)"/g)].map((m) => m[1]);
   for (const key of ["course_terms", "contract_contact"]) {
     expect(chips(key), key).toEqual(["nimi", "e-post", "koolitus", "toimumine", "hind", "ettemaks"]);
-    expect(cardOf(html, key)).toContain("Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel.");
+    // UX pass A18: the chips' lead in plain words (once „…kohahoidjaid… looksulgudes…“)
+    expect(cardOf(html, key)).toContain("Nupud „+ nimi“ jne lisavad tekstidesse õpilase andmed.");
+    expect(cardOf(html, key)).not.toMatch(/kohahoidja|looksulg/);
   }
   expect(chips("privacy")).toEqual([]);
   expect(chips("terms")).toEqual([]);

@@ -383,9 +383,9 @@ describe("the fields autosave into their parts' drafts; the bar names them (S4-1
     const c = card("galerii")!;
     expect(text(c.querySelector("[data-gallery-count]"))).toBe("Lohista järjekorra muutmiseks · 3 / 24");
     expect(tiles()).toEqual(["/seed/a.jpg", "/seed/b.jpg", "/seed/c.jpg"]);
-    // the tile's words „+ Lisa“; the field it opens is named „Lisa pilte“ for a screen reader (S4-15 note)
+    // the tile's words „Lisa +“ (UX pass A14: the „+“ after the words); the field it opens is named „Lisa pilte“ for a screen reader (S4-15 note)
     const add = c.querySelector<HTMLInputElement>('[data-gallery-add] input[type="file"]')!;
-    expect(labelOf(add)).toBe("+ Lisa");
+    expect(labelOf(add)).toBe("Lisa +");
     expect(add.getAttribute("aria-label")).toBe("Lisa pilte");
     expect(add.multiple).toBe(true);
     // each tile's description stays (builder notes §5): the course gallery's field and words, as its hidden name and its placeholder

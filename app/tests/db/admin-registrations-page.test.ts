@@ -114,7 +114,7 @@ describe("the toolbar", () => {
     expect(field.getAttribute("value")).toBe("kask");
   });
 
-  test("two rows of pills: the statuses with their counts (Kõik first), then the forms, light and with no count (Kõik vormid first)", async () => {
+  test("two rows of pills: the statuses with their counts (Kõik first), then the forms with no count (Kõik vormid first); „Olek:“ and „Õppevorm:“ before them", async () => {
     const doc = await open();
     expect(pills(doc, "Staatus")).toEqual([
       { text: "Kõik7", href: "/admin/registreerimised", current: true },
@@ -127,10 +127,10 @@ describe("the toolbar", () => {
       { text: "E-õpe", href: "/admin/registreerimised?vorm=e", current: false },
       { text: "Kontaktõpe", href: "/admin/registreerimised?vorm=k", current: false },
     ]);
-    // the form row is the light one (the prototype draws its chosen pill light); the status row is the ink one
-    const tone = (label: string) => [...doc.querySelectorAll("nav[data-list-pill-row]")].find((n) => n.getAttribute("aria-label") === label)!.getAttribute("data-tone");
-    expect(tone("Õppevorm")).toBe("light");
-    expect(tone("Staatus")).toBeNull();
+    // UX pass A15: one chosen style in both rows (the form row's light tone is gone); the small words „Olek:“ and „Õppevorm:“ tell them apart
+    const row = (label: string) => [...doc.querySelectorAll("nav[data-list-pill-row]")].find((n) => n.getAttribute("aria-label") === label)!;
+    expect([row("Staatus"), row("Õppevorm")].map((n) => n.getAttribute("data-tone"))).toEqual([null, null]);
+    expect([row("Staatus"), row("Õppevorm")].map((n) => n.querySelector("[data-pill-caption]")?.textContent)).toEqual(["Olek:", "Õppevorm:"]);
     expect(doc.querySelectorAll('nav[aria-label="Õppevorm"] a > span')).toHaveLength(0); // no count bubble on a form pill
   });
 
@@ -356,7 +356,7 @@ describe("the drawer (Task 5: README A2 drawer 1–3)", () => {
     expect(said(card.querySelector("[data-money-total]"))).toBe("/ 220 € laekunud");
     expect(said(card.querySelector("[data-money-choice]"))).toBe("Valitud: ettemaks 50%");
     expect(said(card.querySelector("[data-money-seat]"))).toBe("Koht kinnitub 110 € juures · vabu kohti 3 / 4");
-    expect(said(card.querySelector("[data-add-payment]"))).toBe("Lisa laekumine");
+    expect(said(card.querySelector("[data-add-payment]"))).toBe("Lisa laekumine +");
     // no session: S3-d's line (an individual one is measured against the individual price)
     expect(said((await drawerOf(ids.ines)).querySelector("[data-money-seat]"))).toBe("Registreering kinnitub 150 € juures");
     expect(said((await drawerOf(ids.eda)).querySelector("[data-money-seat]"))).toBe("Registreering kinnitub 95 € juures");

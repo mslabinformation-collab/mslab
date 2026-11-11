@@ -1,5 +1,5 @@
 /* Course page: prototype B detail() — .breadcrumb, .course-detail (two columns, sticky image), .detail-info,
-   .detail-bottom (two columns, h2 32px, .check-list, .notice) — in Jost / Manrope (G2). */
+   .detail-bottom (two columns, h2 32px, the check lists (IncludesList), .notice) — in Jost / Manrope (G2). */
 
 .crumb {
   padding: 28px 0 16px;
@@ -179,28 +179,6 @@
 
 .prose p:last-child {
   margin-bottom: 0;
-}
-
-/* B .check-list */
-.checkList {
-  display: grid;
-  gap: 16px;
-  margin: 0;
-  padding: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  list-style: none;
-}
-
-.checkList li {
-  display: flex;
-  gap: 14px;
-}
-
-.checkList svg {
-  flex: none;
-  margin-top: 3px;
-  color: var(--warn);
 }
 
 /* B .notice */

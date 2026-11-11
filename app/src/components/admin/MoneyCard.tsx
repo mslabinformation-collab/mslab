@@ -279,7 +279,7 @@ export function MoneyCard({
       {!cancelled &&
         (!opened ? (
           <button ref={button} type="button" className={`${ui.btn} ${styles.add}`} onClick={open} data-add-payment="">
-            {m.add}
+            {m.add} +
           </button>
         ) : (
           <form ref={panel} className={styles.panel} onSubmit={send} noValidate aria-labelledby={`${uid}-panel`} data-add-payment-panel="">

@@ -299,11 +299,10 @@ describe("a registration's card", () => {
 });
 
 describe("the folded rows", () => {
-  test("Ava ligipääs e-koolitusele, Maksed, Lepingud, Päringud, Tagasiside — in that order, closed, each with its summary", async () => {
+  test("Maksed, Lepingud, Päringud, Tagasiside — in that order, closed, each with its summary (the access form is a button of „Koolitused“ now)", async () => {
     await draw(detail());
     const rows = $$("[data-fold]");
     expect(rows.map((r) => [text($("summary > span > span:first-child", r)), text($("[data-fold-summary]", r))])).toEqual([
-      ["Ava ligipääs e-koolitusele", "vali koolitus"],
       ["Maksed", "0"],
       ["Lepingud", "0"],
       ["Päringud", "0"],
@@ -326,8 +325,17 @@ describe("the folded rows", () => {
     expect(summary("Lepingud")).toBe("0");
   });
 
-  test("'Ava ligipääs e-koolitusele' holds the form: the select says '{course} · mustand · avatud kuni {date}'", async () => {
+  // UX pass 11.11 A16 (the Vaiksed board): „Ava ligipääs e-koolitusele“ looked like the info rows around it; it is a clear button „Ava e-koolitus…“ at
+  // the end of the „Koolitused“ block, which opens the same form in place
+  test("„Ava e-koolitus…“: a button at the end of „Koolitused“, closed; it holds the form, the select saying '{course} · mustand · avatud kuni {date}'", async () => {
     await draw(detail({ access: [access({ courseId: 100, title: { et: "Kursus 100" } })] }));
+    const grant = $<HTMLDetailsElement>("[data-client-courses] [data-grant-open]")!;
+    expect(grant.open).toBe(false);
+    expect(grant).toBe($("[data-client-courses]")!.lastElementChild);
+    const button = $("summary", grant)!;
+    expect(text(button)).toBe("Ava e-koolitus…");
+    expect(button.className).toMatch(/btn/);
+    expect($("[data-grant-form]")!.closest("[data-grant-open]")).toBe(grant);
     const options = $$("[data-grant-form] option").map((o) => text(o));
     expect(options).toEqual(["Kursus 100 · avatud kuni 17.03.2027", "Ripsmete e-koolitus · mustand"]);
     // the first she cannot open now is the one picked
@@ -336,10 +344,9 @@ describe("the folded rows", () => {
     expect($("[data-grant-form] h4")).toBeNull();
   });
 
-  test("no e-course to give: the row says so in place of the form, with no summary", async () => {
+  test("no e-course to give: the button opens the words that say so in place of the form", async () => {
     await draw(detail(), []);
-    const row = $$("[data-fold]")[0];
-    expect($("[data-fold-summary]", row)).toBeNull();
+    const row = $("[data-grant-open]")!;
     expect(text($(".notice, [class*=notice]", row))).toContain("E-koolitusi pole.");
     expect($("[data-grant-form]")).toBeNull();
   });

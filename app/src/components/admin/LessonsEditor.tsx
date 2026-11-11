@@ -35,7 +35,7 @@ import styles from "./LessonsEditor.module.css";
 //   edge, as before) and › to its drawer (?oppetund=<id>, LessonDrawer.tsx); then „Lisa õppetund“;
 // - „Kustuta moodul“ („Kustuta punkt“ for a programme point, Dim 24.10 D-5) only where it can go (AdminModule.deletable; else „Moodulit saab
 //   kustutada, kui selles pole õppetunde.“ in its place, D-7): a ConfirmPanel in its place, „Kas kustutan punkti „{title}“?“ for a programme point,
-//   „Kas kustutan mooduli „{title}“?“ for a module — with the name as it is in its field; then „+ Lisa moodul“ / „+ Lisa punkt“.
+//   „Kas kustutan mooduli „{title}“?“ for a module — with the name as it is in its field; then „Lisa moodul +“ / „Lisa punkt +“.
 // The adds, moves and deletes are server actions whose answer brings the page's new read (the course editor takes it without starting its cards
 // over, course/SavedCourse.tsx). Inside the editor a name's autosave is one of the editor's (course/OutlineTexts.ts). While an action is on its way
 // its button is aria-disabled (a disabled button would drop the focus) and a second press does nothing.
@@ -541,7 +541,7 @@ function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: num
   );
 }
 
-/** „+ Lisa moodul“ / „+ Lisa punkt“ at the end (the frame's pill; the „+“ in the text, as the list's „Lisa koolitus +“): a name and one button; cleared once it is there. */
+/** „Lisa moodul +“ / „Lisa punkt +“ at the end (the frame's pill; the „+“ after the words, as every add button's, UX pass A14): a name and one button; cleared once it is there. */
 function AddModuleForm({ courseId, online, field }: { courseId: number; online: boolean; field: React.RefObject<HTMLInputElement | null> }) {
   const uid = useId();
   const [value, setValue] = useState("");
@@ -586,7 +586,7 @@ function AddModuleForm({ courseId, online, field }: { courseId: number; online: 
         />
       </div>
       <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={pending || undefined}>
-        {pending ? adminEt.common.saving : `+ ${online ? t.addModule : t.addItem}`}
+        {pending ? adminEt.common.saving : `${online ? t.addModule : t.addItem} +`}
       </button>
       <p id={`${uid}-msg`} role="status" className={`${ui.error} ${styles.addMsg}`}>
         {error ?? ""}

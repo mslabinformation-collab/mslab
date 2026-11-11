@@ -215,7 +215,7 @@ export function ProtocolStagesEditor({
         onClick={add}
         {...(skills ? { "data-add-skill": "" } : { "data-add-stage": "" })}
       >
-        + {words.add}
+        {words.add} +
       </button>
       {full && <p className={ui.hint}>{words.full}</p>}
     </div>

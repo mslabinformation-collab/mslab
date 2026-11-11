@@ -204,10 +204,7 @@
   gap: 10px;
 }
 
-.add > button {
-  min-height: 48px;
-}
-
+/* UX pass A14: the add button is 44 px as every add button (ui.smallBtn), not 48; the row keeps it at the field's foot */
 .addField {
   flex: 1 1 240px;
   min-width: 0;

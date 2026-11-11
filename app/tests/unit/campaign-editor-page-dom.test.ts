@@ -158,9 +158,9 @@ describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe("/api/admin/eelvaade?tee=%2F%3Friba%3Dhupikaken");
   });
 
-  it("„Turundus“ over the H1 „Hüpikaken“, no lead; „Vaata lehel ↗“ opens the home page; no „Salvesta“, no bar while nothing waits; nowhere the word „kampaania“", async () => {
+  it("„Koduleht ja uudiskiri“ (the sidebar group's name, UX pass A20) over the H1 „Hüpikaken“, no lead; „Vaata lehel ↗“ opens the home page; no „Salvesta“, no bar while nothing waits; nowhere the word „kampaania“", async () => {
     await show();
-    expect(text($("[data-site-eyebrow]"))).toBe("Turundus");
+    expect(text($("[data-site-eyebrow]"))).toBe("Koduleht ja uudiskiri");
     expect(text($("h1"))).toBe("Hüpikaken");
     expect($("[data-site-lead]")).toBeNull();
     expect($<HTMLAnchorElement>("[data-site-view]")?.getAttribute("href")).toBe("/");

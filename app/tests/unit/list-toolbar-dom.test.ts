@@ -367,32 +367,40 @@ describe("ListToolbar: pill rows and the count line", () => {
     expect($("a")!.textContent).toBe("Viga0");
   });
 
-  it("a light row (tone: „light“, the prototype's form pills) says so on its nav, carries no count when the page gives none; the first row does not", async () => {
+  // UX pass 11.11 A15 (the Vaiksed board): two rows drew their chosen pill two ways (the form row's „light“ tone is gone); a row may have a small
+  // caption before its pills („Õppevorm:“), the eye's name of the group — the nav keeps its own accessible name
+  it("a second row: its caption before the pills, no count when the page gives none; one chosen style in every row", async () => {
     const light: NonNullable<Props["pillRows"]>[number] = {
       label: "Õppevorm",
-      tone: "light",
+      caption: "Õppevorm:",
       pills: [
         { href: "/admin/registreerimised", label: "Kõik vormid", current: false },
         { href: "/admin/registreerimised?vorm=e", label: "E-õpe", current: false },
         { href: "/admin/registreerimised?vorm=k", label: "Kontaktõpe", current: true },
       ],
     };
-    await show("/admin/registreerimised?staatus=ootab&vorm=k", { pillRows: [status, light] });
+    await show("/admin/registreerimised?staatus=ootab&vorm=k", { pillRows: [{ ...status, caption: "Olek:" }, light] });
     const navs = Array.from(container.querySelectorAll("nav"));
-    expect(navs.map((n) => n.getAttribute("data-tone"))).toEqual([null, "light"]);
+    expect(navs.map((n) => n.getAttribute("data-tone"))).toEqual([null, null]);
+    expect(navs.map((n) => n.getAttribute("aria-label"))).toEqual(["Staatus", "Õppevorm"]);
+    // the caption first in its row, hidden from a screen reader (the nav says it), and no pill
+    const caps = navs.map((n) => n.firstElementChild!);
+    expect(caps.map((c) => [c.textContent, c.getAttribute("aria-hidden"), c.hasAttribute("data-pill-caption")])).toEqual([
+      ["Olek:", "true", true],
+      ["Õppevorm:", "true", true],
+    ]);
     expect(rowLinks(navs[1]).map((a) => a.textContent)).toEqual(["Kõik vormid", "E-õpe", "Kontaktõpe"]);
     expect(navs[1].querySelectorAll("a > span")).toHaveLength(0); // no bubbles
     expect(rowLinks(navs[1]).map((a) => a.getAttribute("aria-current"))).toEqual([null, null, "true"]);
   });
 
-  it("the stylesheet draws the chosen pill of a light row as the first-light fill with the ink border, and leaves the first row's ink fill alone", () => {
+  it("the stylesheet: no second chosen style (the chosen pill is ui .pill's ink fill in every row); the caption small and grey", () => {
     const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    const light = /\.pills\[data-tone="light"\] a\[aria-current="true"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(light).toMatch(/border-color:\s*var\(--ink\);/);
-    expect(light).toMatch(/background:\s*var\(--first\);/);
-    expect(light).toMatch(/color:\s*var\(--ink\);/);
-    // (the ink fill of a chosen pill is ui .pill's own: nothing here touches a row without the tone)
+    expect(css).not.toMatch(/data-tone/);
     expect(css).not.toMatch(/\.pills a\[aria-current/);
+    const caption = /\.caption \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(caption).toMatch(/color:\s*var\(--muted\);/);
+    expect(caption).toMatch(/font:\s*600 12px/);
   });
 
   it("there is no row without pills, and no nav without rows", async () => {

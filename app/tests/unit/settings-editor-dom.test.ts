@@ -126,7 +126,7 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
       ["Valdkonnad", "#valdkonnad"],
       ["Maksmine", "#maksmine"],
       ["Tunnistus", "#tunnistus"],
-      ["Lepingud ja tingimused", "#lepingud"],
+      ["Lepingud", "#lepingud"],
       ["Halduse ligipääs", "#ligipaas"],
     ]);
     expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "uudiskiri", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
@@ -209,11 +209,11 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect(text(document.querySelector('#lepingud [data-legal-editor="course_terms"] [data-legal-publish]'))).toBe("Avalda uus leping");
   });
 
-  test("the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while texts wait for their publish (P-11, drawn „1 avaldamata“), and follows the typing", async () => {
+  test("the map says „{n} avaldamata“ beside „Lepingud“ (UX pass A19: once „Lepingud ja tingimused“) while texts wait for their publish (P-11, drawn „1 avaldamata“), and follows the typing", async () => {
     await show();
     const status = () => text($('nav a[href="#lepingud"] [data-section-status]'));
     expect(status()).toBe("1 avaldamata");
-    expect($$<HTMLOptionElement>("[data-section-select] option").find((o) => o.value === "lepingud")!.textContent).toBe("Lepingud ja tingimused · 1 avaldamata");
+    expect($$<HTMLOptionElement>("[data-section-select] option").find((o) => o.value === "lepingud")!.textContent).toBe("Lepingud · 1 avaldamata");
     await act(async () => {
       const body = $<HTMLTextAreaElement>('[data-i18n="privacy.body"]')!;
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(body, "Uus privaatsustekst.");

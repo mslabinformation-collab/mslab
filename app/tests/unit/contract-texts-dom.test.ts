@@ -407,6 +407,16 @@ describe("Kontaktkoolituse leping: „Näidisleping (PDF)“", () => {
     expect(Array.from(form.querySelectorAll("button")).map(words)).toEqual(["Näidisleping (PDF)", "Näidisleping vene keeles (PDF)"]);
     expect(card("privacy").querySelector("[data-contract-sample-form]")).toBeNull();
   });
+
+  // UX pass 11.11 A18 (the Vaiksed board): the e-course contract has its sample too; each form says which contract it is (`kind`)
+  test("both contracts have it, each posting its kind; the pages have none", async () => {
+    await show();
+    const kind = (key: LegalKey) => card(key).querySelector<HTMLInputElement>('[data-contract-sample-form] input[name="kind"]')?.value;
+    expect([kind("contract_contact"), kind("course_terms")]).toEqual(["contact", "ecourse"]);
+    // (the fixture's e-course contract has a Russian text: its Russian sample too)
+    expect(Array.from(card("course_terms").querySelectorAll("[data-contract-sample-form] button")).map(words)).toEqual(["Näidisleping (PDF)", "Näidisleping vene keeles (PDF)"]);
+    expect(card("terms").querySelector("[data-contract-sample-form]")).toBeNull();
+  });
 });
 
 describe("the phone (Part 4: „Pikk tekst avaneb täisekraanil.“)", () => {

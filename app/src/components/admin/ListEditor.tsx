@@ -42,7 +42,8 @@ type Props = {
    * S4-33); Enter in any other row does nothing new. Off (the course's lists): Enter does what the field does.
    */
   enterAdds?: boolean;
-  /** The add button's words after its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33); without it, „Lisa rida“. */
+  /** The add button's words before its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33: an aside in brackets comes after the „+“); without
+   * it, „Lisa rida“. UX pass A14: every add button reads „Lisa … +“. */
   addLabel?: string;
   /**
    * Each row's field is named `<name>.<index>` (data-i18n, from 0): the site editors find a row's field by it for the leave guard's „Jää siia“ and
@@ -53,6 +54,12 @@ type Props = {
 
 /** Where the focus goes after the next render: a row's field (by its place after an add or a removal, by its key after an undo), or "Lisa rida". */
 type Focus = { index: number } | { key: string } | "add" | null;
+
+/** „Lisa rida +“; „Lisa punkt + (või Enter viimasel real)“: the „+“ after the words, an aside in brackets after it (UX pass A14). */
+function addWords(label: string): string {
+  const m = /^(.*?)\s*(\(.*\))$/.exec(label);
+  return m ? `${m[1]} + ${m[2]}` : `${label} +`;
+}
 
 /**
  * An ordered list of texts in two languages (outcomes, „Koolitus sisaldab“, Praktika's items; README B2): each row has the handle „⋮⋮“ and ↑ / ↓
@@ -192,7 +199,7 @@ export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpd
         </p>
       )}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`} onClick={add}>
-        + {addLabel ?? t.add}
+        {addWords(addLabel ?? t.add)}
       </button>
     </div>
   );

@@ -395,6 +395,29 @@
   }
 }
 
+/* „Ava e-koolitus…“ at the end of „Koolitused“ (UX pass A16): a 44 px outline button that opens the access form under it */
+.grant {
+  min-width: 0;
+}
+
+.grantButton {
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+}
+
+.grantButton::-webkit-details-marker {
+  display: none;
+}
+
+.grant[open] > .grantButton {
+  border-color: var(--ink);
+}
+
+.grantBody {
+  margin-top: 12px;
+}
+
 /* the folded rows at the end of the drawer: a list under a rule */
 .folds {
   min-width: 0;

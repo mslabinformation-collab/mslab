@@ -383,6 +383,9 @@ export const adminEt = {
     // the form pills (A2: „Kõik vormid“ / „E-õpe“ / „Kontaktõpe“) and the status pills („Kõik“ first), each with its count
     type: { all: "Kõik vormid", e: "E-õpe", k: "Kontaktõpe" },
     statusLabel: "Staatus",
+    // UX pass A15: the small words before the two pill rows (the rows' names stay statusLabel and typeLabel)
+    statusCaption: "Olek:",
+    typeCaption: "Õppevorm:",
     statusAll: "Kõik",
     status: { awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" },
     // the toolbar (README A2, B7): the search across name, e-mail and phone, and the scope select's „all“ option
@@ -517,7 +520,7 @@ export const adminEt = {
     eyebrow: "Montonio ja raamatupidamine",
     heading: "Maksed ja arved",
     title: "Maksed",
-    lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.",
+    lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures.",
     // the tabs „Maksed“ | „Arved“ (README A6; each its own page)
     tabs: { payments: "Maksed", invoices: "Arved" },
     // the toolbar's search (piece 2 texts S3-m): name, e-mail and Montonio id
@@ -865,7 +868,8 @@ export const adminEt = {
       lead: "Õpilane kinnitab registreerimisel selle lepingu teksti. Kinnitatud leping jääb selliseks, nagu see kinnitati: hilisem muudatus puudutab ainult uusi lepinguid. Kuni siia teksti pole kirjutatud, näeb õpilane lepinguna lehe „Õppetingimused“ teksti.",
       contact: "Kontaktkoolituse leping",
       // the placeholders (domain/contract.ts PLACEHOLDERS): the chips' lead, and what fills each (the chip's title; piece3-texts §3, ADM:761-768)
-      placeholders: "Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel. Tundmatu sõna looksulgudes jääb tekstis alles.",
+      // UX pass A18: in plain words (it said „kohahoidjaid“ and „looksulgudes“)
+      placeholders: "Nupud „+ nimi“ jne lisavad tekstidesse õpilase andmed.",
       placeholderMeaning: {
         nimi: "õpilase nimi",
         "e-post": "õpilase e-posti aadress",
@@ -887,6 +891,9 @@ export const adminEt = {
       email: "naidis@example.test",
       course: "Näidiskoolitus",
       courseRu: "Пример курса",
+      // the e-course contract's sample (UX pass A18): a made-up e-course, bought whole, with no session
+      ecourse: "Näidis-e-koolitus",
+      ecourseRu: "Пример онлайн-курса",
       city: "Pärnu",
       title: "(lepingu pealkiri)",
       body: "(lepingu tekst)",
@@ -1381,9 +1388,8 @@ export const adminEt = {
       noContracts: "Lepinguid veel pole.",
     },
     grant: {
-      // the folded row at the end of the drawer (README A5, Part 2 prototype): „Ava ligipääs e-koolitusele“ and its one-line summary
-      fold: "Ava ligipääs e-koolitusele",
-      foldSummary: "vali koolitus",
+      // the button at the end of the drawer's „Koolitused“ that opens the form (UX pass A16; once the folded row „Ava ligipääs e-koolitusele“)
+      open: "Ava e-koolitus…",
       title: "Ava ligipääs",
       course: "E-koolitus",
       // the course select's lines: „{course} · mustand · avatud kuni {date}“ (README A5)
@@ -1724,8 +1730,10 @@ export const adminEt = {
     title: "Koolitused",
     lead: "Järjekord on sama mis avalikul lehel. Lohista ⋮⋮ või kasuta nooli.",
     add: "Lisa koolitus",
-    typeLabel: "Õppevorm",
-    filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe" },
+    // noArea (UX pass A5): the courses with no „Valdkond“ yet
+    filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe", noArea: "Määramata valdkond" },
+    // the pills' row (once „Õppevorm“: the fourth pill is not a form)
+    filterLabel: "Vaade",
     type: { e_learning: "E-õpe", contact: "Kontaktõpe" },
     level: { basic: "Baaskoolitus", advanced: "Täiendkoolitus" },
     col: { order: "Järjekord", course: "Koolitus", type: "Õppevorm", price: "Hind", badge: "Märgis", status: "Staatus" },
@@ -2534,7 +2542,8 @@ export const adminEt = {
   // „Pealkiri“, „Tekst“, „Pilt“, „Eelvaade“ and its note. The card's name „Pakkumine“ (S4-27) is siteChanges.popup.offer, the bar's labels S4-30.
   // The three-way choice, the campaign offer's fields, the old lead and the rules list went with the campaign popup (§4).
   campaign: {
-    eyebrow: "Turundus",
+    // UX pass 11.11 A20: the sidebar group's name (nav.groups.site), not „Turundus“
+    eyebrow: "Koduleht ja uudiskiri",
     title: "Hüpikaken",
     shown: "Lehel näidatakse",
     // S4-25: under the switch, in place of the old lead
@@ -2562,7 +2571,7 @@ export const adminEt = {
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    sections: { contact: "Kontakt", newsletter: "Uudiskiri", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
+    sections: { contact: "Kontakt", newsletter: "Uudiskiri", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",

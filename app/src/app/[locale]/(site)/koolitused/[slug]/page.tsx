@@ -8,7 +8,6 @@ import { CourseSummary, type SummaryItem } from "@/components/site/CourseSummary
 import { ELearningBuy } from "@/components/site/ELearningBuy";
 import { FavouriteButton } from "@/components/site/FavouriteButton";
 import { Gallery } from "@/components/site/Gallery";
-import { Icon } from "@/components/site/Icon";
 import { IncludesList } from "@/components/site/IncludesList";
 import { ModuleList } from "@/components/site/ModuleList";
 import { PreviewBar } from "@/components/site/PreviewBar";
@@ -23,12 +22,13 @@ import { getCourseBySlug, getPage, listPublishedCourses, listUpcomingSessions } 
 import { bookableCities, paragraphs } from "@/domain/catalogue";
 import { contractCourseName } from "@/domain/contract";
 import { priceOptions } from "@/domain/course";
-import { firstParagraph, nextSessionByCourse } from "@/domain/home";
+import { firstParagraph, nextSessionByCourse, withoutRole } from "@/domain/home";
 import { formatEUR } from "@/domain/money";
 import { shownBadge } from "@/domain/badge";
 import { recommend } from "@/domain/recommend";
 import { registrationPrice } from "@/domain/registration";
 import { seatState, seatsLeft } from "@/domain/sessions";
+import { keepNameTogether } from "@/domain/title-breaks";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
@@ -120,7 +120,8 @@ export default async function CoursePage({ params }: Props) {
   const trainer: TrainerInfo = {
     name: trainerName,
     role: pick(t.role, locale),
-    text: firstParagraph(pick(bio?.body, locale)),
+    // (UX pass P12: without the bio's opening when it repeats the role)
+    text: withoutRole(firstParagraph(pick(bio?.body, locale)), pick(t.role, locale)),
     portrait: mediaUrl(t.portraitKey),
     avatar: mediaUrl(t.contactPhotoKey),
     avatarCrop: t.contactPhotoCrop,
@@ -243,7 +244,7 @@ export default async function CoursePage({ params }: Props) {
               <span className={styles.tag}>{course.level === "basic" ? c.levelBasic : c.levelAdvanced}</span>
               <span className={`${styles.tag} ${styles.tagOutline}`}>{course.language}</span>
             </div>
-            <h1 className={styles.title}>{title}</h1>
+            <h1 className={styles.title}>{keepNameTogether(title)}</h1>
             <p className={styles.summary}>{pick(course.summary, locale)}</p>
             <div className={styles.actions}>
               <FavouriteButton slug={course.slug} t={{ add: c.favourite, added: c.favourited, remove: c.unfavourite, failed: c.favouriteFailed }} />
@@ -286,14 +287,8 @@ export default async function CoursePage({ params }: Props) {
               {outcomes.length > 0 && (
                 <div className={styles.block}>
                   <h2 className={styles.h2}>{c.outcomesTitle}</h2>
-                  <ul className={styles.checkList} data-outcomes="">
-                    {outcomes.map((x) => (
-                      <li key={x}>
-                        <Icon name="check" size={16} />
-                        {x}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* UX pass P15: the same round tick as „Koolitus sisaldab“ */}
+                  <IncludesList items={outcomes} name="outcomes" />
                 </div>
               )}
             </div>

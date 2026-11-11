@@ -178,7 +178,7 @@ export function AssessmentStage({
             }}
             data-add-note=""
           >
-            {s.addNote}
+            {s.addNote} +
           </button>
         )
       )}

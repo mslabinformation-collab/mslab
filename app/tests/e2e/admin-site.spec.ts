@@ -111,7 +111,7 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     // „Sisaldab“: Enter on the last point adds one and puts the cursor in it (R-h); its Russian text too
     const items = card.locator(`[data-list-editor="${code}.items"]`);
     await expect(items.getByRole("heading", { level: 3 })).toHaveText("Sisaldab");
-    await expect(items.getByRole("button", { name: "+ Lisa punkt (või Enter viimasel real)", exact: true })).toBeVisible();
+    await expect(items.getByRole("button", { name: "Lisa punkt + (või Enter viimasel real)", exact: true })).toBeVisible();
     const rows = items.locator("[data-row]");
     const count = await rows.count();
     await rows.nth(count - 1).locator("[data-lang-field]").click();
@@ -307,11 +307,11 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);
 
-    // „+ Lisa slaid“: a new slide opens at the end with the cursor in its title; the list goes into the draft at once
+    // „Lisa slaid +“: a new slide opens at the end with the cursor in its title; the list goes into the draft at once
     const slides = page.locator("[data-slide]");
     await expect(slides).toHaveCount(5);
     let saved = homeSaved(page, "slides");
-    await page.getByRole("button", { name: "+ Lisa slaid", exact: true }).click();
+    await page.getByRole("button", { name: "Lisa slaid +", exact: true }).click();
     await saved;
     await expect(slides).toHaveCount(6);
     const added = slides.nth(5);
@@ -500,9 +500,9 @@ test.describe("home page, phone: the FAQ (C1 Avaleht on the draft layer)", () =>
     await expect(faq.getByRole("heading", { level: 2 })).toHaveText("KKK");
     const rows = faq.locator("[data-faq-row]");
     const count = await rows.count();
-    // „+ Lisa küsimus“: a row at the end with its answer open and the cursor in its question; saved into the draft at once
+    // „Lisa küsimus +“: a row at the end with its answer open and the cursor in its question; saved into the draft at once
     let saved = homeSaved(page, "faq");
-    await faq.getByRole("button", { name: "+ Lisa küsimus", exact: true }).click();
+    await faq.getByRole("button", { name: "Lisa küsimus +", exact: true }).click();
     await saved;
     await expect(rows).toHaveCount(count + 1);
     const n = count + 1;
@@ -597,7 +597,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     // „Galerii“: the counter and „+ Lisa“; the first tile dragged onto the second's place swaps them, saved at once into the gallery's draft
     const gallery = page.locator("#galerii");
     await expect(gallery.locator("[data-gallery-count]")).toHaveText(`Lohista järjekorra muutmiseks · ${works.length} / 24`);
-    await expect(gallery.locator("[data-gallery-add] label")).toHaveText("+ Lisa");
+    await expect(gallery.locator("[data-gallery-add] label")).toHaveText("Lisa +");
     const tiles = gallery.locator("[data-gallery-item]");
     await expect(tiles).toHaveCount(works.length);
     const [first, second] = [await tiles.nth(0).getAttribute("data-gallery-item"), await tiles.nth(1).getAttribute("data-gallery-item")];
@@ -893,7 +893,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await signIn(page, context, visitorIp);
     await page.goto("/admin/kampaania");
     await adminReady(page);
-    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Turundus");
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht ja uudiskiri");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hüpikaken");
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);
@@ -1149,7 +1149,7 @@ test.describe("settings", () => {
     await expect(select).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Jaotised" })).toBeHidden();
     await expect(select.locator("[data-section-face]")).toHaveText(/^Jaotised · Kontakt\s*▾$/);
-    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
+    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud", "Halduse ligipääs"]);
     const box = (await select.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x).toBeGreaterThanOrEqual(16);

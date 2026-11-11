@@ -329,6 +329,18 @@ test("blog carousel arrows keep keyboard focus at the ends (aria-disabled, not d
 });
 
 test.describe("home content from the database", () => {
+  // UX pass 11.11 P21 (the Vaiksed board): a course card was a whole phone screen (~490 px); its photo is 200 px now
+  test("on a phone the course cards are lower: a 200 px photo, each card well under a screen (P21)", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "the phone's cards");
+    await page.goto("/");
+    const cards = page.locator("[data-course-card]");
+    await expect(cards).toHaveCount(4);
+    for (const card of await cards.all()) {
+      expect(Math.round((await card.locator("[data-card-photo]").boundingBox())!.height)).toBe(200);
+      expect((await card.boundingBox())!.height).toBeLessThan(400);
+    }
+  });
+
   test("upcoming strip, course cards with badges, practice, blog and FAQ", async ({ page }) => {
     await page.goto("/");
     // Upcoming strip: next three sessions that are not cancelled (contact courses only).

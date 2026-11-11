@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { courseRowOf, courseStatus, priceLines } from "@/components/admin/course-rows";
+import { coursePills, courseRowOf, courseStatus, coursesIn, courseView, priceLines } from "@/components/admin/course-rows";
 import { reorder } from "@/components/admin/reorder";
 import type { CourseListRow } from "@/db/queries/admin";
 
@@ -13,6 +13,7 @@ const course = (over: Partial<CourseListRow> = {}): CourseListRow =>
     slug: "kulmude-lami",
     type: "contact",
     level: "advanced",
+    areaId: null,
     title: { et: "Kulmude LAMI", ru: "Ламинирование бровей" },
     summary: { et: "" },
     body: { et: "" },
@@ -112,6 +113,47 @@ describe("courseRowOf", () => {
   it("the badge as the card shows it (the Estonian label with its colours); none without a label", () => {
     expect(courseRowOf(course({ badge: { label: { et: "Uus", ru: "Новинка" }, bg: "#ddd4dc", fg: "#000000" } })).badge).toEqual({ label: "Uus", bg: "#ddd4dc", fg: "#000000" });
     expect(courseRowOf(course({ badge: null })).badge).toBeNull();
+  });
+
+  // UX pass 11.11 A5 (the Vaiksed board): the line under the title names the course's area, „Baaskoolitus · Kulmukoolitused · /slug“
+  it("the area's Estonian name between the level and the address; a course without an area has none there", () => {
+    expect(courseRowOf(course({ areaId: 3 }), "Kulmukoolitused").sub).toBe("Täiendkoolitus · Kulmukoolitused · /kulmude-lami");
+    expect(courseRowOf(course(), null).sub).toBe("Täiendkoolitus · /kulmude-lami");
+  });
+});
+
+// UX pass 11.11 A5 (the Vaiksed board): the pills Kõik / E-õpe / Kontaktõpe get a fourth, „Määramata valdkond“ (?valdkond=puudub), the courses
+// without an area, so Maria finds the ones still to sort; one view at a time, like the three before it
+describe("courseView, coursesIn and coursePills: the list's views", () => {
+  const all = [
+    course({ id: 1, type: "contact", areaId: 3 }),
+    course({ id: 2, type: "e_learning", areaId: null }),
+    course({ id: 3, type: "contact", areaId: null }),
+    course({ id: 4, type: "e_learning", areaId: 4 }),
+  ];
+
+  it("the address: ?vorm=e, ?vorm=k, ?valdkond=puudub; anything else is Kõik", () => {
+    expect(courseView({})).toBeNull();
+    expect(courseView({ vorm: "e" })).toBe("e");
+    expect(courseView({ vorm: "k" })).toBe("k");
+    expect(courseView({ valdkond: "puudub" })).toBe("puudub");
+    expect(courseView({ vorm: "x", valdkond: "kulmud" })).toBeNull();
+  });
+
+  it("„Määramata valdkond“ keeps the courses without an area, of both forms, in their order", () => {
+    expect(coursesIn(all, "puudub").map((c) => c.id)).toEqual([2, 3]);
+    expect(coursesIn(all, "e").map((c) => c.id)).toEqual([2, 4]);
+    expect(coursesIn(all, null).map((c) => c.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("four pills with their counts and addresses, the current one marked", () => {
+    expect(coursePills(all, "puudub")).toEqual([
+      { href: "/admin/koolitused", label: "Kõik", count: 4, current: false },
+      { href: "/admin/koolitused?vorm=e", label: "E-õpe", count: 2, current: false },
+      { href: "/admin/koolitused?vorm=k", label: "Kontaktõpe", count: 2, current: false },
+      { href: "/admin/koolitused?valdkond=puudub", label: "Määramata valdkond", count: 2, current: true },
+    ]);
+    expect(coursePills(all, null)[0].current).toBe(true);
   });
 });
 
