@@ -1546,3 +1546,56 @@ describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
     expect(lines.filter((line) => /Kontrolli oma postkasti|Sisesta aadress uuesti|Kui see aadress on lubatud|Parooli pole vaja|töötab ainult ühe korra\.“/.test(line))).toEqual([]);
   });
 });
+
+// Course areas (spec 2026-11-11-course-areas-filter-design.md §6): four new checks in Haldus, from the deploy. The course's „Valdkond“ first (the
+// migration's two areas are there already), then the calendar's and the catalogue's area chips, which need two courses with areas, then Seaded →
+// „Valdkonnad“, whose used area refuses „Kustuta“. The existing calendar and catalogue checks keep their steps: their rows are still there as they were.
+describe("course areas (spec 2026-11-11)", () => {
+  const a = adminEt.settings.areas;
+  const f = adminEt.courseEditor.fields;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const at = (id: string) => plan.items.findIndex((c) => c.id === id);
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+  const NEW: Record<string, { device: string; href: string; writes: boolean }> = {
+    "haldus-koolitus-valdkond": { device: "tahvel", href: "/admin/koolitused", writes: false },
+    "haldus-kalender-valdkond": { device: "telefon", href: "/koolituskalender", writes: false },
+    "haldus-koolitused-valdkond": { device: "any", href: "/koolitused", writes: false },
+    "haldus-seaded-valdkonnad": { device: "tahvel", href: "/admin/seaded", writes: true },
+  };
+
+  test("four new checks in Haldus, Maria's, marked new from the deploy", () => {
+    for (const [id, want] of Object.entries(NEW)) {
+      expect(find(id), id).toMatchObject({ area: "haldus", who: "maria", mark: "new", ...want });
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+  });
+
+  test("in order: the course's „Valdkond“, then the two public rows, then Seaded; the course check after „Koolituse tekst“, Seaded's after its „Uudiskiri“", () => {
+    expect(at("haldus-koolitus-tekst")).toBeLessThan(at("haldus-koolitus-valdkond"));
+    expect(at("haldus-koolitus-valdkond")).toBeLessThan(at("haldus-kalender-valdkond"));
+    expect(at("haldus-kalender-valdkond")).toBeLessThan(at("haldus-koolitused-valdkond"));
+    expect(at("haldus-koolitused-valdkond")).toBeLessThan(at("haldus-seaded-valdkonnad"));
+    expect(at("haldus-seaded-valdkonnad")).toBe(at("haldus-seaded-uudiskiri") + 1);
+    for (const id of ["haldus-kalender-valdkond", "haldus-koolitused-valdkond"]) expect(find(id).steps[0], id).toContain("„Koolituse valdkond“");
+  });
+
+  test("they quote the screens' words", () => {
+    expect(find("haldus-koolitus-valdkond").title).toBe("Koolituse valdkond");
+    for (const words of [`„${f.area}“`, `„${f.areaNone}“`, "„Kulmukoolitused“", "„Ripsmekoolitused“", `„${f.areaHint.split(". ")[0]}. …“`, "„Avaldamata muudatused: 1 · Valdkond“", "„Põhiinfo“"])
+      expect(whole("haldus-koolitus-valdkond"), words).toContain(words);
+    for (const words of [`„${et.calendar.empty}“`, `„${et.calendar.showAll}“`, "„Kõik“"]) expect(whole("haldus-kalender-valdkond"), words).toContain(words);
+    for (const words of [`„${et.catalogue.resetFilters}“`, "„E-õpe“", "„Kõik“", "vene keeles"]) expect(whole("haldus-koolitused-valdkond"), words).toContain(words);
+    for (const words of [`„${a.title}“`, `„${a.newTitle}“`, `„${a.add}“`, `„${a.remove}“`, `„${a.removeYes}“`, `„${a.errors.required}“`, "„Põhiinfo“", "Proov 1"])
+      expect(whole("haldus-seaded-valdkonnad"), words).toContain(words);
+    expect(ru.calendar.areaLabel).toBe("Направление");
+  });
+
+  test("the old calendar empty state's words are gone from the plan", () => {
+    const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((line) => `${c.id}: ${line}`));
+    expect(lines.filter((line) => /Selles linnas hetkel koolitusi pole|„Kõik linnad“/.test(line))).toEqual([]);
+  });
+});

@@ -1222,6 +1222,90 @@
       "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
+      "id": "haldus-koolitus-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse valdkond",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni avaldatud kulmukoolitus ja leia kaardil „Põhiinfo“ valik „Valdkond“.",
+        "Vali „Kulmukoolitused“ ja vaata pealkirja all olevat riba.",
+        "Vajuta „Avalda muudatused“.",
+        "Anna samamoodi valdkond igale koolitusele: kulmukoolitustele „Kulmukoolitused“, ripsmekoolitustele „Ripsmekoolitused“.",
+        "Ava avalik koolituste loend ja koolituskalender."
+      ],
+      "expect": [
+        "Valikus on esimesena „Määramata“, siis „Kulmukoolitused“ ja „Ripsmekoolitused“.",
+        "Välja all on vihje „Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. …“.",
+        "Pärast valikut on pealkirja all riba „Avaldamata muudatused: 1 · Valdkond“.",
+        "Pärast „Avalda muudatused“ on riba kadunud.",
+        "Kui kahel koolitusel on eri valdkond, on avalikel lehtedel valdkonna nupud."
+      ],
+      "why": "Valdkonna järgi leiab õpilane kalendris ja loendis oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-kalender-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Koolituskalender: valdkonna nupud",
+      "href": "/koolituskalender",
+      "steps": [
+        "Tee enne kontroll „Koolituse valdkond“: kahel kuupäevaga kontaktkoolitusel peab olema eri valdkond.",
+        "Ava „Koolituskalender“ ja vaata linna nuppude alla.",
+        "Vajuta valdkonna nupul, näiteks „Kulmukoolitused“.",
+        "Vajuta lisaks linna nupul, kus selle valdkonna kuupäevi pole.",
+        "Vajuta „Näita kõiki“.",
+        "Vali uuesti valdkond ja värskenda lehte."
+      ],
+      "expect": [
+        "Linna nuppude all on teine rida: „Kõik“ ja valdkonnad, millel on kuupäevi.",
+        "Valdkonna nupp jätab alles ainult selle valdkonna kuupäevad.",
+        "Linn ja valdkond koos jätavad alles kuupäevad, mis sobivad mõlemaga.",
+        "Kui ükski kuupäev ei sobi, on teade „Valitud filtritega hetkel koolitusi pole.“ ja nupp „Näita kõiki“.",
+        "„Näita kõiki“ näitab jälle kõiki kuupäevi ja mõlemas reas on valitud „Kõik“.",
+        "Pärast värskendamist on sama valdkond ikka valitud."
+      ],
+      "why": "Kui kuupäevi on palju, leiab õpilane valdkonna järgi oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-koolitused-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolituste loend: valdkonna nupud",
+      "href": "/koolitused",
+      "steps": [
+        "Tee enne kontroll „Koolituse valdkond“: kahel avaldatud koolitusel peab olema eri valdkond.",
+        "Ava avalik koolituste loend ja vaata tasemete nuppude alla.",
+        "Vajuta valdkonna nupul, näiteks „Ripsmekoolitused“.",
+        "Vajuta lisaks „E-õpe“.",
+        "Kirjuta väljale „Otsi koolitust“ sõna, mida ühegi koolituse tekstis pole, ja vajuta „Lähtesta filtrid“.",
+        "Ava sama leht vene keeles."
+      ],
+      "expect": [
+        "Tasemete nuppude all on rida „Kõik“ ja valdkonnad, millel on avaldatud koolitusi.",
+        "Valdkonna nupp jätab alles ainult selle valdkonna koolitused.",
+        "Koos nupuga „E-õpe“ jäävad alles ainult selle valdkonna e-koolitused.",
+        "Pärast „Lähtesta filtrid“ on kõik koolitused nähtaval ja valdkonna real on valitud „Kõik“.",
+        "Vene keeles on valdkondade nimed vene keeles."
+      ],
+      "why": "Valdkonna järgi leiab õpilane koolituste loendist oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-pikk-leht",
       "area": "haldus",
       "who": "maria",
@@ -1942,6 +2026,36 @@
       "writes": false,
       "mark": "new",
       "markedAt": "2026-10-27T18:11:44.836Z"
+    },
+    {
+      "id": "haldus-seaded-valdkonnad",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: valdkonnad",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja vali jaotiste loendist „Valdkonnad“.",
+        "Kirjuta „Uus valdkond“ alla mõlemaks nimeks Proov 1 ja vajuta „Lisa valdkond“.",
+        "Tühjenda Proov 1 vene nimi ja liigu väljalt edasi; kirjuta siis Proov 1 tagasi.",
+        "Muuda eesti nimeks Proov 2 ja liigu väljalt edasi.",
+        "Liiguta Proov 2 noolega üles, värskenda lehte ja liiguta see tagasi viimaseks.",
+        "Vaata valdkonna rida, mida mõni koolitus kasutab.",
+        "Vajuta Proov 2 real „Kustuta“ ja kinnita „Jah, kustuta“."
+      ],
+      "expect": [
+        "Kaardi juhend ütleb, et koolituse valdkonna valid koolituse kaardil „Põhiinfo“.",
+        "Pärast „Lisa valdkond“ on Proov 1 loendi lõpus ja päis ütleb „Salvestatud …“.",
+        "Tühja nime all on „Kirjuta nimi.“ ja tühja nime ei salvestata.",
+        "Pärast värskendamist on Proov 2 nimi ja koht samad.",
+        "Kasutatud valdkonna real pole „Kustuta“, vaid teade, mitu koolitust seda kasutab.",
+        "Pärast „Jah, kustuta“ on Proov 2 loendist kadunud."
+      ],
+      "why": "Maria lisab valdkondi ise, kui tulevad uued koolitused.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-ettemaks",
