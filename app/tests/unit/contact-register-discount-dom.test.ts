@@ -628,3 +628,25 @@ describe("fix round 1: late answers", () => {
     expect(codeInput().value).toBe("ne");
   });
 });
+
+describe("fix round 2: her typing is newer than the remembered code", () => {
+  test("typing during the remembered code's re-check wins over its answer", async () => {
+    window.sessionStorage.setItem(KEY, "TERE10");
+    let first!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (first = r))).mockResolvedValueOnce(ok("PROOV-16", 3500));
+    mocks.registerContact.mockResolvedValue({ ok: true });
+    await render();
+    await openField();
+    await type("PROOV-16");
+    await act(async () => first(ok("TERE10", 7000)));
+    await settle();
+    expect(appliedLine()).toBeNull();
+    expect(errorText()).toBeNull();
+    expect(codeInput().value).toBe("PROOV-16");
+    expect(window.sessionStorage.getItem(KEY)).toBe("TERE10");
+    await fillIn();
+    await submit();
+    expect(mocks.checkDiscountCode.mock.calls[1][0].get("code")).toBe("PROOV-16");
+    expect(mocks.registerContact.mock.calls[0][0].get("discountCode")).toBe("PROOV-16");
+  });
+});

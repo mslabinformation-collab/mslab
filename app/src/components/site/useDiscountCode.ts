@@ -73,7 +73,7 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
 
   /** Asks the server about `code`; null when a later apply/remove has started meanwhile (this answer is stale and changes nothing). */
   const check = useCallback(
-    async (code: string): Promise<CheckAnswer | null> => {
+    async (code: string, remembered = false): Promise<CheckAnswer | null> => {
       const mine = ++seq.current;
       setChecking(true);
       setError(null);
@@ -88,6 +88,9 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
       }
       if (mine !== seq.current) return null;
       setChecking(false);
+      // A remembered code's re-check on load is older intent than what she has typed since: its answer is stale, and changes nothing (not the
+      // applied code, not the error, not her text, not the storage, which only her own apply or remove writes).
+      if (remembered && latest.current.typed !== "" && normalizeCode(latest.current.typed) !== normalizeCode(code)) return null;
       // the box shows the code as the check read it, unless she has typed on since the question was asked (a remembered code's re-check on load)
       if (answer.ok) setTypedState((cur) => (cur === "" || cur === code ? answer.code : cur));
       if (answer.ok) {
@@ -108,7 +111,7 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
   useEffect(() => {
     const stored = remembered(course);
     // (after a tick: the check's first state changes are not made inside the effect itself)
-    if (stored) void Promise.resolve().then(() => check(stored));
+    if (stored) void Promise.resolve().then(() => check(stored, true));
   }, [course, check]);
 
   const setTyped = useCallback((v: string) => {
