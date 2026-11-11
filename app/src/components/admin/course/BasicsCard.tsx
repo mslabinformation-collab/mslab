@@ -12,14 +12,60 @@ import { UnpublishedTag } from "../UnpublishedTag";
 import { Card } from "./Card";
 import { CARD_ID } from "./course-view";
 import { PlainField } from "./PlainField";
-import type { PartApi } from "./types";
+import type { AreaOption, PartApi } from "./types";
+
+/**
+ * „Valdkond“ (course areas, spec 2026-11-11 §4.2): „Määramata“ first, then Seaded → Valdkonnad's areas in Maria's order, instant as the language; its
+ * hint says what it is for and where the list is kept. An area deleted since the page was read is refused by the save (`area`), said under it. A
+ * stored area the list no longer has (none can be: Seaded keeps an area a course or a draft uses) reads as „Määramata“.
+ */
+function AreaSelect({ api, areas, uid }: { api: PartApi<"basics">; areas: readonly AreaOption[]; uid: string }) {
+  const f = adminEt.courseEditor.fields;
+  const id = `${uid}-area`;
+  const unpublished = api.unpublished("areaId");
+  const error = api.error("areaId");
+  const known = api.fields.areaId !== null && areas.some((a) => a.id === api.fields.areaId);
+  const describedBy = [unpublished ? `${id}-unpublished` : "", `${id}-hint`, error ? `${id}-error` : ""].filter(Boolean).join(" ");
+  return (
+    <div className={`${ui.field} ${ed.i18n}`} data-unpublished={unpublished ? "" : undefined}>
+      <div className={ed.i18nHead}>
+        <label htmlFor={id}>{f.area}</label>
+        {unpublished && <UnpublishedTag id={`${id}-unpublished`} />}
+      </div>
+      <select
+        id={id}
+        className={`${ui.input} ${ed.select}`}
+        aria-describedby={describedBy}
+        aria-invalid={error ? true : undefined}
+        value={known ? String(api.fields.areaId) : ""}
+        onChange={(e) => api.commit("areaId", e.target.value === "" ? null : Number(e.target.value))}
+        data-field="areaId"
+      >
+        <option value="">{f.areaNone}</option>
+        {areas.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
+        ))}
+      </select>
+      <p id={`${id}-hint`} className={ui.hint}>
+        {f.areaHint}
+      </p>
+      {error && (
+        <p id={`${id}-error`} className={ui.error}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * „Põhiinfo“ (README B2): the name, the address, the level, the language, the short and the long text — the basics part (the type is the basics' too,
  * in the type card). The level and the language are instant; the texts save when typing stops or the card is left. On a published course a changed
- * address says that the old link stops working once it is published.
+ * address says that the old link stops working once it is published. „Valdkond“ (course areas, spec 2026-11-11 §4.2): AreaSelect.
  */
-export function BasicsCard({ api }: { api: PartApi<"basics"> }) {
+export function BasicsCard({ api, areas }: { api: PartApi<"basics">; areas: readonly AreaOption[] }) {
   const t = adminEt.courseEditor;
   const f = t.fields;
   const uid = useId();
@@ -78,6 +124,7 @@ export function BasicsCard({ api }: { api: PartApi<"basics"> }) {
             ))}
           </select>
         </div>
+        <AreaSelect api={api} areas={areas} uid={uid} />
         <div className={ed.wide}>
           <I18nInput
             label={f.summary}

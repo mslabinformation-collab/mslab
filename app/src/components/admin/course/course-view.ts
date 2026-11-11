@@ -49,7 +49,7 @@ export function fieldLabel(part: EditorPart, field: string): string {
   if (part === "test") return field === "passPercent" ? f.testPass : field === "tries" ? f.testTries : s.test;
   if (part === "certificate") return field === "certificateVolume" ? f.certificateVolume : field === "certificateTitle" ? f.certificateTitle : f.certificateSkills;
   if (part === "price" || part === "basics") {
-    const known = { title: f.title, slug: f.slug, level: f.level, language: f.language, summary: f.summary, body: f.body, type: f.type } as Record<string, string>;
+    const known = { title: f.title, slug: f.slug, level: f.level, language: f.language, areaId: f.area, summary: f.summary, body: f.body, type: f.type } as Record<string, string>;
     return known[field] ?? partLabels(part, { [field]: true })[0] ?? partTitle(part);
   }
   return partTitle(part);

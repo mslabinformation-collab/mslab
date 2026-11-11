@@ -46,6 +46,7 @@ export const courseAreas = pgTable("course_areas", {
   name: jsonb("name").$type<I18n>().notNull(),
   sort: integer("sort").notNull().default(0),
 });
+export type CourseArea = typeof courseAreas.$inferSelect;
 
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),

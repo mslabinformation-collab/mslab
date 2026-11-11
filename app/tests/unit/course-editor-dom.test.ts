@@ -197,7 +197,12 @@ const settle = () =>
   });
 
 type Props = Parameters<typeof CourseEditor>[0];
-const props = (over: Partial<Props> = {}): Props => ({ course: data(), others: OTHERS, next: null, created: false, modules: MODULES, ...over });
+/** „Valdkond“'s choices (Seaded → Valdkonnad, course areas). */
+const AREAS = [
+  { id: 1, name: "Kulmukoolitused" },
+  { id: 2, name: "Ripsmekoolitused" },
+];
+const props = (over: Partial<Props> = {}): Props => ({ course: data(), others: OTHERS, areas: AREAS, next: null, created: false, modules: MODULES, ...over });
 const show = async (over: Partial<Props> = {}, guard = false) => {
   const editor = createElement(CourseEditor, props(over));
   // (the (panel) layout's UndoBar: the list editors' removals offer „Võta tagasi“ in it)
@@ -290,6 +295,34 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud 12:41");
     // the preview is the public page at the course's live address, in draft mode
     expect($<HTMLAnchorElement>("[data-publish-preview]")!.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${SLUG}`)}`);
+  });
+
+  it("„Valdkond“ (course areas): „Määramata“ first, then the areas, the hint; a pick saves at once into the draft and the bar names „Valdkond“; an area deleted meanwhile is said under it", async () => {
+    await show();
+    const select = $<HTMLSelectElement>('select[data-field="areaId"]')!;
+    expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
+      ["", "Määramata"],
+      ["1", "Kulmukoolitused"],
+      ["2", "Ripsmekoolitused"],
+    ]);
+    expect(select.value).toBe("");
+    const box = select.closest("[data-unpublished], div")!;
+    expect(text(box)).toContain("Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.");
+    await act(async () => {
+      select.value = "2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(remote.log.map((s) => [s.part, s.version, s.patch])).toEqual([["basics", "l:basics", { areaId: 2 }]]);
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Valdkond. Avalikul lehel on näha eelmine versioon.");
+    remote.refuse = { part: "basics", fields: { areaId: "area" } };
+    await act(async () => {
+      select.value = "1";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(select.getAttribute("aria-invalid")).toBe("true");
+    expect(text(select.parentElement)).toContain("Seda valdkonda pole enam. Vali uuesti.");
   });
 
   it("a drafted address change: the preview still opens the live address (it is live only after the publish)", async () => {
