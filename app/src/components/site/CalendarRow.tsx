@@ -13,6 +13,8 @@ export type CalendarRowData = {
   id: number;
   /** citySlug(city), the ?linn value */
   cityKey: string;
+  /** the slug of the course's area (domain/course-areas.ts areaSlug), the ?valdkond value; null: the course has none (only under „Kõik“) */
+  areaKey: string | null;
   city: string;
   venue: string;
   /** "14.11" */

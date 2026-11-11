@@ -5,8 +5,9 @@ import { PreviewLabelBar } from "@/components/site/PreviewBar";
 import { courseCardData } from "@/components/site/course-card-data";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
-import { listPublishedCourses, listUpcomingSessions } from "@/db/queries/public";
+import { listCourseAreas, listPublishedCourses, listUpcomingSessions } from "@/db/queries/public";
 import { firstSentence, normalizeSearch } from "@/domain/catalogue";
+import { areaChips, areaSlug } from "@/domain/course-areas";
 import { nextSessionByCourse } from "@/domain/home";
 import { pick } from "@/i18n/field";
 import { href } from "@/i18n/href";
@@ -35,6 +36,8 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
  * Catalogue (Task 8, K1–K13). Page head from D with Maria's smaller sizes (K9, K10), then B's filter arrangement
  * with D's explainer. Every course is either e-learning or contact; hybrid is only explained, never a filter.
  * The filters read the URL themselves (CatalogueFilters), so the server render and the client always agree.
+ * The area chips (course areas, spec 2026-11-11-course-areas-filter-design.md §5.2) are the areas the listed courses have, in Maria's order, named in
+ * the page's language; none when fewer than two (domain/course-areas.ts areaChips). In the admin's draft preview a course's area is its draft's.
  */
 export default async function CataloguePage({ params }: Props) {
   const { locale } = await params;
@@ -45,14 +48,24 @@ export default async function CataloguePage({ params }: Props) {
   // the signed-in admin's draft preview shows each course's unpublished changes (api/admin/eelvaade; R-h): previewActive() is false, with no cookie read,
   // for every visitor and for the static render, so the page stays the one cached by revalidation
   const drafts = await previewActive();
-  const [list, sessions] = await Promise.all([listPublishedCourses(db, undefined, { drafts }), listUpcomingSessions(db, upcomingFrom(new Date()))]);
+  const [list, sessions, areaRows] = await Promise.all([
+    listPublishedCourses(db, undefined, { drafts }),
+    listUpcomingSessions(db, upcomingFrom(new Date())),
+    listCourseAreas(db),
+  ]);
 
   const next = nextSessionByCourse(sessions);
+  const areaKey = new Map(areaRows.map((a) => [a.id, areaSlug(a.name)]));
   const courses: CatalogueCourse[] = list.map((c) => ({
     card: courseCardData(c, next.get(c.id), locale, d, to),
     level: c.level,
     text: normalizeSearch(`${pick(c.title, locale)} ${pick(c.summary, locale)}`),
+    area: c.areaId === null ? null : (areaKey.get(c.areaId) ?? null),
   }));
+  const areas = areaChips(
+    areaRows.map((a) => ({ id: a.id, slug: areaSlug(a.name), label: pick(a.name, locale) })),
+    list.map((c) => c.areaId),
+  );
 
   // the admin's draft preview only (Dim 24.10, D-4): „Eelvaade“ and the way out „Lõpeta eelvaade“; a visitor's page, and the page Next keeps, has none
   let previewBar: React.ReactNode = null;
@@ -74,6 +87,7 @@ export default async function CataloguePage({ params }: Props) {
       </header>
       <CatalogueFilters
         courses={courses}
+        areas={areas}
         formats={{
           e: { name: f.elearning.name, question: f.elearning.question, definition: f.elearning.definition, card: firstSentence(f.elearning.definition), steps: f.elearning.steps },
           k: { name: f.contact.name, question: f.contact.question, definition: f.contact.definition, card: firstSentence(f.contact.definition), steps: f.contact.steps },
@@ -89,6 +103,7 @@ export default async function CataloguePage({ params }: Props) {
           search: c.search,
           formatLabel: c.formatLabel,
           levelLabel: c.levelLabel,
+          areaLabel: c.areaLabel,
           filterAll: c.filterAll,
           allLevels: c.allLevels,
           levelBasic: c.levelBasic,

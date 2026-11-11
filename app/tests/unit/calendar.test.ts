@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { calendarCities, citySlug, contactSessions, parseCity, startOfDayTallinn, upcomingFrom } from "@/domain/calendar";
+import { calendarCities, calendarQuery, citySlug, contactSessions, filterCalendar, parseCity, startOfDayTallinn, upcomingFrom } from "@/domain/calendar";
 import { parsePackage } from "@/domain/practice";
 
 describe("calendar city filter", () => {
@@ -28,6 +28,36 @@ describe("calendar city filter", () => {
   test("only contact-course sessions", () => {
     const s = [{ id: 1, course: { type: "contact" as const } }, { id: 2, course: { type: "e_learning" as const } }];
     expect(contactSessions(s).map((x) => x.id)).toEqual([1]);
+  });
+});
+
+// The area row (course areas, spec 2026-11-11-course-areas-filter-design.md §5.1): the city and the area combine (AND), a course without an area is
+// only under „Kõik“, and „Näita kõiki“ clears both filters, keeping the address's other parameters.
+describe("calendar city and area filters together", () => {
+  const rows = [
+    { id: 1, cityKey: "parnu", areaKey: "kulmukoolitused" },
+    { id: 2, cityKey: "tallinn", areaKey: "ripsmekoolitused" },
+    { id: 3, cityKey: "parnu", areaKey: "ripsmekoolitused" },
+    { id: 4, cityKey: "tallinn", areaKey: null },
+  ];
+  const ids = (f: { city: string | null; area: string | null }) => filterCalendar(rows, f).map((r) => r.id);
+  test("no filter: every row; a city or an area alone; both: only the rows that match both", () => {
+    expect(ids({ city: null, area: null })).toEqual([1, 2, 3, 4]);
+    expect(ids({ city: "tallinn", area: null })).toEqual([2, 4]);
+    expect(ids({ city: null, area: "ripsmekoolitused" })).toEqual([2, 3]);
+    expect(ids({ city: "parnu", area: "ripsmekoolitused" })).toEqual([3]);
+    expect(ids({ city: "tartu", area: "kulmukoolitused" })).toEqual([]);
+  });
+  test("a course without an area is never under an area's chip", () => {
+    expect(ids({ city: "tallinn", area: "kulmukoolitused" })).toEqual([]);
+  });
+  test("a chip writes its own parameter and keeps the others; „Näita kõiki“ removes both", () => {
+    const live = new URLSearchParams("linn=parnu&utm_source=fb");
+    expect(calendarQuery(live, { valdkond: "kulmukoolitused" }).toString()).toBe("linn=parnu&utm_source=fb&valdkond=kulmukoolitused");
+    expect(calendarQuery(new URLSearchParams("linn=parnu&valdkond=kulmukoolitused"), { linn: null }).toString()).toBe("valdkond=kulmukoolitused");
+    expect(calendarQuery(new URLSearchParams("linn=parnu&valdkond=kulmukoolitused&utm_source=fb"), { linn: null, valdkond: null }).toString()).toBe("utm_source=fb");
+    // the live address is not changed itself
+    expect(live.toString()).toBe("linn=parnu&utm_source=fb");
   });
 });
 

@@ -26,6 +26,12 @@
     border-color 0.2s;
 }
 
+/* The area chips (course areas §5.1), when there are two or more areas: a second row right under the city chips, 12px apart; the rows below keep
+   their 28px. Without it the calendar is as it was. */
+.chips + .chips {
+  margin-top: -16px;
+}
+
 .chip:hover {
   border-color: var(--fog);
 }

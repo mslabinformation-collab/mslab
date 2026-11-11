@@ -51,6 +51,20 @@
   font-size: 13px;
 }
 
+/* The area chips (course areas §5.2), when there are two or more areas: a row right under the level chips, 12px apart, in their pill size; the
+   grid keeps its 34px. The names can be long: the row wraps, on phones too. Without it the catalogue is as it was. */
+.levels + .areas {
+  margin-top: -22px;
+}
+
+.areas {
+  margin: 0 0 34px;
+}
+
+.areas .pill {
+  font-size: 13px;
+}
+
 /* B .search */
 .search {
   position: relative;
@@ -156,6 +170,18 @@
     align-items: stretch;
     gap: 6px;
     margin-bottom: 28px;
+  }
+
+  .levels + .areas {
+    margin-top: -18px;
+  }
+
+  .areas {
+    margin-bottom: 28px;
+  }
+
+  .areas .pill {
+    font-size: 12px;
   }
 
   .levels .pill {
