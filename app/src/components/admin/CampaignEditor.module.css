@@ -2,7 +2,7 @@
    näidatakse“ (radius 18, padding 14 px 20 px; the label 15 px bold, S4-25's line under it, the switch at the right), then from 1180 px „Pakkumine“
    beside the 440 px preview, 22 px apart (`minmax(0,1fr) 440px`, drawn); below 1180 px one column, the preview under the card (the old editor's
    breakpoint; a media query, which the old iPads read). „Pakkumine“: radius 22, padding 22 (drawn; ui.card's 20 px below 900 px kept), its title Jost
-   300 26 px, the two numbers side by side 12 px apart. The preview: the home page's card on the dark of the page behind it (drawn #2a2629, radius 22,
+   300 26 px. The preview: the home page's card on the dark of the page behind it (drawn #2a2629, radius 22,
    padding 30; mixed from the palette's tokens), the rules line 12 px muted under it. Colours from tokens.css and ui.module.css only. */
 
 .screen {
@@ -53,14 +53,6 @@
   margin: 0;
   font: 300 26px/1.15 var(--font-display);
   letter-spacing: -0.01em;
-}
-
-.numbers {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
 }
 
 .aside {

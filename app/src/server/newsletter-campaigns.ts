@@ -19,7 +19,7 @@ import {
   type NewsletterCampaignDraft,
 } from "@/domain/newsletter-campaign";
 import type { SaveAnswer } from "@/domain/autosave";
-import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
+import { CODE_MAX, isCode, normalizeCode } from "@/domain/discount-codes";
 import { adminEt } from "@/i18n/dict/admin";
 import { isStorableImageKey, mediaUrl } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
@@ -215,7 +215,7 @@ export const CAMPAIGN_PATCH = z
       preheader: both(L2.preheader),
       imageKey: z.string({ error: "invalid" }).max(L2.href, "invalid"),
       body: both(L2.body),
-      code: z.string({ error: "invalid" }).max(WELCOME_CODE_MAX * 2, "invalid"),
+      code: z.string({ error: "invalid" }).max(CODE_MAX * 2, "invalid"),
       buttonLabel: both(L2.label),
       buttonHref: z.string({ error: "invalid" }).max(L2.href, "invalid"),
     } satisfies Record<CampaignField, z.ZodType>,
@@ -351,7 +351,7 @@ export function previewDraft(raw: unknown): NewsletterCampaignDraft {
     return { et: text(b.et, max, oneLine), ru: text(b.ru, max, oneLine) };
   };
   const imageKey = text(o.imageKey, L.href, true);
-  const code = normalizeWelcomeCode(text(o.code, WELCOME_CODE_MAX, true));
+  const code = normalizeCode(text(o.code, CODE_MAX, true));
   const href = text(o.buttonHref, L.href, true);
   const label = both(o.buttonLabel, L.buttonLabel, true);
   const button = isCampaignHref(href) && (label.et !== "" || label.ru !== "");
@@ -361,7 +361,7 @@ export function previewDraft(raw: unknown): NewsletterCampaignDraft {
     preheader: both(o.preheader, L.preheader, true),
     imageKey: imageKey !== "" && isStorableImageKey(imageKey) ? imageKey : null,
     body: both(o.body, L.body, false),
-    code: code !== "" && isWelcomeCode(code) ? code : null,
+    code: code !== "" && isCode(code) ? code : null,
     buttonLabel: button ? label : null,
     buttonHref: button ? href : null,
   };

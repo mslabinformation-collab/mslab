@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type SyntheticEvent } from "react";
 import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_FIELDS, CAMPAIGN_LIMITS, campaignFieldCodes, campaignSaveCheck, checkCampaignDraft, type CampaignField } from "@/domain/newsletter-campaign";
-import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
+import { CODE_MAX } from "@/domain/discount-codes";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
@@ -478,7 +478,7 @@ function DraftEditor({
             {counterBoth("body", values.body, L.body)}
           </div>
           <div className={styles.trio}>
-            <TextField label={t.code} value={values.code} onChange={(code) => set("code", code)} maxLength={WELCOME_CODE_MAX} hint={t.codeHint} error={err("code")} name="code" />
+            <TextField label={t.code} value={values.code} onChange={(code) => set("code", code)} maxLength={CODE_MAX} hint={t.codeHint} error={err("code")} name="code" />
             <div>
               <I18nInput label={t.buttonLabel} value={values.buttonLabel} onChange={(v) => set("buttonLabel", both(v))} maxLength={L.buttonLabel} error={err("buttonLabel")} name="buttonLabel" />
               {counterBoth("buttonLabel", values.buttonLabel, L.buttonLabel)}

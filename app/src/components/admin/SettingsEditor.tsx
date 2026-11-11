@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import type { LegalKey, LegalState } from "@/domain/legal-text";
-import { SITE_LIMITS, type ContactDraft, type NewsletterDraft } from "@/domain/site-editor";
-import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
+import { SITE_LIMITS, type ContactDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import type { SettingsRead } from "@/server/admin-site";
 import type { AdminArea } from "@/server/course-areas";
@@ -29,10 +28,9 @@ import styles from "./SettingsEditor.module.css";
  * The page's sections in the map's order (README B4): the id of each, its card(s) below. The old anchors are aliases at the start of the section
  * that now holds their card („Cards that move“): #arve, #ettemaks and #jarelmaks go to „Maksmine“; #tunnistus and #lepingud are their sections' own.
  */
-type SectionId = "kontakt" | "uudiskiri" | "valdkonnad" | "maksmine" | "tunnistus" | "lepingud" | "ligipaas";
+type SectionId = "kontakt" | "valdkonnad" | "maksmine" | "tunnistus" | "lepingud" | "ligipaas";
 const SECTIONS: { id: SectionId; label: keyof typeof adminEt.settings.sections; aliases?: readonly string[] }[] = [
   { id: "kontakt", label: "contact" },
-  { id: "uudiskiri", label: "newsletter" },
   // course areas (spec 2026-11-11 §4.1, its placement my call: after the site's own texts, before the money)
   { id: "valdkonnad", label: "areas" },
   { id: "maksmine", label: "payment", aliases: ["arve", "ettemaks", "jarelmaks"] },
@@ -99,36 +97,6 @@ function ContactCard({ version, value, onStatus }: { version: string; value: Con
   );
 }
 
-/**
- * „Uudiskiri“: the welcome code, autosaved on api/admin/seaded/newsletter. The welcome discount is Hüpikaken's „Soodustus (%)“ since piece 4b (S4-Q2 A),
- * published with the popup.
- */
-function NewsletterCard({ version, value, onStatus }: { version: string; value: NewsletterDraft; onStatus: StatusReport }) {
-  const t = adminEt.settings;
-  const uid = useId();
-  const labels: Record<keyof NewsletterDraft, string> = { welcomeCode: t.welcomeCode };
-  const fields = useMemo(() => ({ ...value }), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
-  const part = useSeadedPart({ part: "newsletter", version, fields, label: (f) => labels[f as keyof NewsletterDraft] ?? f, focusField: focusOf("newsletter"), onStatus });
-  const field = (name: keyof NewsletterDraft) => ({
-    label: labels[name],
-    value: String(part.text(name) ?? ""),
-    onChange: (v: string) => part.type(name, v),
-    error: errorText(part.codeOf(name)),
-    name: `newsletter.${name}`,
-  });
-  return (
-    <section className={ui.card} aria-labelledby={`${uid}-title`} onBlur={() => void part.flush()} data-newsletter-card="">
-      <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
-        {t.newsletter}
-      </h2>
-      <div className={ed.grid}>
-        <TextField {...field("welcomeCode")} maxLength={WELCOME_CODE_MAX} hint={t.welcomeCodeHint} />
-      </div>
-      <Restore conflict={part.conflict !== null} onRestore={() => void part.restore()} />
-    </section>
-  );
-}
-
 /** After a conflict (README §1.3, B13): „Taasta minu tekst“ saves the card's text over the other tab's. */
 function Restore({ conflict, onRestore }: { conflict: boolean; onRestore: () => void }) {
   if (!conflict) return null;
@@ -143,9 +111,9 @@ function Restore({ conflict, onRestore }: { conflict: boolean; onRestore: () => 
 
 /**
  * Seaded (admin UX pass piece 3b, Task 4; README B4, B21; rulings R-f, „Cards that move“; the Part 3 frame „B4 Seaded“ and the Part 4 phone frame):
- * one page with the section map — Kontakt, Uudiskiri, Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs (SectionMap: from 1180 px the list
+ * one page with the section map — Kontakt, Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs (SectionMap: from 1180 px the list
  * at the left, below it the „Jaotised ▾“ select under the header) — and the header's ET | RU switch and ONE SaveStatus for every card (compact below
- * 900 px). Every card autosaves its part on api/admin/seaded/<part> (useSeadedPart) and tells its status here: „Kontaktandmed“, „Uudiskiri“, „Maksmine“
+ * 900 px). Every card autosaves its part on api/admin/seaded/<part> (useSeadedPart) and tells its status here: „Kontaktandmed“, „Maksmine“
  * (the prepayment instructions' bank fields and the invoice settings in one card, InvoiceSettings) with „Järelmaks (Inbank)“'s instant switch, and
  * „Tunnistus“; „Valdkonnad“ (course areas, 11.11: AreasSettings.tsx, each row autosaved on api/admin/valdkond/<id>, its adds, moves and deletes
  * presses of their own). The four legal texts (Task 5: ContractTexts.tsx LegalTexts) type into their drafts under the same chip and are published by their own
@@ -188,6 +156,11 @@ export function SettingsEditor(p: {
     } catch {
       return;
     }
+    // the old section „Uudiskiri“ (its „Tervituskood“) is gone (F1 Task 12, R8): a bookmark of #uudiskiri goes where the welcome code is now
+    if (id === "uudiskiri") {
+      window.location.replace("/admin/sooduskoodid");
+      return;
+    }
     const target = id ? document.getElementById(id) : null;
     if (target?.closest("[data-settings-editor]")) target.scrollIntoView({ block: "start" });
   }, []);
@@ -211,9 +184,6 @@ export function SettingsEditor(p: {
         <div className={styles.main}>
           <Section id="kontakt">
             <ContactCard version={initial.versions.contact} value={initial.values.contact} onStatus={report} />
-          </Section>
-          <Section id="uudiskiri">
-            <NewsletterCard version={initial.versions.newsletter} value={initial.values.newsletter} onStatus={report} />
           </Section>
           <Section id="valdkonnad">
             <AreasSettings initial={p.areas} onStatus={report} />

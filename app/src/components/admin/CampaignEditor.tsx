@@ -12,7 +12,6 @@ import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { getDict } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
-import { PlainField } from "./course/PlainField";
 import { useEditLang } from "./EditLang";
 import { I18nInput } from "./I18nInput";
 import { SingleImage } from "./SingleImage";
@@ -239,28 +238,6 @@ function OfferCard({ api }: { api: SitePartApi<PopupOfferValue> }) {
         unpublished={api.unpublished("text")}
       />
       <SingleImage label={t.image} value={v.imageKey} onChange={(key) => api.commit("imageKey", key)} error={api.error("imageKey")} ratio="16 / 9" name="popup" field="offer.imageKey" />
-      <div className={styles.numbers} data-offer-numbers="">
-        <PlainField
-          name="offer.discountPercent"
-          label={t.discount}
-          value={v.discountPercent}
-          onChange={(x) => api.set("discountPercent", x)}
-          inputMode="numeric"
-          maxLength={3}
-          error={api.error("discountPercent")}
-          unpublished={api.unpublished("discountPercent")}
-        />
-        <PlainField
-          name="offer.codeDays"
-          label={t.codeDays}
-          value={v.codeDays}
-          onChange={(x) => api.set("codeDays", x)}
-          inputMode="numeric"
-          maxLength={3}
-          error={api.error("codeDays")}
-          unpublished={api.unpublished("codeDays")}
-        />
-      </div>
       <p className={ui.hint}>{t.codeWhere}</p>
     </SiteCard>
   );

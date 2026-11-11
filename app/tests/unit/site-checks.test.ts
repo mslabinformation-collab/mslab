@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { looseBody, looseFaq, looseOffer, loosePackage, loosePost, looseSlides, looseTrainer, looseWorks, numberedSlug, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
 import { newSlideDraft, type PackageDraft, type SlideDraft, type TrainerDraft } from "@/domain/site-editor";
-import { adminEt } from "@/i18n/dict/admin";
 import { homeParts, trainerParts } from "@/server/admin-site";
 import { Check } from "@/server/edit-check";
 
@@ -120,20 +119,13 @@ describe("what the strict check refuses besides is refused at the save, by the f
   });
 });
 
-describe("Hüpikaken's two numbers (piece 4b R-c; their range words, Dim 29.10)", () => {
-  const offer = { kicker: { et: "" }, title: { et: "" }, text: { et: "" }, imageKey: "", discountPercent: "10", codeDays: "" };
+describe("Hüpikaken's offer has no numbers any more (F1 Task 12: the welcome code's are Sooduskoodid's)", () => {
+  const offer = { kicker: { et: "" }, title: { et: "" }, text: { et: "" }, imageKey: "" };
 
-  test("a whole number outside its range is said by its field („Soodustus peab olema 1–99%.“, „Kood saab kehtida 1–365 päeva.“); no whole number, „Sisesta täisarv.“", () => {
-    for (const [discountPercent, codeDays] of [["0", "0"], ["100", "366"], ["-5", "-1"], ["12345", "99999"]])
-      expect(looseOffer({ ...offer, discountPercent, codeDays }), `${discountPercent} ${codeDays}`).toEqual({ discountPercent: "discountRange", codeDays: "codeDaysRange" });
-    for (const [discountPercent, codeDays] of [["abc", "30 päeva"], ["1.5", "7,5"], ["10%", "+5"]])
-      expect(looseOffer({ ...offer, discountPercent, codeDays }), `${discountPercent} ${codeDays}`).toEqual({ discountPercent: "whole", codeDays: "whole" });
-    expect(looseOffer({ ...offer, discountPercent: " 1 ", codeDays: "365" })).toEqual({});
-    expect(looseOffer({ ...offer, discountPercent: "99", codeDays: "1" })).toEqual({});
-    // the words, from the editors' field errors (the screen says a code by refusalText)
-    expect(adminEt.courseEditor.errors.discountRange).toBe("Soodustus peab olema 1–99%.");
-    expect(adminEt.courseEditor.errors.codeDaysRange).toBe("Kood saab kehtida 1–365 päeva.");
-    expect(adminEt.courseEditor.errors.whole).toBe("Sisesta täisarv.");
+  test("looseOffer checks the texts' lengths and the picture's form only; a number an old draft still holds is not looked at", () => {
+    expect(looseOffer(offer)).toEqual({});
+    expect(looseOffer({ ...offer, discountPercent: "abc", codeDays: "99999" } as typeof offer)).toEqual({});
+    expect(looseOffer({ ...offer, title: { et: "x".repeat(121) }, imageKey: "javascript:alert(1)" })).toEqual({ title: "tooLong", imageKey: "image" });
   });
 
   test("every other whole field keeps `whole` for a number outside its range (Check.whole's default)", () => {

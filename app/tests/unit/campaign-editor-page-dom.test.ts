@@ -36,8 +36,6 @@ const OFFER: PopupOfferValue = {
   title: { et: "Hea järgmine samm.", ru: "Ваш следующий шаг." },
   text: { et: "Uued koolitused ja tervitussoodustus.", ru: "Новые курсы и приветственная скидка." },
   imageKey: "img/0b6f3b7e-2c4d-4f7a-9a59-3d7c2f1e8a10.jpg",
-  discountPercent: "10",
-  codeDays: "",
 };
 const SWITCH = "/api/admin/hupikaken/naita";
 const SAVE = "/api/admin/sisu/popup/0/osa/offer";
@@ -153,8 +151,8 @@ afterEach(async () => {
 describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
   it("„Eelvaade ↗“ opens the home page in draft mode under the popup's own bar (?riba=hupikaken, ruling c1), never Avaleht's", async () => {
     await show();
-    await type(field("offer.discountPercent"), "15");
-    await leave(field("offer.discountPercent"));
+    await type(field("offer.kicker"), "Uus silt");
+    await leave(field("offer.kicker"));
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe("/api/admin/eelvaade?tee=%2F%3Friba%3Dhupikaken");
   });
 
@@ -182,22 +180,18 @@ describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
     expect(top?.compareDocumentPosition($("#pakkumine")!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("„Pakkumine“: „Silt“, „Pealkiri“, „Tekst“, „Pilt“, then „Soodustus (%)“ and „Kood kehtib (päeva)“ side by side with S4-28 under them", async () => {
+  it("„Pakkumine“: „Silt“, „Pealkiri“, „Tekst“, „Pilt“ and no numbers: the welcome code and its discount are on „Sooduskoodid“ (F1 Task 12), which the line under the fields says", async () => {
     await show();
     const card = $("#pakkumine");
     expect(text(card?.querySelector("h2") ?? null)).toBe("Pakkumine");
     const order = Array.from(card?.querySelectorAll<HTMLElement>("[data-single-image], [data-i18n], [data-field]") ?? []).map(
       (el) => el.getAttribute("data-single-image") ?? el.getAttribute("data-i18n") ?? el.getAttribute("data-field"),
     );
-    expect(order).toEqual(["offer.kicker", "offer.title", "offer.text", "popup", "offer.discountPercent", "offer.codeDays"]);
-    expect(labelOf(field("offer.discountPercent"))).toBe("Soodustus (%)");
-    expect(labelOf(field("offer.codeDays"))).toBe("Kood kehtib (päeva)");
-    expect(field("offer.discountPercent")!.value).toBe("10");
-    expect(field("offer.codeDays")!.value).toBe("");
-    const numbers = $("[data-offer-numbers]");
-    expect(numbers?.contains(field("offer.discountPercent"))).toBe(true);
-    expect(numbers?.contains(field("offer.codeDays"))).toBe(true);
-    expect(text(numbers?.nextElementSibling ?? null)).toBe("Koodi saad muuta: Seaded → „Tervituskood“.");
+    expect(order).toEqual(["offer.kicker", "offer.title", "offer.text", "popup"]);
+    expect(field("offer.discountPercent")).toBeNull();
+    expect(field("offer.codeDays")).toBeNull();
+    expect($("[data-offer-numbers]")).toBeNull();
+    expect(text(card?.lastElementChild ?? null)).toBe("Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.");
     expect(field("offer.text")?.tagName).toBe("TEXTAREA");
   });
 
@@ -241,50 +235,36 @@ describe("the preview follows the page's ET | RU (README C4) and its button Sead
 });
 
 describe("the offer waits for „Avalda muudatused“ (S4-30); the switch never is on the bar", () => {
-  it("a discount typed and left is saved into the draft; the bar names „Soodustus“, the field says „· avaldamata“", async () => {
+  it("a kicker typed and left is saved into the draft; the bar names „Silt“, the field says „· avaldamata“", async () => {
     await show();
-    await type(field("offer.discountPercent"), "15");
-    await leave(field("offer.discountPercent"));
-    expect(remote.log).toEqual([{ version: "l:offer", patch: { discountPercent: "15" } }]);
-    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Soodustus. Avalikul lehel on näha eelmine versioon.");
-    expect(field("offer.discountPercent")!.closest("[data-unpublished]")).not.toBeNull();
+    await type(field("offer.kicker"), "Uus silt");
+    await leave(field("offer.kicker"));
+    expect(remote.log).toEqual([{ version: "l:offer", patch: { kicker: { ...OFFER.kicker, et: "Uus silt" } } }]);
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Silt. Avalikul lehel on näha eelmine versioon.");
+    expect(field("offer.kicker")!.closest("[data-unpublished]")).not.toBeNull();
   });
 
-  it("the days and the title too: „Pealkiri, Kood kehtib“; a Russian-only change is „(RU)“", async () => {
+  it("the title too: „Silt, Pealkiri (RU)“; a Russian-only change is „(RU)“", async () => {
     await show();
-    await type(field("offer.codeDays"), "30");
-    await leave(field("offer.codeDays"));
+    await type(field("offer.kicker"), "Uus silt");
+    await leave(field("offer.kicker"));
     await click($('[data-edit-lang="ru"]'));
     await type(field("offer.title"), "Новый заголовок");
     await leave(field("offer.title"));
-    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 2 · Pealkiri (RU), Kood kehtib. Avalikul lehel on näha eelmine versioon.");
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 2 · Silt, Pealkiri (RU). Avalikul lehel on näha eelmine versioon.");
   });
 
-  it("a number the server refuses is said at its field, in the field's own words out of its range (Dim 29.10) and „Sisesta täisarv.“ when it is no whole number", async () => {
+  it("a field the server refuses is said at its field; typed right, its words go", async () => {
     await show();
-    const cases = [
-      ["discountPercent", "150", "Soodustus peab olema 1–99%."],
-      ["discountPercent", "0", "Soodustus peab olema 1–99%."],
-      ["discountPercent", "abc", "Sisesta täisarv."],
-      ["codeDays", "366", "Kood saab kehtida 1–365 päeva."],
-      ["codeDays", "30 päeva", "Sisesta täisarv."],
-    ] as const;
-    for (const [name, typed, words] of cases) {
-      // the route's answer is the server's own loose check of what was typed (domain/site-checks.ts looseOffer), so the words are the ones she reads
-      remote.refuse = looseOffer({ ...OFFER, [name]: typed });
-      expect(Object.keys(remote.refuse), typed).toEqual([name]);
-      await type(field(`offer.${name}`), typed);
-      await leave(field(`offer.${name}`));
-      expect(field(`offer.${name}`)!.getAttribute("aria-invalid"), typed).toBe("true");
-      expect(describedBy(field(`offer.${name}`)), typed).toContain(words);
-      for (const other of ["Soodustus peab olema 1–99%.", "Kood saab kehtida 1–365 päeva.", "Sisesta täisarv."].filter((w) => w !== words))
-        expect(describedBy(field(`offer.${name}`)), typed).not.toContain(other);
-    }
-    // typed right, the field's words go
+    remote.refuse = looseOffer({ ...OFFER, title: { et: "x".repeat(121) } });
+    expect(Object.keys(remote.refuse)).toEqual(["title"]);
+    await type(field("offer.title"), "x".repeat(121));
+    await leave(field("offer.title"));
+    expect(field("offer.title")!.getAttribute("aria-invalid")).toBe("true");
     remote.refuse = null;
-    await type(field("offer.codeDays"), "30");
-    await leave(field("offer.codeDays"));
-    expect(field("offer.codeDays")!.getAttribute("aria-invalid")).not.toBe("true");
+    await type(field("offer.title"), "Lühike");
+    await leave(field("offer.title"));
+    expect(field("offer.title")!.getAttribute("aria-invalid")).not.toBe("true");
   });
 });
 
@@ -424,18 +404,18 @@ describe("„Lehel näidatakse“: instant, with the UndoBar (S4-26)", () => {
     expect(remote.version).toBe("d:1.2");
   });
 
-  it("a field the server holds back (a discount of 150) never stops the switch: it goes anyway (flush „settle“), and the field keeps its words", async () => {
+  it("a field the server holds back (a title that is too long) never stops the switch: it goes anyway (flush „settle“), and the field keeps its words", async () => {
     await show();
-    remote.refuse = { discountPercent: "discountRange" };
-    await type(field("offer.discountPercent"), "150");
+    remote.refuse = { title: "tooLong" };
+    await type(field("offer.title"), "x".repeat(121));
     await click(toggle());
     expect(posts().map((c) => c.url)).toEqual([SAVE, SWITCH]);
     expect(text(undoBar())).toContain("Hüpikaken peidetud.");
-    expect(field("offer.discountPercent")!.value).toBe("150");
-    // the page's read after the switch starts the cards again from it: the field still holds her 150 (this browser's copy), never the stored 10
+    expect(field("offer.title")!.value).toBe("x".repeat(121));
+    // the page's read after the switch starts the cards again from it: the field still holds her text (this browser's copy), never the stored one
     await show({ parts: partsOf(), stamp: 5, shown: { on: false, version: "v1+" } });
     expect($("[data-cards-waiting]")).toBeNull();
-    expect(field("offer.discountPercent")!.value).toBe("150");
+    expect(field("offer.title")!.value).toBe("x".repeat(121));
   });
 
   it("a press that fails says the save line under the switch, which shows what it was", async () => {

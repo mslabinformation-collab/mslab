@@ -185,19 +185,26 @@ describe("checkCampaignDraft: what is refused", () => {
   });
 
   test("every wrong field is named at once", () => {
-    expect(refused({ name: "", subject: { et: "s".repeat(151) }, body: { et: "t" }, code: "tere 10" })).toEqual({ name: "required", "subject.et": "tooLong", code: "invalid" });
+    expect(refused({ name: "", subject: { et: "s".repeat(151) }, body: { et: "t" }, code: "tere_10" })).toEqual({ name: "required", "subject.et": "tooLong", code: "invalid" });
   });
 });
 
 describe("the code", () => {
-  test("it has the welcome code's shape (A–Z, 0–9 and -, at most 30), in capitals as stored: what is typed in small letters is raised", () => {
+  // F1 Task 12: the letter's code is a discount code: domain/discount-codes' normalizeCode / isCode / CODE_MAX (R14), no longer the welcome code's own rules
+  test("it has the discount code's shape (A–Z, 0–9 and -, at most 30), in capitals as stored: what is typed in small letters is raised", () => {
     expect(ok({ ...minimal, code: "SUGIS15" }).code).toBe("SUGIS15");
     expect(ok({ ...minimal, code: " sugis-15 " }).code).toBe("SUGIS-15");
     expect(ok({ ...minimal, code: "A".repeat(30) }).code).toBe("A".repeat(30));
   });
 
-  test("a space inside, other punctuation, a letter outside A–Z and more than 30 characters are refused", () => {
-    for (const code of ["TERE 10", "TERE_10", "TERE.10", "TERE+10", "ÕUN10", "КОД", "TERE10!", "<b>"]) expect(refused({ ...minimal, code }), code).toEqual({ code: "invalid" });
+  test("R14: a space inside (or a no-break space) is dropped, a typographic dash becomes \"-\" — as every code field of the site reads what is typed", () => {
+    expect(ok({ ...minimal, code: "tere 10" }).code).toBe("TERE10");
+    expect(ok({ ...minimal, code: "TERE 10" }).code).toBe("TERE10");
+    expect(ok({ ...minimal, code: "sugis–15" }).code).toBe("SUGIS-15");
+  });
+
+  test("other punctuation, a letter outside A–Z, a code of dashes alone and more than 30 characters are refused", () => {
+    for (const code of ["TERE_10", "TERE.10", "TERE+10", "ÕUN10", "КОД", "TERE10!", "<b>", "-", "---"]) expect(refused({ ...minimal, code }), code).toEqual({ code: "invalid" });
     expect(refused({ ...minimal, code: "A".repeat(31) })).toEqual({ code: "tooLong" });
   });
 });
@@ -445,8 +452,8 @@ describe("the module stays pure: the editor imports it in the browser", () => {
     expect(source).not.toContain(["Object", "hasOwn"].join("."));
   });
 
-  test("it takes the code's shape from domain/welcome-code.ts, the paragraph split from domain/catalogue.ts and the picture's key rule from lib/media.ts, not copies of them", () => {
-    expect(imports).toContain("./welcome-code");
+  test("it takes the code's shape from domain/discount-codes.ts, the paragraph split from domain/catalogue.ts and the picture's key rule from lib/media.ts, not copies of them", () => {
+    expect(imports).toContain("./discount-codes");
     expect(imports).toContain("./catalogue");
     expect(imports).toContain("@/lib/media");
     expect(source).not.toContain("A-Z0-9");

@@ -6,7 +6,7 @@ import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
 import { stubFetch } from "../fakes";
 
 // Seaded (admin UX pass piece 3b, Task 4; README B4, the Part 3 frame „B4 Seaded“ and the Part 4 phone frame; rulings R-f, „Cards that move“) in a
-// browser-like document (happy-dom): one page with the section map Kontakt, Uudiskiri, Valdkonnad (course areas, 11.11: AreasSettings, its own test
+// browser-like document (happy-dom): one page with the section map Kontakt, Valdkonnad (course areas, 11.11: AreasSettings, its own test
 // tests/unit/areas-settings-dom.test.ts), Maksmine, Tunnistus, Lepingud ja tingimused, Halduse ligipääs
 // (and below 1180 px its „Jaotised ▾“ select); the old anchors #arve, #ettemaks and #jarelmaks lead to „Maksmine“, #tunnistus and #lepingud to their
 // sections; every card autosaves under the one SaveStatus of the header — no page „Salvesta“ and no card button; the four legal texts type into their
@@ -32,10 +32,9 @@ const PROPS: Parameters<typeof SettingsEditor>[0] = {
   initial: {
     values: {
       contact: { email: "info@example.test", phone: "", address: "Pärnu", instagram: "", facebook: "" },
-      newsletter: { welcomeCode: "" },
       prepayment: { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" },
     },
-    versions: { contact: "k1", newsletter: "n1", prepayment: "p1" },
+    versions: { contact: "k1", prepayment: "p1" },
   },
   admins: ["maria@example.test"],
   invoice: { company: "MS LAB OÜ", registryCode: "16346048", address: "Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 7, termDays: 7, footer: "", last: null, version: "i:a.b" },
@@ -117,22 +116,21 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect($$("[data-save-status][data-save-kind]")).toHaveLength(1);
   });
 
-  test("the section map: the seven sections in order („Valdkonnad“ after „Uudiskiri“, course areas), each a link to its section; the same seven in the „Jaotised“ select", async () => {
+  test("the section map: the six sections in order („Uudiskiri“ is gone, F1 Task 12: the welcome code is on „Sooduskoodid“), each a link to its section; the same six in the „Jaotised“ select", async () => {
     await show();
     const links = $$<HTMLAnchorElement>("nav a");
     expect(links.map((a) => [text(a.querySelector("[data-section-label]")), a.getAttribute("href")])).toEqual([
       ["Kontakt", "#kontakt"],
-      ["Uudiskiri", "#uudiskiri"],
       ["Valdkonnad", "#valdkonnad"],
       ["Maksmine", "#maksmine"],
       ["Tunnistus", "#tunnistus"],
       ["Lepingud ja tingimused", "#lepingud"],
       ["Halduse ligipääs", "#ligipaas"],
     ]);
-    expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "uudiskiri", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
+    expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
     // each entry's section is on the page, in the map's order
     const sections = $$("[data-seaded-section]").map((s) => s.id);
-    expect(sections).toEqual(["kontakt", "uudiskiri", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
+    expect(sections).toEqual(["kontakt", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
   });
 
   test("the old anchors are aliases: #arve, #ettemaks and #jarelmaks at the start of „Maksmine“, #tunnistus and #lepingud the sections themselves; each id once", async () => {
@@ -153,7 +151,7 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
       expect(anchor.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING, alias).toBeTruthy();
     }
     const ids = $$("[id]").map((el) => el.id);
-    for (const id of ["kontakt", "uudiskiri", "maksmine", "tunnistus", "lepingud", "ligipaas", "arve", "ettemaks", "jarelmaks"]) expect(ids.filter((x) => x === id), id).toHaveLength(1);
+    for (const id of ["kontakt", "maksmine", "tunnistus", "lepingud", "ligipaas", "arve", "ettemaks", "jarelmaks"]) expect(ids.filter((x) => x === id), id).toHaveLength(1);
   });
 
   test("a load with an old anchor (#arve: a bookmark, a link from outside) goes to it once the page is there; an anchor of another page is left alone", async () => {
@@ -181,7 +179,7 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     await show();
     const titles = (id: string) => Array.from(document.getElementById(id)!.querySelectorAll("h2")).map(text);
     expect(titles("kontakt")).toEqual(["Kontaktandmed"]);
-    expect(titles("uudiskiri")).toEqual(["Uudiskiri"]);
+    expect(document.getElementById("uudiskiri")).toBeNull();
     expect(titles("valdkonnad")).toEqual(["Valdkonnad"]);
     expect(Array.from(document.querySelectorAll("#valdkonnad [data-area]")).map((r) => r.getAttribute("data-area"))).toEqual(["1", "2"]);
     expect(titles("maksmine")).toEqual(["Maksmine", "Järelmaks (Inbank)"]);
@@ -192,14 +190,30 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect(document.querySelector("#ligipaas input")).toBeNull();
   });
 
-  test("„Uudiskiri“ holds „Tervituskood“ only: the discount moved to Hüpikaken (piece 4b S4-Q2 A); its hint no longer waits for a confirmation (S4-29)", async () => {
+  test("„Uudiskiri“ and its „Tervituskood“ are gone from Seaded (F1 Task 12): no card, no field, no part; the welcome code is on „Sooduskoodid“", async () => {
     await show();
-    const card = $("[data-newsletter-card]")!;
-    expect(Array.from(card.querySelectorAll("label")).map(text)).toEqual(["Tervituskood"]);
-    expect(Array.from(card.querySelectorAll("input")).map((i) => i.getAttribute("data-field"))).toEqual(["newsletter.welcomeCode"]);
-    expect(text(card)).not.toContain("Tervitussoodustus");
-    expect(text(card)).not.toContain("kinnitamist");
-    expect(text(card)).toContain("Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta.");
+    expect($("[data-newsletter-card]")).toBeNull();
+    expect($('[data-field^="newsletter."]')).toBeNull();
+    expect(text(container)).not.toContain("Tervituskood");
+    expect(text($("[data-section-select]"))).not.toContain("Uudiskiri");
+  });
+
+  test("#uudiskiri leads to /admin/sooduskoodid (R8): a bookmark of the old section goes where its code is now; no other anchor does", async () => {
+    const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+    try {
+      history.replaceState(null, "", "/admin/seaded#uudiskiri");
+      await show();
+      expect(replace.mock.calls).toEqual([["/admin/sooduskoodid"]]);
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      replace.mockClear();
+      history.replaceState(null, "", "/admin/seaded#arve");
+      await show();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      history.replaceState(null, "", "/admin/seaded");
+      replace.mockRestore();
+    }
   });
 
   test("no „Salvesta“ anywhere and no save bar: the legal texts too type into their drafts and have their „Avalda …“ (Task 5)", async () => {
@@ -248,10 +262,6 @@ describe("one status for every card", () => {
     await settle();
     expect(fetched.calls.map((c) => [c.url, c.body])).toEqual([["/api/admin/seaded/contact", { version: "k1", patch: { phone: "+372 5555 0101" } }]]);
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    await type($<HTMLInputElement>('[data-field="newsletter.welcomeCode"]')!, "TERE");
-    await leave($<HTMLInputElement>('[data-field="newsletter.welcomeCode"]')!);
-    await settle();
-    expect(fetched.calls.at(-1)).toMatchObject({ url: "/api/admin/seaded/newsletter", body: { version: "n1", patch: { welcomeCode: "TERE" } } });
   });
 
   test("a field one card's route refuses is marked in its own words; the one chip says „kontrolli“ with „Näita“, which goes to it", async () => {

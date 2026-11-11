@@ -10,9 +10,9 @@ import { makeTestDb } from "./helpers";
 import { contactCourse, registrationOn } from "./payments-fixtures";
 
 // Seaded's autosave (admin UX pass piece 3b, Task 4; README B4, B21; rulings R-f, R3): POST /api/admin/seaded/<part> for every card of the page —
-// contact | newsletter | prepayment | invoice | certificate | financing — under server/autosave-route.ts' contract (200 the part's new version, 409
-// what is stored, 400 by field, 404 for no such part). A contact, newsletter or prepayment part's version is the hash of its card's fields as
-// stored (piece 4b: a key the card does not show, Hüpikaken's discount in `newsletter`, never makes its save a conflict), financing's the hash of
+// contact | prepayment | invoice | certificate | financing — under server/autosave-route.ts' contract (200 the part's new version, 409
+// what is stored, 400 by field, 404 for no such part). A contact or prepayment part's version is the hash of its card's fields as
+// stored (piece 4b: a key the card does not show, never makes its save a conflict), financing's the hash of
 // its stored setting; the invoice's and the certificate's (their stored JSON, which an issue also writes) is two hashes, of the texts and of the
 // number series' counter, so an invoice issued while Maria types is no conflict of her texts, while a number another tab saved is. A number
 // already issued is `taken` whatever version it was sent from (Review Focus 1: "a number field that another tab took shows `taken` in the
@@ -74,13 +74,13 @@ describe("the route", () => {
     expect((await save("contact", { version: "x", patch: { phone: "+372 5555 0101" } })).status).toBe(401);
     await signIn();
     expect((await save("contact", { version: "x", patch: { phone: "+372 5555 0101" } }, { origin: "https://evil.example" })).status).toBe(403);
-    for (const part of ["kontakt", "privacy", "course_terms", ""]) expect((await save(part, { version: "x", patch: {} })).status, part).toBe(404);
+    for (const part of ["kontakt", "privacy", "course_terms", "newsletter", ""]) expect((await save(part, { version: "x", patch: {} })).status, part).toBe(404);
     expect(await save("contact", { patch: {} })).toMatchObject({ status: 400, body: { ok: false, error: "body" } });
     expect(await setting("contact")).toBeNull();
   });
 });
 
-describe("contact, newsletter, prepayment: the settings parts", () => {
+describe("contact, prepayment: the settings parts", () => {
   test("contact: a field saved trimmed and the other keys kept, the version the card's hash; the footer pages revalidated once", async () => {
     await signIn();
     await setSetting(db, "contact", { email: "info@example.test", phone: "", address: "Pärnu", instagram: "", facebook: "", extra: "kept" });
@@ -119,27 +119,12 @@ describe("contact, newsletter, prepayment: the settings parts", () => {
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
-  test("newsletter: the welcome code in capitals, the card's one field (the discount moved to Hüpikaken, piece 4b S4-Q2 A); a code alone on a missing row is saved", async () => {
+  test("newsletter is no part of Seaded any more (F1 Task 12): its route is a 404, whatever the body, and the stored setting stays as it was", async () => {
     await signIn();
-    const v = await versionOf("newsletter");
-    expect(await save("newsletter", { version: v, patch: { discountLabel: "15%" } })).toMatchObject({ status: 400, body: { fields: { discountLabel: "invalid" } } });
-    expect(await save("newsletter", { version: v, patch: { welcomeCode: "tere 10" } })).toMatchObject({ status: 400, body: { fields: { welcomeCode: "codeFormat" } } });
-    expect(await save("newsletter", { version: v, patch: { welcomeCode: " tere-10 " } })).toMatchObject({ status: 200 });
-    expect(await setting("newsletter")).toEqual({ welcomeCode: "TERE-10" });
-    expect(pub.revalidatePublic).toHaveBeenCalledWith({ kind: "settings", parts: ["newsletter"] });
-  });
-
-  test("newsletter: the version is the card's (the code), so Hüpikaken's discount and days in the same row (R-c) never make a code's save a conflict; they are kept", async () => {
-    await signIn();
-    await setSetting(db, "newsletter", { welcomeCode: "TERE10", discountPercent: 10, codeDays: null });
-    const v = await versionOf("newsletter");
-    // Hüpikaken's „Avalda muudatused“ writes the two numbers meanwhile
     await setSetting(db, "newsletter", { welcomeCode: "TERE10", discountPercent: 15, codeDays: 30 });
-    expect(await versionOf("newsletter")).toBe(v);
-    expect(await save("newsletter", { version: v, patch: { welcomeCode: "SUGIS15" } })).toMatchObject({ status: 200 });
-    expect(await setting("newsletter")).toEqual({ welcomeCode: "SUGIS15", discountPercent: 15, codeDays: 30 });
-    // another tab's code is still a conflict, with the card's value
-    expect(await save("newsletter", { version: v, patch: { welcomeCode: "TALV" } })).toMatchObject({ status: 409, body: { value: { welcomeCode: "SUGIS15" } } });
+    expect(await save("newsletter", { version: "x", patch: { welcomeCode: "SUGIS15" } })).toMatchObject({ status: 404 });
+    expect(await setting("newsletter")).toEqual({ welcomeCode: "TERE10", discountPercent: 15, codeDays: 30 });
+    expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
   test("prepayment: the IBAN without spaces in capitals, a bad one refused with its own code; all four keys stored", async () => {
@@ -157,7 +142,6 @@ describe("contact, newsletter, prepayment: the settings parts", () => {
     const cases: [string, string, Record<string, unknown>][] = [
       ["contact", "contact", { email: " " }],
       ["contact", "contact", { phone: "", address: "  " }],
-      ["newsletter", "newsletter", { welcomeCode: "" }],
       ["prepayment", "prepayment", { bank: " ", iban: "" }],
       ["financing", "financing", { enabled: false }],
     ];

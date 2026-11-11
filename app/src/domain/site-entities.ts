@@ -66,12 +66,13 @@ export type PostPartValue = { title: I18n; slug: string; category: I18n; excerpt
 export const POPUP_PART = "offer";
 
 /**
- * Hüpikaken's offer as its editor holds it (piece 4b R-c): the newsletter popup's texts and picture (the `campaign` row of kind "newsletter") and the
- * two numbers of `settings.newsletter` — „Soodustus (%)“ and „Kood kehtib (päeva)“ — as typed, the way a package's price and models are held (a whole
- * number checked at the field; "" for days: none, the welcome mail then says nothing of them). No `active`: „Lehel näidatakse“ is the instant switch,
- * so it never moves the part's version; and no welcome code (Seaded's „Tervituskood“, in the same settings row), so a code's save never blocks it.
+ * Hüpikaken's offer as its editor holds it (piece 4b R-c): the newsletter popup's texts and picture (the `campaign` row of kind "newsletter"). Since
+ * F1 Task 12 nothing else: the welcome discount and the days its code is valid, which this part once held as two numbers of `settings.newsletter`, are
+ * the `welcome` row of discount_codes (Sooduskoodid), and the welcome code is no field of Seaded either. A draft stored before that, which still holds
+ * `discountPercent` and `codeDays`, reads without them (the part's schema drops what it does not name) and its publish writes no setting. No `active`:
+ * „Lehel näidatakse“ is the instant switch, so it never moves the part's version.
  */
-export type PopupOfferValue = { kicker: I18n; title: I18n; text: I18n; imageKey: string; discountPercent: string; codeDays: string };
+export type PopupOfferValue = { kicker: I18n; title: I18n; text: I18n; imageKey: string };
 
 /**
  * A part as its editor starts (server/site-drafts.ts readSiteEditor): `version` (R-b) "l:<hash>" while the part has no draft (the hash of `live`),

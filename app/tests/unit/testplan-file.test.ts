@@ -1461,7 +1461,8 @@ describe("C4 Hüpikaken (admin UX pass piece 4b, Task 4)", () => {
     expect(markedSince(check.markedAt)).toBe(true);
     expect(plan.items.findIndex((c) => c.id === "haldus-hupikaken-numbrid")).toBe(plan.items.findIndex((c) => c.id === "haldus-hupikaken") + 1);
     const errors = adminEt.courseEditor.errors;
-    for (const words of [t.discount, t.codeDays, `„${errors.discountRange}“`, `„${errors.codeDaysRange}“`, `„${errors.whole}“`]) expect(whole("haldus-hupikaken-numbrid"), words).toContain(words);
+    // („Kood kehtib (päeva)“ is no dict text any more, F1 Task 12: the check still names it until Task 17 reworks it)
+    for (const words of [t.discount, "Kood kehtib (päeva)", `„${errors.discountRange}“`, `„${errors.codeDaysRange}“`, `„${errors.whole}“`]) expect(whole("haldus-hupikaken-numbrid"), words).toContain(words);
     // each value typed has its words: 100 and 366 out of their range, 7,5 no whole number
     for (const [typed, words] of [["100", errors.discountRange], ["7,5", errors.whole], ["366", errors.codeDaysRange]]) {
       expect(check.steps.some((s) => s.includes(`: ${typed} `)), typed).toBe(true);

@@ -469,7 +469,7 @@ describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R
 
   test("the offer's draft over the shown popup, as its publish would store it; a draft that fails the strict check (no picture), an off popup and the old campaign offer: as live", async () => {
     await show(true);
-    await save("popup", "offer", { title: { et: "Uus pakkumine", ru: "Новое предложение" }, discountPercent: "15" });
+    await save("popup", "offer", { title: { et: "Uus pakkumine", ru: "Новое предложение" } });
     const live = await getHomeData(db);
     const shown = await getHomeData(db, { drafts: true });
     expect(shown.popup).toMatchObject({ id: 2, kind: "newsletter", active: true, title: { et: "Uus pakkumine", ru: "Новое предложение" }, imageKey: live.popup!.imageKey });
@@ -510,7 +510,7 @@ describe("the home page's popup in the admin's preview (piece 4b, Task 4; R-d, R
   test("„Eelvaade ↗“ from Hüpikaken (?riba=hupikaken, ruling c1): the popup's bar — its count, its „Loobu muudatustest“, which leaves Avaleht's drafts alone; without it, Avaleht's bar; a visitor with it: no bar, and no session looked for", async () => {
     await show(true);
     await save("home", "statement", { body: { et: "Uus lause avalehel." } });
-    await save("popup", "offer", { title: { et: "Uus pakkumine" }, discountPercent: "15" });
+    await save("popup", "offer", { title: { et: "Uus pakkumine" }, kicker: { et: "Uus silt" } });
     await asAdmin();
     const popupBar = barOf(await homeTree("et", { riba: "hupikaken" }));
     expect(popupBar).toMatchObject({ discardHref: "/api/admin/sisu/popup/0/loobu", copies: { site: "popup" }, count: 2, t: { count: "Avaldamata 2" } });

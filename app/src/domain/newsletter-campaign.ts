@@ -7,7 +7,7 @@ import type { I18n } from "@/i18n/field";
 import { isStorableImageKey } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
 import { paragraphs } from "./catalogue";
-import { WELCOME_CODE_MAX, isWelcomeCode, normalizeWelcomeCode } from "./welcome-code";
+import { CODE_MAX, isCode, normalizeCode } from "./discount-codes";
 
 /** The longest each text may be, in characters; `href` is the button's address and the picture's key. */
 export const CAMPAIGN_LIMITS = { name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 } as const;
@@ -118,7 +118,7 @@ type Checked = { value: NewsletterCampaignDraft; errors: Errors };
 
 /**
  * The rules of one letter, for a save (`send` false) or for a send (`send` true; ruling R-g of piece 3b: the required texts are the sends' now).
- * - Every field's own rule, for both: a text no longer than its limit, the code in the welcome code's shape, the picture a key the site stores, the
+ * - Every field's own rule, for both: a text no longer than its limit, the code in a discount code's shape (domain/discount-codes: normalizeCode, isCode, CODE_MAX), the picture a key the site stores, the
  *   button's address an https:// address or a path of this site (isCampaignHref); the name is required for both (the list's line).
  * - The button's rule, for both, as before (ruling R2): any of its fields typed starts it, and then its Estonian label and its address are required,
  *   and its Russian label too when there is a Russian text. Each refusal falls on the field that breaks it.
@@ -136,10 +136,10 @@ function check(raw: Record<string, unknown>, send: boolean): Checked {
   const imageKey = field(raw.imageKey, "imageKey", L.href, false, true, errors);
   if (imageKey !== "" && !errors.imageKey && !isStorableImageKey(imageKey)) errors.imageKey = "invalid";
 
-  let code = field(raw.code, "code", WELCOME_CODE_MAX, false, true, errors);
+  let code = field(raw.code, "code", CODE_MAX, false, true, errors);
   if (!errors.code) {
-    code = normalizeWelcomeCode(code);
-    if (!isWelcomeCode(code)) errors.code = "invalid";
+    code = normalizeCode(code);
+    if (code !== "" && !isCode(code)) errors.code = "invalid";
   }
 
   // the button: its Estonian label and its address together, or neither

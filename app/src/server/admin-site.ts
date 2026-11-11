@@ -31,7 +31,6 @@ import {
   contactDraft,
   copyI18n,
   faqDraft,
-  newsletterDraft,
   normalizeIban,
   isBlankStat,
   isIban,
@@ -43,7 +42,6 @@ import {
   trainerDraft,
   type ContactDraft,
   type FaqDraft,
-  type NewsletterDraft,
   type PackageDraft,
   type PrepaymentDraft,
   type PageDraft,
@@ -53,7 +51,6 @@ import {
 } from "@/domain/site-editor";
 import { isPostDay, looseBody, looseFaq, looseOffer, loosePackage, loosePage, loosePost, looseSlides, looseTrainer, looseWorks, postSlug, postSlugProblem, slugFollowsTitle } from "@/domain/site-checks";
 import { POPUP_PART, POST_PART, type PopupOfferValue, type PostPartValue } from "@/domain/site-entities";
-import { CODE_DAYS_MAX, CODE_DAYS_MIN, codeDaysOf, DISCOUNT_MAX, DISCOUNT_MIN, discountPercentOf, isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug } from "@/lib/slug";
 import type { SaveAnswer } from "@/domain/autosave";
@@ -399,44 +396,43 @@ export const trainerParts: Parts = {
 // ---------- Hüpikaken on the draft layer (admin UX pass piece 4b, Task 3; rulings R-c, R-d; S4-Q2 A, S4-Q3 A) ----------
 
 // The popup is the entity "popup" (entity_id 0) with the one part `offer` (PopupOfferValue): the newsletter popup's row (R-d: the old campaign offer's
-// row 1 is no part of it, and nothing edits row 1 since the old form went in Task 5) and Hüpikaken's two numbers in `settings.newsletter` — the
-// discount the footer shows and the days the welcome mail says the code is valid (R-c). A save goes to the draft; „Avalda muudatused“ writes both rows in one
-// transaction. Its version is the hash of the part's own fields (server/site-drafts.ts), so Seaded's „Tervituskood“ in the same settings row never
-// blocks it. „Lehel näidatakse“ is no part: the instant switch acts on the live row (server/site-drafts.ts switchPopup), which the write leaves as it is.
+// row 1 is no part of it, and nothing edits row 1 since the old form went in Task 5). Until F1 Task 12 it also held two numbers in `settings.newsletter`
+// (the discount the footer shows and the days the welcome mail says the code is valid, R-c); they are the `welcome` row of discount_codes now
+// (Sooduskoodid), and this part reads and writes no setting. A save goes to the draft; „Avalda muudatused“ writes the row. Its version is the hash of
+// the part's own fields (server/site-drafts.ts). „Lehel näidatakse“ is no part: the instant switch acts on the live row (server/site-drafts.ts
+// switchPopup), which the write leaves as it is.
 
 /**
  * The offer's stored value (its `read`; Write.shown answers it too, for the admin's preview: server/site-preview.ts withSiteDrafts): the newsletter
- * popup's row (null: none yet) and the newsletter setting as stored.
+ * popup's row (null: none yet).
  */
-export type PopupStored = { popup: Campaign | null; newsletter: unknown };
+export type PopupStored = { popup: Campaign | null };
 
 /** A newsletter popup row that is not stored yet, as the write makes it (POPUP_ID: row 2; its code, button text and link stay empty). */
 const NEW_POPUP: Campaign = { id: POPUP_ID.newsletter, kind: "newsletter", active: false, kicker: { et: "" }, title: { et: "" }, text: { et: "" }, code: "", ctaLabel: { et: "" }, ctaHref: "", imageKey: "" };
 
-/** The stored offer as its editor holds it (PopupOfferValue): the row's texts and picture (empty with no row), the two numbers as text (R-c's old-data read). */
+/** The stored offer as its editor holds it (PopupOfferValue): the row's texts and picture (empty with no row). */
 function popupOfferValue(stored: unknown): PopupOfferValue {
-  const { popup, newsletter } = stored as PopupStored;
-  const days = codeDaysOf(newsletter);
+  const { popup } = stored as PopupStored;
   return {
     kicker: copyI18n(popup?.kicker),
     title: copyI18n(popup?.title),
     text: copyI18n(popup?.text),
     imageKey: popup?.imageKey ?? "",
-    discountPercent: String(discountPercentOf(newsletter)),
-    codeDays: days === null ? "" : String(days),
   };
 }
 
 /**
  * The offer part. `shown`: whether the popup is shown now (its live row's `active`), so that the strict check is the old „Salvesta“'s (as on every
  * part of the draft layer): a shown popup needs its title and its picture (S4-26 `Puudub: pilt`), one that is off may stay unfinished, and its switch
- * asks for them when it goes on (popupParts with `shown` true). The discount is always needed: the footer shows it. The days may be empty.
+ * asks for them when it goes on (popupParts with `shown` true). No number is asked any more (F1 Task 12).
  */
 function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
   return part<PopupOfferValue>({
-    tables: ["campaign", "settings"],
-    schema: z.object({ kicker: i18n, title: i18n, text: i18n, imageKey: text(400), discountPercent: text(20), codeDays: text(20) }),
-    read: async (q): Promise<PopupStored> => ({ popup: await readNewsletterPopup(q), newsletter: await readSetting(q, "newsletter") }),
+    tables: ["campaign"],
+    // (z.object drops a key it does not name: a draft stored before F1 Task 12 with `discountPercent` and `codeDays` reads without them)
+    schema: z.object({ kicker: i18n, title: i18n, text: i18n, imageKey: text(400) }),
+    read: async (q): Promise<PopupStored> => ({ popup: await readNewsletterPopup(q) }),
     draft: popupOfferValue,
     loose: looseOffer,
     check: (c, v, name) => {
@@ -445,20 +441,16 @@ function popupOfferPart(shown: boolean): Part<PopupOfferValue> {
       const title = c.text(`${p}title`, v.title, L.campaignTitle, { required: shown });
       const body = c.text(`${p}text`, v.text, L.campaignText);
       const imageKey = c.image(`${p}imageKey`, v.imageKey, { required: shown });
-      const discountPercent = c.whole(`${p}discountPercent`, v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX, "discountRange");
-      if (discountPercent === null) c.fail(`${p}discountPercent`, "required");
-      const codeDays = c.whole(`${p}codeDays`, v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX, "codeDaysRange");
-      if (!c.ok || discountPercent === null) return null;
+      if (!c.ok) return null;
       const fields = { kicker: orEmpty(kicker), title: orEmpty(title), text: orEmpty(body), imageKey };
-      // the row keeps its `active` (the switch's) and its other columns; the setting keeps its other keys (Seaded's code, the old label)
+      // the row keeps its `active` (the switch's) and its other columns; no setting is read or written
       const after = (stored: unknown): PopupStored => {
         const s = stored as PopupStored;
-        return { popup: { ...(s.popup ?? NEW_POPUP), ...fields }, newsletter: { ...obj(s.newsletter), discountPercent, codeDays } };
+        return { popup: { ...(s.popup ?? NEW_POPUP), ...fields } };
       };
       return writing(async (tx, stored) => {
-        const { popup, newsletter } = after(stored);
+        const { popup } = after(stored);
         await upsertCampaign(tx, campaignInput(popup as Campaign), "newsletter");
-        await setSetting(tx, "newsletter", newsletter);
       }, after);
     },
   });
@@ -475,11 +467,10 @@ export async function popupParts(q: Q, shown?: true): Promise<Parts> {
   return { [POPUP_PART]: popupOfferPart(shown ?? (await readNewsletterPopup(q))?.active ?? false) };
 }
 
-// ---------- Seaded: contact details, the newsletter's welcome code, prepayment instructions (autosaved), legal pages, the e-course terms ----------
+// ---------- Seaded: contact details, prepayment instructions (autosaved), legal pages, the e-course terms ----------
 
 export type SettingsValues = {
   contact: ContactDraft;
-  newsletter: NewsletterDraft;
   prepayment: PrepaymentDraft;
 };
 
@@ -487,16 +478,16 @@ export type SettingsValues = {
 export type SettingsRead = SavedParts & { values: SettingsValues };
 
 /**
- * Seaded's autosaved settings parts (admin UX pass piece 3b, Task 4; README B4): the contact details, „Uudiskiri“ and the prepayment instructions
+ * Seaded's autosaved settings parts (admin UX pass piece 3b, Task 4; README B4): the contact details and the prepayment instructions
  * („Ettemaksu juhised“, the bank fields of the „Maksmine“ card: ruling R-f, one source — the invoice reads them too), saved field by field on
  * api/admin/seaded/<part> (server/seaded.ts). Each is one `settings` row; its version is the hash of the card's fields as stored (settingsVersion,
- * piece 4b): `newsletter` also holds Hüpikaken's discount and code days (R-c), which its publish writes, and those never make a card's save a conflict.
+ * piece 4b). There is no newsletter part any more (F1 Task 12): the welcome code is the `welcome` row of discount_codes, edited on Sooduskoodid.
  */
-export const SETTINGS_PARTS = ["contact", "newsletter", "prepayment"] as const;
+export const SETTINGS_PARTS = ["contact", "prepayment"] as const;
 export type SettingsPart = (typeof SETTINGS_PARTS)[number];
 
-const SETTING_KEYS: Record<SettingsPart, string> = { contact: "contact", newsletter: "newsletter", prepayment: PREPAYMENT_KEY };
-const DRAFTS: Record<SettingsPart, (stored: unknown) => Record<string, string>> = { contact: contactDraft, newsletter: newsletterDraft, prepayment: prepaymentDraft };
+const SETTING_KEYS: Record<SettingsPart, string> = { contact: "contact", prepayment: PREPAYMENT_KEY };
+const DRAFTS: Record<SettingsPart, (stored: unknown) => Record<string, string>> = { contact: contactDraft, prepayment: prepaymentDraft };
 
 /** A field's text as the card sends it: a string (else "invalid") of the old form's length at most (else "tooLong"); the rule (FIELD_RULES) decides the rest. */
 const sent = (max: number) => z.string({ error: "invalid" }).max(max, "tooLong");
@@ -504,7 +495,6 @@ const sent = (max: number) => z.string({ error: "invalid" }).max(max, "tooLong")
 /** Each part's autosave patch (the route's schema): some of its fields, no other. */
 const PATCHES: Record<SettingsPart, z.ZodType<Record<string, string | undefined>>> = {
   contact: z.strictObject({ email: sent(400), phone: sent(400), address: sent(1000), instagram: sent(1000), facebook: sent(1000) }, { error: "invalid" }).partial(),
-  newsletter: z.strictObject({ welcomeCode: sent(400) }, { error: "invalid" }).partial(),
   prepayment: z.strictObject({ receiver: sent(400), iban: sent(400), bank: sent(400), referencePrefix: sent(400) }, { error: "invalid" }).partial(),
 };
 
@@ -516,8 +506,6 @@ type FieldRule = (c: Check, name: string, value: string) => unknown;
 /**
  * The fields' rules, one by one (a save checks only the fields it sends):
  * - contact: an e-mail and a phone as people write them; the social links https only (the site opens them in a new tab: never javascript: or the like);
- * - newsletter: "Tervituskood" (phase 2c) is A–Z, 0–9 and "-", at most 30, stored in capitals; empty = no welcome code (the discount is Hüpikaken's
- *   since piece 4b, S4-Q2 A);
  * - prepayment: every field may be empty; all empty means no instructions (the cards say Maria sends an invoice), and so does one without the
  *   receiver or the IBAN (domain/account-cards.ts hasPrepayment). The IBAN is stored without spaces, in capitals.
  */
@@ -528,13 +516,6 @@ const FIELD_RULES: Record<SettingsPart, Record<string, FieldRule>> = {
     address: (c, n, v) => c.plain(n, v, L.address),
     instagram: (c, n, v) => c.httpsUrl(n, v),
     facebook: (c, n, v) => c.httpsUrl(n, v),
-  },
-  newsletter: {
-    welcomeCode: (c, n, v) => {
-      const code = normalizeWelcomeCode(v);
-      if (code.length > WELCOME_CODE_MAX) return c.fail(n, "tooLong");
-      return isWelcomeCode(code) ? code : c.fail(n, "codeFormat");
-    },
   },
   prepayment: {
     receiver: (c, n, v) => c.plain(n, v, L.receiver),
@@ -550,8 +531,7 @@ const FIELD_RULES: Record<SettingsPart, Record<string, FieldRule>> = {
 
 /**
  * An autosaved part's version: the hash of its card's fields as stored (DRAFTS), not of the whole row, as the draft layer's parts hash their own
- * fields (piece 4a R-b): a key the card does not show — Hüpikaken's discount and code days in `newsletter`, written by its publish (piece 4b R-c), or
- * any other key kept — never makes the card's next save a conflict.
+ * fields (piece 4a R-b): a key the card does not show, kept as it is, never makes the card's next save a conflict.
  */
 const settingsVersion = (part: SettingsPart, stored: unknown): Promise<string> => contentVersion(DRAFTS[part](stored));
 

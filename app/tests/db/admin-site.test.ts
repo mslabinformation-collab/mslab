@@ -7,7 +7,7 @@ import { applySeed } from "@/db/seed-apply";
 import { readSlides, saveSlides } from "@/db/queries/admin-site";
 import { getHomeData, getPage, getPracticePackages, getSettings, listPosts } from "@/db/queries/public";
 import { shellSettings, trainerSettings } from "@/components/site/settings";
-import { loadLegalParts, loadSettings, saveLegalParts, writeSettingsPart, type SettingsPart } from "@/server/admin-site";
+import { loadLegalParts, loadSettings, saveLegalParts, SETTINGS_PARTS, settingsPartPatch, writeSettingsPart, type SettingsPart } from "@/server/admin-site";
 import { saveDraftPart } from "@/server/drafts";
 import { discardSite, hasSitePart, publishSite, readSiteEditor, writeSitePart } from "@/server/site-drafts";
 import type { SaveAnswer } from "@/domain/autosave";
@@ -450,25 +450,18 @@ describe("settings", () => {
     expect(await writeSettingsPart(db, "contact", { address: "Tartu" }, s.versions.contact, new Date())).toMatchObject({ ok: false, error: "conflict" });
   });
 
-  test("„Uudiskiri“ is the welcome code alone: the discount moved to Hüpikaken (piece 4b S4-Q2 A); the legal pages have their own writer", async () => {
+  test("Seaded holds the contact and prepayment cards only: the welcome code is the `welcome` row of Sooduskoodid (F1 Task 12); the legal pages have their own writer", async () => {
     const s = await loadLegalParts(db);
-    expect((await loadSettings(db)).values.newsletter).toEqual({ welcomeCode: "" });
-    expect(refusedOf(await savePart("newsletter", { discountLabel: "15%" }))).toEqual({ discountLabel: "invalid" });
+    expect(SETTINGS_PARTS).toEqual(["contact", "prepayment"]);
+    const read = await loadSettings(db);
+    expect(Object.keys(read.values)).toEqual(["contact", "prepayment"]);
+    expect(Object.keys(read.versions)).toEqual(["contact", "prepayment"]);
+    expect(settingsPartPatch("contact").safeParse({ welcomeCode: "TERE" }).success).toBe(false);
     expect(fieldsOf(await saveLegalParts(db, { terms: { version: s.versions.terms, value: { title: { et: "" }, body: { et: "" } } } }))).toEqual({ "terms.title": "required", "terms.body": "required" });
     const r = await saveLegalParts(db, { privacy: { version: s.versions.privacy, value: { title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } } } });
     expect(r).toMatchObject({ ok: true });
     expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%", welcomeCode: "" });
     expect(await getPage(db, "privacy")).toMatchObject({ title: { et: "Privaatsuspoliitika" }, body: { et: "Esimene.\n\nTeine.", ru: "Первый." } });
-  });
-
-  test("Tervituskood: stored in capitals; another shape or over 30 is refused; the row's other keys (the old label, Hüpikaken's two numbers) are kept", async () => {
-    expect(refusedOf(await savePart("newsletter", { welcomeCode: "tere 10" }))).toEqual({ welcomeCode: "codeFormat" });
-    expect(refusedOf(await savePart("newsletter", { welcomeCode: "A".repeat(31) }))).toEqual({ welcomeCode: "tooLong" });
-    expect(await savePart("newsletter", { welcomeCode: " tere-10 " })).toMatchObject({ ok: true });
-    expect((await getSettings(db)).newsletter).toEqual({ discountLabel: "10%", welcomeCode: "TERE-10" });
-    await db.update(settings).set({ value: { welcomeCode: "TERE-10", discountPercent: 15, codeDays: 30 } }).where(eq(settings.key, "newsletter"));
-    expect(await savePart("newsletter", { welcomeCode: "" })).toMatchObject({ ok: true });
-    expect((await getSettings(db)).newsletter).toEqual({ welcomeCode: "", discountPercent: 15, codeDays: 30 });
   });
 
   describe("E-koolituse tingimused (course_terms)", () => {
@@ -672,17 +665,12 @@ describe("posts on the draft layer (admin UX pass piece 4b, Task 1): the strict 
 });
 
 describe("missing rows", () => {
-  test("a page or setting that is not stored yet loads empty and is created on save", async () => {
+  test("a page that is not stored yet loads empty and is created on save", async () => {
     await db.delete(pages).where(eq(pages.key, "terms"));
-    await db.delete(settings).where(eq(settings.key, "newsletter"));
-    const s = await loadSettings(db);
     const legal = await loadLegalParts(db);
     expect(legal.values.terms).toEqual({ title: { et: "" }, body: { et: "" } });
-    expect(s.values.newsletter).toEqual({ welcomeCode: "" });
     const r = await saveLegalParts(db, { terms: { version: legal.versions.terms, value: { title: { et: "Tingimused" }, body: { et: "Tekst." } } } });
     expect(r).toMatchObject({ ok: true });
-    expect(await writeSettingsPart(db, "newsletter", { welcomeCode: "TERE" }, s.versions.newsletter, new Date())).toMatchObject({ ok: true });
     expect(await getPage(db, "terms")).toMatchObject({ title: { et: "Tingimused" }, body: { et: "Tekst." } });
-    expect((await getSettings(db)).newsletter).toEqual({ welcomeCode: "TERE" });
   });
 });

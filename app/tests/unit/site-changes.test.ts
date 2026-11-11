@@ -281,15 +281,17 @@ describe("siteChangeLabels: a post (piece 4b, S4-24)", () => {
 });
 
 describe("Hüpikaken's offer (piece 4b, S4-30, S4-26)", () => {
-  const live = { kicker: { et: "Kirjad" }, title: { et: "Liitu", ru: "Подпишись" }, text: { et: "Tekst." }, imageKey: "img/a.jpg", discountPercent: "10", codeDays: "" };
-  test("S4-30's labels in the card's order — Silt, Pealkiri, Tekst, Pilt, Soodustus, Kood kehtib — a Russian side alone with „(RU)“", () => {
-    const draft = { ...live, codeDays: "30", discountPercent: "15", imageKey: "img/b.jpg", text: { et: "Uus." }, title: { et: "Liitu", ru: "Подпишитесь" }, kicker: { et: "Uus silt" } };
-    expect(siteChangeLabels("popup", [{ part: "offer", live, draft }])).toEqual(["Silt", "Pealkiri (RU)", "Tekst", "Pilt", "Soodustus", "Kood kehtib"]);
+  const live = { kicker: { et: "Kirjad" }, title: { et: "Liitu", ru: "Подпишись" }, text: { et: "Tekst." }, imageKey: "img/a.jpg" };
+  test("S4-30's labels in the card's order — Silt, Pealkiri, Tekst, Pilt — a Russian side alone with „(RU)“", () => {
+    const draft = { ...live, imageKey: "img/b.jpg", text: { et: "Uus." }, title: { et: "Liitu", ru: "Подпишитесь" }, kicker: { et: "Uus silt" } };
+    expect(siteChangeLabels("popup", [{ part: "offer", live, draft }])).toEqual(["Silt", "Pealkiri (RU)", "Tekst", "Pilt"]);
     expect(siteChangeLabels("popup", [{ part: "offer", live, draft: { ...live } }])).toEqual([]);
   });
 
   test("„Puudub: …“ in lower case (`Puudub: pilt`); a path the offer does not know is named by its card, „Pakkumine“", () => {
-    expect(["kicker", "title", "text", "imageKey", "discountPercent", "codeDays"].map((f) => missingCase(siteFieldLabel("popup", "offer", f)))).toEqual(["silt", "pealkiri", "tekst", "pilt", "soodustus", "kood kehtib"]);
+    expect(["kicker", "title", "text", "imageKey"].map((f) => missingCase(siteFieldLabel("popup", "offer", f)))).toEqual(["silt", "pealkiri", "tekst", "pilt"]);
+    // the two numbers are no fields of the offer any more (F1 Task 12): a path of them is named by the card (a stored draft is read without them: tests/db/popup-drafts.test.ts)
+    expect(siteFieldLabel("popup", "offer", "discountPercent")).toBe("Pakkumine");
     expect(siteFieldLabel("popup", "offer", "title.ru")).toBe("Pealkiri (RU)");
     expect(siteFieldLabel("popup", "offer", "imagePos")).toBe("Pakkumine");
   });

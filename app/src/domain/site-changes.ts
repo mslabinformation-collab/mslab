@@ -55,8 +55,6 @@ const POPUP_FIELDS: Record<string, string> = {
   title: T.popup.title,
   text: T.popup.text,
   imageKey: T.popup.imageKey,
-  discountPercent: T.popup.discountPercent,
-  codeDays: T.popup.codeDays,
 };
 
 /** A row's place in the draft as the label says it (from 1), or null when the path names no row. */

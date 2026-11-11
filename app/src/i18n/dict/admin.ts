@@ -320,8 +320,6 @@ export const adminEt = {
       title: "Pealkiri",
       text: "Tekst",
       imageKey: "Pilt",
-      discountPercent: "Soodustus",
-      codeDays: "Kood kehtib",
       // a path the offer's labels do not know is named by its card (S4-27 „Pakkumine“)
       offer: "Pakkumine",
     },
@@ -2516,10 +2514,9 @@ export const adminEt = {
     titleField: "Pealkiri",
     text: "Tekst",
     image: "Pilt",
-    // S4-27 (S4-Q2 A, S4-Q3 A): the two numbers side by side, S4-28 under them
+    // S4-28 under the fields (F1 Task 12: the two numbers that stood above it went; the welcome code and its discount are on Sooduskoodid)
     discount: "Soodustus (%)",
-    codeDays: "Kood kehtib (päeva)",
-    codeWhere: "Koodi saad muuta: Seaded → „Tervituskood“.",
+    codeWhere: "Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.",
     preview: "Eelvaade",
     previewNote: "Nii näeb hüpikaken välja avalehel. Laiemal ekraanil on pilt teksti kõrval.",
     // S4-29 (Dim 26.10: reworded, the sign-up has no confirmation step since 09.10): under the preview
@@ -2531,7 +2528,7 @@ export const adminEt = {
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    sections: { contact: "Kontakt", newsletter: "Uudiskiri", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
+    sections: { contact: "Kontakt", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",
@@ -2541,10 +2538,6 @@ export const adminEt = {
     instagram: "Instagram",
     facebook: "Facebook",
     socialHint: "Täielik aadress, nt https://www.instagram.com/mslab",
-    newsletter: "Uudiskiri",
-    // the welcome discount moved to Hüpikaken (piece 4b S4-Q2 A: „Soodustus (%)“); the code's hint drops „pärast … kinnitamist“ (S4-29 ruling)
-    welcomeCode: "Tervituskood",
-    welcomeCodeHint: "Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
     // „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx). All Draft (Dim's wording
     // sheet): the lead as the spec words it, with the basics card's real name („Põhiinfo“); {name} the area's Estonian name, {n} a count
     areas: {

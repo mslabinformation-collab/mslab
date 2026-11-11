@@ -2,7 +2,6 @@ import { tallinnInstant } from "./calendar";
 import { Check, type FieldError } from "./field-check";
 import { isBlankStat, SITE_LIMITS as L, type FaqDraft, type PackageDraft, type PageDraft, type SlideDraft, type TrainerDraft, type WorkDraft } from "./site-editor";
 import type { PopupOfferValue, PostPartValue } from "./site-entities";
-import { CODE_DAYS_MAX, CODE_DAYS_MIN, DISCOUNT_MAX, DISCOUNT_MIN } from "./welcome-code";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 
@@ -194,9 +193,8 @@ export function loosePost(v: PostPartValue): LooseProblems {
 // ---------- Hüpikaken: the offer (piece 4b, ruling R-c) ----------
 
 /**
- * Hüpikaken's offer (PopupOfferValue): the texts' lengths, the picture's key, the discount a whole 1–99 and the code's days a whole 1–365, each as
- * typed (a whole number outside its range is `discountRange` / `codeDaysRange`, Dim 29.10; no whole number, `whole`). Nothing is required here: the
- * title and the picture of a shown popup, and the discount, wait for „Avalda muudatused“ (`Puudub: pilt`).
+ * Hüpikaken's offer (PopupOfferValue): the texts' lengths and the picture's key (the two numbers it once held are the welcome code's, F1 Task 12).
+ * Nothing is required here: the title and the picture of a shown popup wait for „Avalda muudatused“ (`Puudub: pilt`).
  */
 export function looseOffer(v: PopupOfferValue): LooseProblems {
   const c = new Check();
@@ -204,7 +202,5 @@ export function looseOffer(v: PopupOfferValue): LooseProblems {
   c.text("title", v.title, L.campaignTitle);
   c.text("text", v.text, L.campaignText);
   c.image("imageKey", v.imageKey);
-  c.whole("discountPercent", v.discountPercent, DISCOUNT_MIN, DISCOUNT_MAX, "discountRange");
-  c.whole("codeDays", v.codeDays, CODE_DAYS_MIN, CODE_DAYS_MAX, "codeDaysRange");
   return looseOf(c);
 }
