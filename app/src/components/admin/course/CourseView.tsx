@@ -27,7 +27,7 @@ import { RecommendationsCard } from "./RecommendationsCard";
 import { StagesCard } from "./StagesCard";
 import { TestCard } from "./TestCard";
 import { TypeCard } from "./TypeCard";
-import type { CourseParts, OtherCourse } from "./types";
+import type { CertificateDesignOption, CourseParts, OtherCourse } from "./types";
 
 const cents = (s: string) => (s.trim() ? parseEuroCents(s) : null);
 
@@ -70,6 +70,7 @@ export function CourseView({
   courseId,
   modules,
   others,
+  designs = [],
   next,
   locked,
   liveType,
@@ -89,6 +90,8 @@ export function CourseView({
   courseId: number | null;
   modules: AdminModule[];
   others: OtherCourse[];
+  /** Seaded's certificate designs, the first first („Tunnistus“'s „Kujundus“). */
+  designs?: CertificateDesignOption[];
   next: { startsAt: string; city: string } | null;
   locked: boolean;
   liveType: CourseType;
@@ -122,7 +125,7 @@ export function CourseView({
     includes: <IncludesCard api={parts.includes} />,
     protocolStages: <StagesCard api={parts.protocolStages} type={type} />,
     test: <TestCard api={parts.test} />,
-    certificate: <CertificateCard api={parts.certificate} outcomes={parts.outcomes.fields.outcomes} />,
+    certificate: <CertificateCard api={parts.certificate} outcomes={parts.outcomes.fields.outcomes} designs={designs} />,
     gallery: <GalleryCard api={parts.gallery} />,
     recommendations: <RecommendationsCard api={parts.recommendations} others={others} />,
   };

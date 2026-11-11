@@ -16,6 +16,7 @@ import { parseRowId } from "@/lib/row-id";
 import { listCourseLessons } from "@/server/admin-lessons";
 import { requireAdmin } from "@/server/auth";
 import { bunnyConfig } from "@/server/bunny";
+import { listCertificateDesigns } from "@/server/certificate-designs";
 import { readCourseEditor } from "@/server/course-parts";
 import { purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
 import { mediaStore } from "@/server/media-store";
@@ -54,12 +55,13 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
   await requireAdmin();
   const [id, sp, stamp] = await Promise.all([parsed, searchParams, stamped]);
   if (typeof id === "number") after(() => purgeRemovedLessonFiles(db, mediaStore(), new Date()));
-  const [course, all, usage, modules, editor] = await Promise.all([
+  const [course, all, usage, modules, editor, designs] = await Promise.all([
     typeof id === "number" ? getCourseForEdit(db, id) : null,
     listAllCourses(db),
     typeof id === "number" ? courseUsage(db, id) : null,
     typeof id === "number" ? listCourseLessons(db, id) : [],
     typeof id === "number" ? readCourseEditor(db, id) : null,
+    id === null ? [] : listCertificateDesigns(db),
   ]);
   const t = adminEt.courseEditor;
 
@@ -110,7 +112,14 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <CourseEditor course={data} others={others} next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null} created={sp.loodud === "1"} modules={course ? modules : []} />
+      <CourseEditor
+        course={data}
+        others={others}
+        next={next ? { startsAt: next.startsAt.toISOString(), city: next.city } : null}
+        created={sp.loodud === "1"}
+        modules={course ? modules : []}
+        designs={designs.map((d) => ({ id: d.id, name: d.name }))}
+      />
       {course && lesson && place && (
         <Drawer
           key={lesson.id}

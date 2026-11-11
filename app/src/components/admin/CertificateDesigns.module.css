@@ -1,0 +1,94 @@
+/* Seaded → Tunnistus → „Kujundused“ (2026-11-11 certificate designs, spec §5.1): a card of the Tunnistus section under the certificate's settings, one
+   row per design (a fieldset with a hairline between rows), „Lisa kujundus“ under them. A row's fields side by side where there is room (the name and
+   the tone over the photo's A4 landscape thumbnail), one column on a phone. Every control is the admin's 44 px one; colours from tokens.css only. */
+
+.card {
+  min-width: 0;
+}
+
+.rows {
+  display: grid;
+  gap: 0;
+}
+
+.row {
+  min-width: 0;
+  margin: 0;
+  padding: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.row:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: start;
+}
+
+/* the photo across the row, under the name and the tone */
+.fields > :last-child {
+  grid-column: 1 / -1;
+  max-width: 420px;
+}
+
+@container course-cards (max-width: 560px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tone {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tone > p {
+  margin: 0;
+}
+
+/* after a conflict: „Taasta minu tekst“ */
+.restore {
+  margin: 14px 0 0;
+}
+
+/* „Vaata näidist“ and „Kustuta“ (or why it cannot go, or its confirmation) */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.actions > p {
+  margin: 0;
+}
+
+.kept:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.add {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-top: 8px;
+}
+
+.add > p {
+  margin: 0;
+}

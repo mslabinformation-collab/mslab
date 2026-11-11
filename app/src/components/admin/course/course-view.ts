@@ -47,7 +47,10 @@ export function cardTitle(part: CoursePart, type: CourseType): string {
 /** The visible name of a field, for the leave guard's notice („Muudatust „{field}“ …“): basics' and price's by their label, a list's by its card. */
 export function fieldLabel(part: EditorPart, field: string): string {
   if (part === "test") return field === "passPercent" ? f.testPass : field === "tries" ? f.testTries : s.test;
-  if (part === "certificate") return field === "certificateVolume" ? f.certificateVolume : field === "certificateTitle" ? f.certificateTitle : f.certificateSkills;
+  if (part === "certificate") {
+    const known = { certificateVolume: f.certificateVolume, certificateTitle: f.certificateTitle, certificateDesignId: f.certificateDesign } as Record<string, string>;
+    return known[field] ?? f.certificateSkills;
+  }
   if (part === "price" || part === "basics") {
     const known = { title: f.title, slug: f.slug, level: f.level, language: f.language, summary: f.summary, body: f.body, type: f.type } as Record<string, string>;
     return known[field] ?? partLabels(part, { [field]: true })[0] ?? partTitle(part);

@@ -1486,3 +1486,49 @@ describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => 
     expect($('[data-add-lesson="1"]')).not.toBeNull();
   });
 });
+
+describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, spec §5.2)", () => {
+  const DESIGNS = [
+    { id: 4, name: "Hele" },
+    { id: 7, name: "Tume" },
+  ];
+  const select = () => $<HTMLSelectElement>('[data-certificate-card] select[data-field="certificateDesignId"]');
+  const pick = async (value: string) => {
+    await act(async () => {
+      select()!.value = value;
+      select()!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+  };
+
+  it("Seaded's designs in their order; none picked shows the first; a pick saves at once and waits for „Avalda muudatused“", async () => {
+    await show({ designs: DESIGNS });
+    const box = $("[data-certificate-design]")!;
+    expect(text(box.querySelector("label"))).toBe("Kujundus");
+    expect(Array.from(select()!.options).map((o) => [o.value, text(o)])).toEqual([
+      ["4", "Hele"],
+      ["7", "Tume"],
+    ]);
+    expect(select()!.value).toBe("4");
+    expect(text(box)).toContain("Kujundusi muudad: Seaded → Tunnistus.");
+    expect(box.hasAttribute("data-unpublished")).toBe(false);
+    await pick("7");
+    expect(remote.log).toEqual([{ part: "certificate", version: "l:certificate", patch: { certificateDesignId: 7 } }]);
+    expect(select()!.value).toBe("7");
+    expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(true);
+  });
+
+  it("a design deleted meanwhile is refused in its own words, in the field", async () => {
+    remote.refuse = { part: "certificate", fields: { certificateDesignId: "certificateDesign" } };
+    await show({ designs: DESIGNS });
+    await pick("7");
+    expect(text($("[data-certificate-design] [data-field-error]"))).toBe("Seda kujundust enam pole. Vali teine kujundus.");
+    expect(select()!.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("no designs read: the card has no „Kujundus“", async () => {
+    await show();
+    expect($("[data-certificate-card]")).not.toBeNull();
+    expect(select()).toBeNull();
+  });
+});

@@ -4,9 +4,9 @@ import { useEffect } from "react";
 import type { AdminModule } from "@/server/admin-lessons";
 import { dropNewCourseCopy, NewCourse } from "./course/NewCourse";
 import { SavedCourse } from "./course/SavedCourse";
-import type { CourseEditorData, OtherCourse } from "./course/types";
+import type { CertificateDesignOption, CourseEditorData, OtherCourse } from "./course/types";
 
-export type { CourseEditorData, OtherCourse } from "./course/types";
+export type { CertificateDesignOption, CourseEditorData, OtherCourse } from "./course/types";
 
 /**
  * The course editor (admin UX pass piece 3a, Task 7; README B2): a shell over its cards (course/, one component per card). A saved course
@@ -20,10 +20,13 @@ export function CourseEditor({
   next,
   created,
   modules,
+  designs = [],
 }: {
   course: CourseEditorData | null;
   /** The other courses (recommendations). */
   others: OtherCourse[];
+  /** Seaded's certificate designs, the first first (the e-course's „Tunnistus“ → „Kujundus“). */
+  designs?: CertificateDesignOption[];
   /** The next session of the course (the badge's card preview, its meta line). */
   next: { startsAt: string; city: string } | null;
   /** Just created (?loodud=1): the notice, and this browser's copy of the new-course page goes. */
@@ -34,5 +37,9 @@ export function CourseEditor({
   useEffect(() => {
     if (created) dropNewCourseCopy();
   }, [created]);
-  return course ? <SavedCourse data={course} others={others} next={next} created={created} modules={modules} /> : <NewCourse others={others} next={next} modules={modules} />;
+  return course ? (
+    <SavedCourse data={course} others={others} next={next} created={created} modules={modules} designs={designs} />
+  ) : (
+    <NewCourse others={others} next={next} modules={modules} designs={designs} />
+  );
 }

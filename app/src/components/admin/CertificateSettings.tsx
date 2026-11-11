@@ -5,7 +5,9 @@ import { startTransition, useCallback, useId, useLayoutEffect, useMemo, useRef, 
 import { CERT_LIMITS, certificateForm, formatCertificateNumber, type CertificateForm } from "@/domain/certificate";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
+import type { DesignCardRow } from "@/server/certificate-designs";
 import type { CertificateFieldError } from "@/server/certificates";
+import { CertificateDesigns } from "./CertificateDesigns";
 import { useSeadedPart, type FieldGroup, type StatusReport } from "./useSeadedPart";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
@@ -27,6 +29,8 @@ export type CertificateSettingsInitial = {
   /** The number last issued in `nextYear` ("MS LAB 2026-14"), or null. */
   last: string | null;
   version: string;
+  /** „Kujundused“ (2026-11-11 certificate designs; server/certificate-designs.ts certificateDesignsCard): none given, the card is not drawn. */
+  designs?: DesignCardRow[];
 };
 
 type Field = keyof CertificateForm;
@@ -56,7 +60,8 @@ function sampleHref(d: CertificateForm): string {
  * again for the year's last issued number. A refused field says why in its own words, in the field (Review Focus 4: a number at or below one already issued is
  * `taken`; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is "invalid" on the year).
  * Under the fields „Näidistunnistus (PDF)“ (Dim 07.11.2026, as the invoice card's sample): a sample drawn from the values on the screen without
- * saving anything or using a number.
+ * saving anything or using a number. Under the card „Kujundused“ (2026-11-11 certificate designs, CertificateDesigns.tsx): each design's own sample
+ * takes these same values.
  */
 export function CertificateSettings({ initial, onStatus }: { initial: CertificateSettingsInitial; onStatus?: StatusReport }) {
   const t = adminEt.certificates.settings;
@@ -168,48 +173,51 @@ export function CertificateSettings({ initial, onStatus }: { initial: Certificat
   };
 
   return (
-    <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} onBlur={leave} data-certificate-settings="">
-      <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
-        {t.title}
-      </h2>
-      <p className={`${ui.muted} ${site.cardLead}`}>{t.lead}</p>
-      <div className={ed.grid}>
-        {text("place", "place", CERT_LIMITS.place, t.placeHint)}
-        {text("registryCode", "registry", CERT_LIMITS.registryCode)}
-        {text("practicalLine", "practical", CERT_LIMITS.practicalLine, t.practicalLineHint, ed.wide)}
-        {text("trainerName", "trainer", CERT_LIMITS.trainerName, t.trainerNameHint, styles.trainer)}
-        <fieldset className={ed.fieldset} aria-describedby={[preview ? `${uid}-preview` : "", `${uid}-next-hint`, `${uid}-last`].filter(Boolean).join(" ")}>
-          <legend className={ui.legend}>{t.nextNumber}</legend>
-          <div className={styles.number}>
-            {number("nextYear", "next-year", 4)}
-            {number("nextSeq", "next-seq", 5)}
-          </div>
-          {preview && (
-            <p id={`${uid}-preview`} className={ui.hint} data-cert-preview="">
-              {preview}
+    <>
+      <section className={`${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} onBlur={leave} data-certificate-settings="">
+        <h2 id={`${uid}-title`} className={`${ui.h2} ${site.cardTitle}`}>
+          {t.title}
+        </h2>
+        <p className={`${ui.muted} ${site.cardLead}`}>{t.lead}</p>
+        <div className={ed.grid}>
+          {text("place", "place", CERT_LIMITS.place, t.placeHint)}
+          {text("registryCode", "registry", CERT_LIMITS.registryCode)}
+          {text("practicalLine", "practical", CERT_LIMITS.practicalLine, t.practicalLineHint, ed.wide)}
+          {text("trainerName", "trainer", CERT_LIMITS.trainerName, t.trainerNameHint, styles.trainer)}
+          <fieldset className={ed.fieldset} aria-describedby={[preview ? `${uid}-preview` : "", `${uid}-next-hint`, `${uid}-last`].filter(Boolean).join(" ")}>
+            <legend className={ui.legend}>{t.nextNumber}</legend>
+            <div className={styles.number}>
+              {number("nextYear", "next-year", 4)}
+              {number("nextSeq", "next-seq", 5)}
+            </div>
+            {preview && (
+              <p id={`${uid}-preview`} className={ui.hint} data-cert-preview="">
+                {preview}
+              </p>
+            )}
+            <p id={`${uid}-next-hint`} className={ui.hint}>
+              {t.nextHint}
             </p>
-          )}
-          <p id={`${uid}-next-hint`} className={ui.hint}>
-            {t.nextHint}
+            <p id={`${uid}-last`} className={ui.hint} data-cert-last="">
+              {lastLine}
+            </p>
+          </fieldset>
+        </div>
+        {part.conflict && (
+          <p className={styles.restore}>
+            <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void part.restore()} data-cert-restore="">
+              {adminEt.courseEditor.restore}
+            </button>
           </p>
-          <p id={`${uid}-last`} className={ui.hint} data-cert-last="">
-            {lastLine}
-          </p>
-        </fieldset>
-      </div>
-      {part.conflict && (
-        <p className={styles.restore}>
-          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void part.restore()} data-cert-restore="">
-            {adminEt.courseEditor.restore}
-          </button>
-        </p>
-      )}
-      <div className={styles.sampleBox}>
-        <a className={`${ui.btn} ${ui.secondary}`} href={sampleHref(sample)} target="_blank" rel="noopener" data-cert-sample="">
-          {t.sample}
-        </a>
-        <p className={ui.hint}>{t.sampleHint}</p>
-      </div>
-    </section>
+        )}
+        <div className={styles.sampleBox}>
+          <a className={`${ui.btn} ${ui.secondary}`} href={sampleHref(sample)} target="_blank" rel="noopener" data-cert-sample="">
+            {t.sample}
+          </a>
+          <p className={ui.hint}>{t.sampleHint}</p>
+        </div>
+      </section>
+      {initial.designs && <CertificateDesigns designs={initial.designs} sampleHref={sampleHref(sample)} onStatus={onStatus} />}
+    </>
   );
 }

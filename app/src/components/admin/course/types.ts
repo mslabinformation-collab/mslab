@@ -8,6 +8,9 @@ import type { EditorPart, EditorParts, PartValues } from "@/domain/course-parts"
 /** Another course, for „Soovitused“. */
 export type OtherCourse = { id: number; title: string; type: CourseType; published: boolean };
 
+/** A certificate design, for „Tunnistus“'s „Kujundus“ (2026-11-11 certificate designs): the list is in Seaded's order, the first first. */
+export type CertificateDesignOption = { id: number; name: string };
+
 /** A saved course as its editor starts (page.tsx; server/course-parts.ts readCourseEditor). */
 export type CourseEditorData = {
   id: number;

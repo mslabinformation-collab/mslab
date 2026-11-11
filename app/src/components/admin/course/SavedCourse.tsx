@@ -20,7 +20,7 @@ import { CourseView } from "./CourseView";
 import { OutlineTextsContext, type OutlineTextRow, type OutlineTexts } from "./OutlineTexts";
 import { usePhoneChip } from "./usePhoneChip";
 import { focusPartField, useCoursePart, type SaveAnswer, type SaveEar } from "./useCoursePart";
-import type { CourseEditorData, CourseParts, OtherCourse } from "./types";
+import type { CertificateDesignOption, CourseEditorData, CourseParts, OtherCourse } from "./types";
 
 // A saved course's editor (admin UX pass piece 3a, Task 7; README B2, §1.3, §1.8; rulings R-a…R-d). Every card autosaves its part from the version
 // the page read (useCoursePart): a published course's into its draft, with the PublishBar under the H1 naming what waits („Avaldamata muudatused:
@@ -79,6 +79,8 @@ type Shared = {
   next: { startsAt: string; city: string } | null;
   created: boolean;
   modules: AdminModule[];
+  /** Seaded's certificate designs, the first first („Tunnistus“'s „Kujundus“). */
+  designs?: CertificateDesignOption[];
 };
 
 /**
@@ -172,6 +174,7 @@ function SavedForm({
   next,
   created,
   modules,
+  designs,
   seeds,
   generation,
   waiting,
@@ -430,6 +433,7 @@ function SavedForm({
         courseId={id}
         modules={modules}
         others={others}
+        designs={designs}
         next={next}
         locked={data.typeLocked}
         liveType={liveType}

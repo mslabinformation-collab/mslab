@@ -7,6 +7,7 @@ import { FINANCING_KEY, readFinancingSettings } from "@/domain/financing";
 import { adminEt } from "@/i18n/dict/admin";
 import { loadSettings } from "@/server/admin-site";
 import { requireAdmin } from "@/server/auth";
+import { certificateDesignsCard } from "@/server/certificate-designs";
 import { certificateCard } from "@/server/certificates";
 import { serverEnv } from "@/server/env";
 import { invoiceCard } from "@/server/invoices";
@@ -31,13 +32,14 @@ export default async function SettingsEditPage() {
   const db = getDb();
   // the cards show the number the next issue will really get (in January, until the year's first issue, the stored one is still last year's)
   const now = new Date();
-  const [initial, certificate, invoice, storedFinancing, legal, reaccept] = await Promise.all([
+  const [initial, certificate, invoice, storedFinancing, legal, reaccept, designs] = await Promise.all([
     loadSettings(db),
     certificateCard(db, now),
     invoiceCard(db, now),
     readSetting(db, FINANCING_KEY),
     readLegalTexts(db),
     reacceptCount(db, now),
+    certificateDesignsCard(db),
   ]);
   // the sign-in allow-list (the environment variable ADMIN_EMAILS): shown, never edited here
   const admins = serverEnv()
@@ -49,7 +51,7 @@ export default async function SettingsEditPage() {
       initial={initial}
       admins={admins}
       invoice={invoice}
-      certificate={{ ...certificate.settings, last: certificate.last, version: certificate.version }}
+      certificate={{ ...certificate.settings, last: certificate.last, version: certificate.version, designs }}
       financing={{ ...readFinancingSettings(storedFinancing), version: await financingVersionOf(storedFinancing) }}
       legal={legal}
       reaccept={reaccept}

@@ -16,7 +16,7 @@ import { fieldLabel } from "./course-view";
 import { CourseView } from "./CourseView";
 import { focusPartField } from "./useCoursePart";
 import { useLocalParts } from "./useLocalParts";
-import type { OtherCourse } from "./types";
+import type { CertificateDesignOption, OtherCourse } from "./types";
 
 // The new-course page /admin/koolitused/uus (admin UX pass piece 3a, Task 7; piece3-texts S3-P3-g, P-6; README P1 §3.1): the same cards, but nothing
 // saves until the one explicit „Lisa koolitus“ (createCourse) — the course does not exist yet. The header says „Täida kohustuslikud väljad“ until
@@ -73,7 +73,18 @@ function firstTyped(draft: CourseDraft): { part: EditorPart; name: string } | nu
   return null;
 }
 
-export function NewCourse({ others, next, modules }: { others: OtherCourse[]; next: { startsAt: string; city: string } | null; modules: AdminModule[] }) {
+export function NewCourse({
+  others,
+  next,
+  modules,
+  designs,
+}: {
+  others: OtherCourse[];
+  next: { startsAt: string; city: string } | null;
+  modules: AdminModule[];
+  /** Seaded's certificate designs, the first first („Tunnistus“'s „Kujundus“). */
+  designs?: CertificateDesignOption[];
+}) {
   const uid = useId();
   const [draft, setDraft] = useState<CourseDraft>(EMPTY);
   const [state, action, pending] = useActionState<EditResult | null, FormData>(createCourse, null);
@@ -153,6 +164,7 @@ export function NewCourse({ others, next, modules }: { others: OtherCourse[]; ne
       courseId={null}
       modules={modules}
       others={others}
+      designs={designs}
       next={next}
       locked={false}
       liveType={draft.type}

@@ -1487,6 +1487,43 @@ export const adminEt = {
         other: "Kontrolli seda välja.",
       },
     },
+    // Seaded → Tunnistus → „Kujundused“ (Draft, 2026-11-11 certificate designs spec §5.1; components/admin/CertificateDesigns.tsx): the designs an
+    // e-course's certificate is drawn in. `lead`, the tones, `backgroundHint`, `used` and the buttons are the spec's words; the rest ours
+    designs: {
+      title: "Kujundused",
+      lead: "Tunnistuse taust ja teksti värv. Koolituse kaardil „Tunnistus“ valid, millist kujundust see koolitus kasutab. Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      // {name}: the design's name (each row's group, for a screen reader)
+      row: "Kujundus „{name}“",
+      name: "Nimi",
+      tone: "Toon",
+      tones: { light: "Hele taust, tume tekst", dark: "Tume taust, hele tekst" },
+      background: "Taustapilt",
+      backgroundHint: "JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.",
+      // the first design (lowest in the list): what an e-course with no design picked gets
+      first: "Koolitus, millel kujundust valitud pole, kasutab seda kujundust.",
+      sample: "Vaata näidist",
+      remove: "Kustuta",
+      // instead of „Kustuta“: {n} the courses using the design (live or waiting to be published; the first design also every e-course with none picked)
+      usedOne: "Seda kujundust kasutab 1 koolitus.",
+      used: "Seda kujundust kasutab {n} koolitust.",
+      last: "Viimast kujundust ei saa kustutada.",
+      removeQuestion: "Kas kustutan kujunduse „{name}“?",
+      removeLine: "Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      removeYes: "Jah, kustuta",
+      add: "Lisa kujundus",
+      adding: "Lisan…",
+      // a press that failed (not signed out): „Lisa kujundus“ or „Jah, kustuta“
+      failed: "Ei õnnestunud. Proovi uuesti.",
+      gone: "Seda kujundust enam pole.",
+      // a row's refused field (server/certificate-designs.ts): name required | tooLong | taken, tone invalid, backgroundKey image
+      errors: {
+        required: "Täida see väli.",
+        tooLong: "Nimi võib olla kuni 40 märki.",
+        taken: "Sellise nimega kujundus on juba olemas.",
+        image: "Seda pilti ei saa kasutada. Lae üles JPEG-pilt (kuni 1,5 MB).",
+        other: "Kontrolli seda välja.",
+      },
+    },
     // the sample PDF's made-up student, course, competency lines and volume (server/certificate-sample.ts); Draft
     sample: {
       name: "Mari Maasikas",
@@ -1800,6 +1837,9 @@ export const adminEt = {
       certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
       certificateVolume: "Maht",
       certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
+      // (Draft, 2026-11-11 certificate designs spec §5.2) the design the course's certificates are drawn in; none picked shows the first design
+      certificateDesign: "Kujundus",
+      certificateDesignHint: "Kujundusi muudad: Seaded → Tunnistus.",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega.",
       main: "Põhipilt",
       image: "Pilt {n}",
