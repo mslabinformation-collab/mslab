@@ -1144,6 +1144,32 @@
       "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
+      "id": "haldus-ekursus-tunnistuse-kujundus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: tunnistuse kujundus",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
+        "Vaata välja „Kujundus“ ja selle valikuid.",
+        "Vali „Kujundus“ alt kujundus, millega tahad Proov 1 tunnistust näha.",
+        "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
+      ],
+      "expect": [
+        "„Kujundus“ loetleb Seadete kujundused samas järjekorras, esimene on „Hele“.",
+        "Kui kujundust pole valitud, on valitud esimene kujundus.",
+        "Välja all on vihje „Kujundusi muudad: Seaded → Tunnistus.“.",
+        "Avaldatud koolitusel on enne avaldamist välja juures „· avaldamata“.",
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
+      ],
+      "why": "Selle koolituse tunnistused tehakse valitud kujundusega.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-ekursus-avalda",
       "area": "haldus",
       "who": "maria",
@@ -2042,7 +2068,7 @@
         "Pane „Koht“ tagasi endiseks ja liigu väljalt edasi."
       ],
       "expect": [
-        "PDF avaneb uues aknas: tunnistus on laiuti, must, valge tekstiga.",
+        "PDF avaneb uues aknas: tunnistus on laiuti, esimese kujunduse („Hele“) tooni ja taustapildiga.",
         "Tunnistusel on „NÄIDISKOOLITUS“ ja käekirjas nimi „Mari Maasikas“.",
         "Kuupäeva ees on ekraanil olev koht koos X-iga.",
         "Number on sama mis kaardi rida „Järgmine tunnistus: …“.",
@@ -2052,8 +2078,38 @@
       "why": "Maria näeb tunnistust enne, kui ükski õpilane selle saab.",
       "risk": "med",
       "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-seaded-tunnistuse-kujundused",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: tunnistuse kujundused",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“, vali „Tunnistus“ ja keri kaardini „Kujundused“.",
+        "Vajuta „Lisa kujundus“ ja kirjuta uue rea „Nimi“ asemele Proov 1.",
+        "Vali „Toon“: „Tume taust, hele tekst“.",
+        "Vajuta „Taustapilt“ juures „Vali pilt“ ja vali horisontaalne JPEG-pilt.",
+        "Vajuta selle rea „Vaata näidist“.",
+        "Vajuta selle rea „Kustuta“ ja kinnita „Jah, kustuta“."
+      ],
+      "expect": [
+        "Kaardil on kujundused „Hele“ ja „Tume“, igaühel „Nimi“, „Toon“, „Taustapilt“ ja „Vaata näidist“.",
+        "Esimese kujunduse all on „Koolitus, millel kujundust valitud pole, kasutab seda kujundust.“.",
+        "Kasutusel kujundusel pole „Kustuta“, vaid „Seda kujundust kasutab … koolitust.“.",
+        "Pildi juures on vihje „JPEG, kuni 1,5 MB, horisontaalne A4 …“.",
+        "Näidis avaneb uues aknas: hele tekst tumedal taustal, taustapilt katab kogu lehe.",
+        "Päises on pärast igat muudatust „Salvestatud“ koos kellaajaga.",
+        "Pärast kustutamist rida Proov 1 enam pole."
+      ],
+      "why": "Maria valib, milline näeb välja iga koolituse tunnistus.",
+      "risk": "med",
+      "writes": true,
       "mark": "new",
-      "markedAt": "2026-11-07T12:43:34.917Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-arve",
@@ -5240,13 +5296,14 @@
         "Õige nimega näed „Tunnistus nr. MS LAB …“.",
         "Rea all on „Kui nimes on viga, kirjuta meile“.",
         "Alla laaditakse PDF-fail, mille nimi algab MS-LAB-tunnistus.",
-        "PDF-i pealkiri on väljalt „Pealkiri tunnistusel“, tühja välja korral koolituse nimi."
+        "PDF-i pealkiri on väljalt „Pealkiri tunnistusel“, tühja välja korral koolituse nimi.",
+        "PDF on koolituse kaardil valitud kujundusega, valimata korral esimese kujundusega „Hele“."
       ],
       "why": "Tunnistus on e-koolituse lõpp ja võtab päris numbri.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tunnistus-pdf",
@@ -5261,9 +5318,9 @@
         "Võrdle seda oma Canva tunnistusega (või paberil tunnistusega)."
       ],
       "expect": [
-        "Tunnistus on laiuti, must, valge tekstiga.",
+        "Tunnistus on laiuti, kujunduse taustapildiga; hele kujundus musta, tume valge teksti ja logoga.",
         "Õpilase nimi ja allkiri on käekirjas.",
-        "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood; all vasakul on valge MS LAB logo samas kohas nagu Canvas.",
+        "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood; all vasakul on MS LAB logo samas kohas nagu Canvas.",
         "Kirjad on samad mis Canva tunnistusel: „TUNNISTUS“ ja kõik read ühes kirjas, koolituse nimi teises.",
         "Koolituse nimi on suurte hõredate tähtedega peaaegu üle lehe, nagu Canvas.",
         "Oskuste ja alumised read algavad samast vasakust servast; maht ja all paremal olevad read lõpevad samas paremas servas.",
@@ -5274,7 +5331,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-07T19:08:41.480Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-paranda-nimi",
@@ -5293,14 +5350,14 @@
       "expect": [
         "Kaardil on rida „Tunnistus MS LAB … · …“ ja „Laadi alla (PDF)“.",
         "Pärast näed „Tunnistus … on uuesti väljastatud nimega Proov Parandatud.“.",
-        "Uuel failil on uus nimi, sama number ja sama kuupäev.",
+        "Uuel failil on uus nimi, sama number, sama kuupäev ja sama kujundus.",
         "Proov 1 ei saa selle kohta kirja."
       ],
       "why": "Maria parandab nime, kui õpilane kirjutab veast.",
       "risk": "med",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "2026-11-06T10:09:33.193Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tunnistused",
