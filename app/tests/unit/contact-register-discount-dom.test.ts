@@ -629,6 +629,56 @@ describe("fix round 1: late answers", () => {
   });
 });
 
+describe("M4: a submit while the remembered code's re-check is still on its way", () => {
+  test("waits for it and sends the code at the price it answers", async () => {
+    window.sessionStorage.setItem(KEY, "TERE10");
+    let first!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (first = r)));
+    mocks.registerContact.mockImplementation(() => new Promise(() => {})); // (still sending: the form stays on screen)
+    await render();
+    await fillIn();
+    await submit();
+    // nothing goes before the answer: the request would otherwise leave at the list price while the screen then shows the discount
+    expect(mocks.registerContact).not.toHaveBeenCalled();
+    await act(async () => first(ok("TERE10", 3500)));
+    await settle();
+    expect(mocks.checkDiscountCode).toHaveBeenCalledTimes(1);
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("discountCode"), fd.get("discountCents")]).toEqual(["TERE10", "3500"]);
+    expect($("[data-discount-total] strong")?.textContent).toBe("315 €");
+  });
+
+  test("a refusal it answers is what a finished check leaves: sent without the code, at the list price the field shows", async () => {
+    window.sessionStorage.setItem(KEY, "SUVI2025");
+    let first!: (a: CheckAnswer) => void;
+    mocks.checkDiscountCode.mockImplementationOnce(() => new Promise<CheckAnswer>((r) => (first = r)));
+    mocks.registerContact.mockImplementation(() => new Promise(() => {}));
+    await render();
+    await fillIn();
+    await submit();
+    expect(mocks.registerContact).not.toHaveBeenCalled();
+    await act(async () => first(refused("ended")));
+    await settle();
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("discountCode"), fd.get("discountCents")]).toEqual(["", ""]);
+    expect(errorText()).toBe("See sooduskood ei kehti enam.");
+    expect(totalLine()).toBeNull();
+  });
+
+  test("once it has answered, a later Eemalda wins: the next submit sends no code", async () => {
+    window.sessionStorage.setItem(KEY, "TERE10");
+    mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 3500));
+    mocks.registerContact.mockResolvedValue({ ok: true });
+    await render();
+    expect(appliedLine()).toContain("TERE10");
+    await act(async () => $<HTMLButtonElement>("[data-discount-remove]")!.click());
+    await fillIn();
+    await submit();
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("discountCode"), fd.get("discountCents")]).toEqual(["", ""]);
+  });
+});
+
 describe("fix round 2: her typing is newer than the remembered code", () => {
   test("typing during the remembered code's re-check wins over its answer", async () => {
     window.sessionStorage.setItem(KEY, "TERE10");

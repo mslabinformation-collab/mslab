@@ -38,6 +38,10 @@ export async function checkDiscount(deps: Pick<Deps, "db" | "env" | "ip" | "now"
     courseType: course.type,
     listCents: list,
     today: tallinnToday(deps.now),
+    // Every counting use, hers too: the check has no e-mail by design, so S4's "her own pending attempts do not count" cannot apply here.
+    // Known limit (the final review's M3, ruling F-M3, spec D8): the person holding the LAST use of an e-course code is answered `usedUp` here
+    // while her own attempt is pending, e.g. when the cart's remembered code is checked again on a real reload (useDiscountCode). She is never
+    // overcharged (she sees the list price), and a submit that carries the code still gets A7/S3/S4's re-send at the server (redeem, start).
     uses: await usesOf(deps.db, code.id, deps.now),
   });
   if (refusal === "notYet") return { ok: false, error: refusal, startsOn: code.startsOn ?? undefined };

@@ -43,14 +43,16 @@ export type CodeRule = {
   active: boolean;
 };
 
-// R14: people paste codes with a space inside, a no-break space, zero-width characters or a typographic dash. All whitespace goes, the zero-width
-// characters go, every dash variant becomes "-".
+// R14: people paste codes with a space inside, a no-break space, zero-width characters or a typographic dash. NFKC first (fullwidth „ＴＥＲＥ１０“
+// → "TERE10", the final review's M2), then all whitespace goes, the zero-width characters go, every dash variant becomes "-". No look-alike
+// folding (ruling F-M2): a Cyrillic „ТЕРЕ10“ stays Cyrillic and is answered `unknown` — Latin R has no Cyrillic twin, so a fold would half-work,
+// and a surprising mapping is worse than `unknown`.
 const INVISIBLE = /[\s​-‍⁠﻿]+/g;
 const DASHES = /[‐-―−﹘﹣－]/g;
 
-/** As typed → as stored: no whitespace or zero-width characters, dash variants as "-", in capitals. */
+/** As typed → as stored: NFKC, no whitespace or zero-width characters, dash variants as "-", in capitals. */
 export function normalizeCode(typed: string): string {
-  return typed.replace(INVISIBLE, "").replace(DASHES, "-").toUpperCase();
+  return typed.normalize("NFKC").replace(INVISIBLE, "").replace(DASHES, "-").toUpperCase();
 }
 
 /** A normalized code that may be stored: the right shape, and with at least one letter or digit ("---" is not a code). */

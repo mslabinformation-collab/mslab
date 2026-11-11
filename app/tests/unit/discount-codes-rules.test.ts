@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { RegStatus } from "@/domain/registration";
 import {
-  addDays, codeRefusal, codeState, codeValueText, discountCents, isCode, listCentsOf, normalizeCode, personRefusal, registrationDiscount, registrationTotal,
+  addDays, codeHint, codeRefusal, codeState, codeValueText, discountCents, isCode, listCentsOf, normalizeCode, personRefusal, registrationDiscount, registrationTotal,
   totalWith, useMark, validOn, type CodeRule,
 } from "@/domain/discount-codes";
 
@@ -51,6 +51,9 @@ describe("discount codes: the pure rules", () => {
   ])("codeRefusal %o → %s", (over, want) => expect(codeRefusal(rule(over), at)).toBe(want));
   test("the last day is included and the first day is the start date", () => {
     expect(codeRefusal(rule({ startsOn: "2026-12-01", endsOn: "2026-12-01" }), at)).toBeNull();
+  });
+  test("usedUp once the uses reach the limit, not before", () => {
+    expect(codeRefusal(rule({ maxUses: 3 }), { ...at, uses: 2 })).toBeNull();
     expect(codeRefusal(rule({ maxUses: 3 }), { ...at, uses: 3 })).toBe("usedUp");
   });
   test("scope is told before usedUp", () => expect(codeRefusal(rule({ scope: "ecourse", maxUses: 1 }), { ...at, uses: 1 })).toBe("scope"));
@@ -100,11 +103,24 @@ describe("discount codes: the pure rules", () => {
     expect(normalizeCode("suvi 10")).toBe("SUVI10");
     expect(normalizeCode("tere 10​")).toBe("TERE10");
     expect(normalizeCode("tere–10")).toBe("TERE-10");
+    // M2 (R14's NFKC): fullwidth letters, digits and dash, as an East Asian keyboard or a copied text gives them
+    expect(normalizeCode("ＴＥＲＥ１０")).toBe("TERE10");
+    expect(normalizeCode("ｔｅｒｅ－１０")).toBe("TERE-10");
+    // no look-alike folding (ruling F-M2): a Cyrillic „ТЕРЕ10“ stays Cyrillic and so is no code (`unknown`)
+    expect(isCode(normalizeCode("ТЕРЕ10"))).toBe(false);
     expect(isCode("TERE-10")).toBe(true);
     expect(isCode("TERE 10")).toBe(false);
     expect(isCode("---")).toBe(false);
     expect(isCode("")).toBe(false);
     expect(isCode("A".repeat(31))).toBe(false);
+  });
+  test("codeHint: the welcome code says so whatever its audience; a first or returning code says its audience; a code for all says nothing", () => {
+    expect(codeHint({ welcome: true, audience: "first" })).toBe("welcome");
+    expect(codeHint({ welcome: true, audience: "returning" })).toBe("welcome");
+    expect(codeHint({ welcome: true, audience: "all" })).toBe("welcome");
+    expect(codeHint({ welcome: false, audience: "first" })).toBe("first");
+    expect(codeHint({ welcome: false, audience: "returning" })).toBe("returning");
+    expect(codeHint({ welcome: false, audience: "all" })).toBeNull();
   });
   test("addDays crosses the month and the year", () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");

@@ -65,6 +65,8 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
   const [error, setError] = useState<DiscountState["error"]>(null);
   const [checking, setChecking] = useState(false);
   const seq = useRef(0);
+  // the remembered code's re-check on mount while it is on its way (M4), so that a submit waits for it; null once it has answered
+  const mountCheck = useRef<Promise<CheckAnswer | null> | null>(null);
   // what the callbacks read, so beforeSubmit sees the latest values without being rebuilt on every keystroke
   const latest = useRef({ typed, applied });
   useEffect(() => {
@@ -108,10 +110,19 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
   );
 
   // On mount: a remembered code is checked again (the browser's storage is read only here, after hydration).
+  // Known limit (the final review's M3, ruling F-M3, spec D8): the live check has no e-mail by design, so for the person holding the LAST use of
+  // an e-course code her own pending attempt counts, and a real reload (not a bfcache restore) is answered `usedUp`: the code is dropped and the
+  // cart shows the list price. She is never overcharged, and a submit that carries the code still gets A7/S3/S4's re-send from the server.
   useEffect(() => {
     const stored = remembered(course);
+    if (!stored) return;
     // (after a tick: the check's first state changes are not made inside the effect itself)
-    if (stored) void Promise.resolve().then(() => check(stored, true));
+    const pending: Promise<CheckAnswer | null> = Promise.resolve()
+      .then(() => check(stored, true))
+      .finally(() => {
+        if (mountCheck.current === pending) mountCheck.current = null;
+      });
+    mountCheck.current = pending;
   }, [course, check]);
 
   const setTyped = useCallback((v: string) => {
@@ -133,7 +144,13 @@ export function useDiscountCode(o: { course: string; listCents: number }): Disco
   }, [course]);
 
   const beforeSubmit = useCallback(async (): Promise<DiscountSubmit> => {
-    const { typed: text, applied: a } = latest.current;
+    // M4: a remembered code's re-check still on its way is waited for, and its answer counts as a finished check's: its code applied when
+    // good, none when refused or not checked. (Its state is set but not rendered yet, so `latest` would still read it as nothing.) An answer that
+    // is stale — her own apply, remove or typing came since — is null and leaves `latest`, which those wrote, to decide.
+    const pending = mountCheck.current;
+    const answered = pending ? await pending : null;
+    const { typed: text } = latest.current;
+    const a = answered ? (answered.ok ? answered : null) : latest.current.applied;
     const want = normalizeCode(text);
     if (a && (want === "" || want === a.code)) return { send: true, code: a.code, discountCents: a.discountCents };
     if (want === "") return { send: true, code: null, discountCents: null };
