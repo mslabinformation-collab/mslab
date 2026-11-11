@@ -291,6 +291,34 @@
   display: none;
 }
 
+/* SaveStatus `follow` (review of the UX pass 11.11 A1): the page's save words that need her, while they are scrolled away, stand here in the frame —
+   in the flow, never over the page. Empty, the slots take no room. In the sidebar under the logo's line; in the phone bar in the page name's place
+   (at most three lines of the bar's 64 px). */
+.sideFollow {
+  flex: none;
+  margin: 0 0 12px;
+}
+
+.sideFollow:empty {
+  display: none;
+}
+
+.barFollow {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 56px;
+  overflow: hidden;
+}
+
+.barFollow:empty {
+  display: none;
+}
+
+.barFollow:not(:empty) + .barTitle,
+.barFollow:not(:empty) + .barLogo {
+  display: none;
+}
+
 .barTitle {
   min-width: 0;
   overflow: hidden;

@@ -189,7 +189,7 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     expect(field("post.body")?.tagName).toBe("TEXTAREA");
     // „Avaldamine“ is its own card, with the switch and its hint
     expect(text($("[data-post-publish] h2"))).toBe("Avaldamine");
-    expect(text($("[data-post-publish]"))).toContain("Avaldatud postitus on blogis ja avalehel nähtav.");
+    expect(text($("[data-post-publish]"))).toContain("Avaldatud postitus on uudiste lehel ja avalehel nähtav.");
   });
 });
 
@@ -526,7 +526,7 @@ describe("„Kustuta postitus“ (S4-23)", () => {
     await click(button("Kustuta postitus"));
     const panel = $("[data-confirm-panel]");
     expect(text(panel?.querySelector("p") ?? null)).toBe("Kas kustutan selle postituse?");
-    expect($$("[data-confirm-panel] li").map(text)).toEqual(["Postitus kaob blogist ja avalehelt.", "Seda ei saa tagasi võtta."]);
+    expect($$("[data-confirm-panel] li").map(text)).toEqual(["Postitus kaob uudiste lehelt ja avalehelt.", "Seda ei saa tagasi võtta."]);
     expect(button("Jah, kustuta")).not.toBeNull();
     await click(button("Katkesta"));
     expect(document.activeElement).toBe(button("Kustuta postitus"));

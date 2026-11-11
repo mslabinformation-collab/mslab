@@ -1,5 +1,5 @@
 /* A session's seats (UX pass 11.11 A2, the Kohad board): „2 vaba 6-st“ (the number bold, „6-st“ muted) or the grey tag „Täis“, over a 4 px bar
-   that fills with the taken seats. Colours from tokens.css only. */
+   that fills with the taken seats. Colours from tokens.css only: the board's plum #6b4f5c is --warn, its light grey #ebe8e9 --first. */
 .meter {
   display: grid;
   gap: 6px;
@@ -21,7 +21,7 @@
 
 .full {
   justify-self: start;
-  background: var(--fog);
+  background: var(--first);
   color: var(--ink-soft);
 }
 
@@ -38,9 +38,6 @@
   display: block;
   height: 100%;
   border-radius: 99px;
-  background: var(--ink);
-}
-
-.bar[data-full] > span {
+  /* the board's plum, a full bar's too (it is whole) */
   background: var(--warn);
 }

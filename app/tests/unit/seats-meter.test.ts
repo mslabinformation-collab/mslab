@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { SeatsMeter, SeatsWords } from "@/components/admin/SeatsMeter";
 import { seatFill } from "@/domain/sessions";
@@ -36,5 +38,22 @@ describe("the seats in one wording on Ülevaade and Kalender (UX pass 11.11 A2, 
     expect(bar.hasAttribute("data-full")).toBe(false);
     const full = host(renderToStaticMarkup(createElement(SeatsMeter, { capacity: 2, taken: 2 })));
     expect(full.querySelector("[data-seats-bar]")!.hasAttribute("data-full")).toBe(true);
+  });
+
+  // (review of the UX pass) the Kohad board's colours: every bar fills in its plum #6b4f5c (tokens.css --warn), a full one too, at 100 %; the
+  // „Täis“ tag on the board's light grey #ebe8e9 (--first)
+  test("the board's colours: the plum fill on every bar, the tag „Täis“ light grey", () => {
+    const css = readFileSync(join(process.cwd(), "src", "components", "admin", "SeatsMeter.module.css"), "utf8").replace(/\r\n/g, "\n");
+    const tokens = readFileSync(join(process.cwd(), "src", "styles", "tokens.css"), "utf8");
+    expect(tokens).toMatch(/--warn: #6b4f5c;/);
+    expect(tokens).toMatch(/--first: #ebe8e9;/);
+    const rule = (selector: string) => {
+      const at = css.indexOf(`\n${selector} {`);
+      expect(at, selector).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    expect(rule(".bar > span")).toMatch(/background: var\(--warn\);/);
+    expect(css).not.toMatch(/\.bar\[data-full\]/);
+    expect(rule(".full")).toMatch(/background: var\(--first\);/);
   });
 });

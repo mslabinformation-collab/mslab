@@ -54,7 +54,7 @@ export const et = {
     faqTitle: "Korduma kippuvad küsimused",
     contactEyebrow: "Kontakt",
     contactTitle: "Ei tea, milline koolitus sobib?",
-    contactLead: "Kirjuta Mariale — soovitan sulle sobiva koolituse ja õppevormi.",
+    contactLead: "Kirjuta Mariale — soovitan sulle sobiva koolituse ja õppevormi. Vastan tavaliselt ühe tööpäeva jooksul.",
   },
 
   // "Kuidas soovid õppida?" block (home) and the format explainer (catalogue). Hybrid has no steps (K8).

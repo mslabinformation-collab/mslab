@@ -65,6 +65,13 @@ describe("dictionary content", () => {
   test("no AI tool names in client-facing strings", () => {
     for (const [k, v] of [...leaves(et), ...leaves(ru)]) expect(v, k).not.toMatch(/claude|anthropic|gpt|openai|lovable|chatgpt/i);
   });
+  // The home page's contact lead promises the same reply time as /kontakt's (the avatar beside the form has the name only, P8).
+  test("the home contact lead ends with /kontakt's reply-time sentence", () => {
+    expect(et.home.contactLead).toBe("Kirjuta Mariale — soovitan sulle sobiva koolituse ja õppevormi. Vastan tavaliselt ühe tööpäeva jooksul.");
+    expect(ru.home.contactLead).toBe("Напишите Марии — я подберу для вас подходящий курс и формат обучения. Обычно отвечаю в течение одного рабочего дня.");
+    expect(et.forms.contactBlockLead).toMatch(/vastan tavaliselt ühe tööpäeva jooksul\.$/);
+    expect(ru.forms.contactBlockLead).toMatch(/обычно отвечаю в течение одного рабочего дня\.$/);
+  });
 });
 
 describe("fill", () => {

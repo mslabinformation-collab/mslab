@@ -21,7 +21,7 @@ import styles from "./NewsList.module.css";
 // C3 Uudised, the list (admin UX pass piece 4b, Task 2; README §4 C3 "list with ListToolbar search, whole-row link and the status incl. „Avaldamata
 // muudatused“"; the Part 4 C3 frame; piece4-texts S4-18, S4-19; ruling R-f). The uudised layout renders it from every post (server-side, with the
 // drafts lookup for the status: db/queries/admin.ts listAllPosts) and it stays while a post is open: from 1180 px the 320 px list at the left of the
-// editor, below that two screens — the list, and the editor with its „← Uudised“ (S4-21). With no post open the list is the page (eyebrow „Blogi“,
+// editor, below that two screens — the list, and the editor with its „← Uudised“ (S4-21). With no post open the list is the page (eyebrow „Koduleht“,
 // the H1 „Uudised“, the lead); beside an editor its heading is the frame's smaller one, and the editor has the H1.
 // - The search „Otsi pealkirja järgi“ is the ListToolbar's `?otsi=`, filtered here on the titles (a layout gets no searchParams, R-f); the rows'
 //   links and the editor's way back keep it. No hit: „„{q}“ järgi postitusi ei leitud.“ with „Tühjenda otsing ja filtrid“ (S4-18, the lists' frame).

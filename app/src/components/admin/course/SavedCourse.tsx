@@ -412,7 +412,7 @@ function SavedForm({
     if (ownNews && !newsBefore) onNews();
   }, [ownNews, newsBefore, onNews]);
   const saveStatus = (
-    <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} />
+    <SaveStatus status={status} draft={published && changed.length > 0} compact={phone} thing={t.thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} follow />
   );
 
   return (
@@ -442,7 +442,7 @@ function SavedForm({
               error={said.barError}
               // the cards wait (a publish, a discard or the switch, or its read): the bar's buttons do nothing meanwhile
               waiting={frozen}
-              status={saveStatus}
+              status={ownNews || newsBefore ? saveStatus : undefined}
               onDiscard={discard}
               onPublish={publish}
             />

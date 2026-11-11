@@ -499,7 +499,7 @@ function LessonList({
   );
 }
 
-/** "Lisa õppetund": a name and one button; the new lesson opens in the drawer. */
+/** „Lisa õppetund +“ (the „+“ after the words, as every add button's, UX pass A14): a name and one button; the new lesson opens in the drawer. */
 function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: number }) {
   const uid = useId();
   const [state, action, pending] = useActionState<EditResult | null, FormData>(addLesson, null);
@@ -532,7 +532,7 @@ function AddLessonForm({ moduleId, courseId }: { moduleId: number; courseId: num
         />
       </div>
       <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={pending || undefined}>
-        {pending ? adminEt.common.saving : t.addLesson}
+        {pending ? adminEt.common.saving : `${t.addLesson} +`}
       </button>
       <p id={`${uid}-msg`} role="status" className={`${ui.error} ${styles.addMsg}`}>
         {error ?? ""}

@@ -1706,8 +1706,8 @@ export const adminEt = {
   // Prototype D adminBadges ("Koolituse märgis"), Maria C36: "Väga meeldib see blokk. Jätame."
   badge: {
     title: "Koolituse märgis",
-    // (piece3-texts P-5: the card autosaves and a published course's change waits for „Avalda muudatused“)
-    lead: "Lisa koolituse kaardile silt, nt „Uus“ või „Populaarne“. Vali tekst ja värv — muudatus on koolituste lehel näha pärast avaldamist.",
+    // (review of the UX pass 11.11: the Kursus board's short lead; that a published course's change waits for „Avalda muudatused“ the PublishBar says)
+    lead: "Silt koolituse kaardil, nt „Uus“ või „Populaarne“.",
     presets: "Kiirvalik",
     // UX pass 11.11 A10 (the Kursus board): under the quick picks
     bestsellerGone: "„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.",
@@ -1733,7 +1733,7 @@ export const adminEt = {
     // noArea (UX pass A5): the courses with no „Valdkond“ yet
     filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe", noArea: "Määramata valdkond" },
     // the pills' row (once „Õppevorm“: the fourth pill is not a form)
-    filterLabel: "Vaade",
+    filterLabel: "Koolituste filter",
     type: { e_learning: "E-õpe", contact: "Kontaktõpe" },
     level: { basic: "Baaskoolitus", advanced: "Täiendkoolitus" },
     col: { order: "Järjekord", course: "Koolitus", type: "Õppevorm", price: "Hind", badge: "Märgis", status: "Staatus" },
@@ -2484,10 +2484,11 @@ export const adminEt = {
   // „Lisa postitus +“ (the button's text and the „+“), the row line `{staatus} · {dd.mm}` (`—` without a date), and the lists' empty frames
   // (lists.empty / emptySearch with `things`). The status words: „Avaldatud“, „Mustand“ (never published) and „Avaldamata muudatused“ (a published
   // post with a draft, as courses.changes; never „Mustand“, behaviours B2).
+  // (review of the UX pass 11.11: no „blogi“ — the site's section is „Uudised ja nõuanded“, P10; the eyebrow the other site pages')
   news: {
-    eyebrow: "Blogi",
+    eyebrow: "Koduleht",
     title: "Uudised",
-    lead: "Kõik postitused, ka mustandid, uuemad eespool. Blogis ja avalehel on näha avaldatud postitused.",
+    lead: "Kõik postitused, ka mustandid, uuemad eespool. Uudiste lehel ja avalehel on näha avaldatud postitused.",
     add: "Lisa postitus",
     search: "Otsi pealkirja järgi",
     things: "postitusi",
@@ -2517,7 +2518,7 @@ export const adminEt = {
     slugChanged: "Aadressi muutmisel ei avane vana link enam.",
     slugTaken: "See aadress on juba teisel postitusel.",
     excerpt: "Lühitekst",
-    excerptHint: "Postituse kaardil blogis ja avalehel.",
+    excerptHint: "Postituse kaardil uudiste lehel ja avalehel.",
     body: "Tekst",
     bodyHint: "Tühi rida alustab uut lõiku.",
     category: "Kategooria",
@@ -2526,12 +2527,12 @@ export const adminEt = {
     dateHint: "Näidatakse postituse juures; uuemad postitused on eespool.",
     coverHint: "Kaardil lõigatakse pilt 4:3, postituse lehel 16:9. Avaldatud postitusel peab kaanepilt olemas olema.",
     published: "Avaldatud",
-    publishedHint: "Avaldatud postitus on blogis ja avalehel nähtav. Mustandit näed ainult siin.",
+    publishedHint: "Avaldatud postitus on uudiste lehel ja avalehel nähtav. Mustandit näed ainult siin.",
     remove: {
       button: "Kustuta postitus",
       question: "Kas kustutan selle postituse?",
       // only for a published post: what changes in public (P1 §3.3)
-      public: "Postitus kaob blogist ja avalehelt.",
+      public: "Postitus kaob uudiste lehelt ja avalehelt.",
       final: "Seda ei saa tagasi võtta.",
       yes: "Jah, kustuta",
     },

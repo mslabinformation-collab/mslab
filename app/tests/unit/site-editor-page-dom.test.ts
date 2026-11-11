@@ -265,6 +265,16 @@ describe("the PublishBar", () => {
     expect($("[data-site-chip] [data-save-text]")).not.toBeNull();
   });
 
+  it("a page that opens with a draft: the bar has no empty place for the words until something happens (review: no 6 px gap before „Eelvaade ↗“)", async () => {
+    await show({ parts: partsOf({ MAXI: { version: "d:MAXI", value: { ...MAXI, price: "155" } } }) });
+    expect(bar()).not.toBeNull();
+    expect(bar()!.querySelector("[data-publish-status]")).toBeNull();
+    // something happens (here the fake's answer to a draft it does not know): the place is there, with the words
+    await type(field("MAXI.price"), "160");
+    await leave(field("MAXI.price"));
+    expect(text(bar()!.querySelector("[data-publish-status] [data-save-text]"))).not.toBe("");
+  });
+
   it("„Avalda muudatused“ flushes a pending edit before the publish POST, then the page is read again", async () => {
     await show();
     await type(field("MAXI.price"), "155");

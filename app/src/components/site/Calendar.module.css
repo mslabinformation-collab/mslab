@@ -109,6 +109,8 @@
   font: 400 26px/1.15 var(--font-display);
   letter-spacing: -0.005em;
   text-wrap: balance;
+  /* a name kept together (domain/title-breaks.ts) or a long word still breaks rather than run out of the row */
+  overflow-wrap: break-word;
 }
 
 /* Inline padding grows the touch target to 44px without moving the text. */

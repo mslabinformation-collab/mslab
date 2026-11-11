@@ -37,7 +37,8 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-@media (max-width: 1099px) {
+/* B's 84 px bar with the burger (below 1200 px: Header.module.css) */
+@media (max-width: 1199px) {
   :root {
     --header-h: 84px;
   }

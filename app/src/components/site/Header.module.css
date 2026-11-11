@@ -288,9 +288,11 @@
   padding: 13px 24px;
 }
 
-/* ---- Responsive (B: burger and 84px bar below the desktop menu; phones 78px, 140x55 logo) ---- */
+/* ---- Responsive (B: burger and 84px bar below the desktop menu; phones 78px, 140x55 logo) ----
+   The menu needs 1200 px (review of the UX pass 11.11): at 1100 px its six links with „Uudised ja nõuanded“ / „Новости и советы“ left the language
+   switch at the menu's own gap and squeezed „Logi sisse“ (tests/unit/site-header-fit.test.ts). */
 
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
   .nav {
     display: none;
   }

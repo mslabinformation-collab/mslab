@@ -400,7 +400,7 @@ describe("the course's type (README B2: the card follows the drafted „Õppevor
   it("an e-course: lessons and „Lisa õppetund“; a contact course's programme: names only, „Lisa punkt“", async () => {
     await show({ modules: [moduleOf(1, "Alustame", [lesson(11, 1)])] });
     expect($("[data-lessons]")).not.toBeNull();
-    expect($('[data-add-lesson="1"]')).not.toBeNull();
+    expect(text($('[data-add-lesson="1"] button'))).toBe("Lisa õppetund +");
     expect(text($("[data-add-module] button"))).toBe("Lisa moodul +");
     await show({ online: false, modules: [moduleOf(1, "Alustame", [lesson(11, 1)])] });
     expect($("[data-lessons]")).toBeNull();

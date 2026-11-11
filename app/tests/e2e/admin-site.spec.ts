@@ -858,7 +858,7 @@ test.describe("news", () => {
 
     // „Kustuta postitus“ (S4-23): the question, then the list says so; the post's page is gone
     await page.getByRole("button", { name: "Kustuta postitus" }).click();
-    await expect(page.locator("[data-confirm-panel] li")).toHaveText(["Postitus kaob blogist ja avalehelt.", "Seda ei saa tagasi võtta."]);
+    await expect(page.locator("[data-confirm-panel] li")).toHaveText(["Postitus kaob uudiste lehelt ja avalehelt.", "Seda ei saa tagasi võtta."]);
     await page.getByRole("button", { name: "Jah, kustuta" }).click();
     await expect(page).toHaveURL(/\/admin\/uudised\?kustutatud=1$/);
     await expect(page.locator("[data-post-deleted]")).toHaveText("Postitus kustutatud.");

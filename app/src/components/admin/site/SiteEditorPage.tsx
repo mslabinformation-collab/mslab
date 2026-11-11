@@ -334,7 +334,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
   useEffect(() => {
     if (ownNews && !newsBefore) onNews();
   }, [ownNews, newsBefore, onNews]);
-  const saveStatus = <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} />;
+  const saveStatus = <SaveStatus status={status} draft={changed.length > 0} compact={phone} thing={thing} onShowInvalid={showInvalid} news={ownNews || newsBefore} follow />;
 
   return (
     <div className={ui.page} data-site-editor="">
@@ -376,7 +376,7 @@ function SiteForm(props: Form & { apis: SiteApis }) {
           error={said.barError}
           // the cards wait (a publish or a discard, or its read): the bar's buttons do nothing meanwhile
           waiting={frozen}
-          status={saveStatus}
+          status={ownNews || newsBefore ? saveStatus : undefined}
           onDiscard={discard}
           onPublish={publish}
         />

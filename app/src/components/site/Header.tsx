@@ -10,7 +10,7 @@ import styles from "./Header.module.css";
 
 /**
  * B header (G3): logo left, six menu links („Kontakt“ the last: UX pass 11.11 P9, Dim's call 3), then ET / RU and "Logi sisse" ("Minu konto"
- * once signed in: AccountLink); burger below 1100px. No cart icon (UX pass 11.11 P2, Dim's call 1): „Osta kohe“ is the checkout.
+ * once signed in: AccountLink); burger below 1200px. No cart icon (UX pass 11.11 P2, Dim's call 1): „Osta kohe“ is the checkout.
  * Menu, login and language switch use Manrope 500 15px (G4). `overHero` defaults to "on the home page":
  * there the header is transparent, follows the hero tone (G5) and turns white after scrolling.
  */

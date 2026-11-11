@@ -1,6 +1,7 @@
 "use client";
 
-import { useReducer, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatTime } from "@/i18n/format";
@@ -88,7 +89,7 @@ function onMove(change: () => void): () => void {
  * before it are hidden (the status region says the whole sentence). The router moves without an event, so the page is read again when the link
  * is focused or pressed.
  */
-function SignInAgain() {
+function SignInAgain({ copy = false }: { copy?: boolean }) {
   const t = adminEt.autosave;
   const at = t.signedOut.lastIndexOf(t.signedOutLink);
   const [, readAgain] = useReducer((n: number) => n + 1, 0);
@@ -96,11 +97,46 @@ function SignInAgain() {
   return (
     <>
       <span aria-hidden="true">{t.signedOut.slice(0, at)}</span>
-      <a className={styles.signIn} href={href} onFocus={readAgain} onPointerDown={readAgain}>
+      <a className={styles.signIn} href={href} onFocus={readAgain} onPointerDown={readAgain} tabIndex={copy ? -1 : undefined}>
         {t.signedOutLink}
       </a>
     </>
   );
+}
+
+/** The phone top bar's height (Sidebar.module.css .bar, below 900 px): a line under it is out of view too. */
+const PHONE_BAR = 64;
+
+/**
+ * Which of the admin frame's slots (Sidebar.tsx: `data-save-follow-slot`) the following copy goes to while the line has gone up out of the window, or
+ * under the phone top bar: "side" from 900 px, "bar" below. Read on scroll and resize, once a frame; null while the line is in view or has no box.
+ */
+function useGoneUp(line: RefObject<HTMLElement | null>, on: boolean): "side" | "bar" | null {
+  const [gone, setGone] = useState<"side" | "bar" | null>(null);
+  useEffect(() => {
+    if (!on) return;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const el = line.current;
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      const phone = window.innerWidth < 900;
+      setGone(box.height > 0 && box.bottom <= (phone ? PHONE_BAR : 0) ? (phone ? "bar" : "side") : null);
+    };
+    const ask = () => {
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    window.addEventListener("scroll", ask, { passive: true });
+    window.addEventListener("resize", ask);
+    read();
+    return () => {
+      window.removeEventListener("scroll", ask);
+      window.removeEventListener("resize", ask);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [line, on]);
+  return on ? gone : null;
 }
 
 /** The saved time a status holds, as a number (null: none) — undefined for a state that is not "saved". */
@@ -133,6 +169,11 @@ export function useSaveNews(status: AutosaveStatus): boolean {
  * - `thing`: the partitive of what the screen edits, for „gone“: „Seda registreerimist enam ei ole. Tekst on selles seadmes alles.“
  * - `onShowInvalid`: the link „Näita“ of the invalid state; it focuses the first invalid field. Without it there is no link.
  * - `news`: the screen's own useSaveNews, where it moves the line (see there).
+ * - `follow`: the page's own line (its header, or its PublishBar on a computer). While it is scrolled up out of the window and its state needs her
+ *   (the red ones: retry, invalid, signed out, conflict, gone), a copy stands in the admin's frame — the sidebar under the logo, the phone top bar in
+ *   the title's place (Sidebar.tsx's slots) — never over the page, so it covers no button (review of A1: the old fixed pill stood on
+ *   „Loobu muudatustest“). The quiet states stay in the line only. The copy says and does what the line does („Näita“, „logi uuesti sisse“), out
+ *   of the tab order and hidden from a screen reader: the line's status region speaks, once. Drawers keep their line in their header, without it.
  *
  * Signed out, the words „logi uuesti sisse“ are a link to the login page and back (SignInAgain, B19), on every screen.
  *
@@ -146,6 +187,7 @@ export function SaveStatus({
   thing,
   onShowInvalid,
   news: given,
+  follow = false,
 }: {
   status: AutosaveStatus;
   draft?: boolean;
@@ -153,6 +195,7 @@ export function SaveStatus({
   thing?: string;
   onShowInvalid?: () => void;
   news?: boolean;
+  follow?: boolean;
 }) {
   const full = wordsOf(status, draft, thing);
   const visible = compact ? shortWordsOf(status, draft, thing) : full;
@@ -161,32 +204,45 @@ export function SaveStatus({
   // what the status region holds: renewed only when the kind of status changes
   const [spoken, setSpoken] = useState({ kind: status.kind, words: news ? full : "" });
   if (news && (spoken.kind !== status.kind || spoken.words === "")) setSpoken({ kind: status.kind, words: full });
+  const line = useRef<HTMLSpanElement>(null);
+  const gone = useGoneUp(line, follow && toneOf(status) === "error");
+  const slot = gone && document.querySelector(`[data-save-follow-slot="${gone}"]`);
+
+  /** The line's words and its „Näita“; `copy`: the following copy's, out of the tab order. */
+  const body = (copy: boolean) => (
+    <>
+      {/* (signed out, the line's text itself is not hidden: the link in it must be reachable, and SignInAgain hides the words before it) */}
+      <span className={styles.text} aria-hidden={status.kind === "signedOut" && !copy ? undefined : "true"} data-save-text={copy ? undefined : ""}>
+        {status.kind === "saved" && (
+          <>
+            <span aria-hidden="true" data-save-check="">
+              ✓
+            </span>{" "}
+          </>
+        )}
+        {status.kind === "signedOut" ? <SignInAgain copy={copy} /> : visible}
+      </span>
+      {status.kind === "invalid" && onShowInvalid && (
+        <button type="button" className={styles.show} onClick={onShowInvalid} tabIndex={copy ? -1 : undefined}>
+          {adminEt.autosave.show}
+        </button>
+      )}
+    </>
+  );
 
   return (
-    <span className={`${styles.chip} ${styles[toneOf(status)]}`} data-save-status="" data-save-kind={status.kind} data-save-quiet={news ? undefined : ""}>
-      {news && (
-        <>
-          {/* (signed out, the text itself is not hidden: the link in it must be reachable, and SignInAgain hides the words before it) */}
-          <span className={styles.text} aria-hidden={status.kind === "signedOut" ? undefined : "true"} data-save-text="">
-            {status.kind === "saved" && (
-              <>
-                <span aria-hidden="true" data-save-check="">
-                  ✓
-                </span>{" "}
-              </>
-            )}
-            {status.kind === "signedOut" ? <SignInAgain /> : visible}
-          </span>
-          {status.kind === "invalid" && onShowInvalid && (
-            <button type="button" className={styles.show} onClick={onShowInvalid}>
-              {adminEt.autosave.show}
-            </button>
-          )}
-        </>
-      )}
+    <span ref={line} className={`${styles.chip} ${styles[toneOf(status)]}`} data-save-status="" data-save-kind={status.kind} data-save-quiet={news ? undefined : ""}>
+      {news && body(false)}
       <span role="status" className={ui.sr}>
         {spoken.words}
       </span>
+      {slot &&
+        createPortal(
+          <span className={`${styles.chip} ${styles.error} ${styles.follow}`} aria-hidden="true" data-save-follow="" data-save-kind={status.kind}>
+            {body(true)}
+          </span>,
+          slot,
+        )}
     </span>
   );
 }

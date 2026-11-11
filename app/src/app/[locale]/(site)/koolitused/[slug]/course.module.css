@@ -129,6 +129,8 @@
   font: 400 clamp(36px, 3.6vw, 52px) / 1.06 var(--font-display);
   letter-spacing: -0.015em;
   text-wrap: balance;
+  /* a name kept together (domain/title-breaks.ts) or a long word still breaks rather than run out of a phone's line */
+  overflow-wrap: break-word;
 }
 
 .summary {

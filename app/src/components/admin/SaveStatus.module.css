@@ -40,6 +40,18 @@
   text-underline-offset: 2px;
 }
 
+/* The following copy (`follow`; review of the UX pass 11.11 A1): a state that needs her while the page's own line is scrolled away. It stands in a
+   slot of the admin's frame (Sidebar.module.css .sideFollow, .barFollow), in the flow there, never over the page: no position of its own. The old
+   error chip's colours (#f3e6e6, var(--bad)), so it reads on the dark frame. */
+.follow {
+  display: flex;
+  width: 100%;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #f3e6e6;
+  font-weight: 600;
+}
+
 /* „Näita“: a 44px tap target that takes no more height than the line (the negative margin gives it back) */
 .show {
   flex: none;

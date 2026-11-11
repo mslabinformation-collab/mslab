@@ -330,7 +330,7 @@ describe("the comment bubble's places (admin polish F18)", () => {
     expect(Array.from(row.children).map((el) => el.tagName)).toEqual(["FORM", "SPAN"]);
     expect(row.lastElementChild!.hasAttribute("data-fb-dock")).toBe(true);
     const bar = container.querySelector("header")!;
-    expect(Array.from(bar.children).map((el) => (el.hasAttribute("data-fb-dock") ? "dock" : el.tagName))).toEqual(["SPAN", "dock", "BUTTON"]);
+    expect(Array.from(bar.children).map((el) => (el.hasAttribute("data-fb-dock") ? "dock" : el.tagName))).toEqual(["DIV", "SPAN", "dock", "BUTTON"]);
     for (const dock of container.querySelectorAll("[data-fb-dock]")) expect(dock.getAttribute("aria-hidden")).toBe("true");
     expect(container.querySelectorAll("[data-fb-dock]")).toHaveLength(2);
     // the footer still reads as before
@@ -734,5 +734,38 @@ describe("the badges follow a client-side move", () => {
     await act(async () => late(reply(answer())));
     await settle();
     expect(badges()).toEqual({ requests: "1, 1 tegemata" });
+  });
+});
+
+// Review of the UX pass 11.11 (A1): the page's save words that need her come along while scrolled away (SaveStatus `follow`), into the admin's frame
+// — never over the page, so they cover no button. The slots are in the flow of the frame and take no room while empty.
+describe("the save words' places in the frame", () => {
+  const css = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.module.css"), "utf8").replace(/\r\n/g, "\n");
+  const rule = (selector: string) => {
+    const at = css.indexOf(`\n${selector} {`);
+    expect(at, selector).toBeGreaterThan(-1);
+    return css.slice(at, css.indexOf("}", at));
+  };
+
+  it("one under the sidebar's logo line, one in the phone bar before the page's name; empty", async () => {
+    await at("/admin/seaded");
+    const side = aside().querySelector("[data-save-follow-slot]")!;
+    expect(side.getAttribute("data-save-follow-slot")).toBe("side");
+    expect(side.previousElementSibling!.textContent).toBe(sidebarTexts.label);
+    const bar = container.querySelector("header")!;
+    expect(bar.firstElementChild!.getAttribute("data-save-follow-slot")).toBe("bar");
+    expect(bar.firstElementChild!.nextElementSibling!.hasAttribute("data-admin-bar-title")).toBe(true);
+    for (const slot of container.querySelectorAll("[data-save-follow-slot]")) expect(slot.childNodes).toHaveLength(0);
+    // the phone menu's own bar has none (the menu covers the page while it is open)
+    expect(dialog().querySelector("[data-save-follow-slot]")).toBeNull();
+  });
+
+  it("in the flow, no room while empty; filled, the bar's slot takes the page name's place", () => {
+    for (const slot of [".sideFollow", ".barFollow"]) {
+      expect(rule(slot), slot).not.toMatch(/position:/);
+      expect(css, slot).toMatch(new RegExp(`\\${slot}:empty \\{\\s*display: none;`));
+    }
+    expect(rule(".sideFollow")).toMatch(/flex: none;/);
+    expect(css).toMatch(/\.barFollow:not\(:empty\) \+ \.barTitle,\s*\.barFollow:not\(:empty\) \+ \.barLogo \{\s*display: none;/);
   });
 });

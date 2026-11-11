@@ -20,9 +20,24 @@ describe("keepNameTogether", () => {
     expect(keepNameTogether("")).toBe("");
   });
 
-  it("a long run (four words, or more than 20 letters) is left to wrap: it may not fit a phone's line", () => {
+  it("a long run (four words, or more than 16 letters) is left to wrap: it may not fit a phone's line", () => {
     expect(keepNameTogether("Brow Lamination Master Class")).toBe("Brow Lamination Master Class");
     expect(keepNameTogether("Kulmulaminatsiooni Meistriklass")).toBe("Kulmulaminatsiooni Meistriklass");
+    // (review: 17–20 letters in the course page's 36 px heading are wider than a 360 px phone's line)
+    expect(keepNameTogether("Brow Lamination Pro kursus")).toBe("Brow Lamination Pro kursus");
+    expect(keepNameTogether("Lash Lift Pro kursus")).toBe(`Lash${NBSP}Lift${NBSP}Pro kursus`);
+  });
+
+  it("a word longer than the line still breaks rather than run out of it (the heading, the card's title, the calendar's name)", () => {
+    const rule = (file: string, selector: string) => {
+      const css = readFileSync(join(process.cwd(), file), "utf8").replace(/\r\n/g, "\n");
+      const at = css.indexOf(`\n${selector} {`);
+      expect(at, `${file} ${selector}`).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    expect(rule("src/app/[locale]/(site)/koolitused/[slug]/course.module.css", ".title")).toMatch(/overflow-wrap: break-word;/);
+    expect(rule("src/components/site/CourseCard.module.css", ".title")).toMatch(/overflow-wrap: break-word;/);
+    expect(rule("src/components/site/Calendar.module.css", ".name")).toMatch(/overflow-wrap: break-word;/);
   });
 
   it("the cards, the calendar's rows and the course page's heading use it", () => {

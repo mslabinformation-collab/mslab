@@ -47,6 +47,8 @@ describe("badges (prototype D)", () => {
     // UX pass 11.11 A10: no English „Bestseller“ (it was „Enim müüdud“ twice); the card's hint says so
     expect(BADGE_PRESETS.map((p) => p.et)).toEqual(["Uus", "Populaarne", "Enim müüdud", "Viimased kohad", "Soodus"]);
     expect(adminEt.badge.bestsellerGone).toBe("„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.");
+    // (review of the UX pass) the card's lead is the Kursus board's, short
+    expect(adminEt.badge.lead).toBe("Silt koolituse kaardil, nt „Uus“ või „Populaarne“.");
     // round 2 item 1c: each with its Russian text
     expect(BADGE_PRESETS.map((p) => p.ru)).toEqual(["Новинка", "Популярное", "Хит продаж", "Последние места", "Скидка"]);
     expect(BADGE_SWATCHES.map((s) => [adminEt.badge.swatch[s.id], s.bg, s.fg])).toEqual([

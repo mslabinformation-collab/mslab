@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { SaveStatus } from "@/components/admin/SaveStatus";
 
-// SaveStatus (admin UX pass, README §1.4, strings.md D1; UX pass 11.11 A1/A17): the one status line of a screen, quiet words with no floating copy.
+// SaveStatus (admin UX pass, README §1.4, strings.md D1; UX pass 11.11 A1/A17): the one status line of a screen, quiet words; only a state that needs her comes along, in the admin frame (the last block).
 // It says nothing until something changes (the state a screen opens with is no news). The visible words are aria-hidden and a separate
 // visually-hidden status region speaks, and only when the KIND of status changes (the time of a save and the typing of a field are not news).
 // The colours are in the CSS module; here the class names tell the tone (saved green, neutral grey, error red).
@@ -165,7 +165,7 @@ describe("SaveStatus says nothing until something changes (UX pass 11.11 A17)", 
     expect(live().textContent).toBe("Muudeti teises aknas — vaata üle");
   });
 
-  it("no floating copy: nothing is put outside the line", async () => {
+  it("the saved line has no copy: nothing is put outside the line", async () => {
     await changed({ status: { kind: "saved", at: NOON } });
     expect(document.body.querySelectorAll("[data-save-status]")).toHaveLength(1);
     expect(document.body.querySelector("[data-save-follow]")).toBeNull();
@@ -326,5 +326,105 @@ describe("SaveStatus: signed out, „logi uuesti sisse“ is the way to sign in 
       expect($("[data-save-status] a"), status.kind).toBeNull();
       expect(visible().getAttribute("aria-hidden"), status.kind).toBe("true");
     }
+  });
+});
+
+// Review of the UX pass 11.11 (A1): a state that needs her while the page's own line is scrolled away comes along — but never over the page. The
+// copy stands in the admin's frame (Sidebar.tsx's slots): from 900 px in the sidebar under the logo, below it in the phone top bar in the title's
+// place. The quiet states (saved, dirty, saving, checking) stay in the page's header only, as A1 asked.
+describe("SaveStatus follow: what needs her comes along in the admin's frame", () => {
+  const slot = (name: string) => document.body.querySelector<HTMLElement>(`[data-save-follow-slot="${name}"]`)!;
+  const copy = () => document.body.querySelector<HTMLElement>("[data-save-follow]");
+  let slots: HTMLElement[] = [];
+  beforeEach(() => {
+    slots = ["side", "bar"].map((name) => {
+      const el = document.createElement("div");
+      el.setAttribute("data-save-follow-slot", name);
+      document.body.append(el);
+      return el;
+    });
+  });
+  afterEach(() => slots.forEach((el) => el.remove()));
+  /** The line's box: `bottom` px from the window's top, 20 px tall, in a window `width` px wide. */
+  const at = (bottom: number, width = 1440) => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(width);
+    chip().getBoundingClientRect = () => ({ top: bottom - 20, bottom, height: 20, left: 900, right: 1100, width: 200, x: 900, y: bottom - 20, toJSON: () => ({}) }) as DOMRect;
+  };
+  const scroll = () =>
+    act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+  it("in view, no copy; scrolled up out of the window, the copy in the sidebar's slot, hidden from a screen reader; back in view, gone", async () => {
+    await open({ status: { kind: "retry" }, follow: true });
+    at(120);
+    await scroll();
+    expect(copy()).toBeNull();
+    at(-10);
+    await scroll();
+    const c = copy()!;
+    expect(c.parentElement).toBe(slot("side"));
+    expect(c.getAttribute("aria-hidden")).toBe("true");
+    expect(c.textContent).toBe("Salvestamata — proovin uuesti");
+    expect(c.querySelector('[role="status"]')).toBeNull();
+    // the state changes to another that needs her: the copy says it
+    await show({ status: { kind: "conflict" }, follow: true });
+    expect(copy()!.textContent).toBe("Muudeti teises aknas — vaata üle");
+    at(200);
+    await scroll();
+    expect(copy()).toBeNull();
+  });
+
+  it("the quiet states never come along, scrolled away or not", async () => {
+    for (const status of [{ kind: "saved", at: NOON }, { kind: "dirty" }, { kind: "saving" }, { kind: "checking" }] as AutosaveStatus[]) {
+      await changed({ status, follow: true });
+      at(-10);
+      await scroll();
+      expect(copy(), status.kind).toBeNull();
+    }
+  });
+
+  it("a save that needs her again goes quiet: the copy goes as the state turns saved", async () => {
+    await open({ status: { kind: "invalid", fields: ["Hind"] }, follow: true });
+    at(-10);
+    await scroll();
+    expect(copy()).not.toBeNull();
+    await show({ status: { kind: "saved", at: NOON }, follow: true });
+    expect(copy()).toBeNull();
+  });
+
+  it("below 900 px the copy is in the top bar's slot, and a line under the 64 px bar counts as gone", async () => {
+    await open({ status: { kind: "signedOut" }, follow: true });
+    at(52, 390);
+    await scroll();
+    expect(copy()!.parentElement).toBe(slot("bar"));
+    // the link in it signs in again too, out of the tab order
+    const link = copy()!.querySelector("a")!;
+    expect(link.getAttribute("href")).toMatch(/^\/admin\/login/);
+    expect(link.tabIndex).toBe(-1);
+  });
+
+  it("„Näita“ in the copy still shows the invalid field, out of the tab order", async () => {
+    const onShowInvalid = vi.fn();
+    await open({ status: { kind: "invalid", fields: ["Hind"] }, follow: true, onShowInvalid });
+    at(-10);
+    await scroll();
+    const button = copy()!.querySelector("button")!;
+    expect(button.tabIndex).toBe(-1);
+    await click(button);
+    expect(onShowInvalid).toHaveBeenCalledTimes(1);
+  });
+
+  it("without `follow` (a drawer's line) or without the admin's frame, no copy ever shows", async () => {
+    await open({ status: { kind: "retry" } });
+    at(-10);
+    await scroll();
+    expect(copy()).toBeNull();
+    slots.forEach((el) => el.remove());
+    await open({ status: { kind: "retry" }, follow: true });
+    at(-10);
+    await scroll();
+    expect(copy()).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import { lockPageScroll } from "@/lib/modal";
 import { Icon } from "./Icon";
 import styles from "./Header.module.css";
 
-/** Burger button (below 1100px) and B's menu dialog. Esc, the close button, the backdrop and any link close it. */
+/** Burger button (below 1200px; Header.module.css) and B's menu dialog. Esc, the close button, the backdrop and any link close it. */
 export function MobileMenu({
   openLabel,
   closeLabel,
@@ -22,7 +22,7 @@ export function MobileMenu({
 
   // Close when the window grows past the burger breakpoint.
   useEffect(() => {
-    const wide = window.matchMedia("(min-width: 1100px)");
+    const wide = window.matchMedia("(min-width: 1200px)");
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) dialog.current?.close();
     };
