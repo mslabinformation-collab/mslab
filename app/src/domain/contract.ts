@@ -21,6 +21,8 @@ export type AcceptedVia = "form" | "purchase" | "account" | "terms";
  * student, the course's name in the contract's language (contractCourseName), the session (sessionText), the price in euros and the payment
  * choice in words (paymentText).
  * `session`, `price` and `payment` are empty when there is none (an e-course has no session or choice; a free grant has no price).
+ * `price` is the total she pays; `discount` (F1) is what a code took off, „−35,00 € (TERE10)“, empty without a code (and absent on a contract
+ * frozen before codes existed).
  */
 export type ContractFields = {
   school: { company: string; registryCode: string; address: string };
@@ -29,6 +31,7 @@ export type ContractFields = {
   session: string;
   price: string;
   payment: string;
+  discount?: string;
 };
 
 /**
@@ -81,6 +84,8 @@ export type ContractInput = {
   priceCents: number | null;
   choice: PaymentChoice | null;
   locale: "et" | "ru";
+  /** F1: the code she used and the cents it took off; `priceCents` is already the total. */
+  discount?: { code: string; cents: number } | null;
 };
 
 /**
@@ -100,6 +105,7 @@ export function contractParts(input: ContractInput): { fields: Omit<ContractFiel
       session: sessionText(input.session),
       price: price === null ? "" : euro(price),
       payment: paymentText(input.choice, input.locale),
+      discount: input.discount ? `−${euro(input.discount.cents)} (${input.discount.code})` : "",
     },
     prepayment: price === null || input.choice === null ? "" : euro(prepaymentDue(price, input.choice)),
   };

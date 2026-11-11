@@ -867,7 +867,7 @@ export const adminEt = {
         "e-post": "õpilase e-posti aadress",
         koolitus: "koolituse nimi",
         toimumine: "kuupäev ja koht",
-        hind: "koolituse hind",
+        hind: "hind pärast sooduskoodi",
         ettemaks: "summa, mille õpilane maksab registreerimisel",
       },
       sample: "Näidisleping (PDF)",

@@ -12,7 +12,7 @@ import {
 import { DEFAULT_TERMS_VERSION, nextTermsVersion, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { isSampleAddress } from "@/domain/email";
 import { euro } from "@/domain/invoice";
-import { registrationTotal } from "@/domain/discount-codes";
+import { registrationDiscount, registrationTotal } from "@/domain/discount-codes";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
@@ -178,6 +178,7 @@ export async function registrationContractFields(
     priceCents: registrationTotal(course, r),
     choice: r.paymentChoice,
     locale,
+    discount: registrationDiscount(course, r),
   });
   return {
     fields: { school: schoolOf(await getInvoiceSettings(q, new Date())), ...parts.fields },
@@ -203,9 +204,14 @@ export async function accessContractFields(q: Q, accessId: number, paymentId: nu
     .limit(1);
   if (!row) return null;
   let price = "";
+  let discount = "";
   if (paymentId != null) {
-    const [paid] = await q.select({ amountCents: payments.amountCents }).from(payments).where(eq(payments.id, paymentId)).limit(1);
-    if (paid) price = euro(paid.amountCents);
+    const [paid] = await q.select({ amountCents: payments.amountCents, discountCents: payments.discountCents, discountCode: payments.discountCode }).from(payments).where(eq(payments.id, paymentId)).limit(1);
+    if (paid) {
+      price = euro(paid.amountCents);
+      // F1: the payment's amount is the total; what a code took off is shown beside it
+      if (paid.discountCode !== "" && paid.discountCents > 0) discount = `−${euro(paid.discountCents)} (${paid.discountCode})`;
+    }
   }
   return {
     school: schoolOf(await getInvoiceSettings(q, new Date())),
@@ -214,6 +220,7 @@ export async function accessContractFields(q: Q, accessId: number, paymentId: nu
     session: "",
     price,
     payment: "",
+    discount,
   };
 }
 

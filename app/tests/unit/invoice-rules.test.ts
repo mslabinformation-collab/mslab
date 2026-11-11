@@ -495,7 +495,7 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
     paidAt: new Date("2026-10-16T21:30:00Z"), paidMethod: "bank", paidAdds: true, sentAt: null, sentNote: "", cancelledAt: null, createdAt: new Date("2026-10-15T09:00:00Z"),
     footer: "",
   };
-  const HEADER = "Arve nr;Kuupäev;Tasumise tähtaeg;Ostja;Ostja ettevõte;Registrikood;Kirjeldus;Summa käibemaksuta;Käibemaks;Kokku;Olek;Tasumise kuupäev;Makseviis";
+  const HEADER = "Arve nr;Kuupäev;Tasumise tähtaeg;Ostja;Ostja ettevõte;Registrikood;Kirjeldus;Summa käibemaksuta;Käibemaks;Kokku;Olek;Tasumise kuupäev;Makseviis;Sooduskood;Soodustus";
   /** The rows after the header, each without its CRLF (a text field may hold a line break of its own, so not a split on it). */
   const rowsOf = (list: (Invoice & { refunded?: boolean })[]): string[] => {
     const csv = invoiceCsv(list);
@@ -507,12 +507,12 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
   };
   // the fixed cells around the buyer's name in `base`
   const BEFORE_NAME = '"MSL2026-001";15.10.2026;22.10.2026;';
-  const AFTER_NAME = ';"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne';
+  const AFTER_NAME = ';"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne;;';
 
   test("the BOM, the exact header, one CRLF-ended line per invoice, the text fields quoted and the amounts bare with comma decimals", () => {
     const csv = invoiceCsv([base]);
     expect(csv.startsWith("\uFEFF")).toBe(true);
-    expect(csv).toBe(`\uFEFF${HEADER}\r\n"MSL2026-001";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne\r\n`);
+    expect(csv).toBe(`\uFEFF${HEADER}\r\n"MSL2026-001";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne;;\r\n`);
   });
 
   test("a VAT invoice splits the sum; an unpaid one has no paid date and no method; a company buyer fills its columns", () => {
@@ -520,18 +520,18 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
       ...base, id: 2, number: "MSL2026-002", seq: 2, status: "unpaid", vatRate: 24, paidAt: null, paidMethod: null,
       buyer: { ...buyer, company: "Salong OÜ", companyCode: "87654321" },
     };
-    expect(rowsOf([vat])).toEqual(['"MSL2026-002";15.10.2026;22.10.2026;"Kati Kask";"Salong OÜ";"87654321";"Kulmumeistri baaskoolitus — Ettemaks 50%";141,13;33,87;175,00;Tasumata;;']);
+    expect(rowsOf([vat])).toEqual(['"MSL2026-002";15.10.2026;22.10.2026;"Kati Kask";"Salong OÜ";"87654321";"Kulmumeistri baaskoolitus — Ettemaks 50%";141,13;33,87;175,00;Tasumata;;;;']);
   });
 
   test("a cancelled row is marked and has zero sums, whatever the amount was", () => {
     const cancelled: Invoice = { ...base, id: 3, number: "MSL2026-003", seq: 3, status: "cancelled", vatRate: 24, paidAt: null, paidMethod: null, cancelledAt: new Date("2026-10-18T09:00:00Z") };
-    expect(rowsOf([cancelled])).toEqual(['"MSL2026-003";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";0,00;0,00;0,00;Tühistatud;;']);
+    expect(rowsOf([cancelled])).toEqual(['"MSL2026-003";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";0,00;0,00;0,00;Tühistatud;;;;']);
   });
 
   test("I3: a paid invoice whose payment was refunded or voided reads „Tagastatud“ (stored paid); its sums, its paid date and its way stay as issued", () => {
     const refunded = { ...base, id: 5, number: "MSL2026-005", seq: 5, paidMethod: "montonio" as const, refunded: true };
     expect(rowsOf([refunded, { ...base, refunded: false }])).toEqual([
-      '"MSL2026-005";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tagastatud;17.10.2026;Montonio',
+      '"MSL2026-005";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tagastatud;17.10.2026;Montonio;;',
       `${BEFORE_NAME}"Kati Kask"${AFTER_NAME}`,
     ]);
   });
@@ -541,8 +541,19 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
     const cancelled: Invoice = { ...base, id: 3, number: "MSL2026-003", seq: 3, status: "cancelled", paidAt: null, paidMethod: null };
     const rows = rowsOf([born, cancelled]);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toBe('"MSL2026-004";01.01.2027;;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;01.01.2027;Montonio');
+    expect(rows[0]).toBe('"MSL2026-004";01.01.2027;;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;01.01.2027;Montonio;;');
     expect(rows[1]).toContain(";0,00;0,00;0,00;Tühistatud;;");
+  });
+
+  test("the CSV ends with Sooduskood and Soodustus, empty for an old line", () => {
+    const discounted: Invoice = { ...base, id: 6, number: "MSL2026-006", seq: 6, line: { ...base.line, discount: { code: "TERE10", listCents: 35000, cents: 3500 } } };
+    const [coded, old] = rowsOf([discounted, base]).map((r) => r.split(";"));
+    // the accountant's columns keep their places: the two new ones are the last two
+    expect(coded.slice(-2)).toEqual(['"TERE10"', "35,00"]);
+    expect(coded.slice(0, 13)).toEqual(old.slice(0, 13).map((c, i) => (i === 0 ? '"MSL2026-006"' : c)));
+    expect(old.slice(-2)).toEqual(["", ""]);
+    expect(old).toHaveLength(15);
+    expect(invoiceCsv([]).split("\r\n")[0].split(";").slice(-2)).toEqual(["Sooduskood", "Soodustus"]);
   });
 
   test("no invoices: the BOM and the header only", () => {
@@ -580,7 +591,7 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
       line: { course: "+Kursus", session: "", part: "Ettemaks 50%" },
     };
     expect(rowsOf([odd])).toEqual([
-      `"'-X2026-001";15.10.2026;22.10.2026;"Kati Kask";"'@Salong; OÜ";"'=1";"'+Kursus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne`,
+      `"'-X2026-001";15.10.2026;22.10.2026;"Kati Kask";"'@Salong; OÜ";"'=1";"'+Kursus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne;;`,
     ]);
   });
 });

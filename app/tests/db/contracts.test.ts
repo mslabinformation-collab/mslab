@@ -10,7 +10,7 @@ import * as schema from "@/db/schema";
 import { clients, contracts, courseAccess, courses, courseSessions, pages, payments, registrations, type Contract, type Registration } from "@/db/schema";
 import { CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, type ContractFields } from "@/domain/contract";
 import { TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
-import { INVOICE_KEY } from "@/domain/invoice";
+import { INVOICE_KEY, euro } from "@/domain/invoice";
 import { linkClientRecords } from "@/server/client-auth";
 import {
   accessContractFields, contractForAccess, contractForAdmin, contractForRegistration, contractForStudent, contractPdf, contractsOfClient, contractsOfRegistration,
@@ -179,7 +179,7 @@ describe("a registration's contract (D1, D3)", () => {
     const [r] = await db.insert(registrations).values({ courseId: course.id, kind: "group", name: "Mari Mänd", email: "mari@example.com", paymentChoice: "full" }).returning();
     const f = (await registrationContractFields(db, r.id))!;
     expect(f).toEqual({
-      fields: { school: { company: "MS LAB", registryCode: "", address: "" }, student: { name: "Mari Mänd", email: "mari@example.com" }, course: "Hinnata koolitus", session: "", price: "", payment: "100% kohe" },
+      fields: { school: { company: "MS LAB", registryCode: "", address: "" }, student: { name: "Mari Mänd", email: "mari@example.com" }, course: "Hinnata koolitus", session: "", price: "", payment: "100% kohe", discount: "" },
       prepaymentText: "",
       locale: "et",
       template: { version: NOW.toISOString(), locale: "et", title: CONTACT.title.et, body: CONTACT.body.et },
@@ -194,6 +194,14 @@ describe("a registration's contract (D1, D3)", () => {
     const full = await registrationOn(db, c, { paymentChoice: "full", email: "full@example.com" });
     expect(await registrationContractFields(db, half.id)).toMatchObject({ fields: { price: `123,45${NBSP}€`, payment: "50% registreerimisel + 50% koolituspäeval" }, prepaymentText: `61,73${NBSP}€` });
     expect(await registrationContractFields(db, full.id)).toMatchObject({ fields: { price: `123,45${NBSP}€`, payment: "100% kohe" }, prepaymentText: `123,45${NBSP}€` });
+  });
+
+  test("F1: a registration's code makes {hind} the total, {ettemaks} its half and the discount field „−35,00 € (TERE10)“; without a code it is empty", async () => {
+    const c = await contactCourse(db);
+    const coded = await registrationOn(db, c, { discountCents: 3500, discountCode: "TERE10" });
+    const plain = await registrationOn(db, c, { email: "plain@example.test" });
+    expect(await registrationContractFields(db, coded.id)).toMatchObject({ fields: { price: euro(31500), discount: `−${euro(3500)} (TERE10)` }, prepaymentText: euro(15750) });
+    expect((await registrationContractFields(db, plain.id))!.fields).toMatchObject({ price: euro(35000), discount: "" });
   });
 
   test("an individual registration takes the individual price; a registration without a session has no session text", async () => {
@@ -394,6 +402,14 @@ describe("an e-course access's contract (D1)", () => {
     const shown = { ...TEMPLATE_V1, body: `Tere Kati Tamm, hind 175,00${NBSP}€.` };
     const made = (await acceptAccess(e, { via: "purchase", paymentId: e.payment!.id, template: shown }))!;
     expect(made).toMatchObject({ paymentId: e.payment!.id, acceptedVia: "purchase", fields: { price: `175,00${NBSP}€` }, body: shown.body });
+  });
+
+  test("F1: a purchase's payment with a code adds the discount field; one without a code, and no payment, leave it empty", async () => {
+    const e = await ecourse({ paid: true });
+    expect((await accessContractFields(db, e.access.id, e.payment!.id, "et"))!.discount).toBe("");
+    await db.update(payments).set({ amountCents: 15750, discountCents: 1750, discountCode: "TERE10" }).where(eq(payments.id, e.payment!.id));
+    expect(await accessContractFields(db, e.access.id, e.payment!.id, "et")).toMatchObject({ price: euro(15750), discount: `−${euro(1750)} (TERE10)` });
+    expect((await accessContractFields(db, e.access.id, null, "et"))!.discount).toBe("");
   });
 
   test("without a payment, and with one that is gone, the price is empty", async () => {

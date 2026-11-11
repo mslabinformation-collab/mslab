@@ -5,6 +5,7 @@ import {
   fillContract, paymentText, schoolOf, sessionText,
   type ContractFields,
 } from "@/domain/contract";
+import { euro } from "@/domain/invoice";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
 
@@ -158,6 +159,23 @@ describe("contractParts: the payment sentence and {ettemaks} by the choice", () 
     expect(contractParts({ ...input, choice: "full" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: et.forms.payFull } });
     expect(contractParts({ ...input, choice: "financing" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: et.forms.payFinancingContract } });
     expect(contractParts({ ...input, choice: "financing", locale: "ru" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: ru.forms.payFinancingContract } });
+  });
+});
+
+describe("contractParts: the discount (F1)", () => {
+  const input = { name: "Kati Kask", email: "kati@example.test", course: "Kulmude kujundus", session: null, priceCents: 31_500, choice: "half", locale: "et" } as const;
+  test("contractParts writes −35,00 € (TERE10) and an empty discount without a code", () => {
+    expect(contractParts({ ...input, discount: { code: "TERE10", cents: 3500 } }).fields.discount).toBe(`−${euro(3500)} (TERE10)`);
+    expect(contractParts({ ...input, discount: null }).fields.discount).toBe("");
+    expect(contractParts(input).fields.discount).toBe("");
+  });
+
+  test("{hind} is the total and {ettemaks} its first part", () => {
+    // priceCents is the total (list 350 € less 35 €): the half is 157,50 €
+    const { fields, prepayment } = contractParts({ ...input, discount: { code: "TERE10", cents: 3500 } });
+    expect(fields.price).toBe(euro(31_500));
+    expect(prepayment).toBe(euro(15_750));
+    expect(fillContract("{hind} / {ettemaks}", contractValues(fields, prepayment))).toBe(`${euro(31_500)} / ${euro(15_750)}`);
   });
 });
 

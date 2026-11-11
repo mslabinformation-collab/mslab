@@ -18,8 +18,12 @@ export type PaidMethod = "montonio" | "bank" | "cash" | "card" | "financing";
 /** The ways Maria marks or records money herself: the online ones, Montonio's and Inbank's, are the site's own. */
 export type ManualPaidMethod = Exclude<PaidMethod, "montonio" | "financing">;
 
-/** The one line of an invoice, frozen at its creation (D4): the course's Estonian title, its session ("14.11.2026 Tallinn"; empty for an e-course) and the part ("Ettemaks 50%"). */
-export type InvoiceLine = { course: string; session: string; part: string };
+/**
+ * The one line of an invoice, frozen at its creation (D4): the course's Estonian title, its session ("14.11.2026 Tallinn"; empty for an e-course) and the part ("Ettemaks 50%").
+ * `discount` (F1) is the code she used, the list price and the euros it took off (list − cents = the total); absent on a line without a code
+ * and on every line frozen before codes existed.
+ */
+export type InvoiceLine = { course: string; session: string; part: string; discount?: { code: string; listCents: number; cents: number } };
 /** The seller as Seaded → Maksmine (the seller's fields and the bank fields) held it at the creation, frozen (D2). */
 export type InvoiceSeller = { company: string; registryCode: string; address: string; vatNumber: string; receiver: string; iban: string; bank: string };
 /** The buyer (D9): the registration's or the payment's name and e-mail, and what Maria added; a company only when it pays. */
@@ -423,6 +427,8 @@ export function paidDay(date: unknown, now: Date): Date | null {
 const CSV_HEADER = [
   "Arve nr", "Kuupäev", "Tasumise tähtaeg", "Ostja", "Ostja ettevõte", "Registrikood", "Kirjeldus", "Summa käibemaksuta", "Käibemaks", "Kokku",
   "Olek", "Tasumise kuupäev", "Makseviis",
+  // F1: at the END, so that the accountant's columns keep their places; empty on a line without a code
+  "Sooduskood", "Soodustus",
 ];
 
 /** "175,50": cents as euros with a comma and no grouping, which a spreadsheet reads as a number. */
@@ -463,6 +469,8 @@ export function invoiceCsv(rows: (Invoice & { refunded?: boolean })[]): string {
       paid && i.refunded ? REFUNDED : invoiceStatusText(i.status),
       paid && i.paidAt ? tallinnDateText(i.paidAt) : "",
       paid && i.paidMethod ? paidMethodText(i.paidMethod) : "",
+      i.line.discount ? csvText(i.line.discount.code) : "",
+      i.line.discount ? csvAmount(i.line.discount.cents) : "",
     ].join(";");
   });
   return `\uFEFF${[CSV_HEADER.join(";"), ...lines].join("\r\n")}\r\n`;

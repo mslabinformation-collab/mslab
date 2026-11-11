@@ -1469,3 +1469,33 @@ describe("the total of a discounted registration (F1): the list price less the f
     expect((await allInvoices()).find((i) => i.registrationId === typed.id)).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%" } });
   });
 });
+
+describe("the discount on the invoice's line (F1, Task 8)", () => {
+  test("settle's invoice of a discounted registration freezes the discount line", async () => {
+    // list 350 €, 35 € off, TERE10: the prepayment is 157,50 € of the 315 € total
+    const c = await contactCourse(db);
+    await ready();
+    const r = await registrationOn(db, c, { discountCents: 3500, discountCode: "TERE10" });
+    const inv = await settle(await pendingPayment(db, r, { amountCents: 15750 }));
+    expect(inv).toMatchObject({ kind: "prepayment", amountCents: 15750, line: { part: "Ettemaks 50%", discount: { code: "TERE10", listCents: 35000, cents: 3500 } } });
+    // frozen: the stored row says it
+    expect((await allInvoices())[0].line.discount).toEqual({ code: "TERE10", listCents: 35000, cents: 3500 });
+    // Maria's own request to pay carries it too; a registration without a code has none
+    const asked = await request(r, "balance");
+    expect(asked.line.discount).toEqual({ code: "TERE10", listCents: 35000, cents: 3500 });
+    const plain = await registrationOn(db, c, { email: "plain@example.test" });
+    expect((await request(plain)).line).not.toHaveProperty("discount");
+  });
+
+  test("an e-course invoice's line carries the payment's code", async () => {
+    await ready();
+    const { payment } = await ecoursePurchase();
+    // the payment's amount is the total (95 € less 10 €); the list price is the two together
+    await db.update(payments).set({ amountCents: 8500, discountCents: 1000, discountCode: "TERE10" }).where(eq(payments.id, payment.id));
+    const [again] = await db.select().from(payments).where(eq(payments.id, payment.id));
+    const inv = await settle(again);
+    expect(inv).toMatchObject({ kind: "ecourse", amountCents: 8500, line: { part: "E-koolitus", discount: { code: "TERE10", listCents: 9500, cents: 1000 } } });
+    const free = await ecoursePurchase("plain-e@example.com");
+    expect((await settle(free.payment))!.line).not.toHaveProperty("discount");
+  });
+});

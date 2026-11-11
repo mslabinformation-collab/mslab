@@ -42,6 +42,7 @@ type Words = {
   course: string;
   session: string;
   price: string;
+  discount: string;
   payment: string;
   accepted: string;
   way: string;
@@ -59,6 +60,7 @@ const WORDS: Record<"et" | "ru", Words> = {
     course: "Koolitus",
     session: "Toimumine",
     price: "Hind",
+    discount: "Soodustus", // Draft (F1)
     payment: "Makse",
     accepted: "Kinnitatud elektrooniliselt",
     way: "Kinnitamise viis",
@@ -74,6 +76,7 @@ const WORDS: Record<"et" | "ru", Words> = {
     course: "Обучение",
     session: "Дата и место",
     price: "Цена",
+    discount: "Скидка", // Draft (F1)
     payment: "Оплата",
     accepted: "Подтверждено в электронном виде",
     way: "Способ подтверждения",
@@ -209,7 +212,7 @@ function compose(c: ContractContent, measure: (text: string, size: number) => nu
   const course = wrapped(f?.course, SIZE.name, WIDTH, MAX.course);
   put(course, EDGE.left, top, SIZE.name, LEADING.head);
   top -= course.length * SIZE.name * LEADING.head + 4;
-  for (const [name, value] of [[w.session, f?.session], [w.price, f?.price], [w.payment, f?.payment]] as const) {
+  for (const [name, value] of [[w.session, f?.session], [w.price, f?.price], [w.discount, f?.discount], [w.payment, f?.payment]] as const) {
     const ls = wrapped(value, SIZE.body, ROWS.valueWidth, MAX.row);
     if (ls.length === 0) continue;
     const height = ls.length * SIZE.body * LEADING.head;

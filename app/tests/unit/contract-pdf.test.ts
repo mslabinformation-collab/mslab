@@ -4,6 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName } from "pdf-lib";
 import { describe, expect, test, vi } from "vitest";
 import type { AcceptedVia, ContractFields } from "@/domain/contract";
+import { euro } from "@/domain/invoice";
 import { CERT_FONT_DIR, CERT_FONTS, LOGO_FILES } from "@/server/certificate-pdf";
 import { CONTRACT_PAGE, renderContract, type ContractContent } from "@/server/contract-pdf";
 import { family, rawStream, readPdf, type Run } from "../pdf-read";
@@ -297,6 +298,17 @@ describe("renderContract: the blocks", () => {
     // the school at the left and the student at the right, side by side
     expect(find(runs, "Näidis Akadeemia OÜ").x).toBeLessThan(find(runs, "Kertu Õunapuu").x);
     expect(find(runs, "Näidis Akadeemia OÜ").y).toBe(find(runs, "Kertu Õunapuu").y);
+  });
+
+  test("the Koolitus block prints Soodustus after Hind", async () => {
+    const discount = `−${euro(3500)} (TERE10)`;
+    const { pages } = await read({ ...SHORT, fields: { ...FIELDS, discount } });
+    const runs = pages[0].runs;
+    expect(find(runs, "Soodustus").y).toBeLessThan(find(runs, "Hind").y);
+    expect(find(runs, "Soodustus").y).toBeGreaterThan(find(runs, "Makse").y);
+    expect(find(runs, discount).y).toBe(find(runs, "Soodustus").y);
+    // none, or an empty one (a contract frozen before codes): no label
+    for (const f of [FIELDS, { ...FIELDS, discount: "" }]) expect(textOf((await read({ ...SHORT, fields: f })).pages[0].runs)).not.toContain("Soodustus");
   });
 
   test("the closing line is the acceptance's Tallinn date and time, the name and the e-mail, and the way, whichever of the four", async () => {

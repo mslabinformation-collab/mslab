@@ -110,6 +110,49 @@ describe("Jost and the euro text", () => {
   });
 });
 
+describe("renderInvoice: a discount code (F1)", () => {
+  const DISCOUNT = { code: "TERE10", listCents: 35000, cents: 3500 };
+
+  test("a whole-sum invoice prints the list, the code row and Kokku", async () => {
+    // the invoice is the whole sum after the code: 350 € less 35 € is 315 €
+    const { page, runs } = await render({ ...PAID, kind: "full", amountCents: 31500, line: { ...PAID.line, part: "Kogu summa (100%)", discount: DISCOUNT } });
+    expect(page.getSize()).toEqual({ width: 595, height: 842 });
+    const list = one(runs, euro(35000));
+    const code = one(runs, `−${euro(3500)}`);
+    const label = one(runs, "Sooduskood TERE10");
+    const total = one(runs, euro(31500));
+    const kokku = one(runs, "Kokku");
+    // from the top down: the course row at the list price, the code row, then Kokku at the total
+    expect(list.y).toBeGreaterThan(code.y);
+    expect(code.y).toBeGreaterThan(kokku.y);
+    expect(total.y).toBe(kokku.y);
+    expect(label.y).toBe(code.y);
+    expect(label.x).toBe(find(runs, "Kulmude kujundamise koolitus").x);
+    // the invoice's amount is nowhere in the row: the course row shows the list price
+    expect(runs.filter((r) => r.text === euro(31500))).toHaveLength(1);
+    // no arithmetic line, since the three rows say it
+    expect(textOf(runs)).not.toContain("− sooduskood");
+    expectFitsAndApart(runs);
+  });
+
+  test("a prepayment invoice prints one Hind − sooduskood = line", async () => {
+    // the prepayment is 157,50 € of 315 €: not the whole sum after the code
+    const { runs } = await render({ ...PAID, amountCents: 15750, line: { ...PAID.line, discount: DISCOUNT } });
+    const said = `Hind ${euro(35000)} − sooduskood TERE10 ${euro(3500)} = ${euro(31500)}`;
+    expect(plain(runs.map((r) => r.text).join(" "))).toContain(plain(said));
+    // one small line under the part; one amount row and Kokku, both at the invoice's amount
+    expect(runs.filter((r) => r.text === euro(15750))).toHaveLength(2);
+    expect(find(runs, "Hind ").y).toBeLessThan(find(runs, "Ettemaks 50%").y);
+    expect(textOf(runs)).not.toContain("Sooduskood TERE10");
+    expectFitsAndApart(runs);
+  });
+
+  test("a line without a code prints neither", async () => {
+    const { runs } = await render(PAID);
+    expect(textOf(runs)).not.toMatch(/ooduskood/);
+  });
+});
+
 describe("renderInvoice: the page", () => {
   test("one A4 portrait page, white with black text, only Jost (a subset), the logo the only image, neutral metadata dated by the issue, under 100 KB", async () => {
     const bytes = await renderInvoice(UNPAID, ASSETS);

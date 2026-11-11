@@ -17,7 +17,7 @@ import {
   type PaidMethod,
 } from "@/domain/invoice";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
-import { registrationTotal } from "@/domain/discount-codes";
+import { registrationDiscount, registrationTotal } from "@/domain/discount-codes";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
@@ -176,10 +176,16 @@ const sessionText = (s: Pick<CourseSession, "startsAt" | "city">): string => `${
 const buyerOf = (who: { name: string; email: string }): InvoiceBuyer => ({ name: who.name, email: who.email, address: "", company: "", companyCode: "", companyAddress: "" });
 
 /** A registration's invoice line (D4): the course's Estonian title, its session's date and city (empty for none) and the part, frozen. */
-const lineOf = (course: Pick<Course, "title">, session: Pick<CourseSession, "startsAt" | "city"> | null, part: string): InvoiceLine => ({
+const lineOf = (
+  course: Pick<Course, "title">,
+  session: Pick<CourseSession, "startsAt" | "city"> | null,
+  part: string,
+  discount?: InvoiceLine["discount"],
+): InvoiceLine => ({
   course: course.title.et,
   session: session ? sessionText(session) : "",
   part,
+  ...(discount ? { discount } : {}),
 });
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -246,7 +252,7 @@ export async function createInvoice(
         clientId: r.clientId,
         status: receipt ? "paid" : "unpaid",
         amountCents: open.cents,
-        line: lineOf(course, session, open.part),
+        line: lineOf(course, session, open.part, registrationDiscount(course, r) ?? undefined),
         buyer: buyerOf(r),
         reference: receipt ? "" : paymentReference(bank, r.id),
         dueAt: receipt ? null : dueDate(now, settings.termDays),
@@ -307,7 +313,7 @@ export async function issueReceiptInTx(
     clientId: r.clientId,
     status: "paid",
     amountCents: input.cents,
-    line: lineOf(course, session, price === null ? ODD_PART : partOf(kind, input.cents, price)),
+    line: lineOf(course, session, price === null ? ODD_PART : partOf(kind, input.cents, price), registrationDiscount(course, r) ?? undefined),
     buyer: buyerOf(r),
     reference: "",
     dueAt: null,
@@ -531,6 +537,12 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
       : await tx.select({ title: courses.title, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual }).from(courses).where(eq(courses.id, courseId)).limit(1);
   const kind = kindOfLinked ?? invoiceKindOfPayment(p, r);
   const price = course && r ? registrationTotal(course, r) : null;
+  const discount =
+    course && r
+      ? registrationDiscount(course, r) ?? undefined
+      : p.discountCode !== "" && p.discountCents > 0
+        ? { code: p.discountCode, listCents: p.amountCents + p.discountCents, cents: p.discountCents }
+        : undefined;
   return issueInTx<never>(tx, now, () => ({
     kind,
     registrationId: p.registrationId,
@@ -539,7 +551,13 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
     clientId: p.clientId ?? r?.clientId ?? null,
     status: "paid",
     amountCents: p.amountCents,
-    line: { course: course?.title.et ?? "", session: reg?.session ? sessionText(reg.session) : "", part: partOf(kind, p.amountCents, price) },
+    line: {
+      course: course?.title.et ?? "",
+      session: reg?.session ? sessionText(reg.session) : "",
+      part: partOf(kind, p.amountCents, price),
+      // F1: a registration's code is the one frozen on it; an e-course payment carries its own (its amount is the total, so list = total + discount)
+      ...(discount ? { discount } : {}),
+    },
     buyer: buyerOf(p),
     reference: "",
     dueAt: null,

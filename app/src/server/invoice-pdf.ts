@@ -157,21 +157,35 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
   const headRule = tableTop - SIZE.label * k * LEADING - 2 * k;
   rule(headRule);
   const rowTop = headRule - 8 * k;
-  rightText(euro(c.amountCents), SIZE.line * k, rowTop - SIZE.line * k);
+  // a discount code (F1): when the invoice is the whole sum after the code, three rows (the course at its list price, the code, „Kokku“); an
+  // invoice of a part (the prepayment) prints the arithmetic in one small line under the part instead
+  const d = c.line.discount;
+  const wholeSum = d !== undefined && c.amountCents === d.listCents - d.cents;
+  const partial = d !== undefined && !wholeSum;
+  rightText(euro(wholeSum ? d.listCents : c.amountCents), SIZE.line * k, rowTop - SIZE.line * k);
   const rowBottom = column(
     [
       { s: c.line.course, size: SIZE.line, max: 8 },
       { s: c.line.session, size: SIZE.small, max: 3 },
       { s: c.line.part || partText(c.kind), size: SIZE.small, max: 3 },
+      // Draft
+      ...(partial ? [{ s: `Hind ${euro(d.listCents)} − sooduskood ${d.code} ${euro(d.cents)} = ${euro(d.listCents - d.cents)}`, size: SIZE.small, max: 3 }] : []),
     ],
     EDGE.left,
     rowTop,
     TABLE.descriptionWidth,
   );
-  rule(rowBottom - 4 * k);
+  let tableBottom = rowBottom;
+  if (wholeSum) {
+    // the code's row, under the course's: „Sooduskood {code}“ (Draft) at the minus sum
+    const codeTop = rowBottom - 4 * k - 6 * k;
+    rightText(`−${euro(d.cents)}`, SIZE.line * k, codeTop - SIZE.line * k);
+    tableBottom = column([{ s: `Sooduskood ${d.code}`, size: SIZE.line, max: 2 }], EDGE.left, codeTop, TABLE.descriptionWidth);
+  }
+  rule(tableBottom - 4 * k);
 
   // the totals: net, VAT and the total when VAT is on, the total alone when it is off
-  let y = rowBottom - 4 * k - 10 * k;
+  let y = tableBottom - 4 * k - 10 * k;
   if (c.vatRate !== null) {
     const { net, vat } = vatSplit(c.amountCents, c.vatRate);
     for (const [label, sum] of [["Summa käibemaksuta", net], [`Käibemaks ${c.vatRate}%`, vat]] as const) {
