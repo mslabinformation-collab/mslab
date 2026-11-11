@@ -1,8 +1,9 @@
 import { eq, getTableName, isNotNull, or, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { areaSlug } from "@/domain/course-areas";
 import type { Db } from "./client";
-import { POPUP_ID, campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
-import { campaignSeed, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
+import { POPUP_ID, campaign, courseAccess, courseAreas, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
+import { areaSeeds, campaignSeed, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
 
 // Applies the prototype content. Plain drizzle: no Cloudflare bindings, so it runs from the CLI (seed.ts) and from tests.
 //
@@ -70,6 +71,23 @@ export function studentDataRefusal({ progress, access, videos, files }: StudentD
   return `Refusing to reset: ${found.join(", ")} would be deleted with their courses. --force does not override this. ${todo.join(" ")}`;
 }
 
+/**
+ * The course areas the seed's courses need (seed-data.ts areaSeeds), by slug → id. The list is Maria's (Seaded → Valdkonnad), so it is never truncated,
+ * not even by a reset, and never overwritten: an area of the seed that no row has the slug of (renamed or deleted here) is added after the others.
+ */
+async function seedAreas(db: Db): Promise<Map<string, number>> {
+  const rows = await db.select().from(courseAreas);
+  const ids = new Map(rows.map((r) => [areaSlug(r.name), r.id]));
+  let sort = Math.max(0, ...rows.map((r) => r.sort));
+  for (const seed of areaSeeds) {
+    const slug = areaSlug(seed.name);
+    if (ids.has(slug)) continue;
+    const [created] = await db.insert(courseAreas).values({ name: seed.name, sort: ++sort }).returning();
+    ids.set(slug, created.id);
+  }
+  return ids;
+}
+
 export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<string, number>> {
   if (opts.reset) {
     const data = await studentData(db);
@@ -81,12 +99,14 @@ export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<
     await db.execute(sql.raw(`TRUNCATE TABLE ${CONTENT_TABLES.join(", ")} RESTART IDENTITY CASCADE`));
   }
 
-  // Courses with their images, sessions and module titles: a course is seeded as a unit, only when its slug is new.
-  for (const [index, { images, sessions = [], modules = [], ...course }] of courseSeeds.entries()) {
+  // Courses with their images, sessions and module titles: a course is seeded as a unit, only when its slug is new; its area (by slug) is the seed's.
+  const areaIds = await seedAreas(db);
+  for (const [index, { images, sessions = [], modules = [], area, ...course }] of courseSeeds.entries()) {
     await db.transaction(async (tx) => {
+      const areaId = area === undefined ? null : (areaIds.get(areaSlug({ et: area })) ?? null);
       const [created] = await tx
         .insert(courses)
-        .values({ ...course, published: true, isSample: true, sort: index + 1 })
+        .values({ ...course, areaId, published: true, isSample: true, sort: index + 1 })
         .onConflictDoNothing({ target: courses.slug })
         .returning();
       if (!created) return;
