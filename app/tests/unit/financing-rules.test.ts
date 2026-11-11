@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FINANCING_ATTEMPT_MS, FINANCING_KEY, FINANCING_MAX_CENTS, FINANCING_MIN_CENTS, attemptWindowMs, billingAddressOf, estonianPhone, financingAllowed,
-  financingOffered, financingRefusal, isHirePurchase, readFinancingSettings,
+  financingChoice, financingOffered, financingRefusal, isHirePurchase, readFinancingSettings,
 } from "@/domain/financing";
 import { prepaymentDue } from "@/domain/registration";
 
@@ -167,5 +167,28 @@ describe("the choice as an amount", () => {
     expect(prepaymentDue(29_000, "financing")).toBe(29_000);
     expect(prepaymentDue(29_001, "financing")).toBe(29_001);
     expect(prepaymentDue(29_001, "half")).toBe(14_501);
+  });
+});
+
+describe("financingChoice: the form's effective choice on a (discounted) total", () => {
+  const on = { enabled: true, paymentsOn: true };
+  it("a total in range keeps järelmaks, no range line", () => {
+    expect(financingChoice({ totalCents: 20_000, financingSwitch: on, chosen: "financing" })).toEqual({ offered: true, choice: "financing", rangeLine: false });
+    expect(financingChoice({ totalCents: 10_000, financingSwitch: on, chosen: "financing" }).choice).toBe("financing");
+    expect(financingChoice({ totalCents: 500_000, financingSwitch: on, chosen: "financing" }).choice).toBe("financing");
+  });
+  it("under 100 € the choice falls to full and the range line shows", () => {
+    expect(financingChoice({ totalCents: 9_900, financingSwitch: on, chosen: "financing" })).toEqual({ offered: false, choice: "full", rangeLine: true });
+  });
+  it("over 5000 € the choice falls to full and the range line shows", () => {
+    expect(financingChoice({ totalCents: 500_001, financingSwitch: on, chosen: "financing" })).toEqual({ offered: false, choice: "full", rangeLine: true });
+  });
+  it("switch off or payments off: it falls to full, with no range line", () => {
+    expect(financingChoice({ totalCents: 20_000, financingSwitch: { enabled: false, paymentsOn: true }, chosen: "financing" })).toEqual({ offered: false, choice: "full", rangeLine: false });
+    expect(financingChoice({ totalCents: 9_900, financingSwitch: { enabled: true, paymentsOn: false }, chosen: "financing" })).toEqual({ offered: false, choice: "full", rangeLine: false });
+  });
+  it("another chosen payment is kept and never says the range line", () => {
+    expect(financingChoice({ totalCents: 9_900, financingSwitch: on, chosen: "half" })).toEqual({ offered: false, choice: "half", rangeLine: false });
+    expect(financingChoice({ totalCents: 20_000, financingSwitch: on, chosen: "full" })).toEqual({ offered: true, choice: "full", rangeLine: false });
   });
 });

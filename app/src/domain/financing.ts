@@ -2,6 +2,7 @@
 // settings toggle as read, the details Montonio passes on to Inbank's own form, and how long an attempt holds a seat. No database, no React, no
 // Montonio: the registration form, the cart and the account's „Maksa“ run it in the browser (no lookbehind here, tests/unit/old-safari.test.ts).
 
+import type { PaymentChoice } from "./registration";
 import { SEAT_HOLD_MS } from "./sessions";
 
 /** Inbank's range through Montonio's `hirePurchase` in Estonia (D2, D4): 100–5000 €, both inclusive, in cents. */
@@ -26,6 +27,24 @@ export function readFinancingSettings(value: unknown): FinancingSettings {
  */
 export function financingOffered(o: { enabled: boolean; paymentsOn: boolean; priceCents: number | null }): boolean {
   return o.enabled && o.paymentsOn && o.priceCents !== null && o.priceCents >= FINANCING_MIN_CENTS && o.priceCents <= FINANCING_MAX_CENTS;
+}
+
+/**
+ * What a form with a (discounted) total does with the visitor's own payment choice (F1 spec §4.4). `offered`: järelmaks is a choice on this total
+ * (financingOffered). `choice`: the effective payment: what she chose, except a chosen järelmaks that is not offered, which is "full" ("100% kohe").
+ * The visitor's own choice stays in the form's state, so removing a code brings järelmaks back as selected. `rangeLine`: say
+ * forms.payFinancingRange under the choices, exactly while the chosen järelmaks is out of 100–5000 € with the switch and payments on (switched off,
+ * there is nothing to say about the range). Pure and browser-safe: the registration form and the e-course cart both run it.
+ */
+export function financingChoice(o: { totalCents: number; financingSwitch: { enabled: boolean; paymentsOn: boolean }; chosen: PaymentChoice }): {
+  offered: boolean;
+  choice: PaymentChoice;
+  rangeLine: boolean;
+} {
+  const offered = financingOffered({ ...o.financingSwitch, priceCents: o.totalCents });
+  const choice: PaymentChoice = o.chosen === "financing" && !offered ? "full" : o.chosen;
+  const rangeLine = o.chosen === "financing" && o.financingSwitch.enabled && o.financingSwitch.paymentsOn && !offered;
+  return { offered, choice, rangeLine };
 }
 
 /**

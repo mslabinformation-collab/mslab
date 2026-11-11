@@ -1,0 +1,135 @@
+/* The sooduskood of the registration form (F1 design "Sooduskoodi väli"): closed as a quiet button, open as a field with „Rakenda“, applied as
+   one line with „Eemalda“ and the total under it. The look follows the form's own fields (CourseBuy.module.css). */
+
+.discount {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 22px;
+}
+
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 500 13px/1.3 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.quiet:hover {
+  color: var(--ink);
+}
+
+.label {
+  display: block;
+  margin: 0 0 6px;
+  font: 500 13px/1.3 var(--font-body);
+}
+
+.entry {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--heather);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.4 var(--font-body);
+  text-transform: uppercase;
+}
+
+.input:focus {
+  border-color: var(--rose);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+.apply {
+  flex: none;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 1px solid var(--ink);
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 600 13px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.apply[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 4px 16px;
+  border: 1px solid var(--heather);
+  border-radius: 14px;
+  background: var(--canvas);
+  font: 400 14px/1.4 var(--font-body);
+}
+
+.line strong {
+  font-weight: 600;
+}
+
+.line .quiet {
+  padding: 0 12px;
+}
+
+.hint {
+  margin: 0 2px;
+  color: var(--muted);
+  font: 400 12px/1.5 var(--font-body);
+}
+
+.error {
+  margin: 0 2px;
+  color: var(--bad);
+  font: 400 13px/1.45 var(--font-body);
+}
+
+.total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 0;
+}
+
+.totalLabel {
+  font: 600 15px/1.3 var(--font-body);
+}
+
+.totalSum {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.totalSum s {
+  color: var(--muted-2);
+  font: 400 14px/1.3 var(--font-body);
+}
+
+.totalSum strong {
+  font: 500 22px/1 var(--font-display);
+}

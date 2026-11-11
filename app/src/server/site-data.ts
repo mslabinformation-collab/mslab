@@ -15,3 +15,11 @@ export const getSiteSettings = cache((): Promise<Record<string, unknown>> => get
 export function financingShown(settings: Record<string, unknown>, priceCents: number | null): boolean {
   return financingOffered({ enabled: readFinancingSettings(settings[FINANCING_KEY]).enabled, paymentsOn: paymentsConfigured(), priceCents });
 }
+
+/**
+ * Maria's Järelmaks (Inbank) toggle and Montonio's payments, as the registration form wants them (F1): the form decides whether the choice is
+ * offered on its own total, which a code changes (domain/financing.ts financingChoice), so the page passes the two switches and not the answer.
+ */
+export function financingSwitch(settings: Record<string, unknown>): { enabled: boolean; paymentsOn: boolean } {
+  return { enabled: readFinancingSettings(settings[FINANCING_KEY]).enabled, paymentsOn: paymentsConfigured() };
+}

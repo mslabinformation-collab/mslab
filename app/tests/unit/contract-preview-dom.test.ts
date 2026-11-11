@@ -19,7 +19,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({ registerContact: vi.fn(), submitIndividual: vi.fn(), buyEcourse: vi.fn(), refresh: vi.fn() }));
-vi.mock("@/server/actions/public", () => ({ registerContact: mocks.registerContact, submitIndividual: mocks.submitIndividual, buyEcourse: mocks.buyEcourse }));
+vi.mock("@/server/actions/public", () => ({ registerContact: mocks.registerContact, submitIndividual: mocks.submitIndividual, buyEcourse: mocks.buyEcourse, checkDiscountCode: vi.fn() }));
 vi.mock("@/lib/navigate", () => ({ navigate: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock("@/lib/url-query", () => ({ useUrlQuery: () => [new URLSearchParams(), vi.fn()] }));
@@ -73,13 +73,14 @@ const t: ContactRegisterTexts = {
   errorEmail: "Sisesta korrektne e-posti aadress.",
   errorTooMany: "Liiga palju katseid.",
   errorGeneric: "Midagi läks valesti.",
+  discount: { open: "Mul on sooduskood", label: "Sooduskood", apply: "Rakenda", applied: "Sooduskood {code}: −{amount}", remove: "Eemalda", total: "Kokku {total}", hintWelcome: "a", hintFirst: "b", hintReturning: "c", errors: { empty: "d", unknown: "e", paused: "f", ended: "g", notYet: "h {date}", usedUp: "i", scope: "j", person: "k", changed: "l", rate: "m", server: "n" } },
 };
 /** 14.11.2026 at 10:00 in Tallinn, as Task 1's session fixture. */
 const session: SessionOption = { id: 7, startsAt: "2026-11-14T08:00:00.000Z", date: "14.11.2026", weekday: "laupäev", city: "Tallinn", venue: "", language: "ET", state: "open", stateLabel: "Vabu kohti · 6", disabled: false };
 const other: SessionOption = { ...session, id: 8, startsAt: "2026-12-05T08:00:00.000Z", date: "05.12.2026", city: "Tartu", venue: "Kesk 2" };
 const V1 = "2026-10-10T09:00:00.000Z";
 const contactContract: FormContract = { version: V1, title: "Kontaktkoolituse leping — {koolitus}", body: `${TEXT}\n\nTeine lõik, {tundmatu} jääb.`, locale: "et", course: "Kulmude kujundus", priceCents: 35000 };
-const contactProps = { financing: false, course: "kulmude-kujundus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session, other], t, contract: contactContract };
+const contactProps = { financingSwitch: { enabled: false, paymentsOn: true }, course: "kulmude-kujundus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session, other], t, contract: contactContract };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -158,7 +159,7 @@ describe("the registration form (group): the box is the contract, „Loe lepingu
   });
 
   test("Järelmaks (Inbank) is a choice of the form only while it is offered; chosen, {ettemaks} is the whole price, as the server fills the frozen contract (Task 1: financing is due in full)", async () => {
-    await act(async () => root.render(createElement(ContactRegister, { ...contactProps, financing: true })));
+    await act(async () => root.render(createElement(ContactRegister, { ...contactProps, financingSwitch: { enabled: true, paymentsOn: true } })));
     await click(toggle());
     await click($("[data-session='7']"));
     await click($("input[name='payment'][value='half']"));

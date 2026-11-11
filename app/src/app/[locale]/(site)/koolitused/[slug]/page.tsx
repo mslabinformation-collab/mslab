@@ -40,7 +40,7 @@ import { contractTemplate } from "@/server/contracts";
 import { previewActive } from "@/server/preview";
 import { courseReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
-import { financingShown, getSiteSettings } from "@/server/site-data";
+import { financingShown, financingSwitch, getSiteSettings } from "@/server/site-data";
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
 
@@ -259,7 +259,7 @@ export default async function CoursePage({ params }: Props) {
               <ContactRegister
                 course={course.slug}
                 locale={locale}
-                financing={financing}
+                financingSwitch={financingSwitch(settings)}
                 kinds={kinds}
                 sessions={sessions}
                 contract={{
@@ -314,6 +314,7 @@ export default async function CoursePage({ params }: Props) {
                   errorEmail: d.forms.errorEmail,
                   errorTooMany: d.forms.errorTooMany,
                   errorGeneric: d.forms.errorGeneric,
+                  discount: { ...d.discount, errors: { ...d.discount.errors, rate: d.forms.errorTooMany, server: d.forms.errorGeneric } },
                 }}
               />
             )}

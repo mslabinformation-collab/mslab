@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
 import { filledContract } from "@/domain/contract";
+import type { SubmitCodeError } from "@/domain/discount-codes";
+import { financingChoice } from "@/domain/financing";
 import type { PaymentChoice } from "@/domain/registration";
 import type { SeatState } from "@/domain/sessions";
 import type { Locale } from "@/i18n/locales";
@@ -11,9 +13,11 @@ import { navigate } from "@/lib/navigate";
 import { useUrlQuery } from "@/lib/url-query";
 import { registerContact, submitIndividual } from "@/server/actions/public";
 import { ContractPreview, type FormContract } from "./ContractPreview";
+import { DiscountField, type DiscountTexts } from "./DiscountField";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
 import styles from "./CourseBuy.module.css";
+import { useDiscountCode } from "./useDiscountCode";
 
 type Kind = "group" | "individual";
 
@@ -85,6 +89,8 @@ export type ContactRegisterTexts = {
   errorEmail: string;
   errorTooMany: string;
   errorGeneric: string;
+  /** The sooduskood field (F1): the dictionary's `discount` section with the check's "rate" and "server" answers (forms.errorTooMany, the generic error). */
+  discount: DiscountTexts;
 };
 
 type Field = "session" | "name" | "email" | "phone" | "period" | "message" | "payment" | "terms" | "form";
@@ -101,6 +107,9 @@ type State =
   | { status: "sent"; kind: Kind; paymentUrl?: string; financingRefused?: "refused" | "off" }
   | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
 
+/** What the server's `discountCode` error may say (domain SubmitCodeError); anything else is read as "unknown". */
+const SUBMIT_CODE_ERRORS: readonly SubmitCodeError[] = ["unknown", "paused", "ended", "notYet", "usedUp", "scope", "person", "changed"];
+
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
 const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "message", "payment", "terms"];
 
@@ -108,8 +117,8 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  * Contact course registration (Maria's overview, P10–P16). Only the participation kinds that have a price are offered,
  * each with its own price (P12, P13).
  * - Group: pick one of the upcoming sessions (full and cancelled ones are shown but cannot be picked), then the form with
- *   payment 100% now, 50% + 50% (P14) or, while `financing` says it is offered (the course page: the toggle on, Montonio payments on, the group price
- *   within 100–5000 €; instalments D4), „Järelmaks (Inbank)“ — a third choice, and the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ next to the
+ *   payment 100% now, 50% + 50% (P14) or, while `financingSwitch` and the total say it is offered (the course page says the toggle and the payments; the
+ *   total, the group price less a code, within 100–5000 €: domain/financing.ts financingChoice; instalments D4), „Järelmaks (Inbank)“ — a third choice, and the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ next to the
  *   prices; never a disabled placeholder. A järelmaks the server refuses after all (the page is a few minutes old) keeps the registration: the answer
  *   says so (`financing: "refused"`, or "off" when it was switched off), the form gives way to the confirmation, and `financingRange` (`financingOff`) is said first. The form never confirms a place: it is confirmed after at least 50% prepayment
  *   (P15), said under the button. With online payments the browser goes on to the prepayment's page (phase 2b). With no
@@ -125,6 +134,10 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  *   (R6); when Maria has saved another text since the page was loaded, nothing is stored, the box's error says so, the box is cleared and the
  *   page is loaded again with the new text.
  * - The individual request keeps today's box and its link to „Õppetingimused“ (D1: no contract).
+ * - Group only (F1): „Mul on sooduskood“ under „Sõnum“ opens the code field (DiscountField, useDiscountCode). The form shows the total (the group price
+ *   less the code), fills the contract with it and decides järelmaks on it: the visitor's own choice stays in state, a chosen järelmaks that the total
+ *   takes out of 100–5000 € is sent as „100% kohe“ and `payFinancingRange` shows under the choices, and removing the code brings it back. A typed code
+ *   is applied by the submit itself (and one that is refused is not sent); the server's `discountCode` refusals go back to the field.
  * After a failed submit, focus goes to the first field with an error (its message is linked with aria-describedby).
  * "?sessioon=12" (the links from the home page and the calendar) preselects that date until the visitor picks one. The
  * page is cached for every visitor, so the address is read in the browser (useUrlQuery: after hydration).
@@ -132,7 +145,7 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
 export function ContactRegister({
   course,
   locale,
-  financing,
+  financingSwitch,
   kinds,
   sessions,
   contract,
@@ -140,8 +153,8 @@ export function ContactRegister({
 }: {
   course: string;
   locale: Locale;
-  /** Is Järelmaks (Inbank) offered for this course's group price (domain/financing.ts financingOffered, read by the course page)? */
-  financing: boolean;
+  /** Maria's Järelmaks (Inbank) toggle and Montonio's payments, as the course page read them; whether it is offered is decided here, on the total (financingChoice). */
+  financingSwitch: { enabled: boolean; paymentsOn: boolean };
   kinds: { kind: Kind; price: string }[];
   sessions: SessionOption[];
   /** The group registration's contract, unfilled (FormContract). */
@@ -158,9 +171,15 @@ export function ContactRegister({
   const kind: Kind = kindChosen ?? (linked !== null && offered.includes("group") ? "group" : (offered[0] ?? "group"));
   const session = sessionChosen === undefined ? linked : sessionChosen;
   const [values, setValues] = useState({ name: "", email: "", phone: "", period: "", message: "" });
+  // the sooduskood (group only): its price is the total below; the individual request has no code
+  const discount = useDiscountCode({ course, listCents: contract.priceCents ?? 0 });
+  const total = contract.priceCents === null ? null : discount.totalCents;
+  // The visitor's own choice stays in state; what is sent is the effective one. A chosen järelmaks that the total (or the switch) takes out of
+  // 100–5000 € is "100% kohe" and the range line is said, and removing the code brings järelmaks back as selected.
   const [chosenPayment, setPayment] = useState<PaymentChoice>("full");
-  // (a choice that is no longer offered — the page was refreshed after the toggle went off — is the whole price at once)
-  const payment: PaymentChoice = chosenPayment === "financing" && !financing ? "full" : chosenPayment;
+  const fin = financingChoice({ totalCents: total ?? 0, financingSwitch, chosen: chosenPayment });
+  const financing = total !== null && fin.offered;
+  const payment: PaymentChoice = fin.choice;
   const choices: PaymentChoice[] = financing ? ["full", "half", "financing"] : ["full", "half"];
   const [checks, setChecks] = useState({ modelHelp: false, account: false, newsletter: false, terms: false });
   const [switched, setSwitched] = useState(0);
@@ -168,6 +187,7 @@ export function ContactRegister({
   const individualRef = useRef<HTMLInputElement>(null);
   const sessionRefs = useRef(new Map<number, HTMLButtonElement>());
   const sentRef = useRef<HTMLDivElement>(null);
+  const submitting = useRef(false);
   const router = useRouter();
 
   const [state, formAction, pending] = useActionState<State, FormData>(async (_prev, formData) => {
@@ -183,8 +203,10 @@ export function ContactRegister({
       const errors: Errors = {};
       let rejected: number | undefined;
       let changed = false;
+      let discountRefused: SubmitCodeError | undefined;
       for (const [f, code] of Object.entries(result.errors)) {
-        if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
+        if (f === "discountCode") discountRefused = SUBMIT_CODE_ERRORS.includes(code as SubmitCodeError) ? (code as SubmitCodeError) : "unknown";
+        else if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
         else if (f === "terms" && code === "changed") {
           errors.terms = t.contractChanged;
           changed = true;
@@ -196,7 +218,9 @@ export function ContactRegister({
         } else if (f === "session") errors.session = t.sessionRequired;
         else errors[f as Field] = t.errorRequired;
       }
-      if (Object.keys(errors).length === 0) errors.form = t.errorGeneric;
+      // the code's refusal belongs to the field, which says it (and re-checks the code); it is not a form error
+      if (discountRefused) void discount.serverRefused(discountRefused);
+      if (Object.keys(errors).length === 0 && !discountRefused) errors.form = t.errorGeneric;
       // The contract's text changed since the page was loaded (R6): her tick was for the old one, so the box is cleared, and the page is loaded
       // again for the new text (and its version) to read.
       if (changed) setChecks((c) => ({ ...c, terms: false }));
@@ -295,7 +319,7 @@ export function ContactRegister({
       email: values.email,
       course: contract.course,
       session: chosen ? { startsAt: new Date(chosen.startsAt), city: chosen.city, venue: chosen.venue } : null,
-      priceCents: contract.priceCents,
+      priceCents: total,
       choice: payment,
       locale: contract.locale,
     },
@@ -312,10 +336,22 @@ export function ContactRegister({
       // Submitted by hand rather than with <form action>: React resets a form after an action, which would clear the
       // checkboxes and radios in the page while their state says otherwise (all fields here are controlled).
       // method="post" keeps the personal data out of the URL even if the script has not loaded.
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (pending) return;
+        if (pending || submitting.current) return;
         const formData = new FormData(e.currentTarget);
+        if (formData.get("kind") !== "individual") {
+          // a typed code that was not applied yet is applied now; one the check refuses is not sent (the field says why)
+          submitting.current = true;
+          try {
+            const d = await discount.beforeSubmit();
+            if (!d.send) return;
+            formData.set("discountCode", d.code ?? "");
+            formData.set("discountCents", d.discountCents === null ? "" : String(d.discountCents));
+          } finally {
+            submitting.current = false;
+          }
+        }
         startTransition(() => formAction(formData));
       }}
     >
@@ -454,6 +490,9 @@ export function ContactRegister({
             </div>
           </div>
 
+          {/* Group only (F1): under „Sõnum“, above „Tasumine“; the individual request has no code. */}
+          {kind === "group" && contract.priceCents !== null && <DiscountField state={discount} t={t.discount} locale={locale} idPrefix={id} />}
+
           {/* Group only: an individual course's time and payment are agreed with Maria afterwards. */}
           {kind === "group" && (
             <fieldset className={styles.options}>
@@ -468,6 +507,12 @@ export function ContactRegister({
                   </label>
                 ))}
               </div>
+              {/* §4.4: a chosen järelmaks the total has taken out of 100–5000 € */}
+              {fin.rangeLine && (
+                <p className={styles.financingLine} data-financing-range="">
+                  {t.financingRange}
+                </p>
+              )}
             </fieldset>
           )}
 

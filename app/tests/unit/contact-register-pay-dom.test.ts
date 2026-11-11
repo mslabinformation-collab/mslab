@@ -18,8 +18,9 @@ const mocks = vi.hoisted(() => ({
   registerContact: vi.fn<(fd: FormData) => Promise<unknown>>(),
   submitIndividual: vi.fn<(fd: FormData) => Promise<unknown>>(),
   navigate: vi.fn<(url: string) => void>(),
+  checkDiscountCode: vi.fn<(fd: FormData) => Promise<unknown>>(),
 }));
-vi.mock("@/server/actions/public", () => ({ registerContact: mocks.registerContact, submitIndividual: mocks.submitIndividual }));
+vi.mock("@/server/actions/public", () => ({ registerContact: mocks.registerContact, submitIndividual: mocks.submitIndividual, checkDiscountCode: mocks.checkDiscountCode }));
 vi.mock("@/lib/navigate", () => ({ navigate: mocks.navigate }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/url-query", () => ({ useUrlQuery: () => [new URLSearchParams(), vi.fn()] }));
@@ -68,9 +69,21 @@ const t: ContactRegisterTexts = {
   errorEmail: "Sisesta korrektne e-posti aadress.",
   errorTooMany: "Liiga palju katseid.",
   errorGeneric: "Midagi läks valesti.",
+  discount: {
+    open: "Mul on sooduskood",
+    label: "Sooduskood",
+    apply: "Rakenda",
+    applied: "Sooduskood {code}: −{amount}",
+    remove: "Eemalda",
+    total: "Kokku {total}",
+    hintWelcome: "Kehtib uudiskirjaga liitunud aadressil ja ainult esimesel koolitusel.",
+    hintFirst: "Kehtib ainult esimesel koolitusel.",
+    hintReturning: "Kehtib MS LABi varasematele õpilastele.",
+    errors: { empty: "Kirjuta sooduskood.", unknown: "Sellist sooduskoodi ei ole.", paused: "See sooduskood ei kehti enam.", ended: "See sooduskood ei kehti enam.", notYet: "See sooduskood kehtib alates {date}.", usedUp: "Kasutuskorrad on otsas.", scope: "See sooduskood ei kehti sellele koolitusele.", person: "Seda sooduskoodi ei saa selle e-posti aadressiga kasutada.", changed: "Sooduskood muutus vahepeal.", rate: "Liiga palju katseid.", server: "Midagi läks valesti." },
+  },
 };
 const session: SessionOption = { id: 7, startsAt: "2026-11-14T08:00:00.000Z", date: "14.11", weekday: "laupäev", city: "Tallinn", venue: "Stuudio", language: "ET", state: "open", stateLabel: "Vabu kohti · 6", disabled: false };
-const props = { financing: false, course: "kulmumeistri-baaskoolitus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session], t, contract: { version: "2026-10-01T00:00:00.000Z", title: "Leping", body: "{nimi}, {toimumine}, {hind}.", locale: "et" as const, course: "Kulmumeistri baaskoolitus", priceCents: 35000 } };
+const props = { financingSwitch: { enabled: false, paymentsOn: true }, course: "kulmumeistri-baaskoolitus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session], t, contract: { version: "2026-10-01T00:00:00.000Z", title: "Leping", body: "{nimi}, {toimumine}, {hind}.", locale: "et" as const, course: "Kulmumeistri baaskoolitus", priceCents: 35000 } };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -141,7 +154,7 @@ test("a refused registration shows its error and goes nowhere", async () => {
 // registration: the answer says so and the form tells her, at once, what Järelmaks needs.
 
 describe("Järelmaks (Inbank) on the registration form", () => {
-  const offered = { ...props, financing: true };
+  const offered = { ...props, financingSwitch: { enabled: true, paymentsOn: true } };
   const choices = () => [...container.querySelectorAll<HTMLInputElement>("input[name='payment']")];
   const line = () => $("[data-financing-line]");
   const fillIn = async () => {
