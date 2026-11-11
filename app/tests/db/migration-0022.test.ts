@@ -1,6 +1,6 @@
 import { rmSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
@@ -57,10 +57,12 @@ test("0022 adds exactly one column (courses.certificate_title, empty), keeps eve
   // every course is what it was, with an empty certificate title
   expect(await rows()).toEqual(before.courses.map((r) => ({ ...r, certificate_title: "" })));
 
-  // the column works through the schema: empty on an insert that does not name it, and the text stored when it does
-  const base = { type: "e_learning" as const, level: "basic" as const, title: { et: "Uus" }, summary: { et: "" }, body: { et: "" } };
-  const [plain] = await db.insert(courses).values({ ...base, slug: "uus-1" }).returning();
-  expect(plain.certificateTitle).toBe("");
-  const [titled] = await db.insert(courses).values({ ...base, slug: "uus-2", certificateTitle: "Kulmumeistri baaskoolitus" }).returning();
-  expect(titled.certificateTitle).toBe("Kulmumeistri baaskoolitus");
+  // the column works: empty on an insert that does not name it, and the text stored when it does (raw SQL, read back by its column: the schema's
+  // table has the column 0023 adds, which this database does not have yet)
+  await db.execute(sql`insert into courses (slug, type, level, title, summary, body) values ('uus-1', 'e_learning', 'basic', '{"et":"Uus"}', '{"et":""}', '{"et":""}')`);
+  await db.execute(sql`insert into courses (slug, type, level, title, summary, body, certificate_title) values ('uus-2', 'e_learning', 'basic', '{"et":"Uus"}', '{"et":""}', '{"et":""}', 'Kulmumeistri baaskoolitus')`);
+  expect(await db.select({ slug: courses.slug, certificateTitle: courses.certificateTitle }).from(courses).where(inArray(courses.slug, ["uus-1", "uus-2"])).orderBy(courses.slug)).toEqual([
+    { slug: "uus-1", certificateTitle: "" },
+    { slug: "uus-2", certificateTitle: "Kulmumeistri baaskoolitus" },
+  ]);
 });

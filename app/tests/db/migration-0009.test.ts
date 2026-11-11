@@ -53,7 +53,7 @@ test("0009 gives every course no certificate lines and no volume, and adds certi
     { slug: "e", outcomes: [], skills: [], volume: "" },
     { slug: "k", outcomes: [{ et: "Kulmude kuju" }], skills: [], volume: "" },
   ]);
-  expect(await db.select().from(certificates)).toEqual([]);
+  expect(await db.select({ id: certificates.id }).from(certificates)).toEqual([]);
 
   // a certificate: the frozen copy, the volume empty by default, no re-issue yet, its creation stamped
   const kati = access[who["kati@example.test"]];
@@ -61,19 +61,31 @@ test("0009 gives every course no certificate lines and no volume, and adds certi
     number: "MS LAB 2026-03", year: 2026, seq: 3, name: "Kati Kask", courseTitle: "E", skills: ["Kulmude kuju"],
     practicalLine: "Praktiline töö", place: "Pärnu linn", registryCode: "16346048", issuedAt: new Date("2026-10-15T09:00:00Z"),
   };
-  const [first] = await db.insert(certificates).values({ accessId: kati, ...copy }).returning();
+  // (written with raw SQL and read back by its columns: the schema's table has the column 0023 adds, which this database does not have yet)
+  const insert = (c: typeof copy & { accessId: number; volume?: string }) =>
+    db.execute(
+      sql`insert into certificates (access_id, number, year, seq, name, course_title, skills, volume, practical_line, place, registry_code, issued_at) values (${c.accessId}, ${c.number}, ${c.year}, ${c.seq}, ${c.name}, ${c.courseTitle}, ${JSON.stringify(c.skills)}::jsonb, ${c.volume ?? sql`default`}, ${c.practicalLine}, ${c.place}, ${c.registryCode}, ${c.issuedAt.toISOString()}::timestamptz)`,
+    );
+  await insert({ accessId: kati, ...copy });
+  const [first] = await db
+    .select({
+      accessId: certificates.accessId, number: certificates.number, year: certificates.year, seq: certificates.seq, name: certificates.name, courseTitle: certificates.courseTitle,
+      skills: certificates.skills, practicalLine: certificates.practicalLine, place: certificates.place, registryCode: certificates.registryCode, issuedAt: certificates.issuedAt,
+      volume: certificates.volume, reissuedAt: certificates.reissuedAt, createdAt: certificates.createdAt,
+    })
+    .from(certificates);
   expect(first).toMatchObject({ accessId: kati, ...copy, volume: "", reissuedAt: null });
   expect(first.createdAt).toBeInstanceOf(Date);
 
   // one per access, one per number, one per year and number; the number from 1; the access must exist
   const mari = access[who["mari@example.test"]];
-  await violates(db.insert(certificates).values({ ...copy, accessId: kati, number: "MS LAB 2026-04", seq: 4 }), "certificates_access");
-  await violates(db.insert(certificates).values({ ...copy, accessId: mari, seq: 4 }), "certificates_number");
-  await violates(db.insert(certificates).values({ ...copy, accessId: mari, number: "MS LAB 2026-3" }), "certificates_year_seq");
-  await violates(db.insert(certificates).values({ ...copy, accessId: mari, number: "MS LAB 2026-00", seq: 0 }), "certificates_seq_positive");
-  await violates(db.insert(certificates).values({ ...copy, accessId: 999_999, number: "MS LAB 2026-04", seq: 4 }), "certificates_access_id_course_access_id_fk");
+  await violates(insert({ ...copy, accessId: kati, number: "MS LAB 2026-04", seq: 4 }), "certificates_access");
+  await violates(insert({ ...copy, accessId: mari, seq: 4 }), "certificates_number");
+  await violates(insert({ ...copy, accessId: mari, number: "MS LAB 2026-3" }), "certificates_year_seq");
+  await violates(insert({ ...copy, accessId: mari, number: "MS LAB 2026-00", seq: 0 }), "certificates_seq_positive");
+  await violates(insert({ ...copy, accessId: 999_999, number: "MS LAB 2026-04", seq: 4 }), "certificates_access_id_course_access_id_fk");
   // the same number in another year is another certificate
-  await db.insert(certificates).values({ ...copy, accessId: mari, number: "MS LAB 2027-03", year: 2027, volume: "10 akadeemilist tundi" });
+  await insert({ ...copy, accessId: mari, number: "MS LAB 2027-03", year: 2027, volume: "10 akadeemilist tundi" });
 
   // the account's deletion takes the access and its certificate; the other one stays
   await db.delete(clients).where(eq(clients.id, who["kati@example.test"]));

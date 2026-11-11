@@ -162,6 +162,13 @@
       "when": 1794320126390,
       "tag": "0022_course_certificate_title",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794381073836,
+      "tag": "0023_certificate_designs",
+      "breakpoints": true
     }
   ]
 }
