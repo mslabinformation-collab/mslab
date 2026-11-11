@@ -138,7 +138,7 @@ export async function attachOrder(db: Db, id: number, providerUuid: string, now:
  * nothing else touches a pending row, and its replacement leaves it as it is: replaceOlderOrders) and its method's window
  * (domain/financing.ts attemptWindowMs: 60 minutes for a järelmaks, the bank's 30).
  */
-const attemptEnds = sql`p.updated_at + (case when ${isHirePurchaseSql(sql.raw("p.method"))} then ${FINANCING_ATTEMPT_MS}::integer else ${SEAT_HOLD_MS}::integer end) * interval '1 millisecond'`;
+export const attemptEnds = sql`p.updated_at + (case when ${isHirePurchaseSql(sql.raw("p.method"))} then ${FINANCING_ATTEMPT_MS}::integer else ${SEAT_HOLD_MS}::integer end) * interval '1 millisecond'`;
 
 /**
  * The seat hold of an unpaid registration after one of its payments failed (phase 2b; instalments, Task 4): it is what the registration's

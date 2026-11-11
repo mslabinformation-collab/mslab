@@ -60,6 +60,16 @@ export async function hasFreeSeat(q: Q, session: { id: number; capacity: number 
 //   (client-data.ts deleteClient), reaches payments through ON DELETE SET NULL, and only those already linked to the client: an e-course
 //   payment in flight has no client_id until its own grant writes it, after the address lock.
 // So whoever waits on a row the e-course path holds holds neither the address lock nor a row the e-course path waits for (settle.ts openCourse).
+//
+// Discount codes (F1, spec D8): a code's row lock (server/discount-codes.ts lockCode: `select … for no key update` on discount_codes) is taken by
+// whoever writes a use of the code, in the same transaction that makes the booking or starts the payment, so two orders by one person and the last
+// use under a limit are decided one after the other. It sits in both orders after the lock that begins the path and before the rows it writes:
+// - a registration: course_sessions → discount_codes → the registrations insert → the contract;
+// - an e-course start: the purchase's advisory lock → discount_codes → payments.
+// No cycle: nothing that holds a code's lock waits for a session, registration or purchase lock (it only inserts after taking it), settle and
+// cancelling never take a code's lock, the admin's „Lisa sooduskood“ takes only the key-share lock of its own insert (the foreign key of
+// discount_redemptions; `no key update` does not block it) after its own session and registration locks, in the booking's order, and an admin's
+// save of a code takes the code's lock alone. So the code lock is a leaf of both orders and joins neither to the other.
 
 /** Locks the registration (FOR UPDATE) until the caller's transaction ends. A registration that does not exist locks nothing. */
 export async function lockRegistration(tx: Tx, registrationId: number): Promise<void> {

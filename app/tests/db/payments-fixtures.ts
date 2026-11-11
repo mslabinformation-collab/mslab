@@ -1,10 +1,11 @@
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { Db } from "@/db/client";
 import * as schema from "@/db/schema";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
-import { courses, courseSessions, registrations, type Course, type CourseSession, type Payment, type Registration } from "@/db/schema";
+import { clients, courseAccess, courses, courseSessions, registrations, type Client, type Course, type CourseSession, type Payment, type Registration } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
 import type { Env } from "@/server/notify";
 import { signHs256, verifyHs256 } from "@/server/payments/jwt";
@@ -145,6 +146,43 @@ export async function pendingPayment(
   if (uuid === null) return row;
   await attachOrder(db, row.id, uuid, now);
   return { ...row, providerUuid: uuid };
+}
+
+/** A published e-course, Kulmumeistri e-koolitus (190 €, access for 6 months). */
+export async function ecourseCourse(db: Db): Promise<Course> {
+  const [course] = await db
+    .insert(courses)
+    .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+    .returning();
+  return course;
+}
+
+/** A client with `email`, and optionally an open access to `course` (`revoked`: one an admin ended). */
+export async function clientWithAccess(db: Db, email: string, course?: Course, opts: { revoked?: boolean } = {}): Promise<Client> {
+  const [client] = await db.insert(clients).values({ email, name: "Kati Kask" }).returning();
+  if (course) {
+    await db.insert(courseAccess).values({ clientId: client.id, courseId: course.id, grantedBy: "payment", expiresAt: new Date("2027-05-11T20:59:59Z"), revokedAt: opts.revoked ? new Date("2026-11-05T10:00:00Z") : null });
+  }
+  return client;
+}
+
+/** An e-course payment (kind ecourse, no registration) of `course` by `email`, started at `at` and then set to `status` (pending: as started). */
+export async function ecoursePayment(
+  db: Db,
+  course: Course,
+  email: string,
+  over: { status?: Payment["status"]; clientId?: number | null; method?: string; at?: Date } = {},
+): Promise<Payment> {
+  const at = over.at ?? new Date("2026-11-11T09:00:00Z");
+  const row = await insertPayment(
+    db,
+    { kind: "ecourse", registrationId: null, courseId: course.id, clientId: over.clientId ?? null, email, name: "Kati Kask", locale: "et", amountCents: 19000, ...(over.method === undefined ? {} : { method: over.method }) },
+    at,
+    TEST_MONTONIO.referencePrefix,
+  );
+  if (!over.status || over.status === "pending") return row;
+  const [set] = await db.update(schema.payments).set({ status: over.status }).where(eq(schema.payments.id, row.id)).returning();
+  return set;
 }
 
 /** A fresh database whose every statement is kept in `queries` (drizzle's logger), to read the order of the locks and writes from. */
