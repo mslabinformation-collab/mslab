@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
+import { certificateDesigns, clients, contentDrafts, courseAccess, courseAreas, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
 import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, listSessionCities, moveCourseTo, sessionCounts } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { startOfDayTallinn } from "@/domain/calendar";
@@ -51,6 +51,18 @@ describe("createCourseForm: „Lisa koolitus“ (piece 3a, Task 7: the editor's 
     expect(await getCourseForEdit(db, online.id)).toEqual(before);
     expect(await createCourseForm(db, form({ data: "{" }))).toEqual({ ok: false, error: "invalid" });
     expect(await createCourseForm(db, new FormData())).toEqual({ ok: false, error: "invalid" });
+  });
+
+  test("its „Valdkond“ (course areas §4.2): one of the areas is stored with the course; none is null; an area that is gone is the field's error", async () => {
+    const [kulm] = await db.select().from(courseAreas).where(sql`${courseAreas.name}->>'et' = 'Kulmukoolitused'`);
+    const create = (title: string, areaId: unknown) => createCourseForm(db, form({ data: JSON.stringify({ ...newCourseDraft(), title: { et: title }, areaId }) }));
+    const made = await create("Valdkonnaga", kulm.id);
+    expect(made).toMatchObject({ ok: true, created: true });
+    expect((await getCourseForEdit(db, (made as { id: number }).id))?.areaId).toBe(kulm.id);
+    const none = await create("Valdkonnata", null);
+    expect((await getCourseForEdit(db, (none as { id: number }).id))?.areaId).toBeNull();
+    expect(fieldsOf(await create("Kadunud valdkonnaga", 9999))).toEqual({ areaId: "area" });
+    expect(await create("Vale valdkonnaga", "1")).toEqual({ ok: false, error: "invalid" });
   });
 });
 
@@ -674,13 +686,48 @@ describe("saveCourseForm: 'Tunnistus' (phase 3d, spec §6)", () => {
     expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
   });
 
+  test("„Kujundus“ (2026-11-11 certificate designs): an e-course stores the design picked, none is the first; no design's id is refused; a contact course none", async () => {
+    const [hele, tume] = await db.select().from(certificateDesigns).orderBy(certificateDesigns.sort);
+    const e = await load(online.id);
+    expect(e.certificateDesignId).toBeNull();
+    expect(await save({ ...e, certificateDesignId: tume.id })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: tume.id });
+    expect((await load(online.id)).certificateDesignId).toBe(tume.id);
+    expect(fieldsOf(await save({ ...(await load(online.id)), certificateDesignId: 999_999 }))).toEqual({ certificateDesignId: "certificateDesign" });
+    expect(await save({ ...(await load(contact.id)), certificateDesignId: hele.id })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, contact.id)).toMatchObject({ certificateDesignId: null });
+    expect(await save({ ...(await load(online.id)), type: "contact", priceGroup: "100" })).toMatchObject({ ok: true });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: null });
+  });
+
+  test("„Kujundus“: a design deleted between the checks and the save's transaction is the field's refusal, not a failed save; nothing is written", async () => {
+    const [spare] = await db.insert(certificateDesigns).values({ name: "Kustutatav", tone: "light", sort: 9 }).returning();
+    const before = await load(online.id);
+    // the delete lands as the save's transaction begins (after the checks outside it saw the design)
+    const racing = new Proxy(db, {
+      get(target, key) {
+        if (key === "transaction")
+          return async (work: unknown) => {
+            await target.delete(certificateDesigns).where(eq(certificateDesigns.id, spare.id));
+            return (target.transaction as unknown as (w: unknown) => Promise<unknown>).call(target, work);
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as Db;
+    const answer = await saveCourseForm(racing, form({ data: JSON.stringify({ ...before, certificateDesignId: spare.id, certificateVolume: "Muudetud maht" }) }));
+    expect(fieldsOf(answer)).toEqual({ certificateDesignId: "certificateDesign" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateDesignId: before.certificateDesignId, certificateVolume: before.certificateVolume });
+  });
+
   test("a draft without them (an editor page opened before the deploy) still saves, with none", async () => {
     const older: Partial<CourseDraft> = { ...(await load(online.id)) };
     delete older.certificateSkills;
     delete older.certificateVolume;
     delete older.certificateTitle;
+    delete older.certificateDesignId;
     expect(await saveCourseForm(db, form({ data: JSON.stringify(older) }))).toMatchObject({ ok: true });
-    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "" });
+    expect(await getCourseForEdit(db, online.id)).toMatchObject({ certificateSkills: [], certificateVolume: "", certificateTitle: "", certificateDesignId: null });
   });
 
   test("a pasted line is cleaned, not refused (control characters and NUL go, a line break is a space); a line blank once cleaned is dropped", async () => {

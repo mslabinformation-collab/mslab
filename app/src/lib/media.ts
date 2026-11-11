@@ -11,6 +11,16 @@ export function isMediaKey(key: string): boolean {
   return MEDIA_KEY.test(key);
 }
 
+/**
+ * What an upload is for (POST /api/admin/upload?for=…): any picture of the site ("image", the default), or a certificate design's background photo
+ * (2026-11-11 certificate designs, spec §4), which the PDF embeds as it was uploaded: a JPEG of at most 1.5 MB (BACKGROUND_UPLOAD), so that the
+ * certificate stays small. The browser (components/admin/ImageUpload.tsx) and the server (server/media.ts putImage) hold the same limits.
+ */
+export const UPLOAD_KINDS = ["image", "certificate-background"] as const;
+export type UploadKind = (typeof UPLOAD_KINDS)[number];
+export const isUploadKind = (v: unknown): v is UploadKind => typeof v === "string" && (UPLOAD_KINDS as readonly string[]).includes(v);
+export const BACKGROUND_UPLOAD = { types: ["image/jpeg"], maxBytes: 1.5 * 1024 * 1024 } as const;
+
 /** Static images shipped with the site (the seed's photos); the only image keys besides uploads. */
 const SEED_IMAGE = /^\/seed\/[a-z0-9][a-z0-9._-]*\.(jpe?g|png|webp)$/i;
 

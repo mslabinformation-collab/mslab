@@ -1144,6 +1144,32 @@
       "markedAt": "2026-11-10T15:39:26.721Z"
     },
     {
+      "id": "haldus-ekursus-tunnistuse-kujundus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: tunnistuse kujundus",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
+        "Vaata välja „Kujundus“ ja selle valikuid.",
+        "Vali „Kujundus“ alt kujundus, millega tahad Proov 1 tunnistust näha.",
+        "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
+      ],
+      "expect": [
+        "„Kujundus“ loetleb Seadete kujundused samas järjekorras, esimene on „Hele“.",
+        "Kui kujundust pole valitud, on valitud esimene kujundus.",
+        "Välja all on vihje „Kujundusi muudad: Seaded → Tunnistus.“.",
+        "Kui avaldatud koolitusel valid muu kujunduse kui praegune, on välja juures enne avaldamist „· avaldamata“.",
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
+      ],
+      "why": "Selle koolituse tunnistused tehakse valitud kujundusega.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T10:53:51.477Z"
+    },
+    {
       "id": "haldus-ekursus-avalda",
       "area": "haldus",
       "who": "maria",
@@ -1220,6 +1246,91 @@
       "writes": false,
       "mark": "redo",
       "markedAt": "2026-10-24T22:46:48.501Z"
+    },
+    {
+      "id": "haldus-koolitus-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse valdkond",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni avaldatud kulmukoolitus ja leia kaardil „Põhiinfo“ valik „Valdkond“.",
+        "Vali „Kulmukoolitused“ ja vaata pealkirja all olevat riba.",
+        "Vajuta „Avalda muudatused“.",
+        "Anna samamoodi valdkond igale koolitusele: kulmukoolitustele „Kulmukoolitused“, ripsmekoolitustele „Ripsmekoolitused“.",
+        "Ava avalik koolituste loend ja koolituskalender."
+      ],
+      "expect": [
+        "Valikus on esimesena „Määramata“, siis „Kulmukoolitused“ ja „Ripsmekoolitused“.",
+        "Välja all on vihje „Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. …“.",
+        "Pärast valikut on pealkirja all riba „Avaldamata muudatused: 1 · Valdkond“.",
+        "Pärast „Avalda muudatused“ on riba kadunud.",
+        "Kui kahel koolitusel on eri valdkond, on avalikel lehtedel valdkonna nupud."
+      ],
+      "why": "Valdkonna järgi leiab õpilane kalendris ja loendis oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T10:53:51.477Z"
+    },
+    {
+      "id": "haldus-kalender-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Koolituskalender: valdkonna nupud",
+      "href": "/koolituskalender",
+      "steps": [
+        "Tee enne kontroll „Koolituse valdkond“: kahel kuupäevaga kontaktkoolitusel peab olema eri valdkond.",
+        "Ava „Koolituskalender“ ja vaata linna nuppude alla.",
+        "Vajuta valdkonna nupul, näiteks „Kulmukoolitused“.",
+        "Vajuta lisaks linna nupul, kus selle valdkonna kuupäevi pole.",
+        "Vajuta „Näita kõiki“.",
+        "Vali uuesti valdkond ja värskenda lehte."
+      ],
+      "expect": [
+        "Linna nuppude all on teine rida: „Kõik“ ja valdkonnad, millel on kuupäevi.",
+        "Valdkonna nupp jätab alles ainult selle valdkonna kuupäevad.",
+        "Linn ja valdkond koos jätavad alles kuupäevad, mis sobivad mõlemaga.",
+        "Kui ükski kuupäev ei sobi, on teade „Valitud filtritega hetkel koolitusi pole.“ ja nupp „Näita kõiki“.",
+        "„Näita kõiki“ näitab jälle kõiki kuupäevi ja mõlemas reas on valitud „Kõik“.",
+        "Pärast värskendamist on sama valdkond ikka valitud.",
+        "Pikk valdkonna nimi jätkub nupus uuel real ja leht ei liigu küljele."
+      ],
+      "why": "Kui kuupäevi on palju, leiab õpilane valdkonna järgi oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T10:53:51.477Z"
+    },
+    {
+      "id": "haldus-koolitused-valdkond",
+      "area": "haldus",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolituste loend: valdkonna nupud",
+      "href": "/koolitused",
+      "steps": [
+        "Tee enne kontroll „Koolituse valdkond“: kahel avaldatud koolitusel peab olema eri valdkond.",
+        "Ava avalik koolituste loend ja vaata tasemete nuppude alla.",
+        "Vajuta valdkonna nupul, näiteks „Ripsmekoolitused“.",
+        "Vajuta lisaks „E-õpe“.",
+        "Kirjuta väljale „Otsi koolitust“ sõna, mida ühegi koolituse tekstis pole, ja vajuta „Lähtesta filtrid“.",
+        "Ava sama leht vene keeles."
+      ],
+      "expect": [
+        "Tasemete nuppude all on rida „Kõik“ ja valdkonnad, millel on avaldatud koolitusi.",
+        "Valdkonna nupp jätab alles ainult selle valdkonna koolitused.",
+        "Koos nupuga „E-õpe“ jäävad alles ainult selle valdkonna e-koolitused.",
+        "Pärast „Lähtesta filtrid“ on kõik koolitused nähtaval ja valdkonna real on valitud „Kõik“.",
+        "Vene keeles on valdkondade nimed vene keeles."
+      ],
+      "why": "Valdkonna järgi leiab õpilane koolituste loendist oma koolituse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-pikk-leht",
@@ -1944,6 +2055,36 @@
       "markedAt": "2026-10-27T18:11:44.836Z"
     },
     {
+      "id": "haldus-seaded-valdkonnad",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: valdkonnad",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja vali jaotiste loendist „Valdkonnad“.",
+        "Kirjuta „Uus valdkond“ alla mõlemaks nimeks Proov 1 ja vajuta „Lisa valdkond“.",
+        "Tühjenda Proov 1 vene nimi ja liigu väljalt edasi; kirjuta siis Proov 1 tagasi.",
+        "Muuda eesti nimeks Proov 2 ja liigu väljalt edasi.",
+        "Liiguta Proov 2 noolega üles, värskenda lehte ja liiguta see tagasi viimaseks.",
+        "Vaata valdkonna rida, mida mõni koolitus kasutab.",
+        "Vajuta Proov 2 real „Kustuta“ ja kinnita „Jah, kustuta“."
+      ],
+      "expect": [
+        "Kaardi juhend ütleb, et koolituse valdkonna valid koolituse kaardil „Põhiinfo“.",
+        "Pärast „Lisa valdkond“ on Proov 1 loendi lõpus ja päis ütleb „Salvestatud …“.",
+        "Tühja nime all on „Kirjuta nimi.“ ja tühja nime ei salvestata.",
+        "Pärast värskendamist on Proov 2 nimi ja koht samad.",
+        "Kasutatud valdkonna real pole „Kustuta“, vaid teade, mitu koolitust seda kasutab.",
+        "Pärast „Jah, kustuta“ on Proov 2 loendist kadunud."
+      ],
+      "why": "Maria lisab valdkondi ise, kui tulevad uued koolitused.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-11-11T10:53:51.477Z"
+    },
+    {
       "id": "haldus-seaded-ettemaks",
       "area": "haldus",
       "who": "maria",
@@ -2042,7 +2183,7 @@
         "Pane „Koht“ tagasi endiseks ja liigu väljalt edasi."
       ],
       "expect": [
-        "PDF avaneb uues aknas: tunnistus on laiuti, must, valge tekstiga.",
+        "PDF avaneb uues aknas: tunnistus on laiuti, esimese kujunduse („Hele“) tooni ja taustapildiga.",
         "Tunnistusel on „NÄIDISKOOLITUS“ ja käekirjas nimi „Mari Maasikas“.",
         "Kuupäeva ees on ekraanil olev koht koos X-iga.",
         "Number on sama mis kaardi rida „Järgmine tunnistus: …“.",
@@ -2052,8 +2193,38 @@
       "why": "Maria näeb tunnistust enne, kui ükski õpilane selle saab.",
       "risk": "med",
       "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-11-11T10:53:51.477Z"
+    },
+    {
+      "id": "haldus-seaded-tunnistuse-kujundused",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: tunnistuse kujundused",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“, vali „Tunnistus“ ja keri kaardini „Kujundused“.",
+        "Vajuta „Lisa kujundus“ ja kirjuta uue rea väljale „Nimi“: Proov 1.",
+        "Vali „Toon“: „Tume taust, hele tekst“.",
+        "Vajuta „Taustapilt“ juures „Vali pilt“ ja vali horisontaalne JPEG-pilt.",
+        "Vajuta selle rea „Vaata näidist“.",
+        "Vajuta selle rea „Kustuta“ ja kinnita „Jah, kustuta“."
+      ],
+      "expect": [
+        "Kaardil on kujundused „Hele“ ja „Tume“, igaühel „Nimi“, „Toon“, „Taustapilt“ ja „Vaata näidist“.",
+        "Esimese kujunduse all on „Koolitus, millel kujundust valitud pole, kasutab seda kujundust.“.",
+        "Kasutusel kujundusel pole „Kustuta“, vaid rida „Seda kujundust kasutab …“.",
+        "Pildi juures on vihje „JPEG, kuni 1,5 MB, horisontaalne A4 …“.",
+        "Näidis avaneb uues aknas: hele tekst tumedal taustal, taustapilt katab kogu lehe.",
+        "Päises on pärast igat muudatust „Salvestatud“ koos kellaajaga.",
+        "Pärast kustutamist rida Proov 1 enam pole."
+      ],
+      "why": "Maria valib, milline näeb välja iga koolituse tunnistus.",
+      "risk": "med",
+      "writes": true,
       "mark": "new",
-      "markedAt": "2026-11-07T12:43:34.917Z"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "haldus-seaded-arve",
@@ -5240,13 +5411,14 @@
         "Õige nimega näed „Tunnistus nr. MS LAB …“.",
         "Rea all on „Kui nimes on viga, kirjuta meile“.",
         "Alla laaditakse PDF-fail, mille nimi algab MS-LAB-tunnistus.",
-        "PDF-i pealkiri on väljalt „Pealkiri tunnistusel“, tühja välja korral koolituse nimi."
+        "PDF-i pealkiri on väljalt „Pealkiri tunnistusel“, tühja välja korral koolituse nimi.",
+        "PDF on koolituse kaardil valitud kujundusega, valimata korral esimese kujundusega „Hele“."
       ],
       "why": "Tunnistus on e-koolituse lõpp ja võtab päris numbri.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-tunnistus-pdf",
@@ -5261,9 +5433,9 @@
         "Võrdle seda oma Canva tunnistusega (või paberil tunnistusega)."
       ],
       "expect": [
-        "Tunnistus on laiuti, must, valge tekstiga.",
+        "Tunnistus on laiuti, kujunduse taustapildiga; hele kujundus musta, tume valge teksti ja logoga.",
         "Õpilase nimi ja allkiri on käekirjas.",
-        "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood; all vasakul on valge MS LAB logo samas kohas nagu Canvas.",
+        "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood; all vasakul on MS LAB logo samas kohas nagu Canvas.",
         "Kirjad on samad mis Canva tunnistusel: „TUNNISTUS“ ja kõik read ühes kirjas, koolituse nimi teises.",
         "Koolituse nimi on suurte hõredate tähtedega peaaegu üle lehe, nagu Canvas.",
         "Oskuste ja alumised read algavad samast vasakust servast; maht ja all paremal olevad read lõpevad samas paremas servas.",
@@ -5274,7 +5446,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-07T19:08:41.480Z"
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-paranda-nimi",
@@ -5293,14 +5465,14 @@
       "expect": [
         "Kaardil on rida „Tunnistus MS LAB … · …“ ja „Laadi alla (PDF)“.",
         "Pärast näed „Tunnistus … on uuesti väljastatud nimega Proov Parandatud.“.",
-        "Uuel failil on uus nimi, sama number ja sama kuupäev.",
+        "Uuel failil on uus nimi, sama number, sama kuupäev ja sama kujundus.",
         "Proov 1 ei saa selle kohta kirja."
       ],
       "why": "Maria parandab nime, kui õpilane kirjutab veast.",
       "risk": "med",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "2026-11-06T10:09:33.193Z"
+      "mark": "redo",
+      "markedAt": "2026-11-11T10:53:51.477Z"
     },
     {
       "id": "ekursus-tunnistused",

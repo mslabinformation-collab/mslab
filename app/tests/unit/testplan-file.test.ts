@@ -1546,3 +1546,102 @@ describe("C8 Sisselogimine (admin UX pass piece 4c, Task 5)", () => {
     expect(lines.filter((line) => /Kontrolli oma postkasti|Sisesta aadress uuesti|Kui see aadress on lubatud|Parooli pole vaja|töötab ainult ühe korra\.“/.test(line))).toEqual([]);
   });
 });
+
+// 2026-11-11 certificate designs (spec §6): two new checks, Seaded's „Kujundused“ and the course card's „Kujundus“, in the screens' words; the
+// certificate PDF checks whose look changed (the design's tone and photo) are to be run again.
+describe("certificate designs", () => {
+  const d = adminEt.certificates.designs;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+
+  test("„Kujundused“ in Seaded: a new check of Maria's that writes (a design added and deleted), in the card's words", () => {
+    expect(find("haldus-seaded-tunnistuse-kujundused")).toMatchObject({ area: "haldus", who: "maria", mark: "new", writes: true, href: "/admin/seaded" });
+    expect(markedSince(find("haldus-seaded-tunnistuse-kujundused").markedAt)).toBe(true);
+    const text = whole("haldus-seaded-tunnistuse-kujundused");
+    for (const words of [d.title, d.add, d.name, d.tone, d.tones.dark, d.background, d.sample, d.remove, d.removeYes, d.first, "JPEG, kuni 1,5 MB, horisontaalne A4"])
+      expect(text, words).toContain(words);
+    // what it adds it deletes again
+    expect(find("haldus-seaded-tunnistuse-kujundused").steps.at(-1)).toContain(`„${d.removeYes}“`);
+  });
+
+  test("„Kujundus“ on the course card: a new check, in the field's words", () => {
+    const f = adminEt.courseEditor.fields;
+    expect(find("haldus-ekursus-tunnistuse-kujundus")).toMatchObject({ area: "haldus", who: "maria", mark: "new", href: "/admin/koolitused" });
+    expect(markedSince(find("haldus-ekursus-tunnistuse-kujundus").markedAt)).toBe(true);
+    const text = whole("haldus-ekursus-tunnistuse-kujundus");
+    for (const words of [`„${f.certificateDesign}“`, f.certificateDesignHint]) expect(text, words).toContain(words);
+  });
+
+  test("the certificate PDF checks are redo from the deploy, and none says the certificate is black any more", () => {
+    for (const id of ["haldus-seaded-naidistunnistus", "ekursus-tunnistus", "ekursus-tunnistus-pdf", "ekursus-paranda-nimi"]) {
+      expect(find(id).mark, id).toBe("redo");
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+    expect(whole("ekursus-tunnistus-pdf")).toContain("kujunduse taustapildiga");
+    expect(whole("ekursus-paranda-nimi")).toContain("sama kujundus");
+    const lines = plan.items.flatMap((c) => c.expect.map((line) => `${c.id}: ${line}`));
+    expect(lines.filter((line) => /must, valge tekstiga|valge MS LAB logo/.test(line))).toEqual([]);
+  });
+});
+
+// Course areas (spec 2026-11-11-course-areas-filter-design.md §6): four new checks in Haldus, from the deploy. The course's „Valdkond“ first (the
+// migration's two areas are there already), then the calendar's and the catalogue's area chips, which need two courses with areas, then Seaded →
+// „Valdkonnad“, whose used area refuses „Kustuta“. The existing calendar and catalogue checks keep their steps: their rows are still there as they were.
+describe("course areas (spec 2026-11-11)", () => {
+  const a = adminEt.settings.areas;
+  const f = adminEt.courseEditor.fields;
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const at = (id: string) => plan.items.findIndex((c) => c.id === id);
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect, find(id).why].join("\n");
+  const NEW: Record<string, { device: string; href: string; writes: boolean }> = {
+    "haldus-koolitus-valdkond": { device: "tahvel", href: "/admin/koolitused", writes: false },
+    "haldus-kalender-valdkond": { device: "telefon", href: "/koolituskalender", writes: false },
+    "haldus-koolitused-valdkond": { device: "any", href: "/koolitused", writes: false },
+    "haldus-seaded-valdkonnad": { device: "tahvel", href: "/admin/seaded", writes: true },
+  };
+
+  test("four new checks in Haldus, Maria's, marked new from the deploy", () => {
+    for (const [id, want] of Object.entries(NEW)) {
+      expect(find(id), id).toMatchObject({ area: "haldus", who: "maria", mark: "new", ...want });
+      expect(markedSince(find(id).markedAt), id).toBe(true);
+    }
+  });
+
+  test("in order: the course's „Valdkond“, then the two public rows, then Seaded; the course check after „Koolituse tekst“, Seaded's after its „Uudiskiri“", () => {
+    expect(at("haldus-koolitus-tekst")).toBeLessThan(at("haldus-koolitus-valdkond"));
+    expect(at("haldus-koolitus-valdkond")).toBeLessThan(at("haldus-kalender-valdkond"));
+    expect(at("haldus-kalender-valdkond")).toBeLessThan(at("haldus-koolitused-valdkond"));
+    expect(at("haldus-koolitused-valdkond")).toBeLessThan(at("haldus-seaded-valdkonnad"));
+    expect(at("haldus-seaded-valdkonnad")).toBe(at("haldus-seaded-uudiskiri") + 1);
+    for (const id of ["haldus-kalender-valdkond", "haldus-koolitused-valdkond"]) expect(find(id).steps[0], id).toContain("„Koolituse valdkond“");
+  });
+
+  test("they quote the screens' words", () => {
+    expect(find("haldus-koolitus-valdkond").title).toBe("Koolituse valdkond");
+    for (const words of [`„${f.area}“`, `„${f.areaNone}“`, "„Kulmukoolitused“", "„Ripsmekoolitused“", `„${f.areaHint.split(". ")[0]}. …“`, "„Avaldamata muudatused: 1 · Valdkond“", "„Põhiinfo“"])
+      expect(whole("haldus-koolitus-valdkond"), words).toContain(words);
+    for (const words of [`„${et.calendar.empty}“`, `„${et.calendar.showAll}“`, "„Kõik“"]) expect(whole("haldus-kalender-valdkond"), words).toContain(words);
+    for (const words of [`„${et.catalogue.resetFilters}“`, "„E-õpe“", "„Kõik“", "vene keeles"]) expect(whole("haldus-koolitused-valdkond"), words).toContain(words);
+    for (const words of [`„${a.title}“`, `„${a.newTitle}“`, `„${a.add}“`, `„${a.remove}“`, `„${a.removeYes}“`, `„${a.errors.required}“`, "„Põhiinfo“", "Proov 1"])
+      expect(whole("haldus-seaded-valdkonnad"), words).toContain(words);
+    expect(ru.calendar.areaLabel).toBe("Направление");
+  });
+
+  // review round 1, item 2: a long area name wraps inside its chip on the phone instead of widening the page
+  test("the phone check of the calendar's area chips: a long name stays on the screen", () => {
+    expect(find("haldus-kalender-valdkond").expect).toContain("Pikk valdkonna nimi jätkub nupus uuel real ja leht ei liigu küljele.");
+  });
+
+  test("the old calendar empty state's words are gone from the plan", () => {
+    const lines = plan.items.flatMap((c) => [c.title, ...c.steps, ...c.expect].map((line) => `${c.id}: ${line}`));
+    expect(lines.filter((line) => /Selles linnas hetkel koolitusi pole|„Kõik linnad“/.test(line))).toEqual([]);
+  });
+});

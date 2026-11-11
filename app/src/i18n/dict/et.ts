@@ -114,6 +114,8 @@ export const et = {
     search: "Otsi koolitust",
     formatLabel: "Õppevorm",
     levelLabel: "Tase",
+    // the area chips' group name (course areas §5.2; Draft), as the calendar's
+    areaLabel: "Valdkond",
     filterAll: "Kõik",
     allLevels: "Kõik tasemed",
     levelBasic: "Baaskoolitused",
@@ -201,7 +203,8 @@ export const et = {
     title: "Koolituskalender",
     lead: "Iga koolituse juures on kohe näha linn, õppevorm, keel ja vabade kohtade arv.",
     cityLabel: "Linn",
-    allCities: "Kõik linnad",
+    // the area chips' group name (course areas §5.1; Draft): no visible heading, as the city row's
+    areaLabel: "Valdkond",
     seatsLabel: "Vabu kohti",
     stateOpen: "Vabu kohti",
     stateFew: "Viimased kohad",
@@ -211,7 +214,9 @@ export const et = {
     // Row buttons (prototype A): full → waitlist form, cancelled → the course page with its other dates.
     waitlist: "Liitu ootenimekirjaga", // prototype B's wording (C49)
     others: "Vaata teisi",
-    empty: "Selles linnas hetkel koolitusi pole.",
+    // when the city and the area leave nothing (course areas §5.1; Draft), and its button, which clears both filters
+    empty: "Valitud filtritega hetkel koolitusi pole.",
+    showAll: "Näita kõiki",
     results: "Kuupäevi: {n}",
   },
 

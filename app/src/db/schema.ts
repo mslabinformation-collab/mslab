@@ -6,6 +6,7 @@ import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStat
 import type { AcceptedVia, ContractFields, ContractKind, ContractSnapshot } from "@/domain/contract";
 import type { ReviewKind, ReviewStatus } from "@/domain/review";
 import type { CheckReason } from "@/domain/payments";
+import type { DesignTone, FrozenDesign } from "@/domain/certificate-design";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -35,11 +36,26 @@ export type Badge = { label: BadgeLabel; bg: string; fg: string } | null;
 /** A course badge as it may be stored: rows written before round 2 have a plain Estonian label (domain/badge.ts reads both). */
 export type StoredBadge = Badge | { label: string; bg: string; fg: string };
 
+/**
+ * The training areas („Valdkonnad“, migration 0024; spec 2026-11-11-course-areas-filter-design.md): Maria's list in Seaded → Valdkonnad, by which a
+ * student narrows the calendar and the catalogue (?valdkond=<slug of the Estonian name>, domain/course-areas.ts). Both names are required, at most 60
+ * characters, the Estonian ones unique by their slug (server/course-areas.ts); `sort` is her order. The migration seeded „Kulmukoolitused“ and
+ * „Ripsmekoolitused“.
+ */
+export const courseAreas = pgTable("course_areas", {
+  id: serial("id").primaryKey(),
+  name: jsonb("name").$type<I18n>().notNull(),
+  sort: integer("sort").notNull().default(0),
+});
+export type CourseArea = typeof courseAreas.$inferSelect;
+
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),
   type: courseType("type").notNull(),
   level: courseLevel("level").notNull(),
+  /** The course's training area (course_areas, „Valdkond“ in „Põhiinfo“); null: none, the course shows only under „Kõik“. An area a course uses is never deleted. */
+  areaId: integer("area_id").references(() => courseAreas.id, { onDelete: "restrict" }),
   title: jsonb("title").$type<I18n>().notNull(),
   summary: jsonb("summary").$type<I18n>().notNull(),
   body: jsonb("body").$type<I18n>().notNull(),
@@ -70,6 +86,11 @@ export const courses = pgTable("courses", {
   certificateVolume: text("certificate_volume").notNull().default(""),
   /** An e-course's title on its certificate („Pealkiri tunnistusel“); empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
   certificateTitle: text("certificate_title").notNull().default(""),
+  /**
+   * An e-course's certificate design (the „Tunnistus“ card's „Kujundus“, one of Seaded → Tunnistus „Kujundused“); null: the first design
+   * (domain/certificate-design.ts designFor). A design a course picks cannot be deleted (restrict); a contact course has none.
+   */
+  certificateDesignId: integer("certificate_design_id").references((): AnyPgColumn => certificateDesigns.id, { onDelete: "restrict" }),
   published: boolean("published").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   isSample: boolean("is_sample").notNull().default(false),
@@ -708,6 +729,21 @@ export const practicalPhotos = pgTable("practical_photos", {
 // ---------- the certificate (phase 3d) ----------
 
 /**
+ * A certificate design (2026-11-11 certificate designs, spec §3): Seaded → Tunnistus „Kujundused“. Its name (Estonian, the admin's only), its tone
+ * (light: dark text and the black logo; dark: today's white on black) and its background photo (an upload's key, img/<uuid>.jpg; empty: none), in
+ * `sort` order (the first is what a course with no pick gets). Migration 0023 made „Hele“ and „Tume“. A certificate keeps a copy of its design's
+ * tone and photo key (certificates.design), so a design edited or deleted later never changes one already issued; the photo itself is never
+ * deleted from the store (server/certificate-designs.ts).
+ */
+export const certificateDesigns = pgTable("certificate_designs", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  tone: text("tone").$type<DesignTone>().notNull(),
+  backgroundKey: text("background_key").notNull().default(""),
+  sort: integer("sort").notNull().default(0),
+}, (t) => [check("certificate_designs_tone", sql`${t.tone} in ('light', 'dark')`)]);
+
+/**
  * One e-course certificate (phase 3d, spec §3): one per completed access, made when the student confirms her name
  * (server/certificates.ts issueCertificate). It holds a frozen copy of everything the PDF prints but Maria's signature (her name, typed in
  * the script font: the trainer's name in Seaded), so a later change of the course or of Seaded → Tunnistus never alters it; Maria's
@@ -738,6 +774,11 @@ export const certificates = pgTable("certificates", {
   /** Maria's last "Paranda nimi"; null before one. */
   reissuedAt: timestamp("reissued_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * The design's look at the issue: its tone and background key (domain/certificate-design.ts readFrozenDesign). Null — every certificate issued
+   * before the designs (migration 0023) — draws today's dark page. A re-issue keeps it.
+   */
+  design: jsonb("design").$type<FrozenDesign>(),
 }, (t) => [
   uniqueIndex("certificates_access").on(t.accessId),
   uniqueIndex("certificates_number").on(t.number),

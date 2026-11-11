@@ -77,6 +77,49 @@ export async function highestIssuedSeq(year: number): Promise<number> {
   return row?.top ?? 0;
 }
 
+// ---------- certificate designs (2026-11-11 certificate designs) ----------
+// The designs are the whole database's (Seaded's list): a test adds its own (tracked by id, deleted by id after it) and only reads „Hele“ and
+// „Tume“, the migration's. A design a test course picked goes with nothing: the course goes first (removeClientRows), then the design.
+
+export type StoredDesign = { id: number; name: string; tone: string; backgroundKey: string; sort: number };
+
+/** The design with this id as stored, or null. */
+export async function storedDesign(id: number): Promise<StoredDesign | null> {
+  const [row] = await localDb(
+    (sql) => sql<StoredDesign[]>`select id, name, tone, background_key as "backgroundKey", sort from certificate_designs where id = ${id}`,
+  );
+  return row ?? null;
+}
+
+/** The id of the design named `name` („Hele“, „Tume“), or null. */
+export async function designIdByName(name: string): Promise<number | null> {
+  const [row] = await localDb((sql) => sql<{ id: number }[]>`select id from certificate_designs where name = ${name} order by id limit 1`);
+  return row?.id ?? null;
+}
+
+/** The course's „Kujundus“ as stored (null: none picked, the first design). */
+export async function storedCoursePick(courseId: number): Promise<number | null> {
+  const [row] = await localDb((sql) => sql<{ pick: number | null }[]>`select certificate_design_id as pick from courses where id = ${courseId}`);
+  return row?.pick ?? null;
+}
+
+/** The access's certificate's frozen design ({ tone, backgroundKey }), or null (none issued, or one issued before the designs). */
+export async function storedCertificateDesign(accessId: number): Promise<{ tone: string; backgroundKey: string } | null> {
+  const [row] = await localDb((sql) => sql<{ design: { tone: string; backgroundKey: string } | null }[]>`select design from certificates where access_id = ${accessId}`);
+  return row?.design ?? null;
+}
+
+/** Deletes exactly these designs (a test's own), with any course's pick of them (a test course's, live or drafted) put back to none first. */
+export async function removeDesigns(ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) return;
+  await localDb(async (sql) => {
+    await sql`update courses set certificate_design_id = null where certificate_design_id in ${sql(ids as number[])}`;
+    await sql`update content_drafts set value = value - 'certificateDesignId'
+              where entity = 'course' and part = 'certificate' and (value ->> 'certificateDesignId')::int in ${sql(ids as number[])}`;
+    await sql`delete from certificate_designs where id in ${sql(ids as number[])}`;
+  });
+}
+
 /** The course's "Tunnistus" card as stored. */
 export async function storedCourseCertificate(courseId: number): Promise<{ skills: string[]; volume: string; title: string }> {
   const [row] = await localDb(

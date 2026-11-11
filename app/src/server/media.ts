@@ -7,7 +7,7 @@
 // (a relative path, not "@/…": next.config.ts imports this file for MEDIA_CSP. Next does give its config loader the tsconfig paths, but the alias
 // comes out relative to the project root and Node resolves it from the importing file, so an "@/…" import in any file below the config fails with
 // "Cannot find module './src/lib/media'" and `next dev` and `next build` do not start)
-import { isMediaKey } from "../lib/media";
+import { BACKGROUND_UPLOAD, isMediaKey, type UploadKind } from "../lib/media";
 
 /**
  * Largest upload accepted (bytes). The browser sends images of at most 2400 px, usually under 2 MB. Vercel Functions
@@ -85,15 +85,25 @@ export function hasImageSignature(type: ImageType, head: Uint8Array): boolean {
 const isImageType = (type: string): type is ImageType => Object.hasOwn(IMAGE_TYPES, type);
 
 /**
- * Stores an uploaded image in the store and returns its key (img/<uuid>.<ext>). Throws UploadError when the declared type
- * is not JPEG/PNG/WebP, the file is empty or over 4 MB, or its first bytes are not that type; whatever the store throws
- * is the store's error. The content type is kept with the object, so /media answers with it.
+ * The types and the largest size each kind of upload takes (lib/media.ts UploadKind): any picture JPEG, PNG or WebP up to 4 MB; a certificate
+ * design's background a JPEG up to 1.5 MB (the PDF embeds it as it is).
  */
-export async function putImage(store: MediaStore, file: File): Promise<{ key: string }> {
+export const UPLOAD_RULES: Record<UploadKind, { types: readonly ImageType[]; maxBytes: number }> = {
+  image: { types: ["image/jpeg", "image/png", "image/webp"], maxBytes: MAX_IMAGE_BYTES },
+  "certificate-background": BACKGROUND_UPLOAD,
+};
+
+/**
+ * Stores an uploaded image in the store and returns its key (img/<uuid>.<ext>). Throws UploadError when the declared type
+ * is not one `kind` takes (JPEG/PNG/WebP; a background, JPEG), the file is empty or over the kind's size (4 MB; 1.5 MB), or its first bytes are
+ * not that type; whatever the store throws is the store's error. The content type is kept with the object, so /media answers with it.
+ */
+export async function putImage(store: MediaStore, file: File, kind: UploadKind = "image"): Promise<{ key: string }> {
+  const rule = UPLOAD_RULES[kind];
   const type = file.type;
-  if (!isImageType(type)) throw new UploadError("type");
+  if (!isImageType(type) || !rule.types.includes(type)) throw new UploadError("type");
   if (file.size === 0) throw new UploadError("empty");
-  if (file.size > MAX_IMAGE_BYTES) throw new UploadError("size");
+  if (file.size > rule.maxBytes) throw new UploadError("size");
   const bytes = await file.arrayBuffer();
   if (!hasImageSignature(type, new Uint8Array(bytes, 0, Math.min(16, bytes.byteLength)))) throw new UploadError("content");
   const key = `img/${crypto.randomUUID()}.${IMAGE_TYPES[type]}`;

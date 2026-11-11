@@ -40,6 +40,10 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "posts" })).toEqual([`${SITE}/uudised (layout)`, `${SITE} (page)`]);
   });
 
+  test("areas (Seaded → Valdkonnad): their chips are on the calendar and the catalogue only (a course's own area is the courses' change)", () => {
+    expect(paths({ kind: "areas" })).toEqual([`${SITE}/koolitused (page)`, `${SITE}/koolituskalender (page)`]);
+  });
+
   test("trainer: the card (name in the footer) is on every page; the bio on home and course pages; the rest on /koolitaja", () => {
     expect(paths({ kind: "trainer", parts: ["trainer", "works"] })).toEqual([`${SITE} (layout)`]);
     expect(paths({ kind: "trainer", parts: ["bio"] })).toEqual([`${SITE}/koolitaja (page)`, `${SITE} (page)`, `${SITE}/koolitused/[slug] (page)`]);
@@ -110,6 +114,7 @@ describe("the revalidation map", () => {
       { kind: "popup" },
       { kind: "practice" },
       { kind: "posts" },
+      { kind: "areas" },
       { kind: "trainer", parts: ["bio", "works"] },
       { kind: "trainer", parts: ["trainer"] },
       { kind: "settings", parts: ["privacy", "terms"] },
@@ -182,6 +187,7 @@ describe("revalidatePublic", () => {
       { kind: "popup" },
       { kind: "practice" },
       { kind: "posts" },
+      { kind: "areas" },
       { kind: "trainer", parts: ["trainer"] },
       { kind: "trainer", parts: ["bio", "works"] },
       { kind: "settings", parts: ["contact"] },

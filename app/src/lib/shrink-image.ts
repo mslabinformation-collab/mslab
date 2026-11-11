@@ -19,9 +19,19 @@ export class ShrinkError extends Error {
 /**
  * `maxEdge`: the longest side in px; `quality`: the encoder's, 0…1; `maxBytes`: the largest result; `accept`: the types taken ("image/*":
  * any image, and a file the picker gave no type); `output`: "jpeg" always, or "keep" (JPEG stays JPEG, PNG and WebP become WebP with their
- * transparency; a browser that cannot write WebP gives PNG).
+ * transparency; a browser that cannot write WebP gives PNG); `lower`: the qualities tried in turn while the result is over `maxBytes` (none: the
+ * first result decides; a certificate design's background, which must stay under 1.5 MB at up to 3508 px); `last`: after them, still over, one more
+ * at a smaller longest side and its own quality (only when that side makes the picture smaller than it already is: a detailed photo's background).
  */
-export type ShrinkOptions = { maxEdge: number; quality: number; maxBytes: number; accept: readonly string[]; output: "jpeg" | "keep" };
+export type ShrinkOptions = {
+  maxEdge: number;
+  quality: number;
+  lower?: readonly number[];
+  last?: { maxEdge: number; quality: number };
+  maxBytes: number;
+  accept: readonly string[];
+  output: "jpeg" | "keep";
+};
 
 /** Larger originals are not even opened (a phone photo is 3–12 MB): the student's limit (PHOTO_LIMITS.sourceBytes, 60 MB), the admin's too. */
 export const MAX_SOURCE_BYTES = PHOTO_LIMITS.sourceBytes;
@@ -100,7 +110,16 @@ export async function shrinkImage(file: File, opts: ShrinkOptions): Promise<File
   const image = await decode(file);
   try {
     const wanted = opts.output === "jpeg" || file.type === "image/jpeg" ? "image/jpeg" : "image/webp";
-    const blob = await encode(image, fitWithin(image.width, image.height, opts.maxEdge), wanted, opts.quality);
+    const size = fitWithin(image.width, image.height, opts.maxEdge);
+    let blob = await encode(image, size, wanted, opts.quality);
+    for (const quality of opts.lower ?? []) {
+      if (blob.size <= opts.maxBytes) break;
+      blob = await encode(image, size, wanted, quality);
+    }
+    if (opts.last && blob.size > opts.maxBytes) {
+      const smaller = fitWithin(image.width, image.height, opts.last.maxEdge);
+      if (smaller.width < size.width || smaller.height < size.height) blob = await encode(image, smaller, wanted, opts.last.quality);
+    }
     if (opts.output === "jpeg" && blob.type !== "image/jpeg") throw new ShrinkError("decode");
     const type = KEPT.includes(blob.type) ? blob.type : "image/png";
     if (blob.size > opts.maxBytes) throw new ShrinkError("size");

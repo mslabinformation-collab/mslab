@@ -86,10 +86,31 @@ test("without a setting: the defaults (Maria Sosnina signs), this year's number 
   expect(valueOf(html, "next-year")).toBe(String(THIS()));
   expect(valueOf(html, "next-seq")).toBe("1");
   expect(html).toContain(NOT_YET(THIS()));
-  expect(html.slice(card)).not.toMatch(/<img|type="file"/);
+  // (the settings' own card: „Kujundused“ under it has the designs' photos)
+  expect(html.slice(card, html.indexOf("</section>", card))).not.toMatch(/<img|type="file"/);
   // „Näidistunnistus (PDF)“ (Dim 07.11): the sample of the values the card shows
   expect(html.slice(card)).toContain('href="/api/admin/naidistunnistus?place=');
   expect(html.slice(card)).toContain("Näidistunnistus (PDF)");
+});
+
+test("„Kujundused“ (2026-11-11 certificate designs) under the card in #tunnistus: the designs in order, the first the default; one an e-course uses has no „Kustuta“", async () => {
+  // an e-course with no design picked uses the first („Hele“, the migration's)
+  await seed(null, []);
+  const html = await page();
+  const designs = html.indexOf("data-certificate-designs");
+  expect(designs).toBeGreaterThan(html.indexOf("data-certificate-settings"));
+  expect(sectionOf(html, "data-certificate-designs")).toBe("tunnistus");
+  const card = html.slice(designs, html.indexOf("</section>", designs));
+  expect(card).toContain(">Kujundused</h2>");
+  expect([...card.matchAll(/data-design-name=""[^>]*value="([^"]*)"/g)].map((m) => m[1])).toEqual(["Hele", "Tume"]);
+  expect([...card.matchAll(/data-design-row="(\d+)"/g)]).toHaveLength(2);
+  expect(card).toContain("Koolitus, millel kujundust valitud pole, kasutab seda kujundust.");
+  expect(card).toContain("Seda kujundust kasutab 1 koolitus.");
+  expect([...card.matchAll(/data-design-remove=""/g)]).toHaveLength(1);
+  expect(card).toMatch(/type="file" accept="image\/jpeg"/);
+  expect(card).toContain("JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.");
+  expect(card).toMatch(/href="\/api\/admin\/naidistunnistus\?place=[^"]*&amp;design=\d+"/);
+  expect(card).toContain("Lisa kujundus");
 });
 
 test("a stored setting: its values, the trainer's name as stored, and the year's last issued number beside the next", async () => {

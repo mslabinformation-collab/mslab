@@ -62,7 +62,23 @@ const badgeNew: Badge = { label: { et: "Uus", ru: "Новинка" }, bg: "#DDD4
 export type SeedImage = { key: string; alt: I18n };
 export type SeedSession = Omit<SessionInput, "id" | "courseId">;
 /** `modules`: the course's module titles in order, written as course_modules rows (seed-apply.ts); courses has no column of its own for them. */
-export type SeedCourse = Omit<CourseInput, "id" | "published" | "isSample" | "sort"> & { images: SeedImage[]; sessions?: SeedSession[]; modules?: I18n[] };
+export type SeedCourse = Omit<CourseInput, "id" | "published" | "isSample" | "sort" | "areaId"> & {
+  images: SeedImage[];
+  sessions?: SeedSession[];
+  modules?: I18n[];
+  /** The course's area by its Estonian name (one of areaSeeds; seed-apply.ts finds it by slug, as the URL does). */
+  area?: string;
+};
+
+/**
+ * The course areas the seed's courses have (course areas, spec 2026-11-11-course-areas-filter-design.md §3): the migration's two (0024_course_areas),
+ * so the local and e2e calendar and catalogue show their area chips. seed-apply.ts adds one only when no area has its slug (a database where it was
+ * renamed or deleted), after the others; the area list is never truncated, not even by a reset.
+ */
+export const areaSeeds: { name: { et: string; ru: string } }[] = [
+  { name: { et: "Kulmukoolitused", ru: "Курсы по бровям" } },
+  { name: { et: "Ripsmekoolitused", ru: "Курсы по ресницам" } },
+];
 
 // Prototype D SESS (8 rows), mapped onto the three contact courses. D's dates were 14.11.2026 … 23.01.2027; they are
 // kept as days after the first one (a Saturday about six weeks ahead, seed-dates.ts), so a seed made on any day gets an
@@ -82,6 +98,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "kulmumeistri-baaskoolitus",
     type: "contact",
     level: "basic",
+    area: "Kulmukoolitused",
     title: t("Kulmumeistri baaskoolitus", "Базовый курс бровиста"),
     summary: t("Tugev vundament sinu teekonnale kulmumeistrina.", "Уверенное начало вашего пути в профессии бровиста."),
     body: t(
@@ -107,6 +124,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "lash-lift-botox",
     type: "contact",
     level: "basic",
+    area: "Ripsmekoolitused",
     title: t("Lash Lift BOTOX baaskoolitus", "Базовый курс Lash Lift BOTOX"),
     summary: t("Loomulik kaar. Täpne tehnika. Kaunis tulemus.", "Естественный изгиб. Точная техника. Красивый результат."),
     body: t(
@@ -132,6 +150,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "kulmude-lami",
     type: "contact",
     level: "advanced",
+    area: "Kulmukoolitused",
     title: t("Kulmude LAMI", "Ламинирование бровей"),
     summary: t("Kulmude laminatsioon juba töötavale meistrile: tooted, ajastus ja kuju püsivus.", "Ламинирование бровей для практикующих мастеров: средства, время выдержки и стойкость формы."),
     body: detailLead,
@@ -153,6 +172,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "kulmumeistri-e-koolitus",
     type: "e_learning",
     level: "basic",
+    area: "Kulmukoolitused",
     title: t("Kulmumeistri e-koolitus", "Онлайн-курс бровиста"),
     summary: t("Tugev vundament sinu teekonnale kulmumeistrina.", "Уверенное начало вашего пути в профессии бровиста."),
     body: t(
@@ -181,6 +201,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "kulmukuju-ja-summeetria",
     type: "e_learning",
     level: "advanced",
+    area: "Kulmukoolitused",
     title: t("Kulmukuju ja sümmeetria", "Форма и симметрия бровей"),
     summary: t("Lühike täiendkoolitus kuju kaardistamise ja sümmeetria kohta.", "Короткий курс повышения квалификации о разметке формы и симметрии."),
     body: onlineLead,
@@ -198,6 +219,7 @@ export const courseSeeds: SeedCourse[] = [
     slug: "ripsmete-laminatsiooni-alused",
     type: "e_learning",
     level: "basic",
+    area: "Ripsmekoolitused",
     title: t("Ripsmete laminatsiooni alused", "Основы ламинирования ресниц"),
     summary: t("Teooria ja tehnika videotena, enne kui lähed esimese kliendi juurde.", "Теория и техника в видео — до того, как вы примете первого клиента."),
     body: onlineLead,
@@ -549,3 +571,20 @@ export const settingSeeds: Record<string, unknown> = {
     ],
   },
 };
+
+// ---------- certificate designs (2026-11-11 certificate designs, spec §3) ----------
+
+/** The designs as migration 0023 seeds them: for a database whose list is empty (seed-apply.ts). „Hele“ has no photo here: Maria's is uploaded in the admin. */
+export const certificateDesignSeeds: { name: string; tone: "light" | "dark"; backgroundKey: string; sort: number }[] = [
+  { name: "Hele", tone: "light", backgroundKey: "", sort: 1 },
+  { name: "Tume", tone: "dark", backgroundKey: "", sort: 2 },
+];
+
+/**
+ * The key „Hele“'s background gets on this machine (the local seed, the e2e run): our generated test JPEG (tests/fixtures/certificate-background.jpg,
+ * a gradient we made), never Maria's photo. A media key like an upload's (lib/media.ts isMediaKey), so the certificate reads it from the store as any.
+ */
+export const SEED_BACKGROUND_KEY = "img/00000000-0000-4000-8000-00000000c3e1.jpg";
+
+/** Where that test JPEG is, from app/ (the seed CLI and the e2e setup run there). */
+export const SEED_BACKGROUND_FILE = "tests/fixtures/certificate-background.jpg";

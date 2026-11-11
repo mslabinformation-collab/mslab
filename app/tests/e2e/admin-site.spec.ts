@@ -1137,7 +1137,7 @@ test.describe("settings", () => {
     await expect(select).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Jaotised" })).toBeHidden();
     await expect(select.locator("[data-section-face]")).toHaveText(/^Jaotised · Kontakt\s*▾$/);
-    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
+    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Uudiskiri", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
     const box = (await select.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x).toBeGreaterThanOrEqual(16);

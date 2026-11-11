@@ -86,6 +86,8 @@ export type CourseDraft = {
   level: CourseLevel;
   slug: string;
   language: CourseLanguage;
+  /** „Valdkond“ (course areas, spec 2026-11-11 §4.2): one of Seaded → Valdkonnad's areas (course_areas.id), null „Määramata“. */
+  areaId: number | null;
   title: I18n;
   summary: I18n;
   body: I18n;
@@ -107,6 +109,11 @@ export type CourseDraft = {
   certificateVolume: string;
   /** „Pealkiri tunnistusel“: the title printed on the certificate; empty: the course's Estonian title (domain/certificate.ts certificateTitle). */
   certificateTitle: string;
+  /**
+   * „Kujundus“ (2026-11-11 certificate designs, spec §5.2): the id of the certificate design the e-course's certificates are issued in; null: the
+   * first design (domain/certificate-design.ts firstDesign). A contact course has none.
+   */
+  certificateDesignId: number | null;
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -135,6 +142,7 @@ export function newCourseDraft(): CourseDraft {
     level: "basic",
     slug: "",
     language: "ET",
+    areaId: null,
     title: empty(),
     summary: empty(),
     body: empty(),
@@ -145,6 +153,7 @@ export function newCourseDraft(): CourseDraft {
     certificateSkills: [],
     certificateVolume: "",
     certificateTitle: "",
+    certificateDesignId: null,
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -167,6 +176,8 @@ type StoredCourse = {
   level: CourseLevel;
   slug: string;
   language: string;
+  /** Its area (course_areas.id); absent where a caller has none to give (none then). */
+  areaId?: number | null;
   title: I18n;
   summary: I18n;
   body: I18n;
@@ -179,6 +190,7 @@ type StoredCourse = {
   certificateSkills?: string[];
   certificateVolume?: string;
   certificateTitle?: string;
+  certificateDesignId?: number | null;
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -202,6 +214,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     level: c.level,
     slug: c.slug,
     language: (COURSE_LANGUAGES as readonly string[]).includes(c.language) ? (c.language as CourseLanguage) : "ET",
+    areaId: c.areaId ?? null,
     title: copy(c.title),
     summary: copy(c.summary),
     body: copy(c.body),
@@ -213,6 +226,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     certificateSkills: (c.certificateSkills ?? []).filter((s): s is string => typeof s === "string"),
     certificateVolume: c.certificateVolume ?? "",
     certificateTitle: c.certificateTitle ?? "",
+    certificateDesignId: c.certificateDesignId ?? null,
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit, { type Font } from "@pdf-lib/fontkit";
-import { PDFDocument, rgb, setCharacterSpacing, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, setCharacterSpacing, type Color, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import type { Certificate } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
+import type { DesignTone, FrozenDesign } from "@/domain/certificate-design";
+import type { MediaSource } from "./media";
 import { drawLogo } from "./pdf-logo";
 
 // The e-course certificate as a PDF (phase 3d, spec §7): drawn on every download from the certificate's frozen row, the trainer's name and
@@ -17,6 +19,11 @@ import { drawLogo } from "./pdf-logo";
 // in white: LOGO_FILES (Dim 07.11). A letter Glacial Indifference lacks (š, ž, €, „, the other languages' letters) is drawn in Jost, letter by
 // letter (Face). Jost and Montserrat are embedded as subsets (only the letters drawn); Glacial Indifference and Revive 80 Signature, both CFF
 // fonts, whole (see renderCertificate). The page is about 250 KB; tests/unit/certificate-pdf.test.ts holds it under 300 KB.
+// The designs (2026-11-11 certificate designs, spec §4) change the look only, never the layout: the certificate's frozen design gives the tone and
+// the background photo (CertificateLook). Dark is the page above (white on black, the white logo); light is a white page with every text and line
+// black and the black logo (LOGO_FILES.black), like Maria's paper certificates (public/seed/certificate-white.jpg). A photo is drawn first, as it
+// was uploaded (a JPEG of at most 1.5 MB, embedded with embedJpg: no image processing), scaled to cover the page and centred; a design with a
+// photo is held under 300 KB plus the photo plus 50 KB. No look (a certificate issued before the designs) is the dark page.
 
 /**
  * app/assets/fonts, next to package.json (`next dev`, `next start` and the tests run in app/; on Vercel the function's working directory is
@@ -79,6 +86,48 @@ export async function loadCertificateAssets(): Promise<CertificateAssets> {
   return readFonts();
 }
 
+/**
+ * How the page looks (the certificate's frozen design: domain/certificate-design.ts FrozenDesign, with its photo read): the tone, and the background
+ * photo's bytes (a JPEG) or none.
+ */
+export type CertificateLook = { tone: DesignTone; background: Uint8Array | null };
+
+/** Today's page, and every certificate's issued before the designs (certificates.design null): white on black, no photo. */
+export const DARK_LOOK: CertificateLook = { tone: "dark", background: null };
+
+/** The background photos read, by key (a key never changes its bytes: a new upload is a new key); a failed read is tried again on the next download. */
+const backgrounds = new Map<string, Promise<Uint8Array>>();
+/** At most this many photos are kept (a few designs; each at most 1.5 MB): the oldest read goes first. */
+const BACKGROUNDS_KEPT = 8;
+
+/**
+ * A design's background photo from the media store (server/media-store.ts mediaStore: R2, or the local folder in development), read once per process
+ * by key, like the fonts. A photo that cannot be read — no store, no such object, the store down — throws: the download fails and is tried again
+ * (spec §4, my call: never a certificate that silently looks otherwise).
+ */
+export function loadCertificateBackground(key: string, store: MediaSource | null): Promise<Uint8Array> {
+  const kept = backgrounds.get(key);
+  if (kept) return kept;
+  const read = (async () => {
+    if (!store) throw new Error("[certificate] no media store for the background photo");
+    const object = await store.get(key);
+    if (!object) throw new Error("[certificate] the background photo is not in the media store");
+    return new Uint8Array(await new Response(object.body).arrayBuffer());
+  })();
+  backgrounds.set(key, read);
+  read.catch(() => {
+    if (backgrounds.get(key) === read) backgrounds.delete(key);
+  });
+  if (backgrounds.size > BACKGROUNDS_KEPT) backgrounds.delete(backgrounds.keys().next().value!);
+  return read;
+}
+
+/** The look of a certificate's frozen design: its tone, with its photo read from `store` (loadCertificateBackground); none: today's dark page. */
+export async function lookOf(design: FrozenDesign | null, store: MediaSource | null): Promise<CertificateLook> {
+  if (!design) return DARK_LOOK;
+  return { tone: design.tone, background: design.backgroundKey ? await loadCertificateBackground(design.backgroundKey, store) : null };
+}
+
 // ---------- the layout (842 × 595 pt) ----------
 // Dim 07.11: the sizes, letter spacings and places are those of Maria's Canva certificate (read off the design itself: every text box's font,
 // size, spacing and edges, its baseline from the font's ascent and descent), from which her paper certificate was printed. Three places stay
@@ -89,6 +138,14 @@ const PAGE = { width: 842, height: 595 } as const;
 const CENTRE = PAGE.width / 2;
 const WHITE = rgb(1, 1, 1);
 const BLACK = rgb(0, 0, 0);
+/**
+ * Each tone's page colour (filled first when there is no photo), ink (every text, bullet and line) and logo: dark — black, white, the white logo
+ * (the page before the designs); light — white, black (as Maria's paper certificate over its photo), the black logo.
+ */
+const TONES = {
+  dark: { page: BLACK, ink: WHITE, logo: "logoWhite" },
+  light: { page: WHITE, ink: BLACK, logo: "logoBlack" },
+} as const satisfies Record<DesignTone, { page: Color; ink: Color; logo: keyof CertificateAssets }>;
 /** The text block's edges, as on the Canva certificate: the competency lines, the foot and the bottom lines start at `left` and end at `right`. */
 const BOX = { left: 97, right: 747 } as const;
 
@@ -201,24 +258,38 @@ function unitWidth(text: string, face: Face, spacing: number): number {
 
 const widthOf = (text: string, s: Style): number => unitWidth(text, s.face, s.spacing) * s.size;
 
+/** The page being drawn, and its tone's ink (TONES): the colour of every text, bullet and line on it. */
+type Sheet = { page: PDFPage; ink: Color };
+
 /**
- * Draws `text` with its left end at x, a run per font (runsOf); the letter spacing is the PDF's character spacing (Tc), set around this text
- * only, which a viewer adds after every letter: the next run starts after the last letter's spacing too.
+ * Draws `text` with its left end at x, a run per font (runsOf), in the sheet's ink; the letter spacing is the PDF's character spacing (Tc), set
+ * around this text only, which a viewer adds after every letter: the next run starts after the last letter's spacing too.
  */
-function drawAt(page: PDFPage, text: string, s: Style, x: number, y: number): void {
+function drawAt({ page, ink }: Sheet, text: string, s: Style, x: number, y: number): void {
   if (!text) return;
   const tc = s.spacing * s.size;
   if (tc) page.pushOperators(setCharacterSpacing(tc));
   let at = x;
   for (const run of runsOf(text, s.face)) {
-    page.drawText(run.text, { x: at, y, size: s.size, font: run.font, color: WHITE });
+    page.drawText(run.text, { x: at, y, size: s.size, font: run.font, color: ink });
     at += run.font.widthOfTextAtSize(run.text, s.size) + tc * Array.from(run.text).length;
   }
   if (tc) page.pushOperators(setCharacterSpacing(0));
 }
 
-const drawCentred = (page: PDFPage, text: string, s: Style, centre: number, y: number) => drawAt(page, text, s, centre - widthOf(text, s) / 2, y);
-const drawRight = (page: PDFPage, text: string, s: Style, right: number, y: number) => drawAt(page, text, s, right - widthOf(text, s), y);
+const drawCentred = (sheet: Sheet, text: string, s: Style, centre: number, y: number) => drawAt(sheet, text, s, centre - widthOf(text, s) / 2, y);
+const drawRight = (sheet: Sheet, text: string, s: Style, right: number, y: number) => drawAt(sheet, text, s, right - widthOf(text, s), y);
+
+/**
+ * The background photo over the whole page (spec §4: cover): scaled in its own proportions until it fills the page (by the larger of the two
+ * ratios), centred; what reaches past the page's edges is cut off by the page itself, nothing is stretched.
+ */
+function drawCover(page: PDFPage, photo: PDFImage): void {
+  const scale = Math.max(PAGE.width / photo.width, PAGE.height / photo.height);
+  const width = photo.width * scale;
+  const height = photo.height * scale;
+  page.drawImage(photo, { x: (PAGE.width - width) / 2, y: (PAGE.height - height) / 2, width, height });
+}
 
 /** `text` broken at its spaces into lines that `fits` (a word too wide for any line stands on a line of its own). */
 function wrap(text: string, fits: (line: string) => boolean): string[] {
@@ -301,8 +372,12 @@ function layoutSkills(skills: readonly string[], face: Face): SkillsLayout {
   return last!;
 }
 
-/** A4 landscape (842 × 595), black, laid out as spec §7 (the constants above). */
-export async function renderCertificate(c: CertificateContent, assets: CertificateAssets): Promise<Uint8Array> {
+/**
+ * A4 landscape (842 × 595), laid out as spec §7 (the constants above), in `look` (the certificate's design: its tone and photo; none, today's dark
+ * page). A photo that is no JPEG throws (pdf-lib embedJpg): the download fails, never a certificate that looks otherwise.
+ */
+export async function renderCertificate(c: CertificateContent, assets: CertificateAssets, look: CertificateLook = DARK_LOOK): Promise<Uint8Array> {
+  const tone = TONES[look.tone];
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   // neutral metadata; the dates are the issue's, so the same row gives the same file
@@ -324,27 +399,32 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   const body: Face = { font: await doc.embedFont(assets.body, { subset: false }), has: (cp) => bodyOutlines.hasGlyphForCodePoint(cp), fallback: sans };
   const titleFace: Face = { font: await doc.embedFont(assets.title, { subset: true }), has: (cp) => titleOutlines.hasGlyphForCodePoint(cp), fallback: sans };
   const scriptFace = only(script);
+  // (the photo is embedded before the page is drawn on: one that is no JPEG throws before anything else)
+  const photo = look.background ? await doc.embedJpg(look.background) : null;
   const page = doc.addPage([PAGE.width, PAGE.height]);
-  page.drawRectangle({ x: 0, y: 0, width: PAGE.width, height: PAGE.height, color: BLACK });
+  const sheet: Sheet = { page, ink: tone.ink };
+  // the photo first, covering the page; without one, the tone's page colour
+  if (photo) drawCover(page, photo);
+  else page.drawRectangle({ x: 0, y: 0, width: PAGE.width, height: PAGE.height, color: tone.page });
 
-  drawCentred(page, "TUNNISTUS", { face: body, size: HEADING.size, spacing: HEADING.spacing }, CENTRE, HEADING.baseline);
+  drawCentred(sheet, "TUNNISTUS", { face: body, size: HEADING.size, spacing: HEADING.spacing }, CENTRE, HEADING.baseline);
 
   const title = upper(c.courseTitle);
   const titleFit = fitBlock(title, (s) => unitWidth(s, titleFace, TITLE.spacing), { width: TITLE.width, size: TITLE.size, shrinkTo: TITLE.shrinkTo, twoLineSize: TITLE.twoLineSize });
   const titleBaselines = titleFit.lines.length === 1 ? [TITLE.baseline] : TITLE.twoLineBaselines;
-  titleFit.lines.forEach((line, i) => drawCentred(page, line, { face: titleFace, size: titleFit.size, spacing: TITLE.spacing }, CENTRE, titleBaselines[i]));
+  titleFit.lines.forEach((line, i) => drawCentred(sheet, line, { face: titleFace, size: titleFit.size, spacing: TITLE.spacing }, CENTRE, titleBaselines[i]));
 
   const nameFit = fitBlock(scriptText(c.name), (s) => unitWidth(s, scriptFace, 0), { width: NAME.width, size: NAME.size, shrinkTo: NAME.shrinkTo, twoLineSize: NAME.shrinkTo });
   const nameStyle: Style = { face: scriptFace, size: nameFit.size, spacing: 0 };
   // the (lower) line stands on the baseline, or higher when its swashes would dip below the ink floor; a second line stands over it
   const lowest = nameFit.lines[nameFit.lines.length - 1];
   const baseline = Math.max(NAME.baseline, NAME.inkFloor + scriptInk(scriptOutlines, lowest).below * nameFit.size);
-  if (nameFit.lines.length === 1) drawCentred(page, lowest, nameStyle, CENTRE, baseline);
+  if (nameFit.lines.length === 1) drawCentred(sheet, lowest, nameStyle, CENTRE, baseline);
   else {
-    drawCentred(page, nameFit.lines[0], nameStyle, CENTRE, baseline + nameFit.size * NAME.leading);
-    drawCentred(page, lowest, nameStyle, CENTRE, baseline);
+    drawCentred(sheet, nameFit.lines[0], nameStyle, CENTRE, baseline + nameFit.size * NAME.leading);
+    drawCentred(sheet, lowest, nameStyle, CENTRE, baseline);
   }
-  page.drawLine({ start: { x: CENTRE - RULE.halfWidth, y: RULE.y }, end: { x: CENTRE + RULE.halfWidth, y: RULE.y }, thickness: RULE.thickness, color: WHITE });
+  page.drawLine({ start: { x: CENTRE - RULE.halfWidth, y: RULE.y }, end: { x: CENTRE + RULE.halfWidth, y: RULE.y }, thickness: RULE.thickness, color: tone.ink });
 
   const skills = layoutSkills(c.skills, body);
   const skillStyle: Style = { face: body, size: skills.size, spacing: SKILLS.spacing };
@@ -354,9 +434,9 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
       const y = skills.top - i * skills.leading;
       if (row.bullet) {
         const radius = (BULLET.diameter * skills.size) / 2;
-        page.drawCircle({ x: x + radius, y: y + BULLET.centre * skills.size, size: radius, color: WHITE });
+        page.drawCircle({ x: x + radius, y: y + BULLET.centre * skills.size, size: radius, color: tone.ink });
       }
-      drawAt(page, row.text, skillStyle, x + skills.indent, y);
+      drawAt(sheet, row.text, skillStyle, x + skills.indent, y);
     });
   });
 
@@ -369,22 +449,22 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
     shrinkTo: FOOT.shrinkTo,
     twoLineSize: FOOT.shrinkTo,
   });
-  practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), BOX.left, skills.footBaseline - i * practical.size * FOOT.leading));
-  if (volume) drawRight(page, volume, footStyle(FOOT.size), BOX.right, skills.footBaseline);
+  practical.lines.forEach((line, i) => drawAt(sheet, line, footStyle(practical.size), BOX.left, skills.footBaseline - i * practical.size * FOOT.leading));
+  if (volume) drawRight(sheet, volume, footStyle(FOOT.size), BOX.right, skills.footBaseline);
 
-  drawLogo(page, await doc.embedPng(assets.logoWhite), LOGO);
-  drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, { face: body, size: LEFT_LINES.registrySize, spacing: LEFT_LINES.registrySpacing }, BOX.left, LEFT_LINES.baselines[0]);
-  drawAt(page, `Tunnistuse nr. ${c.number}`, { face: body, size: LEFT_LINES.numberSize, spacing: LEFT_LINES.numberSpacing }, BOX.left, LEFT_LINES.baselines[1]);
+  drawLogo(page, await doc.embedPng(assets[tone.logo]), LOGO);
+  drawAt(sheet, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, { face: body, size: LEFT_LINES.registrySize, spacing: LEFT_LINES.registrySpacing }, BOX.left, LEFT_LINES.baselines[0]);
+  drawAt(sheet, `Tunnistuse nr. ${c.number}`, { face: body, size: LEFT_LINES.numberSize, spacing: LEFT_LINES.numberSpacing }, BOX.left, LEFT_LINES.baselines[1]);
 
   // Maria's signature: the trainer's name in the script font, fitted to the column; the block ends at the text block's right edge
   const trainer = scriptText(c.trainerName);
   const trainerSize = Math.min(SIGN.nameSize, SIGN.width / unitWidth(trainer, scriptFace, 0));
-  drawRight(page, trainer, { face: scriptFace, size: trainerSize, spacing: 0 }, BOX.right, SIGN.nameBaseline);
-  drawRight(page, "KOOLITAJA", { face: body, size: SIGN.labelSize, spacing: SIGN.labelSpacing }, BOX.right, SIGN.baselines[0]);
+  drawRight(sheet, trainer, { face: scriptFace, size: trainerSize, spacing: 0 }, BOX.right, SIGN.nameBaseline);
+  drawRight(sheet, "KOOLITAJA", { face: body, size: SIGN.labelSize, spacing: SIGN.labelSpacing }, BOX.right, SIGN.baselines[0]);
   const placeAndDate = `${oneLine(c.place)} ${tallinnDateText(c.issuedAt)}`;
   const placeUnit = unitWidth(placeAndDate, body, SIGN.spacing);
   const placeSize = Math.min(SIGN.placeSize, Math.max(SIGN.placeFloor, SIGN.width / placeUnit), SIGN.placeMaxWidth / placeUnit);
-  drawRight(page, placeAndDate, { face: body, size: placeSize, spacing: SIGN.spacing }, BOX.right, SIGN.baselines[1]);
+  drawRight(sheet, placeAndDate, { face: body, size: placeSize, spacing: SIGN.spacing }, BOX.right, SIGN.baselines[1]);
 
   return doc.save();
 }

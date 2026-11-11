@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db, Q } from "@/db/client";
-import { courses, type TestQuestion } from "@/db/schema";
-import { inArray } from "drizzle-orm";
+import { certificateDesigns, courseAreas, courses, type TestQuestion } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, isSlugTaken, moveCourseTo, saveCourseWithImages, type CourseFields } from "@/db/queries/admin";
 import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
@@ -48,6 +48,8 @@ const draftSchema = z.object({
   level: z.enum(["basic", "advanced"]),
   slug: z.string().max(200),
   language: z.enum(COURSE_LANGUAGES),
+  // „Valdkond“ (course areas): whether the area is there is checkCourseBasics'; the default: an editor page loaded before the deploy posts none
+  areaId: z.number().int().positive().max(ID_MAX).nullable().default(null),
   title: i18n,
   summary: i18n,
   body: i18n,
@@ -64,6 +66,8 @@ const draftSchema = z.object({
   certificateSkills: z.array(z.string().max(2000)).max(200).default([]),
   certificateVolume: z.string().max(2000).default(""),
   certificateTitle: z.string().max(2000).default(""),
+  // „Kujundus“ (2026-11-11 certificate designs): none (the first design) unless a design's id; checked after (checkCourseCertificateDesign)
+  certificateDesignId: z.number().int().positive().max(ID_MAX).nullable().default(null),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -83,8 +87,8 @@ const draftSchema = z.object({
 // and returns the values to store; `type` is the type the values will be stored with. ----------
 
 /** "Põhiinfo" with the type (course part `basics`). */
-export type BasicsInput = Pick<CourseDraft, "type" | "level" | "slug" | "language" | "title" | "summary" | "body">;
-export type BasicsFields = Pick<CourseFields, "type" | "level" | "slug" | "language" | "title" | "summary" | "body">;
+export type BasicsInput = Pick<CourseDraft, "type" | "level" | "slug" | "language" | "areaId" | "title" | "summary" | "body">;
+export type BasicsFields = Pick<CourseFields, "type" | "level" | "slug" | "language" | "areaId" | "title" | "summary" | "body">;
 
 /**
  * The basics: a title (required), the summary and the long text, and the slug: typed, or made from the Estonian title; never one another course
@@ -92,11 +96,21 @@ export type BasicsFields = Pick<CourseFields, "type" | "level" | "slug" | "langu
  * (K1/K2), and the sessions could no longer be edited under a contact course. An e-course with lessons or anyone's access keeps its type too: its
  * lessons and its students' access belong to an e-course (db/queries/admin.ts typeLocked). `id`: the course's (null: a new one). Null when the title
  * is refused.
+ *
+ * „Valdkond“ (course areas, spec 2026-11-11 §4.2): an area that is not there (deleted in Seaded since the editor loaded) is refused in the field
+ * (`area`), never a foreign-key 500. The area's row is read FOR KEY SHARE: inside the save's transaction (server/course-parts.ts writeCoursePart, the
+ * publish) a delete of that area in Seaded (server/course-areas.ts deleteArea, which locks the row FOR UPDATE and then counts the courses and drafts
+ * using it) waits for this save and then sees its draft, or this save waits for the delete and then finds no row: a draft never keeps an area that is
+ * gone (a live course cannot: courses.area_id's foreign key restricts the delete).
  */
 export async function checkCourseBasics(q: Q, c: Check, d: BasicsInput, id: number | null): Promise<BasicsFields | null> {
   if (id != null) {
     const usage = await courseUsage(q, id);
     if (usage && usage.type !== d.type && typeLocked(usage)) c.fail("type", "typeLocked");
+  }
+  if (d.areaId != null) {
+    const [area] = await q.select({ id: courseAreas.id }).from(courseAreas).where(eq(courseAreas.id, d.areaId)).for("key share");
+    if (!area) c.fail("areaId", "area");
   }
   const title = c.text("title", d.title, LIMITS.title, { required: true });
   const summary = c.text("summary", d.summary, LIMITS.summary) ?? { et: "" };
@@ -105,7 +119,7 @@ export async function checkCourseBasics(q: Q, c: Check, d: BasicsInput, id: numb
   const slug = typed || slugify(d.title.et.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
   if (!isSlug(slug)) c.fail("slug", typed || d.title.et.trim() ? "slugFormat" : "required");
   else if (await isSlugTaken(q, slug, id ?? undefined)) c.fail("slug", "slugTaken");
-  return title ? { type: d.type, level: d.level, language: d.language, slug, title, summary, body } : null;
+  return title ? { type: d.type, level: d.level, language: d.language, areaId: d.areaId, slug, title, summary, body } : null;
 }
 
 /** "Õppevorm ja hind" without the type (course part `price`). */
@@ -200,6 +214,18 @@ export function checkCourseCertificate(
   };
 }
 
+/**
+ * „Kujundus“ (2026-11-11 certificate designs, spec §5.2): an e-course's design, none (null: the first design) or the id of one that exists, read FOR
+ * KEY SHARE so that a deletion of it at the same moment waits for this save (and then finds the course using it), or went first (and this is
+ * `certificateDesign`). Its callers run it inside the write's transaction (a part's save, server/course-parts.ts; saveCourseForm reads it again in
+ * its own), so the lock is held until the write is done. A contact course has no certificate: none.
+ */
+export async function checkCourseCertificateDesign(q: Q, c: Check, designId: number | null, type: CourseType): Promise<number | null> {
+  if (type !== "e_learning" || designId === null) return null;
+  const [design] = await q.select({ id: certificateDesigns.id }).from(certificateDesigns).where(eq(certificateDesigns.id, designId)).for("key share");
+  return design ? design.id : c.fail("certificateDesignId", "certificateDesign");
+}
+
 /** The badge: one of D's swatches and at most 18 characters (each language), or none; the Russian text is optional. */
 export function checkCourseBadge(c: Check, d: CourseDraft["badge"]): CourseFields["badge"] {
   if (!d || !d.label.et.trim()) return null;
@@ -263,6 +289,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const test = checkCourseTest(c, d.test, d.type);
   if (test === "duplicateId") return { ok: false, error: "invalid" };
   const certificate = checkCourseCertificate(c, d, d.type);
+  const certificateDesignId = await checkCourseCertificateDesign(db, c, d.certificateDesignId, d.type);
   if (d.published) checkCoursePriceRequired(c, price, d.type);
   const badge = checkCourseBadge(c, d.badge);
   const images = checkCourseGallery(c, d.images);
@@ -282,8 +309,15 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     isSample: d.isSample,
     test: test.test,
     ...certificate,
+    certificateDesignId,
   };
-  const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
+  // the design picked, read again FOR KEY SHARE inside the save's transaction (the check above saw it outside): a delete at the same moment either
+  // waits for this save, and then finds the course using it, or went first, and the pick is the field's refusal (never a failed foreign key)
+  const designKept = async (tx: Q) => (await checkCourseCertificateDesign(tx, new Check(), certificateDesignId, d.type)) === certificateDesignId;
+  const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images, certificateDesignId === null ? undefined : designKept);
+  if (saved === "refused") return invalid({ certificateDesignId: "certificateDesign" });
+  // the area deleted since checkCourseBasics read it (course areas): the field's error, as if the check had seen it gone; nothing was written
+  if (saved === "area") return invalid({ areaId: "area" });
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };
   return { ok: true, id: saved.id, created: d.id == null };
 }

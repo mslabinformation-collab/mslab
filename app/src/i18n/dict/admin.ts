@@ -25,6 +25,8 @@ const fieldErrors = {
   capacityBelow: "Kinnitatud on {n} — kohti ei saa olla vähem.",
   courseLocked: "Toimumisel on registreeringuid, seega koolitust muuta ei saa.",
   typeLocked: "Sellel koolitusel on toimumisi või registreerimisi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.",
+  // „Valdkond“ (course areas, Draft): the area was deleted in Seaded meanwhile
+  area: "Seda valdkonda pole enam. Vali uuesti.",
   href: "Sisesta lehe aadress, mis algab kaldkriipsuga (nt /koolitused), või täielik aadress, mis algab https://.",
   url: "Sisesta täielik aadress, mis algab https://.",
   email: "Sisesta korrektne e-posti aadress.",
@@ -34,6 +36,8 @@ const fieldErrors = {
   imageRequired: "Lisa pilt.",
   localeHref: "Kirjuta lehe aadress ilma keeleta, nt /koolitused: vene lehel lisatakse /ru ise.",
   iban: "Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.",
+  // (Draft, 2026-11-11 certificate designs) „Kujundus“: the design picked is gone (deleted in another tab)
+  certificateDesign: "Seda kujundust enam pole. Vali teine kujundus.",
   // "Teadmiste test" (e-course completion): shown in the card of the question the save names
   testTooMany: "Testis saab olla kuni 50 küsimust.",
   testEmpty: "Täida küsimuse tekst ja iga vastusevariant.",
@@ -1485,6 +1489,43 @@ export const adminEt = {
         other: "Kontrolli seda välja.",
       },
     },
+    // Seaded → Tunnistus → „Kujundused“ (Draft, 2026-11-11 certificate designs spec §5.1; components/admin/CertificateDesigns.tsx): the designs an
+    // e-course's certificate is drawn in. `lead`, the tones, `backgroundHint`, `used` and the buttons are the spec's words; the rest ours
+    designs: {
+      title: "Kujundused",
+      lead: "Tunnistuse taust ja teksti värv. Koolituse kaardil „Tunnistus“ valid, millist kujundust see koolitus kasutab. Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      // {name}: the design's name (each row's group, for a screen reader)
+      row: "Kujundus „{name}“",
+      name: "Nimi",
+      tone: "Toon",
+      tones: { light: "Hele taust, tume tekst", dark: "Tume taust, hele tekst" },
+      background: "Taustapilt",
+      backgroundHint: "JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.",
+      // the first design (lowest in the list): what an e-course with no design picked gets
+      first: "Koolitus, millel kujundust valitud pole, kasutab seda kujundust.",
+      sample: "Vaata näidist",
+      remove: "Kustuta",
+      // instead of „Kustuta“: {n} the courses using the design (live or waiting to be published; the first design also every e-course with none picked)
+      usedOne: "Seda kujundust kasutab 1 koolitus.",
+      used: "Seda kujundust kasutab {n} koolitust.",
+      last: "Viimast kujundust ei saa kustutada.",
+      removeQuestion: "Kas kustutan kujunduse „{name}“?",
+      removeLine: "Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      removeYes: "Jah, kustuta",
+      add: "Lisa kujundus",
+      adding: "Lisan…",
+      // a press that failed (not signed out): „Lisa kujundus“ or „Jah, kustuta“
+      failed: "Ei õnnestunud. Proovi uuesti.",
+      gone: "Seda kujundust enam pole.",
+      // a row's refused field (server/certificate-designs.ts): name required | tooLong | taken, tone invalid, backgroundKey image
+      errors: {
+        required: "Täida see väli.",
+        tooLong: "Nimi võib olla kuni 40 märki.",
+        taken: "Sellise nimega kujundus on juba olemas.",
+        image: "Seda pilti ei saa kasutada. Lae üles JPEG-pilt (kuni 1,5 MB).",
+        other: "Kontrolli seda välja.",
+      },
+    },
     // the sample PDF's made-up student, course, competency lines and volume (server/certificate-sample.ts); Draft
     sample: {
       name: "Mari Maasikas",
@@ -1633,6 +1674,13 @@ export const adminEt = {
     session: "Sessioon on aegunud. Logi uuesti sisse ja proovi siis uuesti.",
     storage: "Piltide salvestamine pole seadistatud — anna arendajale teada.",
     server: "Üleslaadimine ei õnnestunud. Proovi uuesti.",
+    // (Draft, 2026-11-11 certificate designs: a design's „Taustapilt“, a JPEG of at most 1.5 MB that the PDF embeds as it is; the row's own hint
+    // says the type, the size and the A4 shape)
+    background: {
+      hint: "Enne üleslaadimist vähendatakse pilt kuni 3508 pikslini ja kaamera andmed (asukoht jm) eemaldatakse.",
+      type: "Seda faili ei saa kasutada. Vali JPEG-pilt.",
+      size: "Pilt on liiga suur (kuni 1,5 MB).",
+    },
   },
 
   // Prototype D adminBadges ("Koolituse märgis"), Maria C36: "Väga meeldib see blokk. Jätame."
@@ -1718,6 +1766,10 @@ export const adminEt = {
       slugChanged: "Aadressi muutmisel ei avane vana link enam.",
       level: "Tase",
       language: "Koolituse keel",
+      // „Valdkond“ (course areas, spec 2026-11-11 §4.2; Draft): Seaded → Valdkonnad's areas, „Määramata“ first
+      area: "Valdkond",
+      areaNone: "Määramata",
+      areaHint: "Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.",
       summary: "Lühikirjeldus",
       summaryHint: "Kaardil ja koolituse lehe päises.",
       body: "Pikk kirjeldus",
@@ -1791,6 +1843,9 @@ export const adminEt = {
       certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
       certificateVolume: "Maht",
       certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
+      // (Draft, 2026-11-11 certificate designs spec §5.2) the design the course's certificates are drawn in; none picked shows the first design
+      certificateDesign: "Kujundus",
+      certificateDesignHint: "Kujundusi muudad: Seaded → Tunnistus.",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega.",
       main: "Põhipilt",
       image: "Pilt {n}",
@@ -2476,7 +2531,7 @@ export const adminEt = {
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    sections: { contact: "Kontakt", newsletter: "Uudiskiri", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
+    sections: { contact: "Kontakt", newsletter: "Uudiskiri", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",
@@ -2490,6 +2545,32 @@ export const adminEt = {
     // the welcome discount moved to Hüpikaken (piece 4b S4-Q2 A: „Soodustus (%)“); the code's hint drops „pärast … kinnitamist“ (S4-29 ruling)
     welcomeCode: "Tervituskood",
     welcomeCodeHint: "Saadetakse tervituskirjas ja näidatakse avalehel kinnitusteates; hüpikaknas seda ei näidata. Tühjaks jättes koodi ei saadeta. Tähed A–Z, numbrid ja sidekriips, kuni 30 märki.",
+    // „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx). All Draft (Dim's wording
+    // sheet): the lead as the spec words it, with the basics card's real name („Põhiinfo“); {name} the area's Estonian name, {n} a count
+    areas: {
+      title: "Valdkonnad",
+      lead: "Valdkonnad, mille järgi õpilane saab koolituskalendris ja koolituste lehel koolitusi valida. Koolituse valdkonna valid koolituse kaardil „Põhiinfo“.",
+      empty: "Valdkondi veel pole.",
+      nameEt: "Nimi (eesti keeles)",
+      nameRu: "Nimi (vene keeles)",
+      // the add form below the rows: its two fields and its button
+      newTitle: "Uus valdkond",
+      add: "Lisa valdkond",
+      remove: "Kustuta",
+      removeQuestion: "Kas kustutan valdkonna „{name}“?",
+      removeYes: "Jah, kustuta",
+      // in a used area's row, in place of „Kustuta“ (the spec's „Seda valdkonda kasutab {n} koolitust.“, with its one)
+      usedOne: "Seda valdkonda kasutab 1 koolitus.",
+      usedMany: "Seda valdkonda kasutab {n} koolitust.",
+      // a row without an Estonian name yet: the handle's and the arrows' name (DragList)
+      unnamed: "Nimeta valdkond",
+      errors: {
+        required: "Kirjuta nimi.",
+        tooLong: "Nimi võib olla kuni 60 märki.",
+        taken: "Sellise nimega valdkond on juba olemas.",
+        notFound: "Seda valdkonda enam pole. Laadi leht uuesti.",
+      },
+    },
     // where students pay the prepayment: on the unpaid contact-course cards of their account (never on a public page); the „Maksmine“ card's bank fields
     prepaymentHint: "Juhised on õpilasele näha ainult siis, kui saaja ja IBAN on täidetud. Muidu ütleb kaart: „Maria saadab sulle arve“.",
     receiver: "Saaja",

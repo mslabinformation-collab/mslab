@@ -49,9 +49,15 @@ vi.mock("@/db/queries/admin", () => ({
   courseUsage: read("usage", { registrations: 0 }),
   typeLocked: () => false,
 }));
-vi.mock("@/db/queries/public", () => ({ getCourseBySlug: read("detail") }));
+vi.mock("@/db/queries/public", () => ({ getCourseBySlug: read("detail"), listCourseAreas: read("areas", []) }));
 vi.mock("@/server/admin-lessons", () => ({ listCourseLessons: read("lessons", []) }));
 vi.mock("@/server/course-parts", () => ({ readCourseEditor: read("editor", { parts: {}, outline: [] }) }));
+vi.mock("@/server/certificate-designs", () => ({
+  listCertificateDesigns: read("designs", [
+    { id: 3, name: "Hele", tone: "light", backgroundKey: "img/hele.jpg", sort: 1 },
+    { id: 8, name: "Tume", tone: "dark", backgroundKey: "", sort: 2 },
+  ]),
+}));
 vi.mock("@/server/lesson-file-purge", () => ({ purgeRemovedLessonFiles: vi.fn() }));
 vi.mock("@/server/media-store", () => ({ mediaStore: () => null }));
 vi.mock("@/server/bunny", () => ({ bunnyConfig: () => null }));
@@ -140,5 +146,21 @@ describe("the course editor's read stamp (final review P9-1)", () => {
     const tree = await page;
     expect(log).not.toContain("stamp");
     expect(editorProps(tree).course).toBeNull();
+  });
+});
+
+describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs)", () => {
+  test("the editor gets Seaded's designs in their order, each its id and name only (a saved course and a new one)", async () => {
+    for (const id of ["7", "uus"]) {
+      const page = open(id);
+      await settle();
+      gate.admin!();
+      if (id === "7") gate.stamp!(5);
+      const props = editorProps(await page) as unknown as { designs: unknown };
+      expect(props.designs).toEqual([
+        { id: 3, name: "Hele" },
+        { id: 8, name: "Tume" },
+      ]);
+    }
   });
 });

@@ -3,6 +3,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
+import { BACKGROUND_UPLOAD, type UploadKind } from "@/lib/media";
 import { ShrinkError, shrinkImage, type ShrinkOptions, type ShrinkProblem } from "@/lib/shrink-image";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
@@ -18,6 +19,24 @@ const QUALITY = 0.86;
  * WebP become WebP (PNG where the browser cannot write WebP), at most 4 MB; originals over 60 MB are not opened.
  */
 const SHRINK: ShrinkOptions = { maxEdge: MAX_EDGE, quality: QUALITY, maxBytes: MAX_BYTES, accept: ACCEPT, output: "keep" };
+/**
+ * A certificate design's background (2026-11-11 certificate designs, spec §4; lib/media.ts BACKGROUND_UPLOAD): a JPEG only, at most 3508 px (A4
+ * landscape at 300 dpi), at 0.9 and lower while it is over 1.5 MB, and last at most 2480 px (A4 at about 210 dpi) at 0.8, so that a detailed photo
+ * still fits. The PDF embeds it as it is uploaded, so the browser keeps it under the server's limit; the canvas drops its metadata, as for every
+ * other picture.
+ */
+const BACKGROUND_SHRINK: ShrinkOptions = {
+  maxEdge: 3508,
+  quality: 0.9,
+  lower: [0.82, 0.74, 0.66],
+  last: { maxEdge: 2480, quality: 0.8 },
+  maxBytes: BACKGROUND_UPLOAD.maxBytes,
+  accept: BACKGROUND_UPLOAD.types,
+  output: "jpeg",
+};
+const SHRINK_FOR: Record<UploadKind, ShrinkOptions> = { image: SHRINK, "certificate-background": BACKGROUND_SHRINK };
+/** The upload's texts for its kind: a background says its own type and size, and what the browser does to it. */
+const textsFor = (kind: UploadKind) => (kind === "image" ? adminEt.upload : { ...adminEt.upload, ...adminEt.upload.background });
 
 type Problem = ShrinkProblem | "session" | "storage" | "server";
 class UploadProblem extends Error {
@@ -26,13 +45,13 @@ class UploadProblem extends Error {
   }
 }
 
-/** Sends one prepared image to /api/admin/upload; its key. */
-async function send(file: File): Promise<string> {
+/** Sends one prepared image to /api/admin/upload (for `kind`); its key. */
+async function send(file: File, kind: UploadKind): Promise<string> {
   const body = new FormData();
   body.set("file", file);
   let res: Response;
   try {
-    res = await fetch("/api/admin/upload", { method: "POST", body, credentials: "same-origin" });
+    res = await fetch(kind === "image" ? "/api/admin/upload" : `/api/admin/upload?for=${kind}`, { method: "POST", body, credentials: "same-origin" });
   } catch {
     throw new UploadProblem("server");
   }
@@ -54,6 +73,8 @@ export type ImageUploadState = {
   status: Status;
   busy: boolean;
   pick: (files: File[]) => void;
+  /** What the upload is for: any picture, or a certificate design's background (its own limits and texts). */
+  kind: UploadKind;
 };
 
 /**
@@ -61,8 +82,8 @@ export type ImageUploadState = {
  * its notes under the grid): files picked while others are still uploading wait their turn (nothing is dropped), one queue, one counter; each one
  * made smaller and metadata-free, uploaded, and its key handed to `onUploaded` in the order picked.
  */
-export function useImageUpload(onUploaded: (keys: string[]) => void): ImageUploadState {
-  const t = adminEt.upload;
+export function useImageUpload(onUploaded: (keys: string[]) => void, kind: UploadKind = "image"): ImageUploadState {
+  const t = textsFor(kind);
   const id = useId();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const queue = useRef<File[]>([]);
@@ -75,7 +96,7 @@ export function useImageUpload(onUploaded: (keys: string[]) => void): ImageUploa
       const file = queue.current.shift()!;
       setStatus({ kind: "busy", text: p.total > 1 ? fill(t.uploading, { n: p.done + 1, total: p.total }) : t.preparing });
       try {
-        const key = await send(await shrinkImage(file, SHRINK));
+        const key = await send(await shrinkImage(file, SHRINK_FOR[kind]), kind);
         p.added++;
         onUploaded([key]); // one by one, in the order picked; the gallery adds to its list as it is by then
       } catch (e) {
@@ -96,7 +117,7 @@ export function useImageUpload(onUploaded: (keys: string[]) => void): ImageUploa
     if (progress.current.running) setStatus({ kind: "busy", text: fill(t.queued, { n: files.length, total: progress.current.total }) });
     else void run();
   };
-  return { id, status, busy: status.kind === "busy", pick };
+  return { id, status, busy: status.kind === "busy", pick, kind };
 }
 
 /**
@@ -127,7 +148,7 @@ export function UploadPicker({
       <input
         id={`${upload.id}-file`}
         type="file"
-        accept={ACCEPT.join(",")}
+        accept={SHRINK_FOR[upload.kind].accept.join(",")}
         multiple={multiple}
         aria-label={name}
         aria-disabled={full || undefined}
@@ -152,7 +173,7 @@ export function UploadPicker({
 
 /** The upload's notes: what it takes (and what the browser does to a picture first), and how it went (the field's description). */
 export function UploadNotes({ upload }: { upload: ImageUploadState }) {
-  const t = adminEt.upload;
+  const t = textsFor(upload.kind);
   const { id, status } = upload;
   return (
     <>
@@ -170,9 +191,20 @@ export function UploadNotes({ upload }: { upload: ImageUploadState }) {
  * "Lisa pilte": picks images, makes each smaller and metadata-free in the browser (lib/shrink-image.ts shrinkImage) and uploads it; the
  * keys of the stored images go to `onUploaded` in the order picked. The server checks type, size and content again.
  */
-export function ImageUpload({ onUploaded, multiple = false, label }: { onUploaded: (keys: string[]) => void; multiple?: boolean; label?: string }) {
+export function ImageUpload({
+  onUploaded,
+  multiple = false,
+  label,
+  kind = "image",
+}: {
+  onUploaded: (keys: string[]) => void;
+  multiple?: boolean;
+  label?: string;
+  /** "certificate-background": a certificate design's background photo (a JPEG of at most 1.5 MB). */
+  kind?: UploadKind;
+}) {
   const t = adminEt.upload;
-  const upload = useImageUpload(onUploaded);
+  const upload = useImageUpload(onUploaded, kind);
   return (
     <div className={styles.upload} data-image-upload="" aria-busy={upload.busy || undefined}>
       <UploadPicker upload={upload} multiple={multiple} className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>

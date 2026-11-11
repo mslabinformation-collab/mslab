@@ -196,6 +196,74 @@ test.describe("catalogue", () => {
     }
   });
 
+  test("at 390 the area chips are 44 px targets inside the page, ET and RU, a 60-character name wrapping, no horizontal overflow", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "phone width");
+    const LONG_AREA = "Курсы долговременной укладки и ламинирования бровей и ресниц";
+    expect(LONG_AREA).toHaveLength(60);
+    for (const path of ["/koolitused", "/ru/koolitused"]) {
+      await page.goto(path);
+      const chips = page.locator("[data-filter-row='area'] button");
+      await expect(chips).toHaveCount(3);
+      // an area name of Maria's that long (Russian runs long; the text set in the page, nothing written)
+      await chips.last().evaluate((e, name) => (e.textContent = name), LONG_AREA);
+      for (const b of await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect))) {
+        expect(b.height, path).toBeGreaterThanOrEqual(44);
+        expect(b.right, path).toBeLessThanOrEqual(390 - 22 + 0.5); // inside the page's side padding
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), path).toBe(true);
+    }
+  });
+
+  // Course areas (spec 2026-11-11-course-areas-filter-design.md §5.2): the seed's four brow courses „Kulmukoolitused“, Lash Lift BOTOX and
+  // „Ripsmete laminatsiooni alused“ „Ripsmekoolitused“.
+  test("area filter: after the level chips, ?valdkond with vorm and tase (AND), reload, „Lähtesta filtrid“, unknown values", async ({ page }) => {
+    await page.goto("/koolitused");
+    const area = page.locator("[data-filter-row='area']");
+    const cards = page.locator("[data-course-card]");
+    await expect(area).toHaveAttribute("aria-label", "Valdkond");
+    await expect(area.locator("button")).toHaveText(["Kõik", "Kulmukoolitused", "Ripsmekoolitused"]);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+    const level = (await page.locator("[data-filter-row='level']").boundingBox())!;
+    expect((await area.boundingBox())!.y).toBeGreaterThan(level.y + level.height - 1);
+
+    await area.getByRole("button", { name: "Ripsmekoolitused" }).click();
+    await expect(page).toHaveURL(/\/koolitused\?valdkond=ripsmekoolitused$/);
+    await expect(cards).toHaveCount(2);
+    await page.locator("[data-filter-row='format']").getByRole("button", { name: "E-õpe" }).click();
+    await expect(page).toHaveURL(/\/koolitused\?vorm=e&valdkond=ripsmekoolitused$/);
+    await expect(cards).toHaveCount(1);
+    await expect(cards).toContainText("Ripsmete laminatsiooni alused");
+    await page.reload();
+    await expect(cards).toHaveCount(1);
+    await expect(area.getByRole("button", { name: "Ripsmekoolitused" })).toHaveAttribute("aria-pressed", "true");
+
+    // no advanced lash e-course: the empty state; „Lähtesta filtrid“ clears the area with the rest
+    await page.locator("[data-filter-row='level']").getByRole("button", { name: "Täiendkoolitused" }).click();
+    await expect(page).toHaveURL(/\/koolitused\?vorm=e&tase=taiend&valdkond=ripsmekoolitused$/);
+    await expect(cards).toHaveCount(0);
+    await page.getByRole("button", { name: "Lähtesta filtrid" }).click();
+    await expect(page).toHaveURL(/\/koolitused$/);
+    await expect(cards).toHaveCount(6);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+
+    // a link: the brow contact courses; an unknown or old area reads as „Kõik“
+    await page.goto("/koolitused?vorm=k&valdkond=kulmukoolitused");
+    await expect(cards).toHaveCount(2);
+    await page.goto("/koolitused?valdkond=vana-valdkond");
+    await expect(cards).toHaveCount(6);
+    await expect(area.locator("button").first()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("RU catalogue: the area chips in Russian, the same slug", async ({ page }) => {
+    await page.goto("/ru/koolitused");
+    const area = page.locator("[data-filter-row='area']");
+    await expect(area).toHaveAttribute("aria-label", "Направление");
+    await expect(area.locator("button")).toHaveText(["Все", "Курсы по бровям", "Курсы по ресницам"]);
+    await area.getByRole("button", { name: "Курсы по бровям" }).click();
+    await expect(page).toHaveURL(/\/ru\/koolitused\?valdkond=kulmukoolitused$/);
+    await expect(page.locator("[data-course-card]")).toHaveCount(4);
+  });
+
   test("RU catalogue", async ({ page }) => {
     await page.goto("/ru/koolitused?vorm=k");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Найдите свой курс.");

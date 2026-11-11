@@ -1,8 +1,10 @@
-import { eq, getTableName, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, getTableName, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { areaSlug } from "@/domain/course-areas";
+import type { FileStore } from "@/server/media";
 import type { Db } from "./client";
-import { POPUP_ID, campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
-import { campaignSeed, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, settingSeeds, trainerWorks } from "./seed-data";
+import { POPUP_ID, campaign, certificateDesigns, courseAccess, courseAreas, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessonFiles, lessonProgress, lessons, pages, posts, practicePackages, registrations, settings } from "./schema";
+import { areaSeeds, campaignSeed, certificateDesignSeeds, courseSeeds, faqSeeds, heroSeeds, newsletterPopupSeed, pageSeeds, postSeeds, practiceSeeds, SEED_BACKGROUND_KEY, settingSeeds, trainerWorks } from "./seed-data";
 
 // Applies the prototype content. Plain drizzle: no Cloudflare bindings, so it runs from the CLI (seed.ts) and from tests.
 //
@@ -19,7 +21,21 @@ export type SeedOptions = {
    * reset over students' lesson progress, course access, lesson videos or lesson files (see `studentData`).
    */
   force?: boolean;
+  /**
+   * This machine's (the local seed, seed.ts; the e2e setup): our test JPEG (`bytes`, seed-data.ts SEED_BACKGROUND_FILE) put in `store` at
+   * SEED_BACKGROUND_KEY, and „Hele“ given it while it has no photo (2026-11-11 certificate designs, spec §3). Never Maria's photo, never over hers.
+   */
+  background?: { store: FileStore; bytes: Uint8Array };
 };
+
+/** „Hele“'s test background (SeedOptions.background): the store gets the file once, the design its key only while it has none. */
+export async function seedDesignBackground(db: Db, { store, bytes }: { store: FileStore; bytes: Uint8Array }): Promise<void> {
+  if (!(await store.get(SEED_BACKGROUND_KEY))) await store.put(SEED_BACKGROUND_KEY, bytes.slice().buffer, "image/jpeg");
+  await db
+    .update(certificateDesigns)
+    .set({ backgroundKey: SEED_BACKGROUND_KEY })
+    .where(and(eq(certificateDesigns.name, "Hele"), eq(certificateDesigns.backgroundKey, "")));
+}
 
 const CONTENT_TABLES = ["courses", "course_images", "course_modules", "course_sessions", "registrations", "practice_packages", "hero_slides", "faq", "posts", "pages", "gallery_items", "campaign", "settings"];
 const TRAINER_WORKS = "trainer_works";
@@ -70,6 +86,46 @@ export function studentDataRefusal({ progress, access, videos, files }: StudentD
   return `Refusing to reset: ${found.join(", ")} would be deleted with their courses. --force does not override this. ${todo.join(" ")}`;
 }
 
+/**
+ * The course areas the seed's courses need (seed-data.ts areaSeeds), by slug → id. The list is Maria's (Seaded → Valdkonnad), so it is never truncated,
+ * not even by a reset, and never overwritten: an area of the seed that no row has the slug of (renamed or deleted here) is added after the others.
+ */
+async function seedAreas(db: Db): Promise<Map<string, number>> {
+  const rows = await db.select().from(courseAreas);
+  const ids = new Map(rows.map((r) => [areaSlug(r.name), r.id]));
+  let sort = Math.max(0, ...rows.map((r) => r.sort));
+  for (const seed of areaSeeds) {
+    const slug = areaSlug(seed.name);
+    if (ids.has(slug)) continue;
+    const [created] = await db.insert(courseAreas).values({ name: seed.name, sort: ++sort }).returning();
+    ids.set(slug, created.id);
+  }
+  return ids;
+}
+
+/**
+ * For the local e2e database only (tests/e2e/fixtures.ts ensureSeedAreas); applySeed never calls it. That database was seeded before the course areas
+ * and is never reset, so applySeed's course insert does nothing there and the seed's courses keep no area. This finds or adds the seed's areas by slug
+ * (as applySeed does) and gives each seed course its area where the course has none; a course with an area, and any course not in the seed, is left.
+ * Returns how many courses it gave one.
+ */
+export async function giveSeedCoursesAreas(db: Db): Promise<number> {
+  const ids = await seedAreas(db);
+  let given = 0;
+  for (const { slug, area } of courseSeeds) {
+    if (area === undefined) continue;
+    const id = ids.get(areaSlug({ et: area }));
+    if (id === undefined) continue;
+    const updated = await db
+      .update(courses)
+      .set({ areaId: id })
+      .where(and(eq(courses.slug, slug), isNull(courses.areaId)))
+      .returning();
+    given += updated.length;
+  }
+  return given;
+}
+
 export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<string, number>> {
   if (opts.reset) {
     const data = await studentData(db);
@@ -81,12 +137,14 @@ export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<
     await db.execute(sql.raw(`TRUNCATE TABLE ${CONTENT_TABLES.join(", ")} RESTART IDENTITY CASCADE`));
   }
 
-  // Courses with their images, sessions and module titles: a course is seeded as a unit, only when its slug is new.
-  for (const [index, { images, sessions = [], modules = [], ...course }] of courseSeeds.entries()) {
+  // Courses with their images, sessions and module titles: a course is seeded as a unit, only when its slug is new; its area (by slug) is the seed's.
+  const areaIds = await seedAreas(db);
+  for (const [index, { images, sessions = [], modules = [], area, ...course }] of courseSeeds.entries()) {
     await db.transaction(async (tx) => {
+      const areaId = area === undefined ? null : (areaIds.get(areaSlug({ et: area })) ?? null);
       const [created] = await tx
         .insert(courses)
-        .values({ ...course, published: true, isSample: true, sort: index + 1 })
+        .values({ ...course, areaId, published: true, isSample: true, sort: index + 1 })
         .onConflictDoNothing({ target: courses.slug })
         .returning();
       if (!created) return;
@@ -106,9 +164,12 @@ export async function applySeed(db: Db, opts: SeedOptions = {}): Promise<Record<
   await db.insert(campaign).values({ ...campaignSeed, id: POPUP_ID.campaign, kind: "campaign" }).onConflictDoNothing({ target: campaign.id });
   await db.insert(campaign).values({ ...newsletterPopupSeed, id: POPUP_ID.newsletter, kind: "newsletter" }).onConflictDoNothing({ target: campaign.id });
   await db.insert(settings).values(Object.entries(settingSeeds).map(([key, value]) => ({ key, value }))).onConflictDoNothing({ target: settings.key });
+  // the certificate designs (the migration seeds them; a list emptied by hand gets them again), and on this machine „Hele“'s test photo
+  if ((await total(db, certificateDesigns)) === 0) await db.insert(certificateDesigns).values(certificateDesignSeeds);
+  if (opts.background) await seedDesignBackground(db, opts.background);
 
   const counts: Record<string, number> = {};
-  for (const table of [courses, courseImages, courseModules, courseSessions, practicePackages, heroSlides, faq, posts, pages, galleryItems, campaign, settings]) {
+  for (const table of [courses, courseImages, courseModules, courseSessions, practicePackages, heroSlides, faq, posts, pages, galleryItems, campaign, settings, certificateDesigns]) {
     counts[getTableName(table)] = await total(db, table);
   }
   return counts;

@@ -3,8 +3,9 @@ import { z } from "zod";
 import type { Db } from "@/db/client";
 import { paged, setSetting, type Paged } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
-import { certificates, courseAccess, courses, type Certificate } from "@/db/schema";
+import { certificateDesigns, certificates, courseAccess, courses, type Certificate } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
+import { designFor, frozenOf, readFrozenDesign, type FrozenDesign } from "@/domain/certificate-design";
 import {
   CERT_LIMITS, certificateForm, certificateSkills, certificateTitle, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
 } from "@/domain/certificate";
@@ -13,6 +14,7 @@ import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
 import { fieldCodes } from "./autosave-route";
 import { accessFor, lockAccess } from "./completion";
+import type { MediaSource } from "./media";
 
 // The e-course certificate (phase 3d, spec §3–§7), without Next.js: the issue (one per completed access, numbered in Maria's own series), the
 // re-issue under the same number ("Paranda nimi"), the student's and Maria's reads, Seaded → Tunnistus (the settings key `certificate`) and
@@ -82,7 +84,9 @@ const readSettings = async (q: Db, now: Date): Promise<CertificateSettings> => r
  *   series (Maria's jump) is kept, and one behind it or for another year, or no row at all, cannot make the unique (year, seq) refuse every
  *   later issue. This amends spec §4's "else 1";
  * - the frozen copy is written: the title on the certificate (the course's own „Pealkiri tunnistusel“, else its Estonian title; certificateTitle), its certificate lines (certificateSkills: its own, else "Mida õpid") and its
- *   volume, and Seaded's practical line, place and registry code;
+ *   volume, and Seaded's practical line, place and registry code; and the look of its design (2026-11-11 certificate designs, spec §3, §5.2): the
+ *   course's „Kujundus“, else the first design (lowest sort, then id), as its tone and background photo, so a design edited or deleted later never
+ *   changes it (no design at all: today's dark page);
  * - Seaded's next number is moved on: the year used and the number used plus one.
  * `notFound` also without an access, and for a contact course (accessFor). Logs `[certificate] access N: issued <number>` after the commit.
  */
@@ -99,11 +103,20 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
     const [existing] = await tx.select().from(certificates).where(eq(certificates.accessId, access.id)).limit(1);
     if (existing) return { kind: "already", certificate: viewOf(existing) };
     const [course] = await tx
-      .select({ title: courses.title, certificateSkills: courses.certificateSkills, certificateVolume: courses.certificateVolume, certificateTitle: courses.certificateTitle, outcomes: courses.outcomes })
+      .select({
+        title: courses.title,
+        certificateSkills: courses.certificateSkills,
+        certificateVolume: courses.certificateVolume,
+        certificateTitle: courses.certificateTitle,
+        certificateDesignId: courses.certificateDesignId,
+        outcomes: courses.outcomes,
+      })
       .from(courses)
       .where(eq(courses.id, access.courseId))
       .limit(1);
     if (!course) return { kind: "notFound" };
+    const design = designFor(await tx.select().from(certificateDesigns), course.certificateDesignId);
+    const look: FrozenDesign = design ? frozenOf(design) : { tone: "dark", backgroundKey: "" };
     // the series' lock after the access's, always in this order: no two writes ever wait for each other the other way round
     await lockNumbers(tx);
     const settings = await readSettings(tx, now);
@@ -127,6 +140,7 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
         place: settings.place,
         registryCode: settings.registryCode,
         issuedAt: now,
+        design: look,
       })
       .returning(); // (returning(fields) has no common overload on the Db union: the whole row)
     await setSetting(tx, SETTING_KEY, { ...settings, ...taken.next });
@@ -371,13 +385,18 @@ export async function certificateCard(db: Db, now: Date): Promise<{ settings: Ce
 /**
  * The PDF of a certificate row, rendered on each download (spec §7). It uses the row's frozen copy, and from Seaded as it is now the trainer's
  * name, which the renderer writes in the script font as Maria's signature (one the font cannot draw reads as "Maria Sosnina":
- * readCertificateSettings). The fonts and the logo come from app/assets (certificate-pdf.ts loadCertificateAssets); no store. Nothing is stored.
+ * readCertificateSettings). The fonts and the logo come from app/assets (certificate-pdf.ts loadCertificateAssets). It is drawn in the design it
+ * was issued with (`design`, 2026-11-11 certificate designs): none (issued before the designs) is today's dark page; a background photo is read from
+ * the image store (`store`; by default server/media-store.ts mediaStore(), imported only then), and one it cannot read fails the download, which is
+ * tried again, never a certificate that looks otherwise. Nothing is stored.
  * certificate-pdf.ts (pdf-lib and its fontkit) is imported here, when a certificate is rendered: this module comes with every account API
  * request, the payment routes and the admin pages, which then never load the PDF stack at a cold start.
  */
-export async function certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array> {
-  const { loadCertificateAssets, renderCertificate } = await import("./certificate-pdf");
-  const [settings, assets] = await Promise.all([getCertificateSettings(db, now), loadCertificateAssets()]);
+export async function certificatePdf(db: Db, cert: Certificate, now: Date, store?: MediaSource | null): Promise<Uint8Array> {
+  const { lookOf, loadCertificateAssets, renderCertificate } = await import("./certificate-pdf");
+  const design = readFrozenDesign(cert.design);
+  const source = store !== undefined || !design?.backgroundKey ? (store ?? null) : (await import("./media-store")).mediaStore();
+  const [settings, assets, look] = await Promise.all([getCertificateSettings(db, now), loadCertificateAssets(), lookOf(design, source)]);
   return renderCertificate(
     {
       number: cert.number,
@@ -392,5 +411,6 @@ export async function certificatePdf(db: Db, cert: Certificate, now: Date): Prom
       trainerName: settings.trainerName,
     },
     assets,
+    look,
   );
 }

@@ -21,6 +21,8 @@ export type PublicChange =
   | { kind: "trainer"; parts: string[] }
   /** a post saved or deleted */
   | { kind: "posts" }
+  /** Seaded → Valdkonnad (course areas): an area added, renamed, moved or deleted — the area chips of the calendar and the catalogue */
+  | { kind: "areas" }
   /** Hüpikaken's „Lehel näidatakse“ switched (piece 4b): the home page's popup, the newsletter sign-up */
   | { kind: "campaign" }
   /** Hüpikaken's offer published (piece 4b, R-c): the popup on the home page and its discount in the footer's sign-up block */
@@ -72,6 +74,9 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
       return [HOME, page("/praktika")];
     case "posts":
       return [below("/uudised"), HOME];
+    case "areas":
+      // the area chips (and their names) are on the catalogue and the calendar only; which area a course has is a courses change
+      return [page("/koolitused"), CALENDAR];
     case "trainer": {
       const parts = new Set(change.parts);
       // the trainer's name is in the footer; portrait, role and stats also on the home page, /kontakt, course pages

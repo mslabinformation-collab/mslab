@@ -197,7 +197,12 @@ const settle = () =>
   });
 
 type Props = Parameters<typeof CourseEditor>[0];
-const props = (over: Partial<Props> = {}): Props => ({ course: data(), others: OTHERS, next: null, created: false, modules: MODULES, ...over });
+/** „Valdkond“'s choices (Seaded → Valdkonnad, course areas). */
+const AREAS = [
+  { id: 1, name: "Kulmukoolitused" },
+  { id: 2, name: "Ripsmekoolitused" },
+];
+const props = (over: Partial<Props> = {}): Props => ({ course: data(), others: OTHERS, areas: AREAS, next: null, created: false, modules: MODULES, ...over });
 const show = async (over: Partial<Props> = {}, guard = false) => {
   const editor = createElement(CourseEditor, props(over));
   // (the (panel) layout's UndoBar: the list editors' removals offer „Võta tagasi“ in it)
@@ -290,6 +295,34 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud 12:41");
     // the preview is the public page at the course's live address, in draft mode
     expect($<HTMLAnchorElement>("[data-publish-preview]")!.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent(`/koolitused/${SLUG}`)}`);
+  });
+
+  it("„Valdkond“ (course areas): „Määramata“ first, then the areas, the hint; a pick saves at once into the draft and the bar names „Valdkond“; an area deleted meanwhile is said under it", async () => {
+    await show();
+    const select = $<HTMLSelectElement>('select[data-field="areaId"]')!;
+    expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
+      ["", "Määramata"],
+      ["1", "Kulmukoolitused"],
+      ["2", "Ripsmekoolitused"],
+    ]);
+    expect(select.value).toBe("");
+    const box = select.closest("[data-unpublished], div")!;
+    expect(text(box)).toContain("Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.");
+    await act(async () => {
+      select.value = "2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(remote.log.map((s) => [s.part, s.version, s.patch])).toEqual([["basics", "l:basics", { areaId: 2 }]]);
+    expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Valdkond. Avalikul lehel on näha eelmine versioon.");
+    remote.refuse = { part: "basics", fields: { areaId: "area" } };
+    await act(async () => {
+      select.value = "1";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(select.getAttribute("aria-invalid")).toBe("true");
+    expect(text(select.parentElement)).toContain("Seda valdkonda pole enam. Vali uuesti.");
   });
 
   it("a drafted address change: the preview still opens the live address (it is live only after the publish)", async () => {
@@ -1484,5 +1517,60 @@ describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => 
     await show({ course: data({ liveType: "contact", parts: partsOf(contact, { basics: { version: "d:1.1", value: drafted } }) }, contact) });
     expect($("[data-lessons-editor] h2")!.textContent).toBe("Moodulid ja õppetunnid");
     expect($('[data-add-lesson="1"]')).not.toBeNull();
+  });
+});
+
+describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs, spec §5.2)", () => {
+  const DESIGNS = [
+    { id: 4, name: "Hele" },
+    { id: 7, name: "Tume" },
+  ];
+  const select = () => $<HTMLSelectElement>('[data-certificate-card] select[data-field="certificateDesignId"]');
+  const pick = async (value: string) => {
+    await act(async () => {
+      select()!.value = value;
+      select()!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+  };
+
+  it("Seaded's designs in their order; none picked shows the first; a pick saves at once and waits for „Avalda muudatused“", async () => {
+    await show({ designs: DESIGNS });
+    const box = $("[data-certificate-design]")!;
+    expect(text(box.querySelector("label"))).toBe("Kujundus");
+    expect(Array.from(select()!.options).map((o) => [o.value, text(o)])).toEqual([
+      ["4", "Hele"],
+      ["7", "Tume"],
+    ]);
+    expect(select()!.value).toBe("4");
+    expect(text(box)).toContain("Kujundusi muudad: Seaded → Tunnistus.");
+    expect(box.hasAttribute("data-unpublished")).toBe(false);
+    await pick("7");
+    expect(remote.log).toEqual([{ part: "certificate", version: "l:certificate", patch: { certificateDesignId: 7 } }]);
+    expect(select()!.value).toBe("7");
+    expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(true);
+  });
+
+  it("the first design picked back is none picked (null): live without a pick, no „· avaldamata“ for it (review round 1)", async () => {
+    await show({ designs: DESIGNS });
+    await pick("7");
+    await pick("4");
+    expect(remote.log.map((r) => r.patch)).toEqual([{ certificateDesignId: 7 }, { certificateDesignId: null }]);
+    expect(select()!.value).toBe("4");
+    expect($("[data-certificate-design]")!.hasAttribute("data-unpublished")).toBe(false);
+  });
+
+  it("a design deleted meanwhile is refused in its own words, in the field", async () => {
+    remote.refuse = { part: "certificate", fields: { certificateDesignId: "certificateDesign" } };
+    await show({ designs: DESIGNS });
+    await pick("7");
+    expect(text($("[data-certificate-design] [data-field-error]"))).toBe("Seda kujundust enam pole. Vali teine kujundus.");
+    expect(select()!.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("no designs read: the card has no „Kujundus“", async () => {
+    await show();
+    expect($("[data-certificate-card]")).not.toBeNull();
+    expect(select()).toBeNull();
   });
 });

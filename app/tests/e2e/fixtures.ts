@@ -3,8 +3,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "@playwright/test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { courseSeeds, pageSeeds } from "../../src/db/seed-data";
+import type { Db } from "../../src/db/client";
+import * as schema from "../../src/db/schema";
+import { giveSeedCoursesAreas } from "../../src/db/seed-apply";
+import { courseSeeds, pageSeeds, SEED_BACKGROUND_FILE, SEED_BACKGROUND_KEY } from "../../src/db/seed-data";
 import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
@@ -146,6 +150,50 @@ export async function ensureCourseTermsPage(): Promise<boolean> {
   }
 }
 
+// ---------- the certificate's light design ----------
+// 2026-11-11 certificate designs (spec §3): on this machine „Hele“ draws over our test JPEG (tests/fixtures/certificate-background.jpg, a gradient
+// we made; never Maria's photo), as the local seed gives it (seed-apply.ts seedDesignBackground). A local database migrated to 0023 before that seed
+// has „Hele“ without a photo: every run puts the JPEG in the local media folder the e2e server reads and gives it to „Hele“ while it has none (a
+// photo uploaded there stays). Only the LOCAL database and folder, like every fixture here.
+
+/** „Hele“'s test background in the local store and database; true when the design got it now. */
+export async function ensureDesignBackground(): Promise<boolean> {
+  const store = localStore();
+  if (!(await store.get(SEED_BACKGROUND_KEY))) await store.put(SEED_BACKGROUND_KEY, new Uint8Array(readFileSync(SEED_BACKGROUND_FILE)).buffer, "image/jpeg");
+  const sql = connect();
+  try {
+    const set = await sql`update certificate_designs set background_key = ${SEED_BACKGROUND_KEY} where name = 'Hele' and background_key = '' returning id`;
+    return set.length > 0;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * The designs an interrupted certificate test left (certificate.spec.ts: „Lisa kujundus“ makes „Uus kujundus“ or „Uus kujundus {n}“, which it
+ * renames „E2E kujundus …“), in the LOCAL database only: the courses' picks of them and their drafted picks cleared first (a pick is restricted),
+ * as certificate.ts removeDesigns does. „Hele“ and „Tume“ (the seed's) are never touched. Returns how many it deleted.
+ */
+export async function removeLeftoverDesigns(): Promise<number> {
+  const sql = connect();
+  try {
+    return await sql.begin(async (tx) => {
+      const left = await tx<{ id: number }[]>`
+        select id from certificate_designs
+        where (name like 'E2E kujundus %' or name ~ '^Uus kujundus( [0-9]+)?$') and name not in ('Hele', 'Tume')`;
+      const ids = left.map((d) => d.id);
+      if (ids.length === 0) return 0;
+      await tx`update courses set certificate_design_id = null where certificate_design_id in ${tx(ids)}`;
+      await tx`update content_drafts set value = value - 'certificateDesignId'
+               where entity = 'course' and part = 'certificate' and (value ->> 'certificateDesignId')::int in ${tx(ids)}`;
+      await tx`delete from certificate_designs where id in ${tx(ids)}`;
+      return ids.length;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
 // ---------- the home page's popup ----------
 // Since admin UX pass piece 4b (spec D3, ruling R-d) the home page's one popup is the newsletter sign-up (campaign row 2), and the seed has it shown,
 // the old campaign offer (row 1) off. A local database seeded before that has row 1 on — which the site no longer shows — and row 2 off, so its
@@ -164,6 +212,23 @@ export async function ensureSeedPopup(): Promise<boolean> {
       await tx`update campaign set active = true where id = 2`;
       return true;
     });
+  } finally {
+    await sql.end();
+  }
+}
+
+// ---------- the seed courses' areas ----------
+// The seed gained the course areas („Valdkond“, spec 2026-11-11) after the local database was seeded, and that database is never reset, so applySeed's
+// course insert does nothing there and the six seed courses have no area: the calendar and the catalogue would show no area chips (pages.spec.ts,
+// catalogue.spec.ts read the seed's). Every run first finds or adds the seed's two areas by slug and gives each seed course its area where it has none
+// (db/seed-apply.ts giveSeedCoursesAreas, tested in tests/db/seed.test.ts); a course with an area is left. Only the LOCAL database, like every fixture here.
+
+/** Gives the local database's seed courses the seed's areas where they have none; returns how many courses it gave one. */
+export async function ensureSeedAreas(): Promise<number> {
+  const sql = connect();
+  try {
+    const db = drizzle(sql, { schema }) as unknown as Db;
+    return await db.transaction((tx) => giveSeedCoursesAreas(tx as unknown as Db));
   } finally {
     await sql.end();
   }

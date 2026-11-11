@@ -7,7 +7,7 @@ import type { Db } from "@/db/client";
 import { getCourseForEdit } from "@/db/queries/admin";
 import { getCourseBySlug } from "@/db/queries/public";
 import * as schema from "@/db/schema";
-import { contentDrafts, courseImages, courseModules, courses, courseSessions, courseTests, lessonFiles, lessons, type TestQuestion } from "@/db/schema";
+import { certificateDesigns, contentDrafts, courseImages, courseModules, courses, courseSessions, courseTests, lessonFiles, lessons, type TestQuestion } from "@/db/schema";
 import { contentVersion } from "@/lib/version";
 import { readDrafts } from "@/server/drafts";
 import { makeTestDb } from "./helpers";
@@ -74,7 +74,7 @@ describe("the parts (R-a) and their versions (R-b)", () => {
   test("the parts of R-a, in screen order; each part's live version is l: and the hash of its live value", async () => {
     expect([...COURSE_PARTS]).toEqual(["basics", "price", "outcomes", "outline", "includes", "protocolStages", "test", "certificate", "gallery", "recommendations", "badge"]);
     const basics = await read(online.id, "basics");
-    expect(basics.value).toEqual({ title: { et: "E-kulm" }, slug: "e-kulm", level: "basic", language: "ET", summary: { et: "" }, body: { et: "" }, type: "e_learning" });
+    expect(basics.value).toEqual({ title: { et: "E-kulm" }, slug: "e-kulm", level: "basic", language: "ET", areaId: null, summary: { et: "" }, body: { et: "" }, type: "e_learning" });
     expect(basics.version).toBe(`l:${await contentVersion(basics.value)}`);
     expect((await read(online.id, "price")).value).toEqual({ price: "95", accessMonths: "6", videoCount: "", nextDiscount: { et: "" }, priceGroup: "", priceIndividual: "", durationLabel: { et: "" } });
     expect((await read(online.id, "test")).value).toEqual({ questions: [QUESTION], passPercent: "80", tries: "3" });
@@ -542,5 +542,98 @@ describe("the editor's start (Task 7): every card's part at once", () => {
     expect(off.parts.basics.value).toEqual(off.parts.basics.live);
     expect(off.outline).toEqual([]);
     expect(await readCourseEditor(db, 999_999)).toBeNull();
+  });
+});
+
+describe("„Kujundus“ on the „Tunnistus“ card (2026-11-11 certificate designs, spec §5.2)", () => {
+  const designs = () => db.select().from(certificateDesigns).orderBy(asc(certificateDesigns.sort));
+
+  test("a published e-course: none picked at first (the first design); the pick waits in the draft and goes live on publish; none again", async () => {
+    const [, tume] = await designs();
+    const live = await read(online.id, "certificate");
+    expect(live.value).toEqual({ certificateTitle: "", certificateSkills: [], certificateVolume: "", certificateDesignId: null });
+    expect((await write(online.id, "certificate", { certificateDesignId: tume.id }, live.version)).ok).toBe(true);
+    expect((await row(online.id)).certificateDesignId).toBeNull();
+    expect((await read(online.id, "certificate")).value).toMatchObject({ certificateDesignId: tume.id });
+    expect(await courseChanges(db, online.id)).toEqual([{ part: "certificate", labels: ["Tunnistus"] }]);
+    expect((await publishCourse(db, online.id, NOW)).published).toEqual(["certificate"]);
+    expect((await row(online.id)).certificateDesignId).toBe(tume.id);
+    // none again: the first design
+    expect((await write(online.id, "certificate", { certificateDesignId: null }, (await read(online.id, "certificate")).version)).ok).toBe(true);
+    await publishCourse(db, online.id, NOW);
+    expect((await row(online.id)).certificateDesignId).toBeNull();
+  });
+
+  test("an id of no design is refused (`certificateDesignId: certificateDesign`), as is anything but a row id or none; a contact course stores none", async () => {
+    const [hele] = await designs();
+    expect((await write(hidden.id, "basics", { type: "e_learning" }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
+    const version = (await read(hidden.id, "certificate")).version;
+    expect(await write(hidden.id, "certificate", { certificateDesignId: 999_999 }, version)).toEqual({ ok: false, error: "invalid", fields: { certificateDesignId: "certificateDesign" } });
+    expect(await write(hidden.id, "certificate", { certificateDesignId: "1" }, version)).toMatchObject({ ok: false, error: "invalid", fields: { certificateDesignId: expect.any(String) } });
+    expect((await write(hidden.id, "certificate", { certificateDesignId: hele.id }, version)).ok).toBe(true);
+    expect((await row(hidden.id)).certificateDesignId).toBe(hele.id);
+    // a course that becomes a contact course has no certificate: its pick goes with its lines
+    expect((await write(hidden.id, "basics", { type: "contact" }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
+    expect((await row(hidden.id)).certificateDesignId).toBeNull();
+  });
+});
+
+// „Valdkond“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.2): the basics part's `areaId` — one of Seaded → Valdkonnad's areas, or
+// null („Määramata“) — saves as a draft on a published course and goes live with „Avalda muudatused“, straight to the record on an unpublished one.
+// An area that is no longer there (deleted between the editor's load and the save) is refused in the field (`area`); a draft whose area went away
+// meanwhile is held back at the publish (changed), never a 500. The migration's two areas are there in every test database (ids 1 and 2).
+describe("the course's area (basics: areaId)", () => {
+  const KULM = 1;
+  const RIPS = 2;
+
+  test("the basics read it (null: none); the PublishBar names it „Valdkond“", async () => {
+    expect((await read(online.id, "basics")).value).toMatchObject({ areaId: null });
+    await db.update(courses).set({ areaId: RIPS }).where(eq(courses.id, online.id));
+    expect((await read(online.id, "basics")).value).toMatchObject({ areaId: RIPS });
+    expect(partLabels("basics", { areaId: KULM })).toEqual(["Valdkond"]);
+    expect(partLabels("basics", { level: "advanced", areaId: KULM, summary: { et: "x" } })).toEqual(["Tase", "Valdkond", "Lühikirjeldus"]);
+  });
+
+  test("a published course: the area waits in the draft and goes live with the publish; back to „Määramata“ the same way", async () => {
+    const basics = await read(contact.id, "basics");
+    expect(await write(contact.id, "basics", { areaId: KULM }, basics.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
+    expect((await row(contact.id)).areaId).toBeNull();
+    expect((await read(contact.id, "basics")).value).toMatchObject({ areaId: KULM });
+    expect(await courseChanges(db, contact.id)).toEqual([{ part: "basics", labels: ["Valdkond"] }]);
+    expect(await publishCourse(db, contact.id, NOW)).toEqual({ published: ["basics"], blocked: [] });
+    expect((await row(contact.id)).areaId).toBe(KULM);
+    expect(revalidated()).toEqual([{ kind: "courses" }]);
+    const now = await read(contact.id, "basics");
+    expect((await write(contact.id, "basics", { areaId: null }, now.version)).ok).toBe(true);
+    expect(await publishCourse(db, contact.id, NOW)).toEqual({ published: ["basics"], blocked: [] });
+    expect((await row(contact.id)).areaId).toBeNull();
+  });
+
+  test("an unpublished course: written at once", async () => {
+    expect((await write(hidden.id, "basics", { areaId: RIPS }, (await read(hidden.id, "basics")).version)).ok).toBe(true);
+    expect((await row(hidden.id)).areaId).toBe(RIPS);
+    expect(await drafts(hidden.id)).toEqual([]);
+  });
+
+  test("an area that is not there (deleted meanwhile) is refused in the field, nothing stored; a value of the wrong kind too", async () => {
+    const basics = await read(contact.id, "basics");
+    expect(await write(contact.id, "basics", { areaId: 99 }, basics.version)).toEqual({ ok: false, error: "invalid", fields: { areaId: "area" } });
+    expect(await write(hidden.id, "basics", { areaId: 99 }, (await read(hidden.id, "basics")).version)).toEqual({ ok: false, error: "invalid", fields: { areaId: "area" } });
+    expect((await write(contact.id, "basics", { areaId: "1" }, basics.version)).ok).toBe(false);
+    expect((await write(contact.id, "basics", { areaId: 0 }, basics.version)).ok).toBe(false);
+    expect(await drafts(contact.id)).toEqual([]);
+    expect((await row(hidden.id)).areaId).toBeNull();
+  });
+
+  test("a draft whose area was deleted before the publish is held back as changed (the other parts go live), never a 500", async () => {
+    const [extra] = await db.insert(schema.courseAreas).values({ name: { et: "Meik", ru: "Макияж" }, sort: 3 }).returning();
+    expect((await write(contact.id, "basics", { areaId: extra.id }, (await read(contact.id, "basics")).version)).ok).toBe(true);
+    expect((await write(contact.id, "outcomes", { outcomes: [{ et: "Oskab" }] }, (await read(contact.id, "outcomes")).version)).ok).toBe(true);
+    // (Seaded refuses to delete an area a draft uses: this is the database's own delete, which no screen makes)
+    await db.delete(schema.courseAreas).where(eq(schema.courseAreas.id, extra.id));
+    const result = await publishCourse(db, contact.id, NOW);
+    expect(result.published).toEqual(["outcomes"]);
+    expect(result.blocked).toEqual([{ part: "basics", reason: "changed", fields: ["Valdkond"] }]);
+    expect((await row(contact.id)).areaId).toBeNull();
   });
 });

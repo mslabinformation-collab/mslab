@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { applySeatFixtures, ensureCourseTermsPage, ensureSeedPopup, LOCAL_FIXTURES, scheduleSampleSessions, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removePreviewDrafts, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
+import { applySeatFixtures, ensureCourseTermsPage, ensureDesignBackground, ensureSeedAreas, ensureSeedPopup, LOCAL_FIXTURES, scheduleSampleSessions, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverDesigns, removeLeftoverReviewFixtures, removePostRows, removePreviewDrafts, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
 import { E2E_MAIL_OUTBOX, forbiddenSettingError, SERVER_ENV_FILES } from "../local-secrets";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments } from "./local-kv";
@@ -28,11 +28,14 @@ export default async function globalSetup(): Promise<void> {
   await restoreLeftoverRows(); // site content (slides, packages, pages, settings …) it left changed
   await removePostRows(); // and the posts the site editor tests made
   await removeEditRows(); // its "E2E …" sessions and "e2e-uus-…" course
+  await removeLeftoverDesigns(); // the „E2E kujundus …“ / „Uus kujundus …“ designs an interrupted certificate test made (never „Hele“, „Tume“)
   await removeLeftoverReviewFixtures(); // the reviews the public pages' tests made (student reviews)
   await removePreviewDrafts(); // the draft the preview test made (a seed course's title)
   await removeLeftoverComments(); // review comments (dev server's local KV) of an interrupted feedback test
   await ensureCourseTermsPage(); // the e-course terms page (phase 2a), in a database seeded before it existed
   await ensureSeedPopup(); // the newsletter popup shown, not the old campaign offer (piece 4b), in a database seeded before that
+  await ensureDesignBackground(); // „Hele“ over our test JPEG (certificate designs), in a database migrated before its seed
+  await ensureSeedAreas(); // the seed courses' areas (spec 2026-11-11), in a database seeded before them: the calendar's and the catalogue's area chips
   await scheduleSampleSessions(); // the sample sessions on today's schedule: the calendar never runs out of dates
   await applySeatFixtures();
 }

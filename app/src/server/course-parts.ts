@@ -12,7 +12,7 @@ import { ROW_ID_MAX } from "@/lib/row-id";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion, stableJson } from "@/lib/version";
 import {
-  checkCourseBadge, checkCourseBasics, checkCourseCertificate, checkCourseGallery, checkCourseIncludes, checkCoursePrice, checkCoursePriceRequired,
+  checkCourseBadge, checkCourseBasics, checkCourseCertificate, checkCourseCertificateDesign, checkCourseGallery, checkCourseIncludes, checkCoursePrice, checkCoursePriceRequired,
   checkCourseRecommendations, checkCourseStages, checkCourseTest, type PriceFields,
 } from "./admin-content";
 import type { LessonCleanup } from "./admin-lessons";
@@ -71,14 +71,31 @@ const questions = z
 
 const SCHEMAS = {
   basics: z
-    .object({ title: i18n, slug: text(200), level: z.enum(["basic", "advanced"]), language: z.enum(COURSE_LANGUAGES), summary: i18n, body: i18n, type: z.enum(["e_learning", "contact"]) })
+    .object({
+      title: i18n,
+      slug: text(200),
+      level: z.enum(["basic", "advanced"]),
+      language: z.enum(COURSE_LANGUAGES),
+      // „Valdkond“ (course areas): an area's id or null („Määramata“); whether the area is there is the check's (checkCourseBasics, field `area`)
+      areaId: z.number().int().positive().max(ROW_ID_MAX).nullable(),
+      summary: i18n,
+      body: i18n,
+      type: z.enum(["e_learning", "contact"]),
+    })
     .strict(),
   price: z.object({ price: text(40), accessMonths: text(40), videoCount: text(40), nextDiscount: i18n, priceGroup: text(40), priceIndividual: text(40), durationLabel: i18n }).strict(),
   outcomes: z.object({ outcomes: z.array(i18n).max(200, "tooMany") }).strict(),
   includes: z.object({ includes: z.array(i18n).max(200, "tooMany") }).strict(),
   protocolStages: z.object({ protocolStages: z.array(text(2_000)).max(200, "tooMany") }).strict(),
   test: z.object({ questions, passPercent: text(10), tries: text(10) }).strict(),
-  certificate: z.object({ certificateTitle: text(2_000), certificateSkills: z.array(text(2_000)).max(200, "tooMany"), certificateVolume: text(2_000) }).strict(),
+  certificate: z
+    .object({
+      certificateTitle: text(2_000),
+      certificateSkills: z.array(text(2_000)).max(200, "tooMany"),
+      certificateVolume: text(2_000),
+      certificateDesignId: z.number({ error: "invalid" }).int("invalid").positive("invalid").max(ROW_ID_MAX, "invalid").nullable(),
+    })
+    .strict(),
   gallery: z.object({ images: z.array(z.object({ key: z.string().max(300, "tooLong"), alt: i18n })).max(200, "tooMany") }).strict(),
   recommendations: z.object({ recommendationIds: z.array(z.number().int().positive().max(ROW_ID_MAX)).max(200, "tooMany") }).strict(),
   badge: z.object({ badge: z.object({ label: z.object({ et: text(200), ru: text(200).optional() }), bg: z.string().max(20), fg: z.string().max(20) }).nullable() }).strict(),
@@ -219,7 +236,13 @@ const PARTS: { [P in CoursePart]: PartDef<P, unknown> } = {
     write: (tx, course, checked, now) => writeCourseTest(tx, course.id, checked.test, now),
     rename: { test: "questions", testPassPercent: "passPercent", testTries: "tries" },
   }),
-  certificate: def({ check: (ctx, c, v: PartValues["certificate"]) => checkCourseCertificate(c, v, ctx.type), write: columns }),
+  certificate: def({
+    check: async (ctx, c, v: PartValues["certificate"]) => ({
+      ...checkCourseCertificate(c, v, ctx.type),
+      certificateDesignId: await checkCourseCertificateDesign(ctx.q, c, v.certificateDesignId, ctx.type),
+    }),
+    write: columns,
+  }),
   gallery: def({ check: (_ctx, c, v: PartValues["gallery"]) => checkCourseGallery(c, v.images), write: (tx, course, checked, now) => writeCourseImages(tx, course.id, checked, now) }),
   recommendations: def({
     check: async (ctx, c, v: PartValues["recommendations"]) => ({ recommendationIds: await checkCourseRecommendations(ctx.q, c, v.recommendationIds, ctx.course.id) }),
