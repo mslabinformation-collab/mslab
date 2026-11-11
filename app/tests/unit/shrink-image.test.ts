@@ -216,6 +216,40 @@ describe("the admin's images (shrinkImage with ImageUpload's settings: its behav
   });
 });
 
+describe("a certificate design's background (ImageUpload kind certificate-background: 2026-11-11 certificate designs, spec §4)", () => {
+  const BACKGROUND: ShrinkOptions = { maxEdge: 3508, quality: 0.9, lower: [0.82, 0.74, 0.66], maxBytes: 1.5 * MB, accept: ["image/jpeg"], output: "jpeg" };
+
+  test("a JPEG of at most 3508 px (A4 at 300 dpi) at 0.9, with a neutral name; a smaller one is never made larger", async () => {
+    decodesAs(7016, 4960);
+    const out = await shrinkImage(picked("Canva lilled.jpg", "image/jpeg"), BACKGROUND);
+    expect(encodes).toEqual([{ width: 3508, height: 2480, type: "image/jpeg", quality: 0.9 }]);
+    expect([out.name, out.type]).toEqual(["pilt.jpg", "image/jpeg"]);
+    encodes = [];
+    decodesAs(1200, 900);
+    await shrinkImage(picked("a.jpg", "image/jpeg"), BACKGROUND);
+    expect(encodes).toEqual([{ width: 1200, height: 900, type: "image/jpeg", quality: 0.9 }]);
+  });
+
+  test("over 1.5 MB, it is encoded again at the lower qualities in turn; over at the last, ShrinkError 'size'", async () => {
+    decodesAs(3508, 2480);
+    bytesOf = (e) => (e.quality > 0.75 ? 2 * MB : 1200 * 1024);
+    const out = await shrinkImage(picked("a.jpg", "image/jpeg"), BACKGROUND);
+    expect(encodes.map((e) => e.quality)).toEqual([0.9, 0.82, 0.74]);
+    expect(out.size).toBe(1200 * 1024);
+    encodes = [];
+    bytesOf = () => 1.5 * MB + 1;
+    await expect(shrinkImage(picked("a.jpg", "image/jpeg"), BACKGROUND)).rejects.toMatchObject({ problem: "size" });
+    expect(encodes.map((e) => e.quality)).toEqual([0.9, 0.82, 0.74, 0.66]);
+  });
+
+  test("only a JPEG is taken", async () => {
+    decodesAs(800, 600);
+    await expect(shrinkImage(picked("a.png", "image/png"), BACKGROUND)).rejects.toMatchObject({ problem: "type" });
+    await expect(shrinkImage(picked("a.webp", "image/webp"), BACKGROUND)).rejects.toMatchObject({ problem: "type" });
+    expect(encodes).toEqual([]);
+  });
+});
+
 test("fitWithin: the longest side at most maxEdge, never larger than it was, at least 1 px", () => {
   expect(fitWithin(6000, 4000, 2048)).toEqual({ width: 2048, height: 1365 });
   expect(fitWithin(4000, 6000, 1600)).toEqual({ width: 1067, height: 1600 });

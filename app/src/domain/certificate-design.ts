@@ -4,7 +4,7 @@
 // light tone draws dark text and the black logo over the photo, the dark tone today's white on black. No database, no React: the server, Seaded and
 // the course editor share them. It runs in the browser too: no lookbehind here nor in what it imports (tests/unit/old-safari.test.ts).
 
-import { isMediaKey } from "@/lib/media";
+import { BACKGROUND_UPLOAD, isMediaKey } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
 
 /** The tones (certificate_designs.tone, its check): „Hele taust, tume tekst“ and „Tume taust, hele tekst“. */
@@ -20,8 +20,8 @@ export const DESIGN_LIMITS = { name: 40 } as const;
  * The background photo's upload: a JPEG of at most 1.5 MB (spec §4, my call: the app does no image processing, so the photo is embedded in the PDF
  * as it was uploaded, and this limit keeps the certificate small). Checked in the browser before it is sent and again by the upload route.
  */
-export const BACKGROUND_MAX_BYTES = 1.5 * 1024 * 1024;
-export const BACKGROUND_TYPE = "image/jpeg";
+export const BACKGROUND_MAX_BYTES = BACKGROUND_UPLOAD.maxBytes;
+export const BACKGROUND_TYPE = BACKGROUND_UPLOAD.types[0];
 
 /** A design as Seaded keeps it (the table certificate_designs). */
 export type CertificateDesign = { id: number; name: string; tone: DesignTone; backgroundKey: string; sort: number };

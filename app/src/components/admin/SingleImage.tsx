@@ -2,7 +2,7 @@
 
 import { useId, type ReactNode } from "react";
 import { adminEt } from "@/i18n/dict/admin";
-import { mediaUrl } from "@/lib/media";
+import { mediaUrl, type UploadKind } from "@/lib/media";
 import { ImageUpload } from "./ImageUpload";
 import ui from "./ui.module.css";
 import styles from "./site-editor.module.css";
@@ -24,6 +24,7 @@ export function SingleImage({
   labelHidden,
   name,
   field,
+  kind,
   children,
 }: {
   label: string;
@@ -46,6 +47,8 @@ export function SingleImage({
    * leave guard's „Jää siia“ and the chip's „Näita“ reach it (site/useSitePart.ts focusSiteField; piece 4a final review M-5).
    */
   field?: string;
+  /** What the upload is for (ImageUpload's kind): a certificate design's background takes a JPEG of at most 1.5 MB. */
+  kind?: UploadKind;
   children?: ReactNode;
 }) {
   const t = adminEt.editor.image;
@@ -78,7 +81,7 @@ export function SingleImage({
           {error}
         </p>
       )}
-      <ImageUpload onUploaded={(keys) => keys.length && onChange(keys[keys.length - 1])} label={value ? t.replace : t.choose} />
+      <ImageUpload onUploaded={(keys) => keys.length && onChange(keys[keys.length - 1])} label={value ? t.replace : t.choose} kind={kind} />
       {removable && value && (
         <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.start}`} onClick={() => onChange("")}>
           {t.remove}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { isMediaKey, MAX_IMAGE_BYTES, MEDIA_CACHE, MEDIA_CDN_CACHE_HEADER, NO_MEDIA, putImage, serveMedia, UploadError } from "@/server/media";
+import { BACKGROUND_MAX_BYTES } from "@/domain/certificate-design";
+import { isMediaKey, MAX_IMAGE_BYTES, MEDIA_CACHE, MEDIA_CDN_CACHE_HEADER, NO_MEDIA, putImage, serveMedia, UPLOAD_RULES, UploadError } from "@/server/media";
 import { fakeMediaStore } from "../fakes";
 
 // Task 13: the server side of an image upload. putImage trusts nothing the browser says: the declared type must be
@@ -52,6 +53,24 @@ describe("putImage", () => {
     expect([...stored.bytes.slice(0, 4)]).toEqual(JPEG);
     // the visitor's file name is not part of the key
     expect(key).not.toContain("IMG_0001");
+  });
+
+  test("a certificate design's background (2026-11-11 certificate designs, spec §4): a JPEG of at most 1.5 MB, nothing else", async () => {
+    const store = fakeMediaStore();
+    expect(UPLOAD_RULES["certificate-background"]).toEqual({ types: ["image/jpeg"], maxBytes: 1.5 * MB });
+    expect(BACKGROUND_MAX_BYTES).toBe(1.5 * MB);
+    const { key } = await putImage(store, file(JPEG, 1.5 * MB, "image/jpeg"), "certificate-background");
+    expect(key).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+    expect(store.objects.get(key)!.contentType).toBe("image/jpeg");
+    expect(reason(await putImage(store, file(JPEG, 1.5 * MB + 1, "image/jpeg"), "certificate-background").catch((e) => e))).toBe("size");
+    expect(reason(await putImage(store, file(PNG, 500, "image/png"), "certificate-background").catch((e) => e))).toBe("type");
+    expect(reason(await putImage(store, file(WEBP, 500, "image/webp"), "certificate-background").catch((e) => e))).toBe("type");
+    expect(reason(await putImage(store, file(PNG, 500, "image/jpeg"), "certificate-background").catch((e) => e))).toBe("content");
+    expect(store.objects.size).toBe(1);
+    // any other picture keeps its limits
+    expect(UPLOAD_RULES.image).toEqual({ types: ["image/jpeg", "image/png", "image/webp"], maxBytes: MAX_IMAGE_BYTES });
+    await putImage(store, file(JPEG, 2 * MB, "image/jpeg"), "image");
+    expect(store.objects.size).toBe(2);
   });
 
   test("a 4 MB image is still accepted; every upload gets its own key", async () => {

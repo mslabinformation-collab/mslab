@@ -70,6 +70,33 @@ describe("POST /api/admin/upload", () => {
     expect(fake.objects.size).toBe(0);
   });
 
+  test("?for=certificate-background (a design's background photo): a JPEG of at most 1.5 MB; an unknown purpose is 400 `kind`", async () => {
+    const fake = fakeMediaStore();
+    store.current = fake;
+    const send = (file: File, purpose: string, length?: number) => {
+      const body = new FormData();
+      body.set("file", file);
+      const headers = length ? { "content-length": String(length) } : undefined;
+      return POST(new Request(`https://mslab.example/api/admin/upload?for=${purpose}`, { method: "POST", body, headers }), undefined);
+    };
+    const ok = await send(jpeg(), "certificate-background");
+    expect(ok.status).toBe(201);
+    expect(((await ok.json()) as { key: string }).key).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "x.png", { type: "image/png" });
+    const cases: [Response, number, string][] = [
+      [await send(png, "certificate-background"), 415, "type"],
+      [await send(new File([new Uint8Array(1.5 * 1024 * 1024 + 1)], "x.jpg", { type: "image/jpeg" }), "certificate-background"), 413, "size"],
+      // announced over 1.5 MB plus the envelope: refused before the body is read
+      [await send(jpeg(), "certificate-background", 1.5 * 1024 * 1024 + 128 * 1024), 413, "size"],
+      [await send(jpeg(), "poster"), 400, "kind"],
+    ];
+    for (const [res, status, error] of cases) {
+      expect(res.status, error).toBe(status);
+      expect(await res.json(), error).toEqual({ ok: false, error });
+    }
+    expect(fake.objects.size).toBe(1);
+  });
+
   test("a request announced as larger than the limit plus the multipart envelope is 413 before its body is read", async () => {
     const fake = fakeMediaStore();
     store.current = fake;

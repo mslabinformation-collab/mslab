@@ -1633,6 +1633,13 @@ export const adminEt = {
     session: "Sessioon on aegunud. Logi uuesti sisse ja proovi siis uuesti.",
     storage: "Piltide salvestamine pole seadistatud — anna arendajale teada.",
     server: "Üleslaadimine ei õnnestunud. Proovi uuesti.",
+    // (Draft, 2026-11-11 certificate designs: a design's „Taustapilt“, a JPEG of at most 1.5 MB that the PDF embeds as it is; the row's own hint
+    // says the type, the size and the A4 shape)
+    background: {
+      hint: "Enne üleslaadimist vähendatakse pilt kuni 3508 pikslini ja kaamera andmed (asukoht jm) eemaldatakse.",
+      type: "Seda faili ei saa kasutada. Vali JPEG-pilt.",
+      size: "Pilt on liiga suur (kuni 1,5 MB).",
+    },
   },
 
   // Prototype D adminBadges ("Koolituse märgis"), Maria C36: "Väga meeldib see blokk. Jätame."
