@@ -109,6 +109,12 @@
   border-top: 1px solid var(--line);
 }
 
+/* the open post's row has its own rounded ink frame: no straight line runs into it from above or below */
+.rows > li:has(> [aria-current="page"]),
+.rows > li:has(> [aria-current="page"]) + li {
+  border-top-color: transparent;
+}
+
 .row {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);

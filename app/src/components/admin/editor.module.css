@@ -129,6 +129,11 @@
     margin: -13px 0;
     padding: 13px 0;
   }
+
+  /* „Valdkond“'s hint stood 8 px under the select, so the link's 13 px reach covered the select's lower edge: 14 px on a phone */
+  .pairHint {
+    margin-top: -8px;
+  }
 }
 
 .select {

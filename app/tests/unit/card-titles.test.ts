@@ -29,7 +29,8 @@ describe("UX audit 2 A26: one card-title size, one sub-heading size", () => {
       .filter((line) => line.includes(`styles.${cls}}`) && /<h[23]\b|titleClassName=/.test(line));
     expect(uses).toHaveLength(n);
     for (const line of uses) expect(line).toContain(`\${ui.${ui}} \${styles.${cls}}`);
-    const rules = [...src(css).matchAll(new RegExp(`(?:^|[\\s,}])\\.${cls}\\s*\\{([^}]*)\\}`, "g"))].map((m) => m[1]);
+    // (an element may lead the class, as `h3.usesTitle` does so its margins beat ui .h3's by specificity)
+    const rules = [...src(css).matchAll(new RegExp(`(?:^|[\\s,}])(?:[a-z][a-z0-9]*)?\\.${cls}\\s*\\{([^}]*)\\}`, "g"))].map((m) => m[1]);
     expect(rules.length).toBeGreaterThan(0);
     for (const body of rules) expect(body).not.toMatch(/\bfont(-size|-weight|-family)?\s*:|letter-spacing\s*:/);
   });

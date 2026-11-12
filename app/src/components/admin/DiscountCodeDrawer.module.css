@@ -151,8 +151,9 @@ p.notice {
   border-top: 1px solid var(--line);
 }
 
-/* „Kasutused (n)“: the drawers' one sub-heading, ui .h3's 20 px (UX audit 2 A26; it was 18 px) */
-.usesTitle {
+/* „Kasutused (n)“: the drawers' one sub-heading, ui .h3's 20 px (UX audit 2 A26; it was 18 px); h3. so its margins win over ui .h3's margin 0
+   whatever order the stylesheets load in */
+h3.usesTitle {
   margin: 8px 0 4px;
 }
 

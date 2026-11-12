@@ -123,6 +123,23 @@ describe("F17: the Uudised list as the page", () => {
     // (the list's own rule, not `.card .rows`)
     expect(rule(sheet, "\n.rows")).toMatch(/gap: 0;/);
   });
+
+  // (final review of UX audit 2: the open post's row has its own rounded ink frame; a straight grey line ran into it from above and below)
+  it("no line next to the open post's row: its ink frame stands alone", () => {
+    expect(rule(sheet, '.rows > li:has(> [aria-current="page"]),\n.rows > li:has(> [aria-current="page"]) + li')).toMatch(/border-top-color: transparent;/);
+  });
+});
+
+// Final review of UX audit 2 (M1, M4): two rules that hold the A37 and A26 fixes in place
+describe("UX audit 2 review: the hint link's tap box and the drawer sub-heading's margins", () => {
+  it("M1: on a phone „Valdkond“'s pair hint sits 14 px under the select, so the link's 13 px tap reach does not cover the select", () => {
+    const sheet = css("components", "admin", "editor.module.css");
+    expect(rule(sheet, ".pairHint", "@media (max-width: 899.98px) {")).toMatch(/margin-top: -8px;/);
+  });
+
+  it("M4: „Kasutused (n)“ keeps its 8/4 px margins over ui .h3's margin 0 by specificity, not stylesheet order", () => {
+    expect(rule(css("components", "admin", "DiscountCodeDrawer.module.css"), "h3.usesTitle")).toMatch(/margin: 8px 0 4px;/);
+  });
 });
 
 // UX pass 11.11 A22 (the Vaiksed board) undoes F20: „Sinu järjekord“ with two rows stood stretched to the height of „Tulevased koolitused“, a large
