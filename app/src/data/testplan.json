@@ -691,7 +691,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T11:37:56.256Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -749,7 +749,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T11:37:56.256Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -1926,7 +1926,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T11:37:56.256Z"
     },
     {
       "id": "haldus-uudised-postitus",
@@ -2014,7 +2014,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T11:37:56.256Z"
     },
     {
       "id": "haldus-praktika",
@@ -2169,7 +2169,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T11:37:56.256Z"
     },
     {
       "id": "haldus-sooduskoodid-uus",
