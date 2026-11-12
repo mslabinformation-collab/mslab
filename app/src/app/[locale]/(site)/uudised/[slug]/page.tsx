@@ -18,7 +18,9 @@ import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "../news.module.css";
 import { previewActive } from "@/server/preview";
-import { shareMetadata } from "@/server/share-meta";
+import { siteBase, shareMetadata } from "@/server/share-meta";
+import { JsonLd } from "@/components/site/JsonLd";
+import { breadcrumbLd, postLd } from "@/lib/structured-data";
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
 
@@ -136,6 +138,15 @@ export default async function PostPage({ params }: Props) {
         </section>
       )}
       {previewBar}
+      {/* SEO G5: the post and its trail (scripts: nothing is drawn) */}
+      <JsonLd data={postLd(siteBase(), locale, post)} />
+      <JsonLd
+        data={breadcrumbLd(siteBase(), [
+          { name: d.common.home, path: to("/") },
+          { name: d.nav.news, path: to("/uudised") },
+          { name: title, path: to(`/uudised/${post.slug}`) },
+        ])}
+      />
     </>
   );
 }

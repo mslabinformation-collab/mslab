@@ -36,7 +36,9 @@ import { DELETED_MARK } from "@/lib/account-marks";
 import { mediaUrl } from "@/lib/media";
 import { previewActive } from "@/server/preview";
 import { homeReviews } from "@/server/reviews";
-import { shareMetadata } from "@/server/share-meta";
+import { siteBase, shareMetadata } from "@/server/share-meta";
+import { JsonLd } from "@/components/site/JsonLd";
+import { websiteLd } from "@/lib/structured-data";
 import styles from "./home.module.css";
 import { upcomingFrom } from "@/domain/calendar";
 
@@ -280,6 +282,7 @@ export default async function Home({ params, searchParams }: Props) {
       {/* (the admin's draft preview opens it at once in any browser, signed up or not, and leaves the 30-day stamp alone: R-e, ruling c2) */}
       {newsletterPopup && <NewsletterPopup n={newsletterPopup} locale={locale} preview={drafts} t={{ close: d.common.close, form: popupFormTexts(d, hasWelcomeCode) }} />}
       {previewBar}
+      <JsonLd data={websiteLd(siteBase(), d.common.siteName)} />
     </>
   );
 }

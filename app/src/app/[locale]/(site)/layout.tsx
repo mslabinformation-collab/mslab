@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Script from "next/script";
 import { Footer } from "@/components/site/Footer";
 import { Header } from "@/components/site/Header";
+import { JsonLd } from "@/components/site/JsonLd";
 import { SiteReady } from "@/components/site/SiteReady";
 import { shellSettings, type ShellSettings } from "@/components/site/settings";
 import { getDb } from "@/db/client";
@@ -9,7 +10,9 @@ import { FEEDBACK_SCRIPT, REVIEW_TOOLS } from "@/lib/review-tools";
 import { welcomeCode } from "@/server/discount-codes";
 import { logFailure } from "@/server/log";
 import { getSiteSettings } from "@/server/site-data";
-import { isLocale, type Locale } from "@/i18n/locales";
+import { getDict, isLocale, type Locale } from "@/i18n/locales";
+import { siteBase } from "@/server/share-meta";
+import { organizationLd } from "@/lib/structured-data";
 
 /**
  * Every public page is cached once rendered (incremental static regeneration) and rendered again when an admin save, a
@@ -51,6 +54,8 @@ export default async function SiteLayout({ children, params }: { children: React
       <Footer locale={locale} newsletter={settings.newsletter} contact={settings.contact} trainerName={settings.trainerName} />
       {REVIEW_TOOLS && <Script src={FEEDBACK_SCRIPT} strategy="afterInteractive" />}
       <SiteReady />
+      {/* SEO G5: the organization, on every public page (a script: nothing is drawn) */}
+      <JsonLd data={organizationLd(siteBase(), getDict(locale).common.siteName, settings.contact)} />
     </>
   );
 }

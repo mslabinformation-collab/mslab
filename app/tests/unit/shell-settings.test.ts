@@ -13,7 +13,7 @@ describe("shellSettings", () => {
     );
     expect(s).toEqual({
       newsletter: { discount: null },
-      contact: { email: "info@mslab.ee", phone: "+372 5555 5555", instagram: "", facebook: "" },
+      contact: { email: "info@mslab.ee", phone: "+372 5555 5555", address: "Pärnu", instagram: "", facebook: "" },
       trainerName: "Maria Sosnina",
     });
   });
@@ -30,7 +30,7 @@ describe("shellSettings", () => {
     for (const input of [{}, { contact: "x", newsletter: [], trainer: null }]) {
       const s = shellSettings(input as Record<string, unknown>, "et", null);
       expect(s.newsletter.discount).toBeNull();
-      expect(s.contact).toEqual({ email: "", phone: "", instagram: "", facebook: "" });
+      expect(s.contact).toEqual({ email: "", phone: "", address: "", instagram: "", facebook: "" });
       expect(s.trainerName).toBe("");
     }
   });

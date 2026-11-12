@@ -5,7 +5,8 @@ import type { Locale } from "@/i18n/locales";
 
 // The parts of the settings table the site shell needs, with safe defaults (keys: see db/schema.ts settings).
 
-export type FooterContact = { email: string; phone: string; instagram: string; facebook: string };
+// `address` is not shown in the footer: the organization's structured data uses it (lib/structured-data.ts, SEO G5).
+export type FooterContact = { email: string; phone: string; address: string; instagram: string; facebook: string };
 /**
  * The footer's sign-up block: the welcome code's value as its row has it („10%“, „15 €“), or null while no welcome code is valid today (F1: the footer
  * then says `newsletter.bodyNoCode`, with no discount to promise).
@@ -24,7 +25,7 @@ export function shellSettings(settings: Record<string, unknown>, locale: Locale,
     // (the stored `newsletter` setting says nothing here any more: the welcome code is a row of discount_codes)
     newsletter: { discount: welcome ? welcome.value : null },
     // social links open in a new tab: https addresses only (the admin stores nothing else; anything older is dropped)
-    contact: { email: str(contact.email), phone: str(contact.phone), instagram: https(contact.instagram), facebook: https(contact.facebook) },
+    contact: { email: str(contact.email), phone: str(contact.phone), address: str(contact.address), instagram: https(contact.instagram), facebook: https(contact.facebook) },
     trainerName: pick(trainerNameOf(obj(settings.trainer).name), locale),
   };
 }

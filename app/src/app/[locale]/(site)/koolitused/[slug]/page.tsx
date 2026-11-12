@@ -40,7 +40,9 @@ import { upcomingFrom } from "@/domain/calendar";
 import { contractTemplate } from "@/server/contracts";
 import { previewActive } from "@/server/preview";
 import { courseReviews } from "@/server/reviews";
-import { shareMetadata } from "@/server/share-meta";
+import { siteBase, shareMetadata } from "@/server/share-meta";
+import { JsonLd } from "@/components/site/JsonLd";
+import { breadcrumbLd, courseLd } from "@/lib/structured-data";
 import { financingShown, financingSwitch, getSiteSettings } from "@/server/site-data";
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
@@ -392,6 +394,15 @@ export default async function CoursePage({ params }: Props) {
 
       <Recommendations title={c.recommendations} cards={recommended} />
       {previewBar}
+      {/* SEO G5: the course and its trail (scripts: nothing is drawn); the course's sessions are the upcoming ones (loadCourse), cancelled ones dropped in courseLd */}
+      <JsonLd data={courseLd(siteBase(), locale, course, course.sessions)} />
+      <JsonLd
+        data={breadcrumbLd(siteBase(), [
+          { name: d.common.home, path: to("/") },
+          { name: d.nav.courses, path: to("/koolitused") },
+          { name: title, path: to(`/koolitused/${course.slug}`) },
+        ])}
+      />
     </>
   );
 }

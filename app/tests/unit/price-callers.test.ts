@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 // saw once a discount code is on the registration. So the list price is read only where it is shown (the course page, the cart) or where the total
 // is made, and these lists say where, by file. (Comments go first: they name the functions too.)
 const LIST_PRICE_ALLOWED = ["src/app/[locale]/(site)/koolitused/[slug]/page.tsx", "src/app/[locale]/(site)/ostukorv/cart.tsx", "src/db/demo-data.ts", "src/domain/discount-codes.ts", "src/domain/registration.ts"];
-const COURSE_PRICE_ALLOWED = ["src/domain/registration.ts", "src/app/[locale]/(site)/koolitused/[slug]/page.tsx", "src/app/[locale]/(site)/ostukorv/cart.tsx", "src/server/submit.ts"];
+const COURSE_PRICE_ALLOWED = ["src/domain/registration.ts", "src/app/[locale]/(site)/koolitused/[slug]/page.tsx", "src/app/[locale]/(site)/ostukorv/cart.tsx", "src/server/submit.ts", "src/lib/structured-data.ts" /* SEO G5: the list price shown in the course page's data */];
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
@@ -34,7 +34,7 @@ test("registrationPrice is gone", () => {
   expect(filesMatching(/\bregistrationPrice\b/)).toEqual([]);
 });
 
-test("course.price is read directly only in the four files", () => {
+test("course.price is read directly only in the allowed files", () => {
   const readers = filesMatching(/\bcourse\.price\b/);
   expect(readers.length, "the scan finds the reads").toBeGreaterThan(2);
   expect(readers.filter((f) => !COURSE_PRICE_ALLOWED.includes(f))).toEqual([]);
