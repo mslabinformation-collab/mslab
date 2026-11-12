@@ -114,6 +114,8 @@ describe("routeSitePath", () => {
     expect(route("/et/meist")).toEqual({ kind: "redirect", path: "/koolitaja" });
     expect(route("/koolitused/")).toEqual({ kind: "redirect", path: "/koolitused" });
     expect(route("/ru/meist")).toEqual({ kind: "page", page: "/ru/leidmata", rewritten: true });
+    expect(route("/product")).toEqual({ kind: "redirect", path: "/koolitused" });
+    expect(route("/konto/kursus/x")).toEqual({ kind: "page", page: "/et/konto/kursus/x", rewritten: true });
   });
 
   test("redirects, the hub, the API and everything served as it is", () => {

@@ -23,6 +23,12 @@ describe("oldAddressTarget", () => {
     expect(oldAddressTarget("/topics/x")).toBe("/koolitused");
   });
 
+  test("the bare root of a prefix goes to the prefix's target; similar current pages are not captured", () => {
+    for (const { prefix, to } of map.prefixes) expect(oldAddressTarget(prefix.replace(/\/$/, "")), prefix).toBe(to);
+    for (const p of ["/product", "/kursused", "/courses", "/lesson", "/lessons", "/topics", "/product-category"]) expect(oldAddressTarget(p), p).toBe("/koolitused");
+    for (const p of ["/konto/kursus/x", "/konto/kursus/x/12", "/konto/kursus", "/productx", "/koolitused/x", "/lessonsx", "/ostukorv/x"]) expect(oldAddressTarget(p), p).toBeNull();
+  });
+
   test("an address of the new site, or an unknown one, is not an old address", () => {
     for (const p of ["/wp-admin", "/koolitused", "/praktika", "/koolitaja", "/koolituskalender", "/", "/constructor", "/toString", "/__proto__"]) expect(oldAddressTarget(p), p).toBeNull();
   });

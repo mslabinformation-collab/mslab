@@ -12,6 +12,7 @@ const PREFIXES: readonly { prefix: string; to: string }[] = map.prefixes;
  */
 export function oldAddressTarget(path: string): string | null {
   if (Object.prototype.hasOwnProperty.call(EXACT, path)) return EXACT[path];
-  for (const rule of PREFIXES) if (path.startsWith(rule.prefix)) return rule.to;
+  // (the bare root of a prefix, "/product", is the shop's own page: it goes to the same target)
+  for (const rule of PREFIXES) if (path.startsWith(rule.prefix) || path === rule.prefix.slice(0, -1)) return rule.to;
   return null;
 }
