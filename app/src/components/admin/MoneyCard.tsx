@@ -282,7 +282,8 @@ export function MoneyCard({
 
       {!cancelled &&
         (!opened ? (
-          <button ref={button} type="button" className={`${ui.btn} ${styles.add}`} onClick={open} data-add-payment="">
+          // the 44 px add button (UX audit 2 A27, as every „Lisa … +“)
+          <button ref={button} type="button" className={`${ui.btn} ${ui.smallBtn} ${styles.add}`} onClick={open} data-add-payment="">
             {m.add} +
           </button>
         ) : (

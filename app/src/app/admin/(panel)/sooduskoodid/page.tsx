@@ -75,7 +75,8 @@ export default async function DiscountCodesPage({ searchParams }: Props) {
             <h1 className={ui.h1}>{t.title}</h1>
             <p className={ui.lead}>{t.lead}</p>
           </div>
-          <Link id="add-code" className={ui.btn} href={hrefOf("uus")} scroll={false} data-add-code="">
+          {/* the 44 px add button (UX audit 2 A27, as every „Lisa … +“) */}
+          <Link id="add-code" className={`${ui.btn} ${ui.smallBtn}`} href={hrefOf("uus")} scroll={false} data-add-code="">
             {t.add} +
           </Link>
         </div>
