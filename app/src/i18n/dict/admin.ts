@@ -2252,8 +2252,11 @@ export const adminEt = {
   },
 
   newsletter: {
-    eyebrow: "Uudiskiri",
-    title: "Uudiskirja tellijad",
+    // one heading for both views, „Tellijad“ and „Kirjad“ (UX audit 2 A42): the eyebrow is the sidebar group's name (nav.groups.site), as Hüpikaken's
+    // (Draft, UX audit 2 A42)
+    eyebrow: "Koduleht ja uudiskiri",
+    // (Draft, UX audit 2 A42)
+    title: "Uudiskiri",
     lead: "Tellijad liituvad ise, aadressi sisestades: kinnituskirja enam ei saadeta. Tervituskirjas on loobumislink. „Ootab kinnitust“ on aadress, mis liitus vanal viisil ega ole kinnituslinki avanud.",
     // Tellijad (admin UX pass, piece 3b Task 7; README B5, piece3-texts P-13): the one „Laadi alla (CSV)“ of the current filter in place of „Lae alla
     // kinnitatud (CSV)“ and „Lae alla kõik (CSV)“, the search field's placeholder, the word of the empty lines („Tellijaid veel pole.“, „Selle valikuga
@@ -2290,7 +2293,6 @@ export const adminEt = {
     // {n} a count, {max} a limit, {date} a time, {a} / {b} the Estonian and the Russian counts, {sent} / {left} the mails that went and those waiting,
     // {email} an address, {name} the letter's name.
     campaigns: {
-      title: "Kirjad",
       list: "Kirjad",
       // „Uus kiri +“ (the „+“ is the component's): a draft of this name at once (S3-P3-h, ruling R-g: `newTitle` is its name)
       new: "Uus kiri",

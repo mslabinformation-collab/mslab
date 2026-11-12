@@ -47,7 +47,9 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
  * a row of the old double opt-in that was never confirmed), newest first, under the search of an address and the pills „Kinnitatud“ / „Ootab kinnitust“
  * with their counts (?otsi=, ?olek=), and „Laadi alla (CSV)“ of that filter. 50 a page (?leht=); the CSV has all the rows the filter finds.
  * „Kirjad“ (?vaade=kampaaniad, the address kept: README B5): the letters and the editor of the one chosen (&kampaania=<id>; components/admin/CampaignsPanel.tsx).
- * The two views are tabs („Tellijad“ | „Kirjad“, TabPills).
+ * The two views are tabs („Tellijad“ | „Kirjad“, TabPills) under one heading, the eyebrow „Koduleht ja uudiskiri“ (the sidebar's group) and the H1
+ * „Uudiskiri“; the tabs stand where Hindamine has them, their own row under the heading at the left (UX audit 2 A42; admin polish F12 had put them
+ * at the right end of the H1's row, and the H1 was „Uudiskirja tellijad“ or „Kirjad“).
  */
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
@@ -118,32 +120,29 @@ async function subscribersPage(search: Search) {
     current: view.state === p.key,
   }));
 
-  // the tabs at the right of the H1, where the letters' view has them (the Part 3 frame „B5“; admin polish F12: they were under the lead here), with
-  // „Laadi alla (CSV)“ before them; on a phone, under the lead, the CSV first (newsletter.module.css)
+  // the heading with „Laadi alla (CSV)“ at its right (on a phone under the lead, the full width), then the tabs under it at the left, as on Hindamine
+  // (UX audit 2 A42)
   return (
     <div className={ui.page}>
-      <div className={`${ui.heading} ${styles.subsHeading}`}>
-        <div className={styles.subsTitle}>
+      <div className={ui.heading}>
+        <div>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <div className={`${ui.headAside} ${styles.subsAside}`}>
-          {/* (as tall as the tabs beside it: 44 px) */}
+        <div className={ui.headAside}>
           <div className={styles.downloads}>
             <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={subscribersCsvHref(view)} download data-csv="">
               {t.csvDownload}
             </a>
           </div>
-          <div className={styles.headTabs}>
-            <Views view="subscribers" />
-          </div>
         </div>
       </div>
+      <Views view="subscribers" />
 
       <ListToolbar placeholder={t.searchPlaceholder} pillRows={[{ label: t.statusLabel, pills }]} />
 
-      <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
+      <section className={`${ui.card} ${styles.card}`} aria-label={t.views.subscribers}>
         <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: list.total, confirmed: view.state === "pending" ? 0 : counts.confirmed })}</p>
         {rows.length === 0 ? (
           <ListEmpty things={t.things} filtered={filtered} search={view.otsi} clearHref="/admin/uudiskiri" />
@@ -196,14 +195,14 @@ function testTargetsOf(mariaEmail: string, adminEmail: string): TestTarget[] {
 }
 
 /**
- * The letters' view (README B5; the Part 3 frame „B5 Uudiskiri“): the eyebrow „Uudiskiri“, the H1 „Kirjad“ and the tabs at its right (no lead: none is
- * drawn); the list (each letter going out with its progress), and the editor of the one chosen (`kampaania`: an id, or nothing; the old `uus` is
+ * The letters' view (README B5; the Part 3 frame „B5 Uudiskiri“): the eyebrow and the H1 „Uudiskiri“ (no lead: none is drawn), the tabs under them
+ * (UX audit 2 A42); the list (each letter going out with its progress), and the editor of the one chosen (`kampaania`: an id, or nothing; the old `uus` is
  * nothing now, „Uus kiri +“ makes its draft at once), which once it is no draft carries where its deliveries stand and whether the last batch was refused.
  * While a letter is open the heading has the page's ET | RU switch for its fields and its preview. A draft's „Saada kõigile ({n})“ is given the count of
  * the confirmed subscribers as read now, without the press's lock (B9, ruling R-h: server/newsletter-campaigns.ts sendCountsNow; the panel reads it again
  * under the lock). (It reads.) `gated`: the coming-soon gate is on (SITE_GATE, read as the middleware reads it), so the panel of „Saada kõigile“ and the
  * result of „Saada proov“ say that the mail's links open „Tulekul“ (final review I1); the editor, a browser component, never reads the environment.
- * On a phone (below 900 px) an open letter is a screen of its own: the H1 and the tabs give way to its „← Kirjad“ (newsletter.module.css).
+ * On a phone (below 900 px) an open letter is a screen of its own: the heading's words and the tabs give way to its „← Kirjad“ (newsletter.module.css).
  */
 async function campaignsPage(email: string, kampaania: string) {
   const db = getDb();
@@ -221,15 +220,17 @@ async function campaignsPage(email: string, kampaania: string) {
       <div className={`${ui.heading} ${styles.lettersHeading}`}>
         <div className={styles.lettersTitle}>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
-          <h1 className={ui.h1}>{t.campaigns.title}</h1>
+          <h1 className={ui.h1}>{t.title}</h1>
         </div>
-        {/* (ET | RU before the tabs: the tabs stay at the row's right end, in the same place in both views, F12) */}
-        <div className={`${ui.headAside} ${styles.lettersAside}`}>
-          {chosen && <LangSwitch />}
-          <div className={styles.headTabs}>
-            <Views view="campaigns" />
+        {/* (the page's ET | RU while a letter is open, for its fields and its preview) */}
+        {chosen && (
+          <div className={`${ui.headAside} ${styles.lettersAside}`}>
+            <LangSwitch />
           </div>
-        </div>
+        )}
+      </div>
+      <div className={styles.viewTabs}>
+        <Views view="campaigns" />
       </div>
       <CampaignsPanel
         campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}

@@ -179,7 +179,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudiskiri");
     await adminReady(page);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskirja tellijad");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskiri");
     // Tellijad (piece 3b Task 7): the search of an address, the two pills, and one „Laadi alla (CSV)“ of the current filter in place of the two fixed buttons
     await expect(page.getByRole("searchbox", { name: "Otsi e-posti järgi" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Staatus", exact: true }).getByRole("link")).toHaveCount(2);
@@ -192,7 +192,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     await expect(page.locator("[data-tab-pills] a")).toHaveText(["Tellijad", "Kirjad"]);
     await page.locator("[data-tab-pills]").getByRole("link", { name: "Kirjad" }).click();
     await expect(page).toHaveURL(/\/admin\/uudiskiri\?vaade=kampaaniad$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kirjad");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskiri");
     await expect(page.locator("[data-tab-pills] a[aria-current='page']")).toHaveText("Kirjad");
     await expect(page.locator("[data-campaign-new]")).toHaveText("Uus kiri +");
     expect(await noOverflow(page)).toBe(true);
@@ -764,7 +764,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       const main = page.locator("main");
       await page.goto(CAMPAIGNS);
       await adminReady(page);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kirjad");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskiri");
       await expect(page.locator("[data-campaigns-list]")).toBeVisible();
       await expect(page.locator("[data-campaign-new]")).toBeVisible();
       expect(await noOverflow(page), "the list").toBe(true);

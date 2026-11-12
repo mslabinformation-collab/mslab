@@ -618,7 +618,7 @@
       "expect": [
         "Loendis on Proov 3 aadress koos keele, nõusoleku aja ja kinnitusajaga.",
         "Loendi kohal on rida „Tellijaid: …, neist kinnitatud …“.",
-        "Lehe ülaosas on vaated „Tellijad“ ja „Kirjad“ ning üks nupp „Laadi alla (CSV)“.",
+        "Pealkiri on „Uudiskiri“; selle all vasakul on vaated „Tellijad“ ja „Kirjad“, paremal üks nupp „Laadi alla (CSV)“.",
         "Nuppudel „Kinnitatud“ ja „Ootab kinnitust“ on arv ning vajutatud nupu arv on loendi ridade arv.",
         "Loendis on ainult aadressid, milles on „proov3“, ja ainult kinnitatud tellijad.",
         "Fail sisaldab samu ridu, ka Proov 3 aadressi."
@@ -627,7 +627,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania",

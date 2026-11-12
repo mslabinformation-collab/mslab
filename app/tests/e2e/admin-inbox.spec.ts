@@ -1405,7 +1405,7 @@ test.describe("signed in", () => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudiskiri");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskirja tellijad");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskiri");
     await adminReady(page);
     const field = page.getByRole("searchbox", { name: "Otsi e-posti järgi" });
     const rows = page.locator("tr[data-subscriber]");
@@ -1516,7 +1516,7 @@ test.describe("signed in", () => {
       await page.goto("/admin/uudiskiri");
       await page.locator("[data-tab-pills]").getByRole("link", { name: "Kirjad" }).click();
       await expect(page).toHaveURL(/\/admin\/uudiskiri\?vaade=kampaaniad$/);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kirjad");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudiskiri");
       await page.locator("[data-campaign-new]").click();
       await expect(page).toHaveURL(/kampaania=\d+$/);
       id = Number(new URL(page.url()).searchParams.get("kampaania"));

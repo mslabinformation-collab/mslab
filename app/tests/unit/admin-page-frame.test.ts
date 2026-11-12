@@ -80,15 +80,15 @@ describe("F11: „Lisa õpilane +“ opens its form on a line of its own under t
   });
 });
 
-describe("F12: „Tellijad | Kirjad“ in the same place in both views", () => {
+// UX audit 2 A42 undoes F12 (the tabs at the right end of the H1's row in both views, Tellijad's heading a grid for it): the tabs stand where Hindamine
+// has them, TabPills' own row under the heading at the left, in both views (the markup: tests/db/newsletter-page.test.ts)
+describe("A42 (once F12): „Tellijad | Kirjad“ in the same place in both views, under the heading as on Hindamine", () => {
   const sheet = css("app", "admin", "(panel)", "uudiskiri", "newsletter.module.css");
-  const wide = "@media (min-width: 901px) {";
 
-  it("Tellijad's heading is a grid from 901 px: its eyebrow, H1 and lead at the left, the tabs and the CSV level with the H1's foot at the right", () => {
-    expect(rule(sheet, "div.subsHeading", wide)).toMatch(/display: grid;\s*grid-template-columns: minmax\(0, 1fr\) auto;/);
-    expect(rule(sheet, ".subsTitle", wide)).toMatch(/display: contents;/);
-    expect(rule(sheet, ".subsTitle > h1", wide)).toMatch(/margin-top: 0;/);
-    expect(rule(sheet, ".subsHeading > .subsAside", wide)).toMatch(/grid-column: 2;\s*grid-row: 1 \/ 3;\s*align-self: end;\s*align-items: flex-end;/);
+  it("no grid of Tellijad's heading and no tab row inside a heading any more; an open letter on a phone hides the tabs with the H1", () => {
+    expect(sheet).not.toMatch(/subsHeading|subsTitle|subsAside|headTabs/);
+    expect(sheet).not.toMatch(/\.viewTabs > nav \{\s*margin: 0;/);
+    expect(rule(sheet, "[data-letter-open] .lettersTitle,\n  [data-letter-open] .viewTabs", "@media (max-width: 899.98px) {")).toMatch(/display: none;/);
   });
 });
 

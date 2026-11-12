@@ -271,7 +271,7 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
       current: m[1].includes('aria-current="page"'),
     }));
 
-  test("the tabs „Tellijad“ | „Kirjad“ (TabPills; the address keeps ?vaade=kampaaniad); the letters' own heading „Kirjad“ without the CSV buttons or a lead; „Uus kiri +“", async () => {
+  test("the tabs „Tellijad“ | „Kirjad“ (TabPills; the address keeps ?vaade=kampaaniad); the letters' heading „Uudiskiri“ without the CSV buttons or a lead; „Uus kiri +“", async () => {
     const subscribersView = await render();
     expect(tabs(subscribersView)).toEqual([
       { label: "Tellijad", href: "/admin/uudiskiri", current: true },
@@ -282,7 +282,9 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
       { label: "Tellijad", href: "/admin/uudiskiri", current: false },
       { label: "Kirjad", href: "/admin/uudiskiri?vaade=kampaaniad", current: true },
     ]);
-    expect(letters).toContain(">Kirjad</h1>");
+    // (UX audit 2 A42: one H1 for both views, the page's name; it was „Kirjad“ here and „Uudiskirja tellijad“ there)
+    expect(letters).toContain(">Uudiskiri</h1>");
+    expect(subscribersView).toContain(">Uudiskiri</h1>");
     expect(letters).not.toContain("data-csv");
     expect(letters).not.toContain("data-subscriber=");
     expect(letters).not.toContain("data-newsletter-views");
@@ -297,26 +299,30 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
     expect(old).not.toContain("data-campaign-not-found");
   });
 
-  test("admin polish F12: the tabs stand in one place in both views — the right end of the H1's row (the B5 frame's place), after „Laadi alla (CSV)“ in Tellijad, after ET | RU while a letter is open", async () => {
+  // UX audit 2 A42 (once admin polish F12, which put the tabs at the right end of the H1's row): the tabs stand where Hindamine has them, under the
+  // heading at the left, in both views; the heading keeps „Laadi alla (CSV)“ (Tellijad) or ET | RU (a letter open) at its right
+  test("UX audit 2 A42: the eyebrow „Koduleht ja uudiskiri“ and the H1 „Uudiskiri“ in both views; the tabs under the heading at the left, as on Hindamine", async () => {
     const draft = await campaign("Proov");
-    /** The heading's right side, what it holds in order (the tabs as „tabs“), and whether the H1 is the left side's. */
-    const aside = async (search: Record<string, string>) => {
+    /** The heading (the H1's block's parent), what its right side holds, and where the tabs are. */
+    const place = async (search: Record<string, string>) => {
       const document = new Window().document;
       document.body.innerHTML = await render(search);
       const tabsNav = document.querySelector("nav[data-tab-pills]")!;
       const h1 = document.querySelector("h1")!;
       const heading = h1.parentElement!.parentElement!;
-      const side = heading.lastElementChild!;
+      const side = heading.children.length > 1 ? heading.lastElementChild! : null;
       return {
-        tabsInSide: side.contains(tabsNav),
-        last: side.lastElementChild!.contains(tabsNav),
-        before: [...side.children].slice(0, -1).map((el) => (el.querySelector("a[data-csv]") ? "csv" : el.matches("[data-edit-lang-bar]") ? "langs" : el.tagName)),
+        eyebrow: h1.previousElementSibling?.textContent,
+        h1: h1.textContent,
+        tabsInHeading: heading.contains(tabsNav),
+        tabsAfterHeading: heading.nextElementSibling?.contains(tabsNav) ?? false,
+        side: side ? [...side.querySelectorAll("a[data-csv], [data-edit-lang-bar]")].map((el) => (el.matches("a[data-csv]") ? "csv" : "langs")) : [],
       };
     };
-    expect(await aside({})).toEqual({ tabsInSide: true, last: true, before: ["csv"] });
-    expect(await aside({ vaade: "kampaaniad" })).toEqual({ tabsInSide: true, last: true, before: [] });
-    expect(await aside({ vaade: "kampaaniad", kampaania: String(draft.id) })).toEqual({ tabsInSide: true, last: true, before: ["langs"] });
-    // (no tab row of its own under the lead any more)
+    const same = { eyebrow: "Koduleht ja uudiskiri", h1: "Uudiskiri", tabsInHeading: false, tabsAfterHeading: true };
+    expect(await place({})).toEqual({ ...same, side: ["csv"] });
+    expect(await place({ vaade: "kampaaniad" })).toEqual({ ...same, side: [] });
+    expect(await place({ vaade: "kampaaniad", kampaania: String(draft.id) })).toEqual({ ...same, side: ["langs"] });
     const subscribersView = await render();
     expect(subscribersView.match(/data-tab-pills=""/g)).toHaveLength(1);
   });
