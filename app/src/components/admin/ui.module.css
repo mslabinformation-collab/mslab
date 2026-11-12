@@ -182,10 +182,11 @@
   content: "\a0";
 }
 
-/* B .card */
+/* B .card. `--card-pad` is its padding, for what inside it reaches to its edges (the Sooduskoodid rows on a phone, UX audit 2 A40). */
 .card {
+  --card-pad: 28px;
   min-width: 0;
-  padding: 28px;
+  padding: var(--card-pad);
   border: 1px solid var(--line);
   border-radius: 22px;
   background: #fff;
@@ -486,7 +487,7 @@
   }
 
   .card {
-    padding: 20px;
+    --card-pad: 20px;
   }
 }
 

@@ -43,3 +43,19 @@ tr.selected {
     white-space: normal;
   }
 }
+
+/* A card of label + value lines (list-table.module.css, a card of 760 px or less): the rows reach the card's edges (UX audit 2 A40). The welcome row's
+   tint stood 20 px inside the white card, a box in a box; now it and every row's line run from edge to edge, one width (Dim: a row's tint is as wide
+   as the list's lines), and the words keep their place: the row's side padding is the card's (ui .card's --card-pad). (`table.list` and
+   `tbody tr` outweigh list-table's `.table` and `.table tr`, whichever sheet comes last.) */
+@container (max-width: 760px) {
+  table.list {
+    width: calc(100% + 2 * var(--card-pad));
+    margin: 0 calc(-1 * var(--card-pad));
+  }
+
+  table.list tbody tr {
+    padding-right: var(--card-pad);
+    padding-left: var(--card-pad);
+  }
+}

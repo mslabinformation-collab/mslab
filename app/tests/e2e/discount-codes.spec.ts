@@ -231,6 +231,41 @@ test("Maria creates a code, it is used, and the count shows the use", async ({ p
   await expect(page.locator("[data-code-hint]")).toHaveText("Kasutatud koodi ei saa muuta: loo uus kood.");
 });
 
+// UX audit 2 A40: on a phone the list is a card of label + value rows, and the welcome row's tint stood 20 px inside the white card, a box in a box. Each row
+// now runs from the card's one edge to the other, its line with it (Dim: a row's tint is as wide as the list's lines), the words the card's padding in.
+// Measured on this test's own code (every row is drawn the same; the welcome row, which only adds the tint, is not touched here).
+test("on a 390 px phone the rows of Sooduskoodid and their lines reach the card's edges, the words the card's padding in (UX audit 2 A40)", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own width: the desktop project only");
+  const id = await makeCode(codeText("SERV", info), { percent: 5 });
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/sooduskoodid");
+  await adminReady(page);
+  const row = page.locator(`[data-code-row="${id}"]`);
+  await expect(row).toBeVisible();
+  const m = await row.evaluate((tr) => {
+    const card = tr.closest("section")!;
+    const c = card.getBoundingClientRect();
+    const cs = getComputedStyle(card);
+    const r = tr.getBoundingClientRect();
+    const label = tr.querySelector("td")!.getBoundingClientRect();
+    return {
+      display: getComputedStyle(tr).display,
+      inner: { left: c.left + parseFloat(cs.borderLeftWidth), right: c.right - parseFloat(cs.borderRightWidth) },
+      padding: parseFloat(cs.paddingLeft),
+      row: { left: r.left, right: r.right },
+      cell: label.left,
+      page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  const where = `/admin/sooduskoodid at 390 px (${JSON.stringify(m)})`;
+  expect(m.display, `${where}: the phone's label + value rows`).toBe("block");
+  expect(Math.abs(m.row.left - m.inner.left), `${where}: the row (its tint and its line) starts at the card's edge`).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(m.row.right - m.inner.right), `${where}: the row ends at the card's edge`).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(m.cell - (m.inner.left + m.padding)), `${where}: the words stay the card's padding in`).toBeLessThanOrEqual(0.5);
+  expect(m.page, `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+});
+
 test("the järelmaks threshold follows the total", async ({ page }, info) => {
   const text = codeText("JARELMAKS", info);
   // 260 € off 350 € leaves 90 €, under Inbank's 100 € (financing's range is 100–5000 €); off 190 € the discount is capped to keep 1 € (MIN_TOTAL_CENTS)

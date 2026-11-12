@@ -32,7 +32,7 @@ const stateTone = (s: CodeState): string => (s === "active" ? ui.ok : s === "upc
 export function DiscountCodeList({ rows, openId, hrefOf }: { rows: readonly CodeListRow[]; openId: number | null; hrefOf: (id: number) => string }) {
   return (
     <ListRows>
-      <table className={`${ui.table} ${listTable.table}`} data-code-list="">
+      <table className={`${ui.table} ${listTable.table} ${styles.list}`} data-code-list="">
         <thead>
           <tr>
             <th scope="col">{t.col.code}</th>
