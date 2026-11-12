@@ -477,19 +477,23 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     expect(words($("[data-test-send] [data-label-phone]"))).toBe("Saada proov · maria@… · ET");
     expect(text("[data-send-all]")).toBe("Saada kõigile (3)");
     // UX audit 2 A31: the count is in the button only; the hint keeps the sample part
-    expect(text("[data-send-hint]")).toBe("Näidisaadressidele ei saadeta.");
+    expect(text("[data-send-hint]")).toBe("Näidisaadressidele (@example.test) ei saadeta.");
     for (const hook of ["data-test-to", "data-test-locale", "data-campaign-save-first", "data-mark-not-sent", "data-send-missing", "data-campaign-stop"]) expect($(`[${hook}]`), hook).toBeNull();
-    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "Sünkrooni", "Kellele"]) expect(words(container).includes(gone), gone).toBe(false);
+    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "Sünkrooni"]) expect(words(container).includes(gone), gone).toBe(false);
+    // (the old radios' group „Kellele“ is gone: the word is now only in the select's own label, UX audit 2 A31 reworded 12.11)
+    expect(container.querySelector("fieldset legend")?.textContent ?? "").not.toMatch(/Kellele/);
+    expect(words(container).match(/Kellele/g)).toEqual(["Kellele"]);
+    expect(words(container)).toContain("Kellele proov saata");
     expect($("[data-send-confirm]")).toBeNull();
   });
 
   // UX audit 2 A31: the select stood unlabelled next to „Saada kõigile“; its label is visible and says it is the test's, over the select, and the
   // card's order is the select, „Saada proov“, „Saada kõigile ({n})“
-  test("the select has a visible label „Proovi aadress ja keel“ over it; „Saada proov“ is the first button", async () => {
+  test("the select has a visible label „Kellele proov saata“ over it; „Saada proov“ is the first button", async () => {
     await show(DRAFT);
     const select = $<HTMLSelectElement>("[data-test-target]")!;
     const label = container.querySelector<HTMLLabelElement>(`label[for="${select.id}"]`)!;
-    expect(words(label)).toBe("Proovi aadress ja keel");
+    expect(words(label)).toBe("Kellele proov saata");
     expect(label.classList.contains(ui.sr)).toBe(false);
     expect(label.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const buttons = [...$("[data-campaign-send]")!.querySelectorAll("button")];
@@ -502,7 +506,7 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     expect($("[data-send-hint]")).toBeNull();
     await show({ ...DRAFT, id: 8 }, { audience: { et: 0, ru: 2, samples: 3 } });
     expect(text("[data-send-all]")).toBe("Saada kõigile (2)");
-    expect(text("[data-send-hint]")).toBe("Näidisaadressidele ei saadeta.");
+    expect(text("[data-send-hint]")).toBe("Näidisaadressidele (@example.test) ei saadeta.");
     await show({ ...DRAFT, id: 9 }, { audience: { et: 0, ru: 0, samples: 2 } });
     expect($("[data-send-all]")).toBeNull();
     expect(text("[data-send-empty]")).toBe("Kinnitatud tellijaid pole: kirja pole kellelegi saata.");

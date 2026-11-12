@@ -27,7 +27,7 @@ import styles from "./HomeEditor.module.css";
 // - „Slaidid“ (the part `slides`): the rows and the one slide open inline (SlidesEditor.tsx), „+ Lisa slaid“ at the right of the title;
 // - „MS LABi lause“ (`statement`) and „Koolitaja kaart“ (`teaser`, S4-7): their text;
 // - „KKK“ (`faq`, S4-7): the questions, each answer folded (FaqEditor.tsx);
-// The home page's trainer block shows the trainer page's fields: the way there is a hint under the lead, „Koolitaja plokki muudad: Koolitaja →“ (UX
+// The home page's trainer block shows the trainer page's fields: the way there is a hint under the lead, „Koolitaja nime, fotot ja numbreid muudad lehel Koolitaja →“ (UX
 // audit 2 A44; it was S4-8's link row „Koolitaja plokk“ after the cards and a fifth entry of the map, as if a section of this page).
 // Every field autosaves into its part's draft — a new slide without its picture or title too (R-d: the draft's check is loose) — and the page's ONE
 // bar publishes them all (S4-12: „Slaid 2 pealkiri“, „Slaidid“, „MS LABi lause“, „Koolitaja kaart“, „KKK küsimus 4“, „KKK“); what the publish holds

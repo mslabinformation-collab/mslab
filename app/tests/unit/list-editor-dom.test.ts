@@ -304,11 +304,11 @@ describe("ListEditor: Enter on the last row adds a row (Praktika's points; rulin
 
   // UX audit 2 A45: Praktika's Enter tip is a hint under the list, not words in its add button
   it("`addHint`: a hint line right under the add button, which it describes; without it, none", async () => {
-    await render(ITEMS, { addLabel: "Lisa punkt", addHint: "Uue punkti lisab ka Enter viimasel real." });
+    await render(ITEMS, { addLabel: "Lisa punkt", addHint: "Uue punkti saad lisada ka Enter-klahviga viimasel real." });
     const add = button("Lisa punkt +")!;
     expect(add).not.toBeNull();
     const hint = add.nextElementSibling as HTMLElement;
-    expect(text(hint)).toBe("Uue punkti lisab ka Enter viimasel real.");
+    expect(text(hint)).toBe("Uue punkti saad lisada ka Enter-klahviga viimasel real.");
     expect(hint.tagName).toBe("P");
     expect(add.getAttribute("aria-describedby")).toBe(hint.id);
     await render();

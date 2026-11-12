@@ -507,13 +507,13 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       await page.reload();
       await adminReady(page);
       await expect(page.locator("[data-send-all]")).toHaveText("Saada kõigile (3)");
-      // (the count is the button's alone, UX audit 2 A31: the hint is only „Näidisaadressidele ei saadeta.“, when a sample address is confirmed;
+      // (the count is the button's alone, UX audit 2 A31: the hint is only „Näidisaadressidele (@example.test) ei saadeta.“, when a sample address is confirmed;
       // other specs may leave one in this database, so the test reads how many there are)
       const [{ samples }] = await onLocalDb(
         (sql) => sql<{ samples: number }[]>`select count(*)::int as samples from subscribers where confirmed_at is not null and lower(trim(email)) like '%@example.test'`,
         { marksPages: false },
       );
-      await expect(page.locator("[data-send-hint]")).toHaveText(samples > 0 ? ["Näidisaadressidele ei saadeta."] : []);
+      await expect(page.locator("[data-send-hint]")).toHaveText(samples > 0 ? ["Näidisaadressidele (@example.test) ei saadeta."] : []);
       await editLang(page, "et");
       await page.locator('[data-campaign-form] [data-i18n="preheader"]').fill(`E2E viimane rida ${tag}`);
       await page.locator("[data-send-all]").click();

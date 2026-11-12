@@ -455,7 +455,7 @@ export const adminEt = {
         chosen: { half: "Valitud: ettemaks 50%", full: "Valitud: kogu summa (100%)", financing: "Valitud: järelmaks (Inbank)" },
         // „{laekunud} / {hind} laekunud“: the money (large) and the rest of the line
         of: "/ {price} laekunud",
-        // (Draft, UX audit 2 A46) under the bar's marker: from here the place is confirmed
+        // (UX audit 2 A46; Dim approved 12.11) under the bar's marker: from here the place is confirmed
         mark: "50 %",
         seat: "Koht kinnitub {pool} juures · vabu kohti {free} / {cap}",
         seatAlone: "Registreering kinnitub {pool} juures",
@@ -1176,7 +1176,7 @@ export const adminEt = {
   feedback: {
     eyebrow: "Õpilased",
     title: "Tagasiside",
-    // (Draft, UX audit 2 A41) the second sentence: it asked to choose a course, and with no answers there is no course select
+    // (UX audit 2 A41; Dim approved 12.11) the second sentence: it asked to choose a course, and with no answers there is no course select
     lead: "Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Koolituse keskmine hinne ilmub siia, kui tagasisidet on tulnud.",
     filterLabel: "Koolitus",
     all: "Kõik koolitused",
@@ -2253,9 +2253,9 @@ export const adminEt = {
 
   newsletter: {
     // one heading for both views, „Tellijad“ and „Kirjad“ (UX audit 2 A42): the eyebrow is the sidebar group's name (nav.groups.site), as Hüpikaken's
-    // (Draft, UX audit 2 A42)
+    // (UX audit 2 A42; Dim approved 12.11)
     eyebrow: "Koduleht ja uudiskiri",
-    // (Draft, UX audit 2 A42)
+    // (UX audit 2 A42; Dim approved 12.11)
     title: "Uudiskiri",
     lead: "Tellijad liituvad ise, aadressi sisestades: kinnituskirja enam ei saadeta. Tervituskirjas on loobumislink. „Ootab kinnitust“ on aadress, mis liitus vanal viisil ega ole kinnituslinki avanud.",
     // Tellijad (admin UX pass, piece 3b Task 7; README B5, piece3-texts P-13): the one „Laadi alla (CSV)“ of the current filter in place of „Lae alla
@@ -2306,7 +2306,7 @@ export const adminEt = {
       notFound: "Seda kirja enam pole.",
       // what a letter with neither a name nor a subject is called in the list, the card's title and the questions (domain campaignTitle; it was
       // „Uus kiri“, the button's words)
-      // (Draft, UX audit 2 A42)
+      // (UX audit 2 A42; Dim approved 12.11)
       untitled: "Nimetu kiri",
       // README §1.4's {asja} of SaveStatus' gone state: „Seda kirja enam ei ole. …“ (P-12's „kirja“)
       thing: "kirja",
@@ -2316,8 +2316,8 @@ export const adminEt = {
       // the editor's fields
       form: "Kiri",
       name: "Nimi",
-      // (Draft, UX audit 2 A42) the second sentence: without a name the list shows the letter's subject
-      nameHint: "Ainult sulle: tellijad seda ei näe. Tühja nime asemel on loendis kirja teema.",
+      // (Draft, UX audit 2 A42; reworded 12.11 in plainer words after Dim's OK of the first) the second sentence: without a name the list shows the letter's subject
+      nameHint: "Ainult sulle: tellijad seda ei näe. Kui nime pole, on loendis kirja teema.",
       subject: "Teema",
       preheader: "Eelvaate rida",
       preheaderHint: "Hall rida teema järel enamikus postkastides. Võib jääda tühjaks.",
@@ -2356,8 +2356,8 @@ export const adminEt = {
       blocked: "Saatmiseks peab kiri olema salvestatud.",
       test: {
         // the select's label over it: the address and the language of „Saada proov“, not of „Saada kõigile“
-        // (Draft, UX audit 2 A31)
-        to: "Proovi aadress ja keel",
+        // (Draft, UX audit 2 A31; reworded 12.11 in plainer words after Dim's OK of the first)
+        to: "Kellele proov saata",
         // the select's line: „maria@example.test · eesti keeles“ (README B5)
         option: "{email} · {lang}",
         optionLang: { et: "eesti keeles", ru: "vene keeles" },
@@ -2383,8 +2383,8 @@ export const adminEt = {
         yes: "Jah, saada {n} tellijale",
         // the hint under the buttons, only when a sample address is among the confirmed (the count is the button's alone; it was „3 eesti, 1 vene
         // keeles · näidisaadressidele ei saadeta“)
-        // (Draft, UX audit 2 A31)
-        samplesHint: "Näidisaadressidele ei saadeta.",
+        // (Draft, UX audit 2 A31; reworded 12.11 in plainer words after Dim's OK of the first)
+        samplesHint: "Näidisaadressidele (@example.test) ei saadeta.",
         fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
         working: "Saadan…",
         done: "Kiri on saadetud.",
@@ -2476,7 +2476,8 @@ export const adminEt = {
   home: {
     eyebrow: "Koduleht",
     title: "Avaleht",
-    lead: "Avalehe slaidid, MS LABi lause ja korduma kippuvad küsimused. Muudatus on avalehel näha pärast avaldamist.",
+    // (Draft, 12.11: the lead named three of the page's four cards; „koolitaja kaart“ added)
+    lead: "Avalehe slaidid, MS LABi lause, koolitaja kaart ja korduma kippuvad küsimused. Muudatus on avalehel näha pärast avaldamist.",
     slides: {
       title: "Slaidid",
       lead: "Slaidid on avalehel selles järjekorras. Tumedal slaidil on päis, tekst ja nupud valged, heledal tumedad.",
@@ -2545,9 +2546,9 @@ export const adminEt = {
     },
     // the hint under the page's lead: the home page's trainer block shows Koolitaja's fields (it was S4-8's link row „Koolitaja plokk“ and the map's „→“)
     trainer: {
-      // (Draft, UX audit 2 A44)
-      hint: "Koolitaja plokki muudad:",
-      // (Draft, UX audit 2 A44)
+      // (Draft, UX audit 2 A44; reworded 12.11 in plainer words after Dim's OK of the first)
+      hint: "Koolitaja nime, fotot ja numbreid muudad lehel",
+      // (UX audit 2 A44; Dim approved 12.11)
       link: "Koolitaja →",
     },
   },
@@ -2564,17 +2565,17 @@ export const adminEt = {
     models: "Modelle",
     modelsHint: "Mitmel modellil praktika toimub.",
     duration: "Kestus",
-    // (Draft, UX audit 2 A45) „ak“ said in words once
-    durationHint: "nt 8 ak (akadeemilist tundi). Kaardil: „≈ 8 ak“.",
+    // (Draft, UX audit 2 A45; reworded 12.11 in plainer words after Dim's OK of the first) „ak“ said in words once
+    durationHint: "Näiteks 8 ak (akadeemilist tundi). Kaardil on „≈ 8 ak“.",
     price: "Hind (€)",
     items: "Sisaldab",
     item: "Punkt",
     itemsHint: "Iga rida on üks punkt paketi kaardil.",
     // the points' add button, before its „+“ (ListEditor), and the hint under it (R-h: Enter in the last point adds one too)
-    // (Draft, UX audit 2 A45) „Lisa punkt +“ alone; the Enter tip moves from the button's words to the hint under it
+    // (UX audit 2 A45; Dim approved 12.11) „Lisa punkt +“ alone; the Enter tip moves from the button's words to the hint under it
     addItem: "Lisa punkt",
-    // (Draft, UX audit 2 A45)
-    addItemHint: "Uue punkti lisab ka Enter viimasel real.",
+    // (Draft, UX audit 2 A45; reworded 12.11 in plainer words after Dim's OK of the first)
+    addItemHint: "Uue punkti saad lisada ka Enter-klahviga viimasel real.",
     empty: "Praktikapakette pole.",
   },
 
@@ -2670,8 +2671,8 @@ export const adminEt = {
     coverHint: "Kaardil lõigatakse pilt 4:3, postituse lehel 16:9. Avaldatud postitusel peab kaanepilt olemas olema.",
     published: "Avaldatud",
     publishedHint: "Avaldatud postitus on uudiste lehel ja avalehel nähtav. Mustandit näed ainult siin.",
-    // (Draft, UX audit 2 A43) under the switch while a published post has changes waiting for the bar's „Avalda muudatused“
-    publishedWaiting: "Avaldatud. Muudatused jõuavad lehele pärast „Avalda muudatused“.",
+    // (Draft, UX audit 2 A43; reworded 12.11 in plainer words after Dim's OK of the first) under the switch while a published post has changes waiting for the bar's „Avalda muudatused“
+    publishedWaiting: "Postitus on lehel. Uued muudatused lähevad lehele, kui vajutad „Avalda muudatused“.",
     remove: {
       button: "Kustuta postitus",
       question: "Kas kustutan selle postituse?",

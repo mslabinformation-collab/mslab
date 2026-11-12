@@ -114,7 +114,7 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     await expect(items.getByRole("heading", { level: 3 })).toHaveText("Sisaldab");
     // (UX audit 2 A45: „Lisa punkt +“, the Enter tip a hint under it)
     await expect(items.getByRole("button", { name: "Lisa punkt +", exact: true })).toBeVisible();
-    await expect(items.getByText("Uue punkti lisab ka Enter viimasel real.", { exact: true })).toBeVisible();
+    await expect(items.getByText("Uue punkti saad lisada ka Enter-klahviga viimasel real.", { exact: true })).toBeVisible();
     const rows = items.locator("[data-row]");
     const count = await rows.count();
     await rows.nth(count - 1).locator("[data-lang-field]").click();
@@ -307,7 +307,7 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht");
     // (UX audit 2 A44: the way to Koolitaja is the hint under the lead, no fifth card)
     await expect(page.locator("[data-home-editor] > section > h2")).toHaveText(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK"]);
-    await expect(page.locator("[data-site-lead-hint]")).toHaveText("Koolitaja plokki muudad: Koolitaja →");
+    await expect(page.locator("[data-site-lead-hint]")).toHaveText("Koolitaja nime, fotot ja numbreid muudad lehel Koolitaja →");
     await expect(page.locator("[data-site-lead-hint]").getByRole("link", { name: "Koolitaja →", exact: true })).toHaveAttribute("href", "/admin/koolitaja");
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);

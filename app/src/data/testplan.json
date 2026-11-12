@@ -670,7 +670,7 @@
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
         "Ava „Kirjad“ all Proov 3 kiri.",
-        "Vali kaardil „Saatmine“ välja „Proovi aadress ja keel“ alt Maria aadress „… · eesti keeles“ ja vajuta „Saada proov“.",
+        "Vali kaardil „Saatmine“ välja „Kellele proov saata“ alt Maria aadress „… · eesti keeles“ ja vajuta „Saada proov“.",
         "Vali oma aadress „… · vene keeles“, muuda „Eelvaate rida“ ja vajuta kohe „Saada proov“.",
         "Ava oma postkastis venekeelne proov ja vajuta selle lõpus „Отписаться от рассылки“.",
         "Ava Proov 3 kiri kahes vahekaardis ja kirjuta teises „Eelvaate rida“: Proov 3 teine vahekaart.",
@@ -691,7 +691,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-12T10:49:41.928Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -736,7 +736,7 @@
         "Ava Proov 3 postkastis saadud kiri ja vaata selle originaali: kirja menüüst leiad kirja päised."
       ],
       "expect": [
-        "Nupu all pole arve keelte kaupa; näidisaadresside korral on seal ainult „Näidisaadressidele ei saadeta.“.",
+        "Nupu all pole arve keelte kaupa; näidisaadresside korral on seal ainult „Näidisaadressidele (@example.test) ei saadeta.“.",
         "Küsimus on „Kas saadan kirja „Proov 3 kiri“?“, arv on sama mis nupul ja @example.test aadresse ei loeta.",
         "Kuni sait on suletud, on küsimuse all rida „Koduleht pole veel avatud — kirja lingid ja nupp viivad „Tulekul“ lehele.“.",
         "Esimene partii läheb kohe välja ja Proov 3 postkasti tuleb tavaline kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
@@ -749,7 +749,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-12T10:49:41.928Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -1914,7 +1914,7 @@
         "Eemalda küsimus uuesti nupuga ×, vajuta ribal „Avalda muudatused“ ja ava avaleht."
       ],
       "expect": [
-        "Lehe sissejuhatuse all on „Koolitaja plokki muudad: Koolitaja →“; viimane kaart on „KKK“.",
+        "Lehe sissejuhatuse all on „Koolitaja nime, fotot ja numbreid muudad lehel Koolitaja →“; viimane kaart on „KKK“.",
         "Igal real on küsimus, olek „ET · RU“ või „RU puudub“ ja kokku volditud vastus ▸.",
         "Uus rida tuleb lõppu, selle vastus on lahti ja kursor on küsimuses.",
         "Enne avaldamist pole küsimust avalehel; pärast avaldamist on avalehe küsimuste lõpus „Proov 1?“.",
@@ -1926,7 +1926,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-12T10:49:41.928Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-uudised-postitus",
@@ -2003,7 +2003,7 @@
       "expect": [
         "Riba on „Avaldamata muudatused: 1 · Tekst. Avalikul lehel on näha eelmine versioon.“.",
         "Loendis on selle postituse olek „Avaldamata muudatused“.",
-        "Kaardil „Avaldamine“ on lüliti all „Avaldatud. Muudatused jõuavad lehele pärast „Avalda muudatused“.“.",
+        "Kaardil „Avaldamine“ on lüliti all „Postitus on lehel. Uued muudatused lähevad lehele, kui vajutad „Avalda muudatused“.“.",
         "Teises brauseris pole sõna Proov.",
         "Eelvaade avaneb uues aknas: tekstis on sõna Proov ja all riba „Avaldamata 1“.",
         "Pärast „Avalda muudatused“ on sõna Proov ka teises brauseris, riba kaob ja olek on „Avaldatud“.",
@@ -2014,7 +2014,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-12T10:49:41.928Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-praktika",

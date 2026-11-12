@@ -187,7 +187,7 @@ describe("the page (S4-5, S4-6) and its cards in the public page's order (the P4
     await show();
     expect(text($("[data-site-eyebrow]"))).toBe("Koduleht");
     expect(text($("h1"))).toBe("Avaleht");
-    expect(text($("[data-site-lead]"))).toBe("Avalehe slaidid, MS LABi lause ja korduma kippuvad küsimused. Muudatus on avalehel näha pärast avaldamist.");
+    expect(text($("[data-site-lead]"))).toBe("Avalehe slaidid, MS LABi lause, koolitaja kaart ja korduma kippuvad küsimused. Muudatus on avalehel näha pärast avaldamist.");
     expect($("[data-site-view]")!.getAttribute("href")).toBe("/");
     expect($("[data-publish-bar]")).toBeNull();
     expect($("[data-save-bar]")).toBeNull();
@@ -208,7 +208,7 @@ describe("the page (S4-5, S4-6) and its cards in the public page's order (the P4
     // the hint under the lead: one link to the trainer's page
     const hint = $("[data-site-lead-hint]")!;
     expect(hint.previousElementSibling).toBe($("[data-site-lead]"));
-    expect(text(hint)).toBe("Koolitaja plokki muudad: Koolitaja →");
+    expect(text(hint)).toBe("Koolitaja nime, fotot ja numbreid muudad lehel Koolitaja →");
     const link = hint.querySelector<HTMLAnchorElement>("a")!;
     expect(text(link)).toBe("Koolitaja →");
     expect(link.getAttribute("href")).toBe("/admin/koolitaja");

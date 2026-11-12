@@ -649,8 +649,8 @@ function panelLines(plan: Plan): string[] {
 
 /**
  * The sends (README B5, the Part 3 frame): the select „{address} · {eesti|vene keeles}“ (Maria's address or the signed-in admin's, each in both languages)
- * under its label „Proovi aadress ja keel“, „Saada proov“, „Saada kõigile ({n})“ (n: `audience`, the page's read, B9; at 0 the existing „Kinnitatud
- * tellijaid pole …“ in its place), and under them „Näidisaadressidele ei saadeta.“ when a sample address is among the confirmed. The count is the
+ * under its label „Kellele proov saata“, „Saada proov“, „Saada kõigile ({n})“ (n: `audience`, the page's read, B9; at 0 the existing „Kinnitatud
+ * tellijaid pole …“ in its place), and under them „Näidisaadressidele (@example.test) ei saadeta.“ when a sample address is among the confirmed. The count is the
  * button's alone; the panel splits it by language (UX audit 2 A31: the select had no label, the hint said the count again).
  * Both sends flush the editor first (`flush`): what goes out is the stored letter, so it must be the screen's; then the sends' rules (`sendable`, the
  * server's too). While the text cannot be saved (`blocked`: the reason) the two buttons give way to S3-P3-l. `gated`: the gate is on (the notice under

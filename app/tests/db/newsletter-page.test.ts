@@ -379,7 +379,7 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
     const html = await render(search);
     expect(html).toMatch(/data-send-all="">Saada kõigile \(3\)</);
     // (the count is the button's alone, UX audit 2 A31; the hint says the sample part)
-    expect(text(html)).toContain("Näidisaadressidele ei saadeta.");
+    expect(text(html)).toContain("Näidisaadressidele (@example.test) ei saadeta.");
     expect(text(html)).not.toContain("2 eesti, 1 vene keeles");
   });
 

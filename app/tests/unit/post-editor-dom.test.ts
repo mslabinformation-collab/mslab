@@ -168,7 +168,7 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     await leave(field("post.body"));
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Tekst. Avalikul lehel on näha eelmine versioon.");
     // UX audit 2 A43: the switch „Avaldatud“ and the bar's „Avalda muudatused“ at once — the card says how the two go together
-    expect(text($("[data-post-publish] [data-post-publish-line]"))).toBe("Avaldatud. Muudatused jõuavad lehele pärast „Avalda muudatused“.");
+    expect(text($("[data-post-publish] [data-post-publish-line]"))).toBe("Postitus on lehel. Uued muudatused lähevad lehele, kui vajutad „Avalda muudatused“.");
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent("/uudised/uued-koolituskuupaevad-tartus")}`);
     expect(field("post.body")!.closest("[data-unpublished]")).not.toBeNull();
     expect(remote.log).toEqual([{ version: "l:post", patch: { body: { et: "Detsembris toome LAMI koolituse Tartusse.", ru: "В декабре в Тарту." } } }]);
