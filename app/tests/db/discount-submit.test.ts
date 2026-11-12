@@ -162,7 +162,16 @@ describe("a registration with a code", () => {
     const welcome = await makeCode({ welcome: true, audience: "first" });
     const who = email();
     expect(await submit({ discountCode: welcome.code, discountCents: "3500" }, who)).toEqual({ ok: false, errors: { discountCode: "person" } });
+    // (the refusal stored nothing)
+    expect(await rowsOf(who)).toHaveLength(0);
+    expect(await db.select().from(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id))).toHaveLength(0);
     expect(await submit({ discountCode: welcome.code, discountCents: "3500", newsletter: "on" }, who)).toEqual({ ok: true });
+    // P10: the booking carries the code and its euros, and its one use is written for it
+    const [r] = await rowsOf(who);
+    expect(r).toMatchObject({ discountCents: 3500, discountCode: welcome.code });
+    const uses = await db.select().from(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id));
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatchObject({ via: "form", listCents: 35000, discountCents: 3500, registrationId: r.id, email: who, courseId: course.id });
     await db.delete(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id));
     await db.delete(discountCodes).where(eq(discountCodes.id, welcome.id));
   });
@@ -173,9 +182,17 @@ describe("a registration with a code", () => {
     const again = { discountCode: welcome.code, discountCents: "3500", newsletter: "on" };
     expect(await submit(again, who)).toEqual({ ok: true });
     expect(await submit(again, who)).toEqual({ ok: true });
-    expect(await rowsOf(who)).toHaveLength(2);
+    const both = await rowsOf(who);
+    expect(both).toHaveLength(2);
+    // P10: each booking has the discount and its own use
+    for (const r of both) expect(r).toMatchObject({ courseId: course.id, discountCents: 3500, discountCode: welcome.code });
+    const usesNow = async () => (await db.select().from(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id))).map((u) => u.registrationId).sort();
+    expect(await usesNow()).toEqual(both.map((r) => r.id).sort());
     // the other course (30 000: 10% is 3 000)
     expect(await submit({ ...again, discountCents: "3000" }, who, { slug: other.course.slug, sessionId: other.session.id })).toEqual({ ok: false, errors: { discountCode: "person" } });
+    // (that refusal stored neither a booking nor a use)
+    expect(await rowsOf(who)).toHaveLength(2);
+    expect(await usesNow()).toEqual(both.map((r) => r.id).sort());
     await db.delete(discountRedemptions).where(eq(discountRedemptions.codeId, welcome.id));
     await db.delete(discountCodes).where(eq(discountCodes.id, welcome.id));
   });

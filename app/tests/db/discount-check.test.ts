@@ -72,9 +72,20 @@ describe("checkDiscount", () => {
     expect(await checkDiscount(deps(), form({ course: contact.slug, code: "bad code!" }))).toEqual({ ok: false, error: "unknown" });
   });
 
-  it("an empty code answers empty, before the rate check", async () => {
+  it("an empty code answers empty, before the rate check: also with the visitor's checks used up, and it uses none of them (P9)", async () => {
     expect(await checkDiscount(deps(), form({ course: contact.slug, code: "  " }))).toEqual({ ok: false, error: "empty" });
     expect(await checkDiscount(deps(), form({ course: contact.slug }))).toEqual({ ok: false, error: "empty" });
+    const kv = fakeKv();
+    const code = await makeCode();
+    const ask = (typed?: string) => checkDiscount(deps("203.0.113.7", kv), form({ course: contact.slug, ...(typed === undefined ? {} : { code: typed }) }));
+    for (let i = 0; i < DISCOUNT_CHECK_LIMIT - 1; i++) expect(await ask(code.code)).toMatchObject({ ok: true });
+    // emptied fields between the checks take nothing from the 20
+    for (let i = 0; i < 5; i++) expect(await ask("  ")).toEqual({ ok: false, error: "empty" });
+    expect(await ask(code.code)).toMatchObject({ ok: true });
+    // the bucket is empty now: a code is held, an empty field still answers empty
+    expect(await ask(code.code)).toEqual({ ok: false, error: "rate" });
+    expect(await ask("  ")).toEqual({ ok: false, error: "empty" });
+    expect(await ask()).toEqual({ ok: false, error: "empty" });
   });
 
   it("the 21st check in 10 minutes answers rate", async () => {

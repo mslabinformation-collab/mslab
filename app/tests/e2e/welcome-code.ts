@@ -8,7 +8,9 @@ import { holdLocalLock, LOCK_WAIT_MS, onLocalDb } from "./fixtures";
 // side by side) and puts the row back exactly:
 // - no welcome row there: one is inserted, and the clean-up deletes exactly that row by its id (its uses first, the redemptions have no cascade);
 // - a welcome row there already: its columns are saved whole (`to_jsonb`), the row is set to what the spec wants, and the clean-up writes every column
-//   back from the saved copy (`jsonb_populate_record`), so nothing of it changes. Its chosen courses are not touched (the scope is `all` meanwhile).
+//   back from the saved copy (`jsonb_populate_record`), so nothing of it changes. Its chosen courses are not touched (the scope is `all` meanwhile). The
+//   ids of its uses are read too, and the clean-up deletes exactly the uses that were not there before (the spec's bookings with the code, P32): the row's
+//   own uses stay as they were.
 // Never a `like` in a clean-up: ids only.
 
 /** The turn the welcome row's tests take. */
@@ -32,16 +34,17 @@ export async function takeWelcomeCode(info: { setTimeout(ms: number): void; time
     const made = await onLocalDb(async (sql) => {
       const [existing] = await sql<{ id: number; saved: postgres.JSONValue }[]>`select id, to_jsonb(d) as saved from discount_codes d where welcome`;
       if (existing) {
+        const uses = await sql<{ id: number }[]>`select id from discount_redemptions where code_id = ${existing.id}`;
         await sql`
           update discount_codes set code = ${wanted.code}, percent = ${percent}, amount_cents = ${amountCents}, scope = 'all', starts_on = null, ends_on = null,
             max_uses = null, days_after_signup = ${days}, active = true, updated_at = now()
           where id = ${existing.id}`;
-        return { id: existing.id, saved: existing.saved };
+        return { id: existing.id, saved: existing.saved, usesBefore: new Set(uses.map((u) => u.id)) };
       }
       const [row] = await sql<{ id: number }[]>`
         insert into discount_codes (code, welcome, percent, amount_cents, scope, audience, once_per_person, days_after_signup, active)
         values (${wanted.code}, true, ${percent}, ${amountCents}, 'all', 'first', true, ${days}, true) returning id`;
-      return { id: row.id, saved: null };
+      return { id: row.id, saved: null, usesBefore: new Set<number>() };
     });
     return async () => {
       try {
@@ -50,6 +53,10 @@ export async function takeWelcomeCode(info: { setTimeout(ms: number): void; time
             await sql`delete from discount_redemptions where code_id = ${made.id}`;
             await sql`delete from discount_codes where id = ${made.id}`;
           } else {
+            // the uses this turn made (its bookings with the welcome code), by their ids: those the row did not have when the turn began
+            const now = await sql<{ id: number }[]>`select id from discount_redemptions where code_id = ${made.id}`;
+            const ours = now.map((u) => u.id).filter((id) => !made.usesBefore.has(id));
+            if (ours.length > 0) await sql`delete from discount_redemptions where id in ${sql(ours)}`;
             await sql`
               update discount_codes d set code = r.code, welcome = r.welcome, percent = r.percent, amount_cents = r.amount_cents, scope = r.scope, starts_on = r.starts_on,
                 ends_on = r.ends_on, max_uses = r.max_uses, audience = r.audience, once_per_person = r.once_per_person, days_after_signup = r.days_after_signup,

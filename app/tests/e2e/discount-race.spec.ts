@@ -8,7 +8,7 @@ import { addRegistrationDiscount, deleteCode, readCode, setCodeActive, writeCode
 import type { Env } from "../../src/server/notify";
 import { settlePayment, type Facts, type SettleDeps } from "../../src/server/payments/settle";
 import { handleRegistration, type Deps } from "../../src/server/submit";
-import { inFlight, racePool, type OnDb } from "./race";
+import { inFlight, lockWaits, racePool, type OnDb } from "./race";
 import { createScratchDatabase, type Scratch } from "./scratch-db";
 import { expect, submitsForms, test } from "./test";
 
@@ -36,9 +36,10 @@ import { expect, submitsForms, test } from "./test";
 // - (f) „Lisa sooduskood“ on an unpaid registration and its prepayment's settlement, in both orders: added first, the registration has the discount and the
 //   payment settles on the new total; settled first, the add is `paid` and nothing is written;
 // - (g) „Kustuta sooduskood“ and a booking, in both orders: deleted first, the booking is `unknown` and stores nothing; booked first, the delete is `used`;
-// - (h) „Kustuta sooduskood“ and „Lisa sooduskood“ on a registration, ten times, unordered: the add inserts its use under the key-share lock only, so a delete
-//   that checked no use and then met the use's foreign key (23503, R19) answers `used`, and an add that found the code gone answers `unknown`: one of the two
-//   serial outcomes every time, never an error.
+// - (h) „Kustuta sooduskood“ and „Lisa sooduskood“ on a registration, in both orders (the add takes no lock of the code's row but its use's foreign key's
+//   key-share one, so the two never queue at one lock and `inFlight` cannot order them; each order holds the lock one of them waits at, P32): the add's use
+//   first, after the delete checked there was none and while its DELETE waits, the delete meets the foreign key (23503) and answers `used` (R19); the delete
+//   first, while the add waits for the registration's locks, the add finds the code gone and answers `unknown`. Never an error.
 // No mail goes out (the work after the response is collected into nothing; no key is set). Nothing here depends on the screen: the desktop project runs these once.
 
 test.skip(({ isMobile }) => isMobile, "nothing here depends on the screen: the desktop project runs these once");
@@ -359,24 +360,73 @@ for (const order of ORDERS) {
   });
 }
 
-test("(h) „Kustuta sooduskood“ and „Lisa sooduskood“ on a registration at the same moment, ten times: used with the use stored, or unknown with the code gone; never an error", async () => {
-  const [a] = await courses(1);
-  for (let round = 0; round < 10; round++) {
-    const c = await code(`E2E-KILPLEJAD-${round}`);
-    const { registrationId } = await unpaid(a, `e2e-discount-race-${round}@example.test`);
-    // not held (the add takes only the code's key-share lock, so there is no lock both wait for): the pair starts together, and either interleaving must end in
-    // one of the two serial outcomes. A rejected call (the 23503 of the foreign key, R19, not turned into an answer) fails the test here.
-    const [added, deleted] = await Promise.all([addRegistrationDiscount(db, registrationId, c.code, new Date()), deleteCode(db, c.id)]);
-    if (added.ok) {
-      expect(deleted, `round ${round}: the delete of a code with a use`).toEqual({ ok: false, error: "used" });
-      expect(await storedCode(c.id)).not.toBeNull();
-      expect(await usesOf(c.id)).toHaveLength(1);
-      expect((await storedRegistration(registrationId)).discountCode).toBe(c.code);
-    } else {
-      expect(added, `round ${round}: the add of a code that is gone`).toEqual({ ok: false, error: "unknown" });
-      expect(deleted).toEqual({ ok: true });
-      expect(await storedCode(c.id)).toBeNull();
-      expect(await storedRegistration(registrationId)).toMatchObject({ discountCents: 0, discountCode: "" });
-    }
+/**
+ * `waiter` started while another connection holds `hold`, seen waiting for it (the statement it waits at is returned), and `during` run to its end
+ * before the lock goes; then `waiter` finishes. For two calls that do not queue at one lock (h): the test fixes which goes first by the lock one of
+ * them waits at. `during` must not finish only because the lock went: it is checked to end while `waiter` still waits.
+ */
+async function pastHeld<W, D>(hold: (tx: postgres.TransactionSql) => Promise<unknown>, waiter: () => Promise<W>, during: () => Promise<D>): Promise<{ waited: W; ran: D; waitedAt: string }> {
+  let settled = false;
+  let waiting: Promise<W> | null = null;
+  let ran!: D;
+  let waitedAt = "";
+  try {
+    await other.begin(async (tx) => {
+      await hold(tx);
+      const running = waiter();
+      waiting = running;
+      void running.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      const waits = await lockWaits(APPLICATION, 1, () => settled);
+      expect(settled, "the first call went past the held lock while it was held").toBe(false);
+      expect(waits.length, "the first call waits for the held lock").toBe(1);
+      waitedAt = waits[0].query;
+      ran = await during();
+      expect(settled, "the first call still waits once the second has finished").toBe(false);
+    });
+  } finally {
+    if (waiting) await Promise.allSettled([waiting]); // (a failure above lets the lock go too: what is on its way finishes before the clean-up)
   }
+  return { waited: await waiting!, ran, waitedAt };
+}
+
+/** A key-share lock on the code's row, as a use's foreign key takes it: lockCode's `for no key update` goes past it, a DELETE of the row waits for it. */
+const codeKeyShare = (id: number) => (tx: postgres.TransactionSql) => tx`select 1 from discount_codes where id = ${id} for key share`;
+
+test("(h) „Kustuta sooduskood“ and „Lisa sooduskood“, the add's use first while the delete waits past its check: the delete meets the foreign key (23503, R19) and answers used", async () => {
+  const [a] = await courses(1);
+  const c = await code("E2E-KILPLEJAD");
+  const email = "e2e-discount-race-fk@example.test";
+  const { registrationId } = await unpaid(a, email);
+  const { waited: deleted, ran: added, waitedAt } = await pastHeld(
+    codeKeyShare(c.id),
+    () => deleteCode(db, c.id),
+    () => addRegistrationDiscount(db, registrationId, c.code, new Date()),
+  );
+  // the delete waited at its DELETE, so its check of the uses had found none: what refused it is the use's foreign key, not that check
+  expect(waitedAt, "the delete waits at its DELETE").toMatch(/^delete from "discount_codes"/i);
+  expect(added).toEqual({ ok: true });
+  expect(deleted, "the delete that met the use's foreign key").toEqual({ ok: false, error: "used" });
+  expect(await storedCode(c.id), "a used code stays").not.toBeNull();
+  expect(await usesOf(c.id)).toEqual([{ email, via: "admin", discountCents: TEN_PERCENT }]);
+  expect(await storedRegistration(registrationId)).toMatchObject({ discountCents: TEN_PERCENT, discountCode: c.code });
+});
+
+test("(h) „Kustuta sooduskood“ and „Lisa sooduskood“, the delete first while the add waits for the registration's locks: the add finds the code gone and answers unknown", async () => {
+  const [a] = await courses(1);
+  const c = await code("E2E-KILPLEJAD");
+  const email = "e2e-discount-race-gone@example.test";
+  const { registrationId } = await unpaid(a, email);
+  const { waited: added, ran: deleted } = await pastHeld(
+    sessionRow(a.sessionId),
+    () => addRegistrationDiscount(db, registrationId, c.code, new Date()),
+    () => deleteCode(db, c.id),
+  );
+  expect(deleted).toEqual({ ok: true });
+  expect(added, "the add of a code that is gone").toEqual({ ok: false, error: "unknown" });
+  expect(await storedCode(c.id), "the code is gone").toBeNull();
+  expect(await usesOf(c.id)).toEqual([]);
+  expect(await storedRegistration(registrationId)).toMatchObject({ discountCents: 0, discountCode: "" });
 });

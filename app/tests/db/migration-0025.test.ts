@@ -159,41 +159,50 @@ test("the checks refuse what the rules forbid", async () => {
   const use = { codeId: ok.id, email: "a@example.test", listCents: 12000, discountCents: 1200, via: "form" as const };
   await db.insert(discountRedemptions).values({ ...use, registrationId: reg.id });
 
-  const rejects = async (name: string, run: () => Promise<unknown>) => {
-    await expect(run(), name).rejects.toThrow();
+  /** The statement fails, and the database names `constraint` in its error (drizzle puts it in `cause`), so that another failure cannot pass for it (P5). */
+  const rejects = async (name: string, constraint: string, run: () => Promise<unknown>) => {
+    const error = await run().then(
+      () => null,
+      (e: unknown) => e as { message?: string; cause?: { message?: string } },
+    );
+    expect(error, name).not.toBeNull();
+    expect(error!.cause?.message ?? error!.message, name).toContain(`"${constraint}"`);
   };
   let n = 0;
-  const code = (name: string, v: Partial<typeof discountCodes.$inferInsert>) => rejects(name, () => db.insert(discountCodes).values({ code: `T${++n}`, percent: 10, ...v }));
-  await code("percent 100", { percent: 100 });
-  await code("percent 0", { percent: 0 });
-  await code("both percent and amount", { percent: 10, amountCents: 500 });
-  await code("neither", { percent: null });
-  await code("amount zero", { percent: null, amountCents: 0 });
-  await code("ends before it starts", { startsOn: "2026-12-10", endsOn: "2026-12-09" });
-  await code("max uses zero", { maxUses: 0 });
-  await code("lower case", { code: "tere" });
-  await code("only dashes", { code: "---" });
-  await code("too long", { code: "A".repeat(31) });
-  await code("days on a non-welcome row", { daysAfterSignup: 7 });
-  await code("welcome with audience all", { welcome: true, audience: "all" });
-  await code("welcome not once per person", { welcome: true, audience: "first", oncePerPerson: false });
-  await code("a second row of the same code", { code: "OK10" });
-  await code("welcome days 366", { welcome: true, audience: "first", daysAfterSignup: 366 });
+  const code = (name: string, constraint: string, v: Partial<typeof discountCodes.$inferInsert>) =>
+    rejects(name, constraint, () => db.insert(discountCodes).values({ code: `T${++n}`, percent: 10, ...v }));
+  await code("percent 100", "discount_codes_percent_range", { percent: 100 });
+  await code("percent 0", "discount_codes_percent_range", { percent: 0 });
+  await code("both percent and amount", "discount_codes_one_value", { percent: 10, amountCents: 500 });
+  await code("neither", "discount_codes_one_value", { percent: null });
+  await code("amount zero", "discount_codes_amount_positive", { percent: null, amountCents: 0 });
+  await code("ends before it starts", "discount_codes_dates_order", { startsOn: "2026-12-10", endsOn: "2026-12-09" });
+  await code("max uses zero", "discount_codes_max_uses_positive", { maxUses: 0 });
+  await code("lower case", "discount_codes_code_shape", { code: "tere" });
+  await code("only dashes", "discount_codes_code_shape", { code: "---" });
+  await code("too long", "discount_codes_code_shape", { code: "A".repeat(31) });
+  await code("days on a non-welcome row", "discount_codes_days", { daysAfterSignup: 7 });
+  await code("welcome with audience all", "discount_codes_welcome_rules", { welcome: true, audience: "all" });
+  await code("welcome not once per person", "discount_codes_welcome_rules", { welcome: true, audience: "first", oncePerPerson: false });
+  await code("a second row of the same code", "discount_codes_code", { code: "OK10" });
+  await code("welcome days 366", "discount_codes_days", { welcome: true, audience: "first", daysAfterSignup: 366 });
   // the same rules, accepted where they should be (a one-day code; a welcome row with days)
   await db.insert(discountCodes).values({ code: "WELCOME", welcome: true, audience: "first", percent: 10, daysAfterSignup: 30, startsOn: "2026-12-09", endsOn: "2026-12-09" });
-  await code("two welcome rows", { welcome: true, audience: "first" });
+  await code("two welcome rows", "discount_codes_one_welcome", { welcome: true, audience: "first" });
 
-  await rejects("a redemption with discount_cents 0", () => db.insert(discountRedemptions).values({ ...use, discountCents: 0 }));
-  await rejects("a redemption with list_cents 0", () => db.insert(discountRedemptions).values({ ...use, listCents: 0 }));
-  await rejects("a second redemption on one registration", () => db.insert(discountRedemptions).values({ ...use, registrationId: reg.id }));
-  await rejects("deleting a code that has a redemption", () => db.delete(discountCodes).where(sql`id = ${ok.id}`));
-  await rejects("a negative discount on a registration", () => db.update(registrations).set({ discountCents: -1 }));
-  await rejects("a negative discount on a payment", () => db.insert(payments).values({ reference: "R1", kind: "ecourse", email: "a@example.test", name: "T", amountCents: 100, discountCents: -1 }));
+  await rejects("a redemption with discount_cents 0", "discount_redemptions_cents_positive", () => db.insert(discountRedemptions).values({ ...use, discountCents: 0 }));
+  await rejects("a redemption with list_cents 0", "discount_redemptions_cents_positive", () => db.insert(discountRedemptions).values({ ...use, listCents: 0 }));
+  await rejects("a second redemption on one registration", "discount_redemptions_registration", () => db.insert(discountRedemptions).values({ ...use, registrationId: reg.id }));
+  await rejects("deleting a code that has a redemption", "discount_redemptions_code_id_discount_codes_id_fk", () => db.delete(discountCodes).where(sql`id = ${ok.id}`));
+  await rejects("a negative discount on a registration", "registrations_discount_not_negative", () => db.update(registrations).set({ discountCents: -1 }));
+  await rejects("a negative discount on a payment", "payments_discount_not_negative", () =>
+    db.insert(payments).values({ reference: "R1", kind: "ecourse", email: "a@example.test", name: "T", amountCents: 100, discountCents: -1 }),
+  );
 
   // a payment carries at most one use, and redemptions without a registration or payment may be many
   const [pay] = await db.insert(payments).values({ reference: "R2", kind: "ecourse", email: "a@example.test", name: "T", amountCents: 100 }).returning();
   await db.insert(discountRedemptions).values({ ...use, paymentId: pay.id });
-  await rejects("a second redemption on one payment", () => db.insert(discountRedemptions).values({ ...use, paymentId: pay.id }));
+  await rejects("a second redemption on one payment", "discount_redemptions_payment", () => db.insert(discountRedemptions).values({ ...use, paymentId: pay.id }));
   await db.insert(discountRedemptions).values(use);
   await db.insert(discountRedemptions).values(use);
 });
