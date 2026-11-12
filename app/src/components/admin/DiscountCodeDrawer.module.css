@@ -36,6 +36,7 @@ button + .drawer > .head > .chipRow {
   min-width: 0;
 }
 
+/* the drawer's title: the admin's one card title, ui .h2's 27 px at every width (UX audit 2 A26; it was 28 px, 24 px on a phone) */
 .title {
   display: flex;
   flex-wrap: wrap;
@@ -43,7 +44,6 @@ button + .drawer > .head > .chipRow {
   gap: 6px 10px;
   min-width: 0;
   margin: 0;
-  font: 400 28px/1.15 var(--font-display);
   overflow-wrap: anywhere;
 }
 
@@ -160,9 +160,9 @@ p.notice {
   border-top: 1px solid var(--line);
 }
 
+/* „Kasutused (n)“: the drawers' one sub-heading, ui .h3's 20 px (UX audit 2 A26; it was 18 px) */
 .usesTitle {
   margin: 8px 0 4px;
-  font: 400 18px/1.3 var(--font-display);
 }
 
 .use {
@@ -250,10 +250,6 @@ a.useWho {
 @media (max-width: 640px) {
   button + .drawer > .head > .chipRow {
     margin-top: -10px;
-  }
-
-  .title {
-    font-size: 24px;
   }
 
   .use {

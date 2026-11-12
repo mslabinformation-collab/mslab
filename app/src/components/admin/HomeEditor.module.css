@@ -29,10 +29,9 @@
   padding: 22px;
 }
 
+/* a card's title: the cards' one size, ui .h2's 27 px (UX audit 2 A26; it was 26 px) */
 .title {
   margin: 0;
-  font: 300 26px/1.15 var(--font-display);
-  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 

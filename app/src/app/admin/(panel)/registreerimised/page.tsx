@@ -408,7 +408,7 @@ function RegistrationDetail({
             <StatusPill status={r.status} />
             <NoteSaveStatus />
           </div>
-          <h2 className={styles.name}>{r.name}</h2>
+          <h2 className={`${ui.h2} ${styles.name}`}>{r.name}</h2>
           <p className={styles.headLine} data-registration-line="">
             {headerLine(r)}
           </p>

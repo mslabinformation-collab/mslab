@@ -155,11 +155,11 @@
   margin-bottom: 14px;
 }
 
+/* the letter's name, „Eelvaade“ and „Saatmine“: the cards' one title size, ui .h2's 27 px (UX audit 2 A26; they were 24 px and 20 px) */
 .formTitle {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font: 300 24px/1.2 var(--font-display);
 }
 
 .cardTitle {

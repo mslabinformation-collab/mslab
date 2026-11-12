@@ -429,7 +429,7 @@ export function SessionDrawer(p: DrawerProps) {
         <div className={styles.chipRow}>
           <SaveStatus status={chip} thing={t.drawer.thing} onShowInvalid={showInvalid} />
         </div>
-        <h2 className={styles.title}>{p.title}</h2>
+        <h2 className={`${ui.h2} ${styles.title}`}>{p.title}</h2>
         <p className={styles.line} data-session-line="">
           <span className={styles.wide} data-line="wide">
             {seatsParts(false)}
@@ -789,7 +789,7 @@ export function NewSession({ courses, listHref }: { courses: SessionCourse[]; li
           {/* a new record's line in the chip's place, as the chip (SaveStatus's neutral one) of every other drawer (admin polish F22) */}
           <StatusLine data-new-session-line="">{ready ? fill(adminEt.courseEditor.newReady, { button: t.form.create }) : adminEt.courseEditor.newRequired}</StatusLine>
         </div>
-        <h2 className={styles.title}>{t.drawer.newLabel}</h2>
+        <h2 className={`${ui.h2} ${styles.title}`}>{t.drawer.newLabel}</h2>
       </header>
       <SessionFieldList view={view} />
       <div className={styles.createRow}>

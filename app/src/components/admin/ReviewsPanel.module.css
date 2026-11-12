@@ -192,10 +192,9 @@ button + .drawerForm > .drawerHead > .chipRow {
   margin-top: -12px;
 }
 
+/* the drawer's title: the admin's one card title, ui .h2's 27 px at every width (UX audit 2 A26; it was 28 px, 24 px on a phone) */
 .drawerTitle {
   margin: 0;
-  font: 300 28px/1.1 var(--font-display);
-  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
@@ -270,9 +269,5 @@ p.notice {
   /* ✕ is 14 px from the top on a phone, the body's padding 24 px */
   button + .drawerForm > .drawerHead > .chipRow {
     margin-top: -10px;
-  }
-
-  .drawerTitle {
-    font-size: 24px;
   }
 }

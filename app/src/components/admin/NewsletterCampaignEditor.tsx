@@ -283,7 +283,8 @@ function PreviewCard({ values }: { values: CampaignValues }) {
   };
   return (
     <section className={ui.card} aria-labelledby={`${uid}-preview`} data-campaign-preview="">
-      <h2 id={`${uid}-preview`} className={`${ui.h3} ${styles.cardTitle}`}>
+      {/* the cards' title size (UX audit 2 A26) */}
+      <h2 id={`${uid}-preview`} className={`${ui.h2} ${styles.cardTitle}`}>
         {t.preview}
       </h2>
       {mail && (
@@ -456,7 +457,7 @@ function DraftEditor({
       {/* (a field left saves at once, README §1.3) */}
       <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-form`} onBlur={() => void flush()} data-campaign-card="">
         <div className={styles.formHead}>
-          <h2 id={`${uid}-form`} className={styles.formTitle} data-campaign-title="">
+          <h2 id={`${uid}-form`} className={`${ui.h2} ${styles.formTitle}`} data-campaign-title="">
             {values.name.trim() || t.newTitle}
           </h2>
           <SaveStatus status={auto.status} compact={phone} thing={t.thing} onShowInvalid={showInvalid} follow />
@@ -771,7 +772,8 @@ function Sends({
   const emailName = (target?.address ?? "").split("@")[0];
   return (
     <section className={`${ui.card} ${styles.sends}`} aria-labelledby={`${uid}-send`} data-campaign-send="" data-gated={gated ? "" : undefined}>
-      <h2 id={`${uid}-send`} className={`${ui.h3} ${styles.cardTitle}`}>
+      {/* the cards' title size (UX audit 2 A26) */}
+      <h2 id={`${uid}-send`} className={`${ui.h2} ${styles.cardTitle}`}>
         {t.send}
       </h2>
       {testTargets.length > 0 && (
@@ -980,7 +982,7 @@ function SentCampaign({ campaign }: { campaign: CampaignEditorView }) {
         {t.back}
       </Link>
       <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-sent`} data-campaign-sent={campaign.status}>
-        <h2 id={`${uid}-sent`} className={styles.formTitle}>
+        <h2 id={`${uid}-sent`} className={`${ui.h2} ${styles.formTitle}`}>
           {campaign.values.name}
         </h2>
         {going && campaign.progress && (

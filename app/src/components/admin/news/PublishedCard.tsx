@@ -41,7 +41,8 @@ export function PublishedCard({ page, id, published, className }: { page: SitePa
 
   return (
     <section className={className ? `${ui.card} ${styles.card} ${className}` : `${ui.card} ${styles.card}`} aria-labelledby={`${uid}-title`} data-post-publish="">
-      <h2 id={`${uid}-title`} className={`${ui.h3} ${styles.title}`}>
+      {/* the cards' title size (UX audit 2 A26) */}
+      <h2 id={`${uid}-title`} className={`${ui.h2} ${styles.title}`}>
         {t.sections.publish}
       </h2>
       <InstantSwitch page={page} label={t.published} checked={published} hint={t.publishedHint} said={said} press={press} data-field="post.published" />

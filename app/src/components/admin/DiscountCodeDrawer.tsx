@@ -555,7 +555,7 @@ export function DiscountCodeDrawer(p: DrawerProps) {
           <SaveStatus status={chip} thing={t.drawer.thing} onShowInvalid={showInvalid} />
         </div>
         <div className={styles.titleRow}>
-          <h2 className={styles.title}>
+          <h2 className={`${ui.h2} ${styles.title}`}>
             <span data-code-title="">{p.value.code}</span>
             {p.value.welcome && <span className={`${ui.tag} ${styles.neutral}`}>{t.welcomeTag}</span>}
           </h2>
@@ -583,7 +583,7 @@ export function DiscountCodeDrawer(p: DrawerProps) {
         </p>
       )}
       <section className={styles.uses} data-code-uses="">
-        <h3 className={styles.usesTitle}>
+        <h3 className={`${ui.h3} ${styles.usesTitle}`}>
           {fill(t.uses.title, { n: p.uses.length })}
           {p.uses.length > 0 && <span data-uses-total=""> · {fill(t.uses.total, { amount: formatEUR(given, "et") })}</span>}
         </h3>
@@ -911,7 +911,7 @@ export function NewDiscountCode({ welcome, courses }: { welcome: boolean; course
           {/* a new record's line in the chip's place, as every other drawer's (SessionForm.tsx NewSession) */}
           <StatusLine data-new-code-line="">{ready ? fill(adminEt.courseEditor.newReady, { button: t.create }) : adminEt.courseEditor.newRequired}</StatusLine>
         </div>
-        <h2 className={styles.title}>{welcome ? t.drawer.newWelcomeLabel : t.drawer.newLabel}</h2>
+        <h2 className={`${ui.h2} ${styles.title}`}>{welcome ? t.drawer.newWelcomeLabel : t.drawer.newLabel}</h2>
       </header>
       <CodeFieldList view={view} />
       <div className={styles.createRow}>

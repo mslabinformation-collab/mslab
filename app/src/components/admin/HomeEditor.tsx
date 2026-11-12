@@ -129,7 +129,7 @@ function SlidesCard({ slides, links }: { slides: SitePartApi<{ slides: SlideDraf
       parts={[slides]}
       unpublished={rowsMoved(list, live)}
       className={`${styles.card} ${styles.slidesCard}`}
-      titleClassName={styles.title}
+      titleClassName={`${ui.h2} ${styles.title}`}
     >
       <p className={styles.lead}>{t.lead}</p>
       <SlidesEditor
@@ -165,7 +165,7 @@ function BodyCard({
   teaser?: boolean;
 }) {
   return (
-    <SiteCard id={id} title={texts.title} parts={[api]} className={styles.card} titleClassName={styles.title} data-teaser-editor={teaser ? "" : undefined}>
+    <SiteCard id={id} title={texts.title} parts={[api]} className={styles.card} titleClassName={`${ui.h2} ${styles.title}`} data-teaser-editor={teaser ? "" : undefined}>
       <p className={styles.lead}>{texts.lead}</p>
       <I18nInput
         label={texts.field}
@@ -191,7 +191,7 @@ function FaqCard({ faq }: { faq: SitePartApi<{ faq: FaqDraft[] }> }) {
   const sent = faq.refusedValue("faq");
   const errors = useMemo(() => inWords(rowRefusals<FaqDraft>(sent, looseFaq, (x) => x.uid, (j) => `faq.${j}`)), [sent]);
   return (
-    <SiteCard id={CARD.faq} title={t.title} parts={[faq]} unpublished={rowsMoved(items, live)} className={styles.card} titleClassName={styles.title}>
+    <SiteCard id={CARD.faq} title={t.title} parts={[faq]} unpublished={rowsMoved(items, live)} className={styles.card} titleClassName={`${ui.h2} ${styles.title}`}>
       <p className={styles.lead}>{t.lead}</p>
       <FaqEditor items={items} live={live} onUpdate={(fn) => faq.update("faq", fn)} errors={errors} error={errors.size === 0 ? faq.error("faq") : undefined} />
     </SiteCard>

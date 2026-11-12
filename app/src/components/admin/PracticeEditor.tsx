@@ -73,7 +73,7 @@ function PackageCard({ code, api }: { code: string; api: SitePartApi<PackageDraf
   const v = api.fields;
   const named = (field: keyof PackageDraft & string) => `${code}.${field}`;
   return (
-    <SiteCard id={`pakett-${code}`} title={fill(t.package, { code })} parts={[api]} className={styles.card} titleClassName={styles.name} data-package={code}>
+    <SiteCard id={`pakett-${code}`} title={fill(t.package, { code })} parts={[api]} className={styles.card} titleClassName={`${ui.h2} ${styles.name}`} data-package={code}>
       <I18nInput
         label={t.name}
         value={v.name}

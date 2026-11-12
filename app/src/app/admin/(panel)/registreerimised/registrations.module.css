@@ -150,10 +150,9 @@
   padding-right: 56px;
 }
 
+/* the drawer's title: the admin's one card title, ui .h2's 27 px at every width (UX audit 2 A26; it was 30 px, 26 px on a phone) */
 .name {
   margin: 0;
-  font: 300 30px/1.1 var(--font-display);
-  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 
@@ -226,7 +225,7 @@
   color: inherit;
 }
 
-/* a phone (the Drawer's body: 24 px above, the ✕ 14 px from the top): the name in Jost 26, as the phone frame draws it */
+/* a phone (the Drawer's body: 24 px above, the ✕ 14 px from the top) */
 @media (max-width: 640px) {
   .rest {
     gap: 0;
@@ -239,9 +238,5 @@
 
   .headTop {
     margin-top: -10px;
-  }
-
-  .name {
-    font-size: 26px;
   }
 }

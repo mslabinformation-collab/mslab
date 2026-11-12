@@ -345,7 +345,7 @@ export function NewReviewForm({ courses, today }: { courses: ReviewCourseOption[
           {/* a new record's line in the chip's place, as the chip (SaveStatus's neutral one) of every other drawer (admin polish F22) */}
           <StatusLine data-new-review-line="">{ready ? fill(adminEt.courseEditor.newReady, { button: t.create }) : adminEt.courseEditor.newRequired}</StatusLine>
         </div>
-        <h2 id={`${uid}-title`} className={styles.drawerTitle}>
+        <h2 id={`${uid}-title`} className={`${ui.h2} ${styles.drawerTitle}`}>
           {t.newTitle}
         </h2>
       </header>
@@ -429,7 +429,7 @@ export function EditReviewForm({ id, version, fields, courses }: { id: number; v
         <div className={styles.chipRow}>
           <SaveStatus status={auto.status} thing={t.thing} onShowInvalid={showInvalid} />
         </div>
-        <h2 id={`${uid}-title`} className={styles.drawerTitle}>
+        <h2 id={`${uid}-title`} className={`${ui.h2} ${styles.drawerTitle}`}>
           {t.editTitle}
         </h2>
       </header>

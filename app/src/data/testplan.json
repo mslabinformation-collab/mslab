@@ -1475,13 +1475,13 @@
         "Kerides ei uju lehe kohal ühtegi olekut; ükski nupp pole kaetud.",
         "Riba kaob ja „Lühikirjeldus“ on endine.",
         "Enne muutmist on päis vaikne; pärast muudatust on seal roheline „✓ Salvestatud kell …“.",
-        "Paneeli päises pole „✓ Salvestatud“ enne, kui midagi muudad."
+        "Paneeli pealkiri on sama suur kui kaartide pealkirjad; päises pole „✓ Salvestatud“ enne, kui midagi muudad."
       ],
       "why": "Pikal lehel näeb Maria alati, kus ta on ja kas muudatus salvestus.",
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-11T19:04:44.922Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-telefon",
@@ -1999,13 +1999,14 @@
         "Teises brauseris pole sõna Proov.",
         "Eelvaade avaneb uues aknas: tekstis on sõna Proov ja all riba „Avaldamata 1“.",
         "Pärast „Avalda muudatused“ on sõna Proov ka teises brauseris, riba kaob ja olek on „Avaldatud“.",
-        "Pärast tagasimuutmist ja avaldamist on sõna kadunud."
+        "Pärast tagasimuutmist ja avaldamist on sõna kadunud.",
+        "Kaardi „Avaldamine“ pealkiri on sama suur kui postituse pealkiri selle kõrval."
       ],
       "why": "Avaldatud postituse muudatus on uudiste lehel näha alles pärast „Avalda muudatused“.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-11-11T20:51:50.371Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-praktika",
@@ -2233,13 +2234,14 @@
       ],
       "expect": [
         "Tundmatu koodiga on välja all hoiatus „Sellist aktiivset sooduskoodi pole. …“.",
-        "Koodiga PROOV-16 hoiatust pole."
+        "Koodiga PROOV-16 hoiatust pole.",
+        "Pealkirjad „Proov 3 kood“, „Eelvaade“ ja „Saatmine“ on ühe suurusega."
       ],
       "why": "Kiri ei tohi lubada koodi, mida õpilane ei saa kasutada.",
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-11-12T06:47:11.254Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-kontakt",

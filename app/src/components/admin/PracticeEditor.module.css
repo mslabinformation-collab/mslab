@@ -1,7 +1,8 @@
 /* C5 Praktika (admin UX pass piece 4a, Task 4; the Part 4 C5 frame): MINI and MAXI side by side, 18 px apart (`1fr 1fr`, drawn), each card at least
    440 px wide (side by side from a 1280 px laptop up, as the old editor stood from about 1183 px; a tablet's column and a phone show them one under
    the other — task 4 review M-1); a card's parts 12 px apart and its
-   padding 22 px (drawn; ui.card's 20 px below 900 px kept); the package's name in Jost 300 30 px (drawn); the row of three short fields „Hind (€)“,
+   padding 22 px (drawn; ui.card's 20 px below 900 px kept); the package's name in Jost 300 27 px, the admin's one card title (drawn 30 px; UX audit 2
+   A26); the row of three short fields „Hind (€)“,
    „Modelle“, „Kestus“ 10 px apart (`repeat(3, 1fr)`, drawn), one under another on a phone (as editor.module.css's field grid folds at 640 px). Colours
    from tokens.css and ui.module.css only: a field that waits for „Avalda muudatused“ has editor.module.css's --rose border (#9e8993, the frame's
    MAXI price), any other ui.input's #d9d2d5. No media query is newer than the old iPads read (no container query here). */
@@ -21,10 +22,9 @@
   padding: 22px;
 }
 
+/* the package's name: the cards' one title size, ui .h2's 27 px (UX audit 2 A26; it was 30 px) */
 .name {
   margin: 0;
-  font: 300 30px/1.1 var(--font-display);
-  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 

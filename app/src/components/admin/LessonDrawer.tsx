@@ -183,7 +183,7 @@ export function LessonDrawer({ courseId, published, lesson, place, bunnyReady }:
         <p className={styles.drawerPlace} data-lesson-place="">
           {fill(t.drawer.place, { nn: String(place.module).padStart(2, "0"), m: place.module, n: place.lesson })}
         </p>
-        <h2 className={styles.drawerTitle}>{name}</h2>
+        <h2 className={`${ui.h2} ${styles.drawerTitle}`}>{name}</h2>
         <SaveStatus status={text.status} draft={published} thing={t.drawer.thing} onShowInvalid={text.showInvalid} />
       </header>
       <LessonTextFields text={text} />
