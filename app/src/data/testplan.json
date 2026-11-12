@@ -571,7 +571,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "avalik-uudiskiri",
@@ -597,7 +597,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "avalik-uudiskiri-resend",
@@ -2134,7 +2134,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "haldus-sooduskoodid-uus",
@@ -2164,7 +2164,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "haldus-sooduskoodid-tervituskood",
@@ -2190,7 +2190,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "haldus-uudiskiri-kood-hoiatus",
@@ -2213,7 +2213,7 @@
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -3224,7 +3224,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "haldus-sooduskood-registreeringule",
@@ -3254,7 +3254,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -3281,7 +3281,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-leping",
@@ -3399,7 +3399,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-sooduskood",
@@ -3429,7 +3429,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-sooduskood-vead",
@@ -3462,7 +3462,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-tervituskood",
@@ -3492,7 +3492,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-sooduskood-tuhistamine",
@@ -3516,7 +3516,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-sooduskood-jarelmaks",
@@ -3545,7 +3545,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-ettemaks",
@@ -3987,7 +3987,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -5282,7 +5282,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "ekursus-ost",
@@ -5313,7 +5313,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -5364,7 +5364,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "ekursus-jarelmaks",
@@ -7101,7 +7101,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     },
     {
       "id": "kirjad-parool",
@@ -7622,7 +7622,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T06:47:11.254Z"
     }
   ]
 }
