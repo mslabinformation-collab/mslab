@@ -1492,11 +1492,14 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava telefonis „Koolitused“ ja mõni koolitus.",
-        "Keri lehte aeglaselt alla ja vaata kaartide järjekorda."
+        "Keri lehte aeglaselt alla ja vaata kaartide järjekorda.",
+        "Puuduta kaardil „Põhiinfo“ vihjes linki „Seaded → Valdkonnad“ ja tule tagasi.",
+        "E-koolitusel puuduta kaardil „Tunnistus“ linki „Seaded → Tunnistus“."
       ],
       "expect": [
         "Pealkirja ja „Jaotised“ all on esimene kaart „Põhiinfo“, siis „Avaldamine“, „Õppevorm ja hind“ ja „Koolituse märgis“.",
-        "Ülejäänud kaardid tulevad nende järel samas järjekorras nagu „Jaotised“ valikus."
+        "Ülejäänud kaardid tulevad nende järel samas järjekorras nagu „Jaotised“ valikus.",
+        "Lingid on kerged puudutada ja avavad Seadetes osa „Valdkonnad“ või „Tunnistus“; vihje tekst ei nihku."
       ],
       "why": "Telefonis avab Maria koolituse eelkõige nime, aadressi ja teksti pärast.",
       "risk": "low",

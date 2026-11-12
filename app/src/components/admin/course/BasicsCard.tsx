@@ -130,7 +130,10 @@ export function BasicsCard({ api, areas }: { api: PartApi<"basics">; areas: read
         </div>
         <p id={`${uid}-area-hint`} className={`${ui.hint} ${ed.wide} ${ed.pairHint}`} data-area-hint="">
           {f.areaHint}{" "}
-          <Link href="/admin/seaded#valdkonnad">{f.areaLink}</Link>.
+          <Link className={ed.hintLink} href="/admin/seaded#valdkonnad">
+            {f.areaLink}
+          </Link>
+          .
         </p>
         <div className={ed.wide}>
           <I18nInput

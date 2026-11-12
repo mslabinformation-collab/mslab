@@ -100,7 +100,11 @@ export function CertificateCard({
               </a>
             </div>
             <p id={`${uid}-design-hint`} className={ui.hint}>
-              {f.certificateDesignHint} <Link href="/admin/seaded#tunnistus">{f.certificateDesignLink}</Link>.
+              {f.certificateDesignHint}{" "}
+              <Link className={ed.hintLink} href="/admin/seaded#tunnistus">
+                {f.certificateDesignLink}
+              </Link>
+              .
             </p>
             {designError && (
               <p id={`${uid}-design-error`} className={ui.error} data-field-error="">
