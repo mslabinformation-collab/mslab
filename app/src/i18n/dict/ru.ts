@@ -387,7 +387,7 @@ export const ru: Dict = {
   cart: {
     title: "Корзина",
     emptyTitle: "Корзина пуста",
-    emptyText: "Онлайн-курс можно купить на странице курса кнопкой «Купить сразу». На очный курс регистрируются на странице курса.",
+    emptyText: "Онлайн-курс можно купить на странице курса кнопкой «Купить сразу». Записаться на очный курс можно на странице курса.",
     remove: "Удалить",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их",
