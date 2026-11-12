@@ -121,6 +121,17 @@
   background: #f5ebeb;
 }
 
+/* Seaded's one delete style (UX pass 11.11, A8): `danger` + `held` on a „Kustuta“ that cannot act now (the thing is in use) — greyed, not faded or
+   busy, with no hover; its aria-describedby says why. */
+.held[aria-disabled="true"],
+.held[aria-disabled="true"]:hover {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted-2);
+  opacity: 1;
+  cursor: default;
+}
+
 .smallBtn {
   min-height: 44px;
   padding: 9px 18px;

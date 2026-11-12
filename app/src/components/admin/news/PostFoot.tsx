@@ -12,7 +12,7 @@ import styles from "./PostFoot.module.css";
 
 /**
  * The post card's footer (admin UX pass piece 4b, Task 2; S4-20, S4-23): where the post is (`line`) and „Kustuta postitus“, which asks in its place —
- * „Kas kustutan selle postituse?“, for a published post „Postitus kaob blogist ja avalehelt.“, „Seda ei saa tagasi võtta.“, „Jah, kustuta“ /
+ * „Kas kustutan selle postituse?“, for a published post „Postitus kaob uudiste lehelt ja avalehelt.“, „Seda ei saa tagasi võtta.“, „Jah, kustuta“ /
  * „Katkesta“ (the focus back on the button). Yes: POST /api/admin/uudised/<id>/kustuta (the post goes with its drafts, R-h); done, nothing of the
  * post is sent or kept any more in this browser (`discardCopy`, and every copy of the post), and the list opens with „Postitus kustutatud.“ and its
  * search (`search`), read again; refused, its line (a post already gone: „Seda postitust ei leitud.“), the question open.

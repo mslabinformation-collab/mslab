@@ -82,10 +82,10 @@ test("none yet says what the protocol has then; at 30 'Lisa punkt' adds nothing 
   expect(container.textContent).toContain("Rohkem kui 30 punkti ei saa lisada.");
 });
 
-test("the certificate's lines (kind 'skills') own their default hint and empty line: no protocol wording shows where the caller gives none", async () => {
+test("the certificate's lines (kind 'skills') own their default hint, and no empty line (UX pass 11.11 A9: one hint): no protocol wording shows where the caller gives none", async () => {
   await render([], { kind: "skills" });
-  expect(container.textContent).toContain("Tühjana kasutatakse „Õpiväljundid“ ridu");
-  expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
+  expect(container.textContent).toContain("Tühjana kasutatakse kaardi „Õpiväljundid“ read.");
+  expect(container.textContent).not.toContain("Ridu pole");
   expect(container.textContent).not.toMatch(/protokoll|Punkte veel pole/i);
   expect(container.textContent).not.toContain("Mida õpid"); // one name for the list: the card Maria fills is „Õpiväljundid“ (M-7)
   await render([], { kind: "stages" }); // and the stages' own defaults are as they were
@@ -101,7 +101,7 @@ test("the certificate's lines (kind 'skills'): their own title, labels and hooks
   expect(container.textContent).toContain("Tühjana kasutatakse „Õpiväljundid“ ridu");
   expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
   const add = container.querySelector("[data-add-skill]")!;
-  expect(add.textContent).toBe("+ Lisa rida");
+  expect(add.textContent).toBe("Lisa rida +");
   await click(add);
   const [first] = fields("data-certificate-skill");
   expect(first.getAttribute("data-certificate-skill")).toBe("0");

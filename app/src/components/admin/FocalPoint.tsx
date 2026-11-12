@@ -53,20 +53,6 @@ export function FocalPoint({
   const id = useId();
   const [which, setWhich] = useState(0);
   const current = targets[Math.min(which, targets.length - 1)];
-  const point = parseFocal(current.value) ?? parseFocal(DEFAULT_FOCAL)!;
-
-  const pick = (e: MouseEvent<HTMLDivElement>) => {
-    const img = e.currentTarget.querySelector("img");
-    if (!img) return;
-    const r = img.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    current.onChange(formatFocal({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 }));
-  };
-  const setAxis = (axis: "x" | "y", raw: string) => {
-    const n = Number(raw);
-    if (raw === "" || !Number.isFinite(n)) return;
-    current.onChange(formatFocal({ ...point, [axis]: n }));
-  };
 
   return (
     <div
@@ -93,34 +79,8 @@ export function FocalPoint({
           ))}
         </span>
       )}
-      {/* A pointer shortcut: the number fields below are the keyboard and screen reader way to the same value. */}
-      <div className={styles.pick} onClick={pick} aria-hidden="true" data-focal-pick={current.name}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- the admin's own upload, shown whole */}
-        <img src={src} alt="" draggable={false} />
-        <span className={styles.marker} style={{ left: `${point.x}%`, top: `${point.y}%` }} />
-      </div>
-      <div className={styles.axes}>
-        {(["x", "y"] as const).map((axis) => (
-          <div key={axis} className={ui.field}>
-            <label htmlFor={`${id}-${axis}`}>
-              {t[axis]}
-              {targets.length > 1 && <span className={ui.sr}> · {current.label}</span>}
-            </label>
-            <input
-              id={`${id}-${axis}`}
-              className={ui.input}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={100}
-              step={1}
-              value={point[axis]}
-              onChange={(e) => setAxis(axis, e.target.value)}
-              data-focal-axis={`${current.name}-${axis}`}
-            />
-          </div>
-        ))}
-      </div>
+      <FocalPick src={src} value={current.value} onChange={current.onChange} name={current.name} />
+      <FocalAxes value={current.value} onChange={current.onChange} name={current.name} view={targets.length > 1 ? current.label : undefined} />
       {error && <p className={ui.error}>{error}</p>}
       <div className={styles.frames}>
         {targets.flatMap((x, i) =>
@@ -135,6 +95,64 @@ export function FocalPoint({
           )),
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The picture whole with the point's marker on it: a click sets the point (a pointer shortcut: FocalAxes is the keyboard and screen reader way to the
+ * same value). FocalPoint's, and Koolitaja's „Portree“ field's preview (UX pass 11.11, board 1: the preview is where the point is picked).
+ */
+export function FocalPick({ src, value, onChange, name }: { src: string; value: string; onChange: (value: string) => void; name: string }) {
+  const point = parseFocal(value) ?? parseFocal(DEFAULT_FOCAL)!;
+  const pick = (e: MouseEvent<HTMLDivElement>) => {
+    const img = e.currentTarget.querySelector("img");
+    if (!img) return;
+    const r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    onChange(formatFocal({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 }));
+  };
+  return (
+    <div className={styles.pick} onClick={pick} aria-hidden="true" data-focal-pick={name}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- the admin's own upload, shown whole */}
+      <img src={src} alt="" draggable={false} />
+      <span className={styles.marker} style={{ left: `${point.x}%`, top: `${point.y}%` }} />
+    </div>
+  );
+}
+
+/** The point's two number fields, percent from the left and from the top (`view`: which of the picture's views they are, for a screen reader). */
+export function FocalAxes({ value, onChange, name, view }: { value: string; onChange: (value: string) => void; name: string; view?: string }) {
+  const t = adminEt.editor.focal;
+  const id = useId();
+  const point = parseFocal(value) ?? parseFocal(DEFAULT_FOCAL)!;
+  const setAxis = (axis: "x" | "y", raw: string) => {
+    const n = Number(raw);
+    if (raw === "" || !Number.isFinite(n)) return;
+    onChange(formatFocal({ ...point, [axis]: n }));
+  };
+  return (
+    <div className={styles.axes}>
+      {(["x", "y"] as const).map((axis) => (
+        <div key={axis} className={ui.field}>
+          <label htmlFor={`${id}-${axis}`}>
+            {t[axis]}
+            {view && <span className={ui.sr}> · {view}</span>}
+          </label>
+          <input
+            id={`${id}-${axis}`}
+            className={ui.input}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={100}
+            step={1}
+            value={point[axis]}
+            onChange={(e) => setAxis(axis, e.target.value)}
+            data-focal-axis={`${name}-${axis}`}
+          />
+        </div>
+      ))}
     </div>
   );
 }

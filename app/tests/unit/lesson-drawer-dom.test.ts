@@ -193,7 +193,7 @@ describe("„Õppetunni nimi“ and „Lühike tekst“ autosave (R-b2)", () => 
     await settle();
     expect(fetched.calls.map((c) => [c.method, c.url, c.body])).toEqual([["POST", "/api/admin/oppetund/23", { version: "t:l23", patch: { body: { et: "Loe ja vaata." } } }]]);
     expect($("[data-save-status]")?.getAttribute("data-save-kind")).toBe("saved");
-    expect(text($("[data-save-status] [data-save-text]"))).toBe("✓ Salvestatud 14:03");
+    expect(text($("[data-save-status] [data-save-text]"))).toBe("✓ Salvestatud kell 14:03");
     // the row behind the drawer (its name) and, on a published course, the PublishBar's labels are the page's: it is read again
     expect(router.refresh).toHaveBeenCalledOnce();
     // nothing else writes: no outline part, no form
@@ -206,7 +206,7 @@ describe("„Õppetunni nimi“ and „Lühike tekst“ autosave (R-b2)", () => 
     await leave(nameField());
     await settle();
     expect(fetched.calls[0].body).toEqual({ version: "t:l23", patch: { title: { et: "Tere tulemast" } } });
-    expect(text($("[data-save-status] [data-save-text]"))).toBe("✓ Mustand salvestatud 14:03");
+    expect(text($("[data-save-status] [data-save-text]"))).toBe("✓ Mustand salvestatud kell 14:03");
   });
 
   it("the header's name follows the field as it is typed (a blank field keeps the stored name)", async () => {

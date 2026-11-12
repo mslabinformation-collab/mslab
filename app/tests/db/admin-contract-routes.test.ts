@@ -240,6 +240,22 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
     expect(mixed).toContain("Русский текст.");
   });
 
+  // UX pass 11.11 A18 (the Vaiksed board): the e-course contract's card has „Näidisleping (PDF)“ too; its sample is an e-course: no session, no
+  // payment choice, a 190 € course named „Näidis-e-koolitus“; with no text posted it reads the e-course contract's own (course_terms)
+  test("kind=ecourse: an e-course's sample — the made-up e-course and its price, no session and no prepayment", async () => {
+    await signIn();
+    const res = await sample({ kind: "ecourse", titleEt: "E-koolituse proovileping", bodyEt: "Õpilane {nimi} ostab {koolitus} hinnaga {hind}. Toimumine: [{toimumine}]. Ettemaks: [{ettemaks}]." });
+    expect(res.status).toBe(200);
+    const text = (await textOf(await bytesOf(res))).replace(/\s+/g, " ");
+    // (the text's spaces made plain, the no-break one in „190,00 €“ too)
+    for (const part of ["E-koolituse proovileping", "Proov (näidis)", "Näidis-e-koolitus", "190,00 €", "Toimumine: [].", "Ettemaks: [].", "e-koolituse ost"]) expect(text, part).toContain(part);
+    expect(text).not.toContain("registreerimisvorm");
+    expect(text).not.toContain("Näidiskoolitus");
+    expect(text).not.toContain("14.11.2026");
+    const ru = (await textOf(await bytesOf(await sample({ kind: "ecourse", titleEt: "x", bodyEt: "x", bodyRu: "Курс {koolitus}.", lang: "ru" })))).replace(/\s+/g, " ");
+    expect(ru).toContain("Курс Пример онлайн-курса.");
+  });
+
   test("nothing is stored: the contracts, the contact text's page and its version, and the seller in Maksmine are as they were", async () => {
     await signIn();
     const before = { contracts: await countContracts(), stored: await stored() };

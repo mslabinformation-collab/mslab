@@ -18,6 +18,7 @@ export function OutcomesCard({ api }: { api: PartApi<"outcomes"> }) {
   return (
     <Card id={CARD_ID.outcomes} label={t.sections.outcomes} onLeave={api.flush} conflict={api.conflict} onRestore={api.restore}>
       <ListEditor
+        cardTitle
         title={t.sections.outcomes}
         itemLabel={t.fields.outcomes}
         hint={t.fields.outcomesHint}

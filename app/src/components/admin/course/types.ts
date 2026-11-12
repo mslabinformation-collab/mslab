@@ -9,7 +9,13 @@ import type { EditorPart, EditorParts, PartValues } from "@/domain/course-parts"
 export type OtherCourse = { id: number; title: string; type: CourseType; published: boolean };
 
 /** A certificate design, for „Tunnistus“'s „Kujundus“ (2026-11-11 certificate designs): the list is in Seaded's order, the first first. */
-export type CertificateDesignOption = { id: number; name: string };
+export type CertificateDesignOption = {
+  id: number;
+  name: string;
+  /** Its picture beside the select (UX pass 11.11 A9): the photo, or none ("") and the tone's colour. */
+  tone?: "light" | "dark";
+  backgroundKey?: string;
+};
 /** A course area for „Valdkond“ (Seaded → Valdkonnad, in Maria's order): its id and Estonian name. */
 export type AreaOption = { id: number; name: string };
 

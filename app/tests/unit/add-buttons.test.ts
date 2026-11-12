@@ -1,0 +1,33 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+// UX pass 11.11 A14 (the Vaiksed board): the admin's add buttons read one way, „Lisa … +“ — the „+“ after the words („Lisa koolitus +“,
+// „Lisa rida +“), never before them („+ Lisa rida“) and never missing on a button that opens or adds a new thing. Read from the components' sources:
+// no JSX text starts with „+ {…}“ (Seaded's contract chips „+ nimi“ are not add buttons: they put a word into the text).
+const files = (dir: string): string[] =>
+  readdirSync(dir).flatMap((n) => {
+    const p = join(dir, n);
+    return statSync(p).isDirectory() ? files(p) : p.endsWith(".tsx") ? [p] : [];
+  });
+
+describe("add buttons: „Lisa … +“ (UX pass A14)", () => {
+  it("no admin component writes the „+“ before an add button's words", () => {
+    const before = files(join(process.cwd(), "src", "components", "admin"))
+      .concat(files(join(process.cwd(), "src", "app", "admin")))
+      .filter((p) => !p.endsWith("ContractTexts.tsx"))
+      .flatMap((p) =>
+        readFileSync(p, "utf8")
+          .split(/\r?\n/)
+          .map((line, i) => [p, i + 1, line] as const)
+          .filter(([, , line]) => /^\s*\+ \{|`\+ \$\{/.test(line)),
+      );
+    expect(before).toEqual([]);
+  });
+
+  // „Lisa moodul +“ / „Lisa punkt +“ of Moodulid stood 48 px tall beside its field; every add button is ui.smallBtn's 44 px
+  it("no stylesheet makes the lessons' add button taller than the others", () => {
+    const css = readFileSync(join(process.cwd(), "src", "components", "admin", "LessonsEditor.module.css"), "utf8");
+    expect(css).not.toMatch(/\.add > button\s*\{[^}]*min-height/);
+  });
+});

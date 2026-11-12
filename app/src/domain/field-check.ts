@@ -168,4 +168,11 @@ export class Check {
     const v = value.trim();
     return isFocal(v) ? v : (this.fail(name, "focal") ?? "");
   }
+
+  /** A zoom in whole percent within `range` (the contact photo's „Suurendus“, "100"–"300"); anything else is `whole`. */
+  zoom(name: string, value: string, range: { min: number; max: number }): number | null {
+    const v = value.trim();
+    const n = /^\d{1,3}$/.test(v) ? Number(v) : Number.NaN;
+    return Number.isInteger(n) && n >= range.min && n <= range.max ? n : this.fail(name, "whole");
+  }
 }

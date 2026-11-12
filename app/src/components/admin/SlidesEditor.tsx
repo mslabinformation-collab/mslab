@@ -176,7 +176,7 @@ export function SlidesEditor({ slides, live, onUpdate, errors, error, links }: S
         aria-describedby={full ? `${uid}-max` : undefined}
         data-add-slide=""
       >
-        + {t.add}
+        {t.add} +
       </button>
       <div ref={root} className={styles.slides} data-slides-editor="">
         {slides.length === 0 ? (

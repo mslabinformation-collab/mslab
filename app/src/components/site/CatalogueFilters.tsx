@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { catalogueSearch, matchesCatalogue, parseCatalogueQuery, type FormatFilter, type LevelFilter } from "@/domain/catalogue";
 import { parseArea, type AreaChip } from "@/domain/course-areas";
-import { fill } from "@/i18n/format";
+import { fill, pluralForm } from "@/i18n/format";
+import type { Locale } from "@/i18n/locales";
 import { useUrlQuery } from "@/lib/url-query";
 import { CourseCard, type CourseCardData } from "./CourseCard";
 import { FormatExplainer, type ExplainerFormat, type ExplainerTexts } from "./FormatExplainer";
@@ -33,14 +34,16 @@ export type CatalogueTexts = ExplainerTexts & {
   emptyTitle: string;
   emptyText: string;
   resetFilters: string;
-  results: string;
+  /** the visible count above the courses (UX pass P6), by i18n/format.ts pluralForm: „6 koolitust“ */
+  count: { one: string; few: string; many: string };
 };
 
 /**
- * Catalogue filters in prototype B's arrangement (Maria C17 / K3): format chips with the search on the first row,
- * the explainer, then the level chips on their own row (K4), then the area chips (course areas, spec 2026-11-11-course-areas-filter-design.md §5.2:
- * „Kõik“ and `areas`, the page's chips — the areas its courses have, in Maria's order, none when fewer than two, and then the row is not there at
- * all), then the course grid.
+ * Catalogue filters in prototype B's arrangement (Maria C17 / K3): format chips with the search on the first row, the level chips on their own row
+ * (K4), then the area chips (course areas, spec 2026-11-11-course-areas-filter-design.md §5.2: „Kõik“ and `areas`, the page's chips — the areas its
+ * courses have, in Maria's order, none when fewer than two, and then the row is not there at all). UX pass 11.11 P6 (the Telefon-koolitused board):
+ * the rows stand together, then the explainer — under „Kõik“ one line that opens the three „Õppevormid“ cards, under a format its journey — then the
+ * count („6 koolitust“) and the course grid, so a phone shows a course on its first screen.
  *
  * The URL is the single source of truth: format, level, area and search are read from
  * ?vorm=e|k&tase=baas|taiend&valdkond=<slug>&otsi=… (useUrlQuery; an unknown or old area reads as „Kõik“), so the home page links, a reload,
@@ -55,11 +58,13 @@ export function CatalogueFilters({
   areas,
   formats,
   t,
+  locale,
 }: {
   courses: CatalogueCourse[];
   areas: AreaChip[];
   formats: { e: ExplainerFormat; k: ExplainerFormat; h: ExplainerFormat };
   t: CatalogueTexts;
+  locale: Locale;
 }) {
   const id = useId();
   const [params, writeQuery] = useUrlQuery();
@@ -69,6 +74,8 @@ export function CatalogueFilters({
   const [draft, setDraft] = useState<string | null>(null); // the search text while typing; null = follow the URL
   const search = draft ?? q.otsi;
   const [hybridOpen, setHybridOpen] = useState(q.hybrid);
+  // the line „Mis vahe on …?“ under „Kõik“ (P6): closed, open for the old ?vorm=h (its hybrid explanation) and after the hybrid note
+  const [overviewOpen, setOverviewOpen] = useState(q.hybrid);
   const focusHybrid = useRef(false); // set by the hybrid note; done once the explanation is on screen
   const hybridHeading = useRef<HTMLHeadingElement>(null);
 
@@ -102,6 +109,7 @@ export function CatalogueFilters({
   };
   // From a format's journey panel: hybrid means combining courses of both formats, so show all of them.
   const openHybridFromNote = () => {
+    setOverviewOpen(true);
     setHybridOpen(true);
     focusHybrid.current = true;
     write({ vorm: "all" });
@@ -163,17 +171,6 @@ export function CatalogueFilters({
         </label>
       </div>
 
-      <FormatExplainer
-        mode={vorm}
-        hybridOpen={hybridOpen}
-        formats={formats}
-        t={t}
-        onFormat={pickFormat}
-        onHybridToggle={toggleHybrid}
-        onHybridNote={openHybridFromNote}
-        hybridHeadingRef={hybridHeading}
-      />
-
       <div className={`${styles.pills} ${styles.levels}`} role="group" aria-label={t.levelLabel} data-filter-row="level">
         {levelChips.map(([l, label]) => (
           <button key={l} type="button" className={styles.pill} aria-pressed={tase === l} onClick={() => pickLevel(l)}>
@@ -192,8 +189,21 @@ export function CatalogueFilters({
         </div>
       )}
 
-      <p className={ui.srOnly} aria-live="polite" id={`${id}-results`}>
-        {fill(t.results, { n: shown.length })}
+      <FormatExplainer
+        mode={vorm}
+        overviewOpen={overviewOpen}
+        hybridOpen={hybridOpen}
+        formats={formats}
+        t={t}
+        onFormat={pickFormat}
+        onOverviewToggle={() => setOverviewOpen((o) => !o)}
+        onHybridToggle={toggleHybrid}
+        onHybridNote={openHybridFromNote}
+        hybridHeadingRef={hybridHeading}
+      />
+
+      <p className={styles.count} aria-live="polite" id={`${id}-results`} data-catalogue-count="">
+        {fill(t.count[pluralForm(shown.length, locale)], { n: shown.length })}
       </p>
 
       {shown.length > 0 ? (

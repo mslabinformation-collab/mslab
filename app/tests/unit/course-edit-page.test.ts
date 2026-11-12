@@ -150,7 +150,8 @@ describe("the course editor's read stamp (final review P9-1)", () => {
 });
 
 describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs)", () => {
-  test("the editor gets Seaded's designs in their order, each its id and name only (a saved course and a new one)", async () => {
+  // (UX pass 11.11: each design with its tone and background too, for the picker's small preview)
+  test("the editor gets Seaded's designs in their order, each its id, name, tone and background (a saved course and a new one)", async () => {
     for (const id of ["7", "uus"]) {
       const page = open(id);
       await settle();
@@ -158,8 +159,8 @@ describe("„Tunnistus“ → „Kujundus“ (2026-11-11 certificate designs)", 
       if (id === "7") gate.stamp!(5);
       const props = editorProps(await page) as unknown as { designs: unknown };
       expect(props.designs).toEqual([
-        { id: 3, name: "Hele" },
-        { id: 8, name: "Tume" },
+        { id: 3, name: "Hele", tone: "light", backgroundKey: "img/hele.jpg" },
+        { id: 8, name: "Tume", tone: "dark", backgroundKey: "" },
       ]);
     }
   });

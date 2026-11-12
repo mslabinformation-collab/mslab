@@ -221,7 +221,7 @@ describe("the header and the one chip", () => {
     await leave(field("MAXI.price"));
     expect($$("[data-save-status]")).toHaveLength(1);
     expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
-    expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud 12:41");
+    expect(text(chip()!.querySelector("[role=status]"))).toBe("Mustand salvestatud kell 12:41");
     // each part saved its own field to its own route, from its own version
     expect(remote.log.map((s) => [s.part, s.version, s.patch])).toEqual([
       ["MINI", "l:MINI", { price: "110" }],
@@ -243,6 +243,36 @@ describe("the PublishBar", () => {
     // typed back to live: no bar
     await type(field("MAXI.price"), "150");
     expect(bar()).toBeNull();
+  });
+
+  it("the save's words (UX pass 11.11 A1): none as the page opens; in the bar before its buttons while it shows, else in the header", async () => {
+    await show();
+    // just opened: the header's place is there, quiet
+    expect($("[data-site-chip] [data-save-status]")!.hasAttribute("data-save-quiet")).toBe(true);
+    expect($("[data-save-text]")).toBeNull();
+    await type(field("MAXI.price"), "155");
+    await leave(field("MAXI.price"));
+    // one line on the page, in the bar, before „Eelvaade ↗“
+    expect($$("[data-save-status]")).toHaveLength(1);
+    const slot = bar()!.querySelector("[data-publish-status]")!;
+    expect(text(slot.querySelector("[data-save-text]"))).toBe("✓ Mustand salvestatud kell 12:41");
+    expect(slot.compareDocumentPosition($("[data-publish-preview]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect($("[data-site-chip] [data-save-status]")).toBeNull();
+    // typed back to live: no bar, and the words back in the header (still said: something has happened)
+    await type(field("MAXI.price"), "150");
+    await leave(field("MAXI.price"));
+    expect(bar()).toBeNull();
+    expect($("[data-site-chip] [data-save-text]")).not.toBeNull();
+  });
+
+  it("a page that opens with a draft: the bar has no empty place for the words until something happens (review: no 6 px gap before „Eelvaade ↗“)", async () => {
+    await show({ parts: partsOf({ MAXI: { version: "d:MAXI", value: { ...MAXI, price: "155" } } }) });
+    expect(bar()).not.toBeNull();
+    expect(bar()!.querySelector("[data-publish-status]")).toBeNull();
+    // something happens (here the fake's answer to a draft it does not know): the place is there, with the words
+    await type(field("MAXI.price"), "160");
+    await leave(field("MAXI.price"));
+    expect(text(bar()!.querySelector("[data-publish-status] [data-save-text]"))).not.toBe("");
   });
 
   it("„Avalda muudatused“ flushes a pending edit before the publish POST, then the page is read again", async () => {
@@ -273,7 +303,7 @@ describe("the PublishBar", () => {
     expect(bar()).toBeNull();
     expect(field("MAXI.price")!.value).toBe("155");
     // the chip keeps the publish's time until a save of its own
-    expect(text(chip()!.querySelector("[role=status]"))).toMatch(/^Salvestatud \d\d:\d\d$/);
+    expect(text(chip()!.querySelector("[role=status]"))).toMatch(/^Salvestatud kell \d\d:\d\d$/);
     await type(field("MAXI.price"), "160");
     await leave(field("MAXI.price"));
     expect(remote.log.at(-1)).toEqual({ part: "MAXI", version: "l:MAXI-2", patch: { price: "160" } });

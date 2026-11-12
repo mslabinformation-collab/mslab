@@ -94,6 +94,8 @@
   font: 400 24px/1.2 var(--font-display);
   letter-spacing: -0.01em;
   transition: color 0.2s;
+  /* a name kept together (domain/title-breaks.ts) or a long word still breaks rather than run out of the card */
+  overflow-wrap: break-word;
 }
 
 .card:hover .title {
@@ -139,9 +141,10 @@
   }
 }
 
+/* the home page's cards on a phone: a 200 px photo (UX pass P21; at 350 px each card was a whole screen, four of them some 2,000 px) */
 @media (max-width: 640px) {
   .photo:not(.square) {
-    height: 350px;
+    height: 200px;
   }
 
   .title {

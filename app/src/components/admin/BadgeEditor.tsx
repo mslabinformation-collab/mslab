@@ -41,7 +41,8 @@ export function BadgeEditor({ value, onChange, card, error }: { value: Badge; on
   return (
     <div className={styles.badge} data-badge-editor="">
       <div>
-        <h2 className={ui.h3}>{t.title}</h2>
+        {/* the cards' title size (UX pass 11.11 A3) */}
+        <h2 className={ui.h2}>{t.title}</h2>
         <p className={`${ui.muted} ${ui.small}`}>{t.lead}</p>
       </div>
 
@@ -59,6 +60,9 @@ export function BadgeEditor({ value, onChange, card, error }: { value: Badge; on
             </button>
           ))}
         </div>
+        <p className={`${ui.muted} ${ui.small}`} data-badge-gone="">
+          {t.bestsellerGone}
+        </p>
       </div>
 
       <div className={ui.field}>

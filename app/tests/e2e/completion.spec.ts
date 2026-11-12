@@ -266,7 +266,7 @@ test("§9 e2e 3: Maria finds the work in 'Hindamine', approves all with „Kinni
   await expect(page.locator("[data-assess-progress]")).toHaveText("2 punkti · 0 hinnatud");
   await expect(page.locator("[data-assess-send]")).toHaveText("Saada hinnang · 0 kinnitatud");
   await expect(page.locator("[data-note]")).toHaveCount(0);
-  await expect(assessPoint(page, 0).locator("[data-add-note]")).toHaveText("Lisa märkus");
+  await expect(assessPoint(page, 0).locator("[data-add-note]")).toHaveText("Lisa märkus +");
   // „Kinnita kõik“ approves every point without a verdict (each one a tap, stored at once), then only the one to fix is switched
   await page.locator("[data-approve-all]").click();
   for (const i of [0, 1]) await expect(assessPoint(page, i).locator('[data-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
@@ -386,7 +386,7 @@ test("§9 e2e 5: open answers — Maria asks for one fix, she rewrites only that
   await box.fill("Kirjuta, millal katkestad töö ja mida kliendile soovitad.");
   await box.blur();
   // the chip: saved to the server (it shows the time once a save has been confirmed)
-  await expect(page.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+  await expect(page.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud kell \d{2}:\d{2}/, { timeout: 30_000 });
   expect((await storedMarks(first.id)).map((d) => d.value)).toEqual([
     {
       submittedAt: expect.any(String),
@@ -690,17 +690,17 @@ test("§9 e2e 10 (B15 and the Hindamine rows at 375 px): the attempts list keeps
   }
   expect(await noOverflow(page)).toBe(true);
 
-  // the review: the chip is under the heading (not beside it), a tap is saved, and the page fits
+  // the review: a tap is saved, the status (quiet until then: UX pass A17) is under the heading (not beside it), and the page fits
   await page.goto(`/admin/hindamine/test?id=${reviewId}`);
   await adminReady(page);
   const chip = page.locator("[data-review-head] [data-save-status]");
-  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute("data-save-quiet", "");
+  await page.locator('[data-review-answer="q3"] [data-review-verdict="ok"]').click();
+  await expect(page.locator("[data-review-send]")).toHaveText("Saada · 1 õige");
+  await expect(chip).toContainText(/Salvestatud kell \d{2}:\d{2}/, { timeout: 30_000 });
   const h1 = (await page.locator("[data-review-head] h1").boundingBox())!;
   const chipBox = (await chip.boundingBox())!;
   expect(chipBox.y, "the status chip is under the heading").toBeGreaterThanOrEqual(h1.y + h1.height - 1);
-  await page.locator('[data-review-answer="q3"] [data-review-verdict="ok"]').click();
-  await expect(page.locator("[data-review-send]")).toHaveText("Saada · 1 õige");
-  await expect(chip).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
   expect((await storedMarks(reviewId)).map((d) => d.value.marks.q3)).toEqual([{ verdict: "ok", comment: "" }]);
   expect(await noOverflow(page)).toBe(true);
   expect(await smallTargets(page.locator("[data-test-review-page]"))).toEqual([]);

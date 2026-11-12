@@ -379,6 +379,13 @@ describe("06.11 polish: the row's room and the pressed row", () => {
     expect(wide).toMatch(/\.table td:first-child \{\s*padding-left: 12px;/);
     expect(wide).toMatch(/\.table td:last-child \{\s*padding-right: 12px;/);
   });
+  it("in the table layout every divider runs the table's whole width, the tint's (Dim 11.11): each cell draws its own 1 px border, none a stripe of its background", () => {
+    const wide = sheet.slice(sheet.indexOf("@container (min-width: 760.02px) {"));
+    // (a 1 px background stripe and a 1 px border round differently at 125 % (one device pixel against 1.25), and the stripes started 12 px in: a step
+    // in the line where the first column meets the second, and the tint 12 px longer than the lines on each side)
+    expect(wide).not.toMatch(/linear-gradient/);
+    expect(wide).not.toMatch(/border-bottom-color:\s*transparent/);
+  });
   it("a pressed row keeps the tint until the address changes (board 6)", () => {
     expect(sheet).toMatch(/\.table tbody tr\[data-pressed\],\s*\.rows li\[data-drag-row\]\[data-pressed\] \{\s*background: var\(--row-highlight\);/);
   });

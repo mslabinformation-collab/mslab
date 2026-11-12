@@ -2,10 +2,47 @@
    Maria C12 liked the colour; C13/C14 the definition a little smaller (16px). */
 
 .explain {
-  margin: 0 0 30px;
+  margin: 0;
   padding: clamp(24px, 4vw, 52px);
   border-radius: var(--r-tile);
   background: var(--canvas);
+}
+
+.explain[hidden] {
+  display: none;
+}
+
+/* UX pass P6 (the Telefon-koolitused board): under „Kõik“ the three cards are behind one line between two hairlines, „+“ at its end. */
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font: 500 14px/1.4 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-bottom-color: var(--fog);
+}
+
+.toggleSign {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.overview .explain {
+  margin-top: 16px;
 }
 
 .cards {

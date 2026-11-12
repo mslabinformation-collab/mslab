@@ -118,7 +118,8 @@ export default async function PaymentsPage({ searchParams }: Props) {
           { href: "/admin/arved", label: t.tabs.invoices, current: false },
         ]}
       />
-      <ListToolbar placeholder={t.searchPlaceholder} pillRows={[{ label: t.filterLabel, pills }]} />
+      {/* UX pass A21: no pills while there are no payments at all (six „0“ said nothing) */}
+      <ListToolbar placeholder={t.searchPlaceholder} pillRows={counts.all === 0 && view.otsi === "" ? [] : [{ label: t.filterLabel, pills }]} />
 
       <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
         <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>

@@ -391,12 +391,16 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
       <aside className={styles.sidebar}>
         <Logo href="/admin" label={t.home} className={styles.logo} eager />
         <p className={styles.label}>{t.label}</p>
+        {/* the page's save words while they are scrolled away and need her (SaveStatus `follow`); empty, it takes no room */}
+        <div className={styles.sideFollow} data-save-follow-slot="side" />
         <NavContent items={items} active={active} t={t} fold onPress={press} />
         <NavFoot email={email} t={t} withSite={false} dock={fbDock} />
       </aside>
       <NavProgress />
 
       <header className={styles.bar}>
+        {/* the same below 900 px: filled, it takes the page name's place */}
+        <div className={styles.barFollow} data-save-follow-slot="bar" />
         <BarTitle title={title} t={t} />
         {fbDock && <FbDock />}
         <button

@@ -4,7 +4,7 @@ import type { Db, Q } from "@/db/client";
 import { certificateDesigns, contentDrafts, courses } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import {
-  BACKGROUND_MAX_BYTES, checkDesignName, firstDesign, isBackgroundKey, isDesignTone, type CertificateDesign, type DesignTone,
+  BACKGROUND_MAX_BYTES, checkDesignName, firstDesign, isBackgroundKey, isDesignTone, type CertificateDesign, type DesignNameError, type DesignTone,
 } from "@/domain/certificate-design";
 import { contentVersion } from "@/lib/version";
 import { fieldCodes, refusedFields } from "./autosave-route";
@@ -179,20 +179,34 @@ export async function writeCertificateDesign(db: Db, id: number, patch: Record<s
   });
 }
 
+export type CreateDesignResult = { ok: true; id: number } | { ok: false; error: DesignNameError };
+
 /**
- * „Lisa kujundus“ (the card's explicit create): a light design without a photo, last in the list (the highest sort plus one), named „Uus kujundus“
- * or the first „Uus kujundus {n}“ no design has; Maria renames it in its row. Under the designs' lock, so two at once get two names.
+ * „Lisa kujundus +“ (the card's explicit create): a light design without a photo, last in the list (the highest sort plus one). `typed`: the name
+ * of the add row (UX pass 11.11, board 1), checked as a row's name (checkDesignName: one line, trimmed, at most 40, unique) and refused by its code;
+ * none or an empty one: named „Uus kujundus“ or the first „Uus kujundus {n}“ no design has, which Maria renames in its row. Under the designs' lock,
+ * so two at once get two names.
  */
-export async function createCertificateDesign(db: Db): Promise<{ id: number }> {
-  return db.transaction(async (tx) => {
+export async function createCertificateDesign(db: Db): Promise<{ ok: true; id: number }>;
+export async function createCertificateDesign(db: Db, typed: string | undefined): Promise<CreateDesignResult>;
+export async function createCertificateDesign(db: Db, typed?: string): Promise<CreateDesignResult> {
+  return db.transaction(async (tx): Promise<CreateDesignResult> => {
     await lockDesigns(tx);
-    const names = new Set((await tx.select({ name: certificateDesigns.name }).from(certificateDesigns)).map((d) => d.name.toLocaleLowerCase("et")));
-    let name = NEW_NAME;
-    for (let n = 2; names.has(name.toLocaleLowerCase("et")); n++) name = `${NEW_NAME} ${n}`;
+    const taken = (await tx.select({ name: certificateDesigns.name }).from(certificateDesigns)).map((d) => d.name);
+    let name: string;
+    if (typed !== undefined && typed.trim() !== "") {
+      const checked = checkDesignName(typed, taken);
+      if (!checked.ok) return checked;
+      name = checked.name;
+    } else {
+      const names = new Set(taken.map((n) => n.toLocaleLowerCase("et")));
+      name = NEW_NAME;
+      for (let n = 2; names.has(name.toLocaleLowerCase("et")); n++) name = `${NEW_NAME} ${n}`;
+    }
     const [{ top }] = await tx.select({ top: max(certificateDesigns.sort) }).from(certificateDesigns);
     // (returning(fields) has no common overload on the Db union: the whole row)
     const [row] = await tx.insert(certificateDesigns).values({ name, tone: "light", backgroundKey: "", sort: (top ?? 0) + 1 }).returning();
-    return { id: row.id };
+    return { ok: true, id: row.id };
   });
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { firstParagraph, nextSessionByCourse, nextSessions, pickHomeCourses, splitStatement } from "@/domain/home";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { firstParagraph, nextSessionByCourse, nextSessions, pickHomeCourses, splitStatement, withoutRole } from "@/domain/home";
 import { trainerSettings } from "@/components/site/settings";
 import { formatDate, formatDayMonth, formatWeekday } from "@/i18n/format";
 
@@ -43,6 +45,25 @@ describe("text helpers", () => {
     expect(firstParagraph("Esimene lõik.\nSama lõik.\n\nTeine lõik.")).toBe("Esimene lõik.\nSama lõik.");
     expect(firstParagraph("")).toBe("");
   });
+
+  // UX pass 11.11 P12 (the Vaiksed board): the course page's trainer card said the role twice, under the name and as the bio's first sentence
+  test("withoutRole: the bio's first sentence goes when it is the role under the name", () => {
+    const role = "Kulmu- ja ripsmetehnikate meister ja koolitaja";
+    expect(withoutRole("Kulmu- ja ripsmetehnikate meister ja koolitaja. Töötan Pärnus ilukliinikus.", role)).toBe("Töötan Pärnus ilukliinikus.");
+    expect(withoutRole("kulmu- ja ripsmetehnikate meister ja koolitaja!  Õpetan selgelt.", `${role}.`)).toBe("Õpetan selgelt.");
+    expect(withoutRole("Töötan Pärnus. Kulmu- ja ripsmetehnikate meister ja koolitaja.", role)).toBe("Töötan Pärnus. Kulmu- ja ripsmetehnikate meister ja koolitaja.");
+    expect(withoutRole("Kulmu- ja ripsmetehnikate meister ja koolitaja Pärnus.", role)).toBe("Kulmu- ja ripsmetehnikate meister ja koolitaja Pärnus.");
+    expect(withoutRole("Töötan Pärnus.", "")).toBe("Töötan Pärnus.");
+  });
+
+  test("the course page's trainer card: the role once, the photo's frame in the card's colour, the text the card's full width", () => {
+    const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(read("src/app/[locale]/(site)/koolitused/[slug]/page.tsx")).toMatch(/text: withoutRole\(firstParagraph\(pick\(bio\?\.body, locale\)\), pick\(t\.role, locale\)\)/);
+    const css = read("src/components/site/TrainerLink.module.css");
+    const rule = (selector: string) => new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    expect(rule(".photo")).toMatch(/background:\s*var\(--canvas\)/);
+    expect(rule(".text")).not.toMatch(/max-width/);
+  });
 });
 
 describe("trainerSettings", () => {
@@ -56,12 +77,13 @@ describe("trainerSettings", () => {
     });
     expect(t).toEqual({
       name: "Maria Sosnina", role: { et: "Koolitaja", ru: "Преподаватель" }, portraitKey: "/seed/a.jpg", contactPhotoKey: "/seed/b.jpg",
+      contactPhotoCrop: { pos: "50% 20%", zoom: 100 }, // not framed yet (UX pass 11.11 A11)
       portraitPos: "50% 50%", portraitZoom: false, // not the seed portrait: no zoom (Task 13B)
       stats: [{ value: "8+", label: { et: "aastat" } }],
     });
   });
   test("defaults when missing or malformed", () => {
-    expect(trainerSettings({})).toEqual({ name: "", role: null, portraitKey: "", portraitPos: "50% 50%", portraitZoom: false, contactPhotoKey: "", stats: [] });
+    expect(trainerSettings({})).toEqual({ name: "", role: null, portraitKey: "", portraitPos: "50% 50%", portraitZoom: false, contactPhotoKey: "", contactPhotoCrop: null, stats: [] });
     expect(trainerSettings({ trainer: { portraitKey: "/p.jpg", stats: "x" } }).contactPhotoKey).toBe("/p.jpg");
   });
 });

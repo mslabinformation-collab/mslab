@@ -97,7 +97,7 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     await price.blur();
     await saved;
     await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords(`${code} hind`));
     await expect(card.locator("[data-plain-field][data-unpublished] [data-unpublished-tag]")).toHaveText("· avaldamata");
     expect((await stored()).price, "live keeps its price").toBe(before.price);
@@ -112,7 +112,7 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     // „Sisaldab“: Enter on the last point adds one and puts the cursor in it (R-h); its Russian text too
     const items = card.locator(`[data-list-editor="${code}.items"]`);
     await expect(items.getByRole("heading", { level: 3 })).toHaveText("Sisaldab");
-    await expect(items.getByRole("button", { name: "+ Lisa punkt (või Enter viimasel real)", exact: true })).toBeVisible();
+    await expect(items.getByRole("button", { name: "Lisa punkt + (või Enter viimasel real)", exact: true })).toBeVisible();
     const rows = items.locator("[data-row]");
     const count = await rows.count();
     await rows.nth(count - 1).locator("[data-lang-field]").click();
@@ -308,11 +308,11 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);
 
-    // „+ Lisa slaid“: a new slide opens at the end with the cursor in its title; the list goes into the draft at once
+    // „Lisa slaid +“: a new slide opens at the end with the cursor in its title; the list goes into the draft at once
     const slides = page.locator("[data-slide]");
     await expect(slides).toHaveCount(5);
     let saved = homeSaved(page, "slides");
-    await page.getByRole("button", { name: "+ Lisa slaid", exact: true }).click();
+    await page.getByRole("button", { name: "Lisa slaid +", exact: true }).click();
     await saved;
     await expect(slides).toHaveCount(6);
     const added = slides.nth(5);
@@ -325,7 +325,7 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await title.blur();
     await saved;
     await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Slaidid"));
     expect(await slideCount(), "live keeps its slides").toEqual({ n: 5 });
 
@@ -501,9 +501,9 @@ test.describe("home page, phone: the FAQ (C1 Avaleht on the draft layer)", () =>
     await expect(faq.getByRole("heading", { level: 2 })).toHaveText("KKK");
     const rows = faq.locator("[data-faq-row]");
     const count = await rows.count();
-    // „+ Lisa küsimus“: a row at the end with its answer open and the cursor in its question; saved into the draft at once
+    // „Lisa küsimus +“: a row at the end with its answer open and the cursor in its question; saved into the draft at once
     let saved = homeSaved(page, "faq");
-    await faq.getByRole("button", { name: "+ Lisa küsimus", exact: true }).click();
+    await faq.getByRole("button", { name: "Lisa küsimus +", exact: true }).click();
     await saved;
     await expect(rows).toHaveCount(count + 1);
     const n = count + 1;
@@ -574,7 +574,7 @@ const shownWorks = (p: Page) => p.locator("[data-works] [data-work] img").evalua
 test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja on the draft layer)", () => {
   test.use({ trainerDrafts: "chromium-edit" });
 
-  test("two gallery tiles swapped by drag and a new portrait with its focal point wait in their drafts (the bar „Portree, Galerii“) until „Avalda muudatused“; /koolitaja then shows the new order and the portrait framed by its point; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
+  test("two gallery tiles swapped by drag, a new portrait with its focal point and the contact photo zoomed wait in their drafts (the bar „Portree, Kontaktifoto, Galerii“) until „Avalda muudatused“; /koolitaja then shows the new order and the portrait framed by its point, /kontakt the zoomed avatar; at 375 px nothing scrolls sideways", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the trainer card and works; the phone project a story");
     test.slow(); // one long flow: the editor, the public pages, a publish and a second width
     await changing(["settings", { column: "key", value: "trainer" }], ["gallery_items", { column: "group", value: "trainer_works" }]);
@@ -598,7 +598,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     // „Galerii“: the counter and „+ Lisa“; the first tile dragged onto the second's place swaps them, saved at once into the gallery's draft
     const gallery = page.locator("#galerii");
     await expect(gallery.locator("[data-gallery-count]")).toHaveText(`Lohista järjekorra muutmiseks · ${works.length} / 24`);
-    await expect(gallery.locator("[data-gallery-add] label")).toHaveText("+ Lisa");
+    await expect(gallery.locator("[data-gallery-add] label")).toHaveText("Lisa +");
     const tiles = gallery.locator("[data-gallery-item]");
     await expect(tiles).toHaveCount(works.length);
     const [first, second] = [await tiles.nth(0).getAttribute("data-gallery-item"), await tiles.nth(1).getAttribute("data-gallery-item")];
@@ -613,7 +613,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     await saved;
     await expect(tiles.nth(0)).toHaveAttribute("data-gallery-item", second!);
     await expect(tiles.nth(1)).toHaveAttribute("data-gallery-item", first!);
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Galerii"));
     // the picture's description under its tile (kept, builder notes §5): saved into the gallery's draft when it is left
     const description = tiles.nth(0).getByRole("textbox", { name: "Pildi kirjeldus (eesti keeles)", exact: true });
@@ -632,12 +632,21 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     const focal = page.locator("#portree [data-focal-point]");
     await focal.locator('[data-focal-axis="portrait-x"]').fill("30");
     await focal.locator('[data-focal-axis="portrait-y"]').fill("25");
-    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("object-position", "30% 25%");
-    await expect(focal.locator('[data-focal-preview="portrait-0"] img')).toHaveCSS("transform", "none"); // an upload: no zoom
+    // (the point is picked on the preview, UX pass 11.11 board 1: its marker there)
+    await expect(portrait.locator('[data-focal-pick="portrait"] > span')).toHaveAttribute("style", /left: 30%; top: 25%/);
     saved = trainerSaved(page, "trainer");
     await focal.locator('[data-focal-axis="portrait-y"]').blur();
     await saved;
     await expect(barWords(page)).toHaveText(draftWords("Portree, Galerii"));
+    // „Kontaktifoto“'s „Suurendus“ (A11): the circle and its 46 px sample zoom; saved when the slider is left
+    const photo = page.locator('#portree [data-single-image="contactPhoto"]');
+    saved = trainerSaved(page, "trainer");
+    await photo.locator("[data-contact-zoom]").fill("150");
+    await expect(photo.locator("[data-contact-circle] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
+    await expect(photo.locator("[data-contact-sample] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
+    await photo.locator("[data-contact-zoom]").blur();
+    await saved;
+    await expect(barWords(page)).toHaveText(draftWords("Portree, Kontaktifoto, Galerii"));
     expect(await noOverflow(page)).toBe(true);
     expect(await storedTrainer(), "live keeps its portrait").toEqual(before);
     expect(await trainerDraftCount()).toEqual({ n: 2 });
@@ -655,7 +664,7 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     expect(await trainerDraftCount()).toEqual({ n: 0 });
     const after = await storedTrainer();
     expect(after.portraitKey).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
-    expect(after).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: before.contactPhotoKey, name: before.name });
+    expect(after).toMatchObject({ portraitPos: "30% 25%", contactPhotoKey: before.contactPhotoKey, contactPhotoZoom: 150, name: before.name });
     const key = after.portraitKey as string;
     await visitor.reload();
     expect(await shownWorks(visitor)).toEqual([works[1], works[0], ...works.slice(2)]);
@@ -668,6 +677,9 @@ test.describe("trainer page, desktop: the gallery and the portrait (C2 Koolitaja
     const teaser = visitor.locator(`img[src="/media/${key}"]`).first();
     await expect(teaser).toHaveCSS("object-position", "30% 25%");
     await expect(teaser).toHaveCSS("transform", "none");
+    // the contact form's avatar: the contact photo as the circle cut it (P7)
+    await visitor.goto("/kontakt");
+    await expect(visitor.locator("[data-contact-avatar] img")).toHaveCSS("transform", "matrix(1.5, 0, 0, 1.5, 0, 0)");
     await visitor.close();
 
     // 375 px: the tiles inside the screen, nothing scrolls sideways
@@ -809,7 +821,7 @@ test.describe("news", () => {
     await body.blur();
     await saved;
     await expect(barWords(page)).toHaveText(draftWords("Tekst"));
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(page.locator(`[data-post-row="${id}"] [data-post-state]`)).toHaveText(/^Avaldamata muudatused · \d\d\.\d\d$/);
     await visitor.reload();
     await expect(visitor.locator("[data-article-body] p")).toHaveText(["Esimene lõik.", "Teine lõik."]);
@@ -847,7 +859,7 @@ test.describe("news", () => {
 
     // „Kustuta postitus“ (S4-23): the question, then the list says so; the post's page is gone
     await page.getByRole("button", { name: "Kustuta postitus" }).click();
-    await expect(page.locator("[data-confirm-panel] li")).toHaveText(["Postitus kaob blogist ja avalehelt.", "Seda ei saa tagasi võtta."]);
+    await expect(page.locator("[data-confirm-panel] li")).toHaveText(["Postitus kaob uudiste lehelt ja avalehelt.", "Seda ei saa tagasi võtta."]);
     await page.getByRole("button", { name: "Jah, kustuta" }).click();
     await expect(page).toHaveURL(/\/admin\/uudised\?kustutatud=1$/);
     await expect(page.locator("[data-post-deleted]")).toHaveText("Postitus kustutatud.");
@@ -884,7 +896,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await signIn(page, context, visitorIp);
     await page.goto("/admin/kampaania");
     await adminReady(page);
-    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Turundus");
+    await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht ja uudiskiri");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hüpikaken");
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);
@@ -926,7 +938,7 @@ test.describe("Hüpikaken (C4 on the draft layer; piece 4b, Task 4)", () => {
     await title.blur();
     await saved;
     await expect(preview.getByRole("heading", { level: 2 })).toHaveText("E2E hüpikaken");
-    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(chip(page).locator("[role=status]")).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Pealkiri, Pilt"));
     // the offer has no discount fields any more: its hint leads to the welcome code's own page
     await expect(card.getByText("Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.")).toBeVisible();
@@ -1136,7 +1148,7 @@ test.describe("settings", () => {
     await expect(select).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Jaotised" })).toBeHidden();
     await expect(select.locator("[data-section-face]")).toHaveText(/^Jaotised · Kontakt\s*▾$/);
-    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud ja tingimused", "Halduse ligipääs"]);
+    expect(await select.locator("option").allTextContents()).toEqual(["Kontakt", "Valdkonnad", "Maksmine", "Tunnistus", "Lepingud", "Halduse ligipääs"]);
     const box = (await select.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x).toBeGreaterThanOrEqual(16);

@@ -779,7 +779,7 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       await expect(page.locator("[data-tab-pills]")).toBeHidden();
       await expect(page.locator("[data-campaign-back]")).toHaveText("← Kirjad");
       await expect(page.locator("[data-campaign-title]")).toHaveText(name);
-      await expect(form.locator("[data-save-status]")).toBeVisible();
+      await expect(form.locator("[data-save-status]")).toHaveAttribute("data-save-quiet", ""); // (there, quiet until a change: UX pass A17)
       await expect(page.locator("[data-edit-lang-switch]")).toBeVisible(); // (the letter's Russian needs it)
       const panes = page.locator("[data-campaign-panes] button");
       await expect(panes).toHaveText(["Muuda", "Eelvaade"]);

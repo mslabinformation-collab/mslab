@@ -1,7 +1,6 @@
 /* C2 Koolitaja (admin UX pass piece 4a, Task 5; the Part 4 C2 frame): the cards 14 px apart (drawn), each with a 22 px padding (ui.card's 20 px below
-   900 px kept) and its title in Jost 300 26 px (drawn). „Portree ja tutvustus“: a 240 px picture column beside the text (`240px minmax(0,1fr)`, 22 px
-   apart, drawn), the title over the text; the portrait picture first in its column (FocalPoint's picker, 300 px at most and a 16 px radius, drawn); one
-   column on a phone. „Numbrid“: three pairs in a row, 12 px apart, each a 90 px number (Jost 400 18 px) and its label 8 px apart (drawn); two or one a
+   900 px kept) and its title in Jost 300 27 px (UX pass 11.11 A3: every card title). „Portree ja tutvustus“: two picture fields (ImageField, board 1),
+   then the texts, each under a line; one column on a phone. „Numbrid“: three pairs in a row, 12 px apart, each a 90 px number (Jost 400 18 px) and its label 8 px apart (drawn); two or one a
    row where the card is narrower. „Galerii“: the counter at the right of the title (12 px, the muted grey; under it on a phone). An empty story: one
    52 px row with a 16 px radius, the title (600 14 px) at the left and „tühi · Lisa tekst ▸“ (the muted grey) at the right (drawn). Media queries only
    (old iPads); colours from tokens.css and ui.module.css only. Nothing here is sticky (the PublishBar and the section map carry data-fab-avoid). */
@@ -22,73 +21,75 @@
 
 .title {
   margin: 0;
-  font: 300 26px/1.15 var(--font-display);
+  font: 300 27px/1.15 var(--font-display);
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 
 /* ---------- „Portree ja tutvustus“ ---------- */
 
+/* the two picture fields, each a row under a line (UX pass 11.11, board 1: the picture's column 220 px, 24 px from the words, 18 px above and below),
+   then the texts under a line too */
 .cards .portraitCard {
-  grid-template-columns: 240px minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  align-items: start;
-  column-gap: 22px;
+  gap: 0;
 }
 
 .portraitCard > .title {
-  grid-column: 2;
-  grid-row: 1;
+  margin-bottom: 16px;
 }
 
-.picture {
-  display: grid;
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  align-content: start;
-  gap: 12px;
-  min-width: 0;
+.imageRow,
+.text {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
 }
 
 .text {
   display: grid;
-  grid-column: 2;
-  grid-row: 2;
   align-content: start;
   gap: 12px;
   min-width: 0;
+  padding-bottom: 0;
 }
 
-/* (the card's „Taasta minu tekst“ after a conflict: under both columns) */
+.imageRow > [data-image-field] {
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px 24px;
+}
+
+/* the portrait's preview: the picture whole at the zone's width (its point is picked on it), the zone as tall as the picture */
+.imageRow [data-focal-pick] {
+  display: block;
+  border-radius: 0;
+}
+
+.imageRow [data-focal-pick] img {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+
+.focal {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.focal:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+/* (the card's „Taasta minu tekst“ after a conflict) */
 .portraitCard > p {
-  grid-column: 1 / -1;
+  margin-top: 12px;
 }
 
-/* „Kontaktifoto“ under the portrait: its picture small and round, as the site shows it by the contact forms (Maria 10.11) */
-.contactPhoto {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 1px solid var(--iced);
-}
-
-.contactPhoto [data-current-image] {
-  width: 96px;
-  border-radius: 50%;
-}
-
-/* the portrait picture on top of its column: FocalPoint's picker (a click there sets the point), then the point's fields and the crop previews */
-.picture [data-focal-point] > [data-focal-pick] {
-  order: -1;
-  border-radius: 16px;
-}
-
-.picture [data-focal-pick] img {
-  max-height: 300px;
-}
-
-/* the two crop previews (Arvutis 4:5, Telefonis 4:3) side by side in the 240 px column */
-.picture [data-focal-preview] > span:first-child {
-  height: 100px;
+@media (max-width: 640px) {
+  .imageRow > [data-image-field] {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- „Numbrid“ ---------- */

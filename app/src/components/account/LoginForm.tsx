@@ -407,6 +407,9 @@ export function LoginForm({ locale, t }: { locale: Locale; t: LoginTexts }) {
 
         {step === "email" ? (
           <>
+            <p className={styles.lead} data-login-intro="">
+              {t.intro}
+            </p>
             <form method="post" noValidate onSubmit={submitEmail} data-login-email="">
               {banner && (
                 <p className={styles.notice} role="status" data-login-banner={banner}>

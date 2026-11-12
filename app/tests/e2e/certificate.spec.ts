@@ -308,10 +308,11 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
   // the migration's two, the first the default
   const rows = card.locator("[data-design-row]");
   await expect(rows.first().locator("[data-design-name]")).toHaveValue("Hele");
-  await expect(rows.first().locator("[data-design-first]")).toHaveText("Koolitus, millel kujundust valitud pole, kasutab seda kujundust.");
+  await expect(rows.first().locator("[data-design-default]")).toHaveText("Vaikimisi");
+  await expect(rows.first()).toContainText("Koolitus, millel kujundust valitud pole, kasutab vaikimisi kujundust.");
   expect(await card.locator("[data-design-name]").evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))).toEqual(expect.arrayContaining(["Hele", "Tume"]));
 
-  // „Lisa kujundus“: a light design without a photo, last, its name field focused
+  // „Lisa kujundus +“ (the dashed add row, no name typed): a light design without a photo, last, its name field focused
   const add = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/admin/tunnistuse-kujundus");
   await card.locator("[data-design-add]").click();
   const answer = await add;
@@ -324,7 +325,8 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
   await expect(row.locator('[data-design-tone="light"]')).toBeChecked();
   await expect(row.locator("[data-no-image]")).toBeVisible();
   await expect(row.locator('input[type="file"]')).toHaveAttribute("accept", "image/jpeg");
-  await expect(row).toContainText("JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.");
+  await expect(row.locator("[data-no-image]")).toContainText("Lohista pilt siia");
+  await expect(row).toContainText("Pilti pole veel. JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Ilma pildita on taust ühtlane.");
 
   // named (typed: saved when left) and darkened (saved at once)
   const name = `E2E kujundus ${runName(info)}`.slice(0, 40);
@@ -353,7 +355,7 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
 
   // its sample: the card's values in this design, a PDF; „Hele“'s draws its photo (the test JPEG on this machine: a DCT image in the PDF)
   const sample = row.locator("[data-design-sample]");
-  await expect(sample).toHaveText("Vaata näidist");
+  await expect(sample).toHaveText("Vaata näidist ↗");
   await expect(sample).toHaveAttribute("href", new RegExp(`&design=${id}$`));
   const pdf = await page.request.get((await sample.getAttribute("href"))!);
   expect([pdf.status(), pdf.headers()["content-type"], (await pdf.body()).subarray(0, 5).toString("latin1")]).toEqual([200, "application/pdf", "%PDF-"]);
@@ -362,7 +364,8 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
   expect(light.status()).toBe(200);
   if ((await storedDesign((await designIdByName("Hele"))!))?.backgroundKey) expect((await light.body()).includes("/DCTDecode")).toBe(true);
 
-  // „Kustuta“: asked first, then gone (no course uses it)
+  // „Kustuta“: asked first (a used design's is greyed: „Hele“ is the default), then gone (no course uses it)
+  await expect(rows.first().locator("[data-design-remove]")).toHaveAttribute("aria-disabled", "true");
   await row.locator("[data-design-remove]").click();
   const panel = row.locator("[data-confirm-panel]");
   await expect(panel).toContainText(`Kas kustutan kujunduse „${name}“?`);
@@ -371,7 +374,7 @@ test("certificate designs: Seaded → Tunnistus → „Kujundused“ adds a desi
   await panel.getByRole("button", { name: "Jah, kustuta" }).click();
   expect((await removed).status()).toBe(200);
   await expect(row).toHaveCount(0, { timeout: 30_000 });
-  await expect(card.locator("[data-design-add]")).toBeFocused();
+  await expect(card.locator("[data-design-new-name]")).toBeFocused();
   expect(await storedDesign(id)).toBeNull();
   designsMade.delete(id);
 });
@@ -420,7 +423,7 @@ test("certificate designs: the course card's „Kujundus“ picks „Tume“; th
   // still downloads (hers and Maria's)
   await page.reload();
   await adminReady(page);
-  await select.selectOption({ label: "Hele" });
+  await select.selectOption({ label: "Hele (vaikimisi)" });
   await expect.poll(() => storedCoursePick(s.courseId)).toBeNull();
   await expect(select).toHaveValue(String(light));
   expect(await storedCertificateDesign(s.accessId)).toMatchObject({ tone: "dark" });

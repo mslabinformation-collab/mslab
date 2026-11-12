@@ -195,7 +195,7 @@ describe("ListEditor: removal with the UndoBar (S3-P3-d)", () => {
     const [key] = rows()[0];
     await click(button("Eemalda rida 1"));
     expect(current).toEqual([]);
-    expect(document.activeElement).toBe(button("+ Lisa rida"));
+    expect(document.activeElement).toBe(button("Lisa rida +"));
     await click(bar()!.querySelector("button"));
     expect(current).toEqual([{ et: "Ainus" }]);
     expect(rows()).toEqual([[key, "Ainus"]]);
@@ -215,7 +215,7 @@ describe("ListEditor: removal with the UndoBar (S3-P3-d)", () => {
   it("„Lisa rida“ adds a row with a new key, its field focused; the others keep theirs", async () => {
     await render();
     const before = rows();
-    await click(button("+ Lisa rida"));
+    await click(button("Lisa rida +"));
     expect(updates).toHaveBeenCalledTimes(1);
     const after = rows();
     expect(after.slice(0, 3)).toEqual(before);
@@ -293,12 +293,12 @@ describe("ListEditor: Enter on the last row adds a row (Praktika's points; rulin
     expect(rows()).toEqual(before);
   });
 
-  it("`addLabel` names the add button („+ Lisa punkt (või Enter viimasel real)“); without it, „+ Lisa rida“", async () => {
+  it("`addLabel` names the add button („Lisa punkt + (või Enter viimasel real)“); without it, „Lisa rida +“", async () => {
     await render(ITEMS, { addLabel: "Lisa punkt (või Enter viimasel real)" });
-    expect(button("+ Lisa punkt (või Enter viimasel real)")).not.toBeNull();
-    expect(button("+ Lisa rida")).toBeNull();
+    expect(button("Lisa punkt + (või Enter viimasel real)")).not.toBeNull();
+    expect(button("Lisa rida +")).toBeNull();
     await render();
-    expect(button("+ Lisa rida")).not.toBeNull();
+    expect(button("Lisa rida +")).not.toBeNull();
   });
 
   it("`rowNames`: each row's field is named `<name>.<index>` (data-i18n, the site editors' focus of „Jää siia“ and „Näita“); without it, none", async () => {

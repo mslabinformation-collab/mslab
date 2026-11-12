@@ -24,10 +24,11 @@ test("practice says where it is offered and shows durations", async ({ page }) =
   await expect(page.getByText(/Pärnus ja Tallinnas/i).first()).toBeVisible();
   await expect(page.getByText(/\d+\s*ak\b/).first()).toBeVisible();
 });
-test("trainer page has gallery, story and journey", async ({ page }) => {
+// (UX pass P1: „Koolitaja teekond“ is hidden while it holds the seeded note to Maria, as it does here)
+test("trainer page has gallery and story; the journey's seeded note is hidden", async ({ page }) => {
   await page.goto("/koolitaja");
   await expect(page.getByText("Koolituskeskuse lugu")).toBeVisible();
-  await expect(page.getByText("Koolitaja teekond")).toBeVisible();
+  await expect(page.getByText("Koolitaja teekond")).toHaveCount(0);
   await page.locator("[data-works] img").first().click(); await expect(page.getByRole("dialog")).toBeVisible();
 });
 
@@ -79,6 +80,25 @@ test.describe("calendar", () => {
     await expect(page).toHaveURL(target!);
     const id = target!.split("=")[1];
     await expect(page.locator(`[data-session='${id}']`)).toHaveAttribute("aria-checked", "true");
+  });
+
+  // UX pass 11.11 P17 (the Vaiksed board): the buttons are one column of one width, in both languages; none spills out of its pill
+  test("the action buttons: the same width and right edge on every row, their words inside (P17)", async ({ page, isMobile }) => {
+    test.skip(isMobile, "the phone's buttons are the card's width");
+    for (const path of ["/koolituskalender", "/ru/koolituskalender"]) {
+      await page.goto(path);
+      const buttons = await page.locator("[data-calendar-row]").evaluateAll((rows) =>
+        rows.map((row) => {
+          const b = row.querySelector<HTMLElement>("[data-calendar-action] > *")!;
+          const r = b.getBoundingClientRect();
+          return { w: Math.round(r.width), right: Math.round(r.right), fits: b.scrollWidth <= b.clientWidth + 1 };
+        }),
+      );
+      expect(buttons.length, path).toBeGreaterThan(2);
+      expect(new Set(buttons.map((b) => b.w)).size, path).toBe(1);
+      expect(new Set(buttons.map((b) => b.right)).size, path).toBe(1);
+      expect(buttons.every((b) => b.fits), path).toBe(true);
+    }
   });
 
   test("a cancelled session says Tühistatud and offers the other dates", async ({ page }) => {
@@ -567,28 +587,23 @@ test.describe("trainer", () => {
     expect(await track.evaluate((e) => e.scrollLeft)).toBe(0);
   });
 
-  test("Koolituskeskuse lugu and Koolitaja teekond are editorial blocks with a thin rose rule (T3, T4)", async ({ page }) => {
+  // (UX pass P1: „Koolitaja teekond“ holds the seeded note to Maria here, so it is hidden; tests/db/site-preview.test.ts shows it with her text)
+  test("Koolituskeskuse lugu is an editorial block with a thin rose rule (T3); the journey's seeded note is not shown (P1)", async ({ page }) => {
     await page.goto("/koolitaja");
     const story = page.locator("[data-story='center_story']");
-    const journey = page.locator("[data-story='trainer_journey']");
     await expect(story.getByRole("heading", { level: 2 })).toHaveText("Koolituskeskuse lugu");
     await expect(story).toContainText("MS LAB ühendab teooria ja praktika.");
-    await expect(journey.getByRole("heading", { level: 2 })).toHaveText("Koolitaja teekond");
-    await expect(journey).toContainText("Maria täiendab.");
-    for (const block of [story, journey]) {
-      const rule = await block.evaluate((e) => { const c = getComputedStyle(e); return { w: c.borderTopWidth, c: c.borderTopColor }; });
-      expect(rule).toEqual({ w: "1px", c: "rgb(158, 137, 147)" });
-    }
-    const s = await story.boundingBox(); const j = await journey.boundingBox();
-    expect(j!.y).toBeGreaterThan(s!.y);
+    const rule = await story.evaluate((e) => { const c = getComputedStyle(e); return { w: c.borderTopWidth, c: c.borderTopColor }; });
+    expect(rule).toEqual({ w: "1px", c: "rgb(158, 137, 147)" });
+    await expect(page.locator("[data-story='trainer_journey']")).toHaveCount(0);
+    await expect(page.getByText("Maria täiendab.")).toHaveCount(0);
   });
 
   test("RU trainer: Russian section names and sample texts (G8); her name in Russian", async ({ page }) => {
     await page.goto("/ru/koolitaja");
     await expect(page.locator("[data-story='center_story'] h2")).toHaveText("История учебного центра");
     await expect(page.locator("[data-story='center_story']")).toContainText("MS LAB объединяет теорию и практику.");
-    await expect(page.locator("[data-story='trainer_journey'] h2")).toHaveText("Путь преподавателя");
-    await expect(page.locator("[data-story='trainer_journey']")).toContainText("Мария дополнит.");
+    await expect(page.locator("[data-story='trainer_journey']")).toHaveCount(0); // (the seeded note, P1)
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Мария Соснина");
     await expect(page.locator("[data-works]").getByRole("heading")).toHaveText("Работы преподавателя");
   });
@@ -597,7 +612,7 @@ test.describe("trainer", () => {
 test.describe("blog", () => {
   test("list: D grid of cards that open the full post (B1)", async ({ page }) => {
     await page.goto("/uudised");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Blogi.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Uudised ja nõuanded.");
     const cards = page.locator("[data-news-card]");
     await expect(cards).toHaveCount(6);
     await expect(cards.first()).toContainText("22.09.2026 · Nõuanne");
@@ -609,7 +624,7 @@ test.describe("blog", () => {
 
   test("article: crumb, date and category, cover, paragraphs, Loe veel with three other posts", async ({ page }) => {
     await page.goto("/uudised/praktika-modellidega-mida-oodata");
-    await expect(page.getByRole("navigation", { name: "Lehe asukoht" }).getByRole("link", { name: "Uudised" })).toHaveAttribute("href", "/uudised");
+    await expect(page.getByRole("navigation", { name: "Lehe asukoht" }).getByRole("link", { name: "Uudised ja nõuanded" })).toHaveAttribute("href", "/uudised");
     await expect(page.locator("[data-article]")).toContainText("02.09.2026 · Praktika");
     await expect(page.locator("[data-article-cover] img")).toBeVisible();
     await expect(page.locator("[data-article-body] p")).toHaveCount(3);
@@ -628,7 +643,7 @@ test.describe("blog", () => {
 
   test("RU blog: RU interface text and the RU sample posts (G8)", async ({ page }) => {
     await page.goto("/ru/uudised");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Блог.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Новости и советы.");
     await expect(page.locator("[data-news-card]").first()).toHaveAttribute("href", /^\/ru\/uudised\//);
     await page.goto("/ru/uudised/praktika-modellidega-mida-oodata");
     await expect(page.locator("[data-article]")).toContainText("02.09.2026 · Практика");

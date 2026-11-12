@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -129,5 +130,24 @@ describe("the city of the practice request", () => {
     const fd = mocks.submitPractice.mock.calls[0][0];
     expect(fd.get("city")).toBe("Tallinn");
     expect($("[data-practice-sent]")).not.toBeNull();
+  });
+});
+
+// UX pass 11.11 P19 (the Vaiksed board): the form's gaps were 10 px (the radio cards) and 18/20 px (the fields), the heading 14 px above the form, and
+// the form a narrow column in the middle. One 20 px gap, 28 px under the heading, the form at the page's left edge like the course page's
+describe("the /praktika form's layout (the stylesheets)", () => {
+  const read = (file: string) => readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rule = (css: string, selector: string) => new RegExp(`\\n${selector.replace(/\./g, "\\.")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+  const form = read("src/components/site/PracticeRequest.module.css");
+  const page = read("src/app/[locale]/(site)/praktika/practice.module.css");
+
+  test("one 20 px gap between the cards and between the fields", () => {
+    expect(rule(form, ".form")).toMatch(/gap:\s*20px;/);
+    expect(rule(form, ".options")).toMatch(/gap:\s*20px;/);
+  });
+
+  test("28 px under the heading, and the form at the left edge", () => {
+    expect(rule(page, ".requestTitle")).toMatch(/margin:\s*0 0 28px;/);
+    expect(rule(page, ".requestInner")).not.toMatch(/margin:\s*0 auto/);
   });
 });

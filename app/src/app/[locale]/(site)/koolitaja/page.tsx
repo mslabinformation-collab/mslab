@@ -12,6 +12,7 @@ import { getTrainerPage } from "@/db/queries/public";
 import { previewActive } from "@/server/preview";
 import type { Page } from "@/db/schema";
 import { paragraphs } from "@/domain/catalogue";
+import { isJourneyPlaceholder } from "@/domain/trainer-journey";
 import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
@@ -142,7 +143,8 @@ export default async function TrainerPage({ params }: Props) {
 
       <div className={`${ui.wrap} ${styles.stories}`}>
         <Story id="center_story" page={story} fallbackTitle={d.trainer.storyTitle} locale={locale} />
-        <Story id="trainer_journey" page={journey} fallbackTitle={d.trainer.journeyTitle} locale={locale} />
+        {/* UX pass P1: hidden while it holds the seeded note to Maria („… Maria täiendab.“) */}
+        <Story id="trainer_journey" page={journey && isJourneyPlaceholder(pick(journey.body, locale)) ? null : journey} fallbackTitle={d.trainer.journeyTitle} locale={locale} />
       </div>
       {previewBar}
     </>

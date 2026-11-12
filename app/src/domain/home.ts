@@ -43,3 +43,16 @@ export function splitStatement(text: string): [string, string] {
 export function firstParagraph(text: string): string {
   return text.trim().split(/\n\s*\n/)[0]?.trim() ?? "";
 }
+
+/**
+ * A bio without its first sentence when that sentence is the role shown above it (UX pass 11.11 P12: the course page's trainer card had „Kulmu- ja
+ * ripsmetehnikate meister ja koolitaja“ under the name and again as the bio's opening). Case and the closing mark aside; anything else is kept.
+ */
+export function withoutRole(text: string, role: string): string {
+  const said = role.trim().replace(/[.!?]+$/, "");
+  if (!said) return text;
+  const lead = text.slice(0, said.length);
+  const rest = text.slice(said.length);
+  if (lead.toLocaleLowerCase("et") !== said.toLocaleLowerCase("et") || !/^[.!?]+(\s|$)/.test(rest)) return text;
+  return rest.replace(/^[.!?]+\s*/, "");
+}

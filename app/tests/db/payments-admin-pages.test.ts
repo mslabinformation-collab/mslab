@@ -345,13 +345,17 @@ test("Maksed: 'Kuupäev' is the day it was paid (else the day it was started), a
   }
 });
 
-test("Maksed: no payments yet, and a filter with none, each say so", async () => {
+test("Maksed: no payments yet, and a filter with none, each say so; with no payments at all the six pills of „0“ are not there (UX pass A21)", async () => {
   const empty = await makeTestDb();
   const was = state.db;
   state.db = empty;
   try {
-    expect(await render(PaymentsPage)).toContain("Makseid veel pole.");
-    expect(await render(PaymentsPage, { staatus: "makstud" })).toContain("Selle valikuga makseid pole.");
+    const none = await render(PaymentsPage);
+    expect(none).toContain("Makseid veel pole.");
+    expect(none).not.toContain("data-list-pill-row");
+    const chosen = await render(PaymentsPage, { staatus: "makstud" });
+    expect(chosen).toContain("Selle valikuga makseid pole.");
+    expect(chosen).not.toContain("data-list-pill-row");
   } finally {
     state.db = was;
   }

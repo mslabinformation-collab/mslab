@@ -238,7 +238,7 @@ describe("the page (S4-5, S4-6) and its cards in the public page's order (the P4
 });
 
 describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P3 / P4 frames, S4-9, S4-10)", () => {
-  it("each row: the handle, the 72 × 48 thumbnail, the ET title over „RU: …“ („RU: RU puudub“ with none), the tone tag, ↑ ↓; „+ Lisa slaid“ on the title's row", async () => {
+  it("each row: the handle, the 72 × 48 thumbnail, the ET title over „RU: …“ („RU: RU puudub“ with none), the tone tag, ↑ ↓; „Lisa slaid +“ on the title's row", async () => {
     await show();
     expect(slideOrder()).toEqual(["s1", "s2", "s3"]);
     expect(openSlides()).toEqual([]);
@@ -256,7 +256,7 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(button("Liiguta slaid 2 tahapoole", row)).not.toBeNull();
     // the row's button opens the slide; its name says which slide
     expect(named(opener("s2")!)).toMatch(/^Slaid 2/);
-    const add = button("+ Lisa slaid", card("slaidid"));
+    const add = button("Lisa slaid +", card("slaidid"));
     expect(add).not.toBeNull();
     expect(add!.compareDocumentPosition($("[data-slide]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -317,7 +317,7 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(remote.log).toEqual([
       { part: "slides", version: "l:slides", patch: { slides: [SLIDES[0], { ...SLIDES[1], title: { et: "Täpsusest sünnib julgus.", ru: "" } }, SLIDES[2]] } },
     ]);
-    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 10:05");
+    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud kell 10:05");
   });
 
   it("„Tume“ chosen is saved at once (a choice), the row's tag follows it", async () => {
@@ -333,10 +333,10 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(text(slideRow("s1")!.querySelector("[data-slide-tone]"))).toBe("Tume");
   });
 
-  it("„+ Lisa slaid“ opens a new slide at the end (the others close) with the cursor in its title; the list is saved at once; the bar says „Slaidid“; at 8 it says the limit", async () => {
+  it("„Lisa slaid +“ opens a new slide at the end (the others close) with the cursor in its title; the list is saved at once; the bar says „Slaidid“; at 8 it says the limit", async () => {
     await show();
     await click(opener("s1"));
-    await click(button("+ Lisa slaid"));
+    await click(button("Lisa slaid +"));
     expect(slideOrder()).toHaveLength(4);
     const added = slideOrder()[3]!;
     expect(openSlides()).toEqual([added]);
@@ -348,11 +348,11 @@ describe("„Slaidid“: rows, one slide open inline at a time (README §4 C1, P
     expect(barWords()).toBe(draft("Slaidid"));
     // no picture yet: the media column says so and offers „Vali pilt“
     expect(text(slideRow(added)!.querySelector("[data-slide-media]"))).toContain("Pilti pole veel valitud.");
-    for (let i = 0; i < 4; i++) await click(button("+ Lisa slaid"));
+    for (let i = 0; i < 4; i++) await click(button("Lisa slaid +"));
     expect(slideOrder()).toHaveLength(8);
-    expect(button("+ Lisa slaid")!.getAttribute("aria-disabled")).toBe("true");
+    expect(button("Lisa slaid +")!.getAttribute("aria-disabled")).toBe("true");
     expect(text(card("slaidid"))).toContain("Slaide saab olla kuni 8.");
-    await click(button("+ Lisa slaid"));
+    await click(button("Lisa slaid +"));
     expect(slideOrder()).toHaveLength(8);
   });
 
@@ -632,12 +632,12 @@ describe("„KKK“: the question shows, the answer is folded (P4 note, S4-11), 
     expect($("[data-publish-bar]")).toBeNull();
   });
 
-  it("↑ moves a question and saves at once; „+ Lisa küsimus“ adds one with its answer open and the cursor in the question", async () => {
+  it("↑ moves a question and saves at once; „Lisa küsimus +“ adds one with its answer open and the cursor in the question", async () => {
     await show();
     await click(button("Liiguta küsimus 2 üles"));
     expect($$("[data-faq-row]").map((el) => el.getAttribute("data-faq-row"))).toEqual(["f2", "f1"]);
     expect(remote.log.at(-1)!.patch).toEqual({ faq: [FAQ[1], FAQ[0]] });
-    await click(button("+ Lisa küsimus"));
+    await click(button("Lisa küsimus +"));
     const rows = $$("[data-faq-row]");
     expect(rows).toHaveLength(3);
     expect(document.activeElement).toBe(field("faq.2.q"));

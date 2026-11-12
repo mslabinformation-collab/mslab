@@ -213,6 +213,8 @@ const TRAINER: TrainerDraft = {
   portraitKey: "/seed/maria.jpg",
   portraitPos: "50% 30%",
   contactPhotoKey: "/seed/maria-seated.jpg",
+  contactPhotoPos: "50% 20%",
+  contactPhotoZoom: "100",
   name: { et: "Maria", ru: "Мария" },
   role: { et: "Koolitaja", ru: "Тренер" },
   stats: [

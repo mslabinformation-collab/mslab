@@ -17,9 +17,14 @@ test("catalogue filters are on separate rows and hybrid has no steps", async ({ 
 });
 
 test.describe("catalogue", () => {
-  test("Kõik shows the three Õppevormid cards; the hybrid card explains only and does not filter (K1, K7, K8)", async ({ page }) => {
+  test("Kõik shows the three Õppevormid cards behind one line (UX pass P6); the hybrid card explains only and does not filter (K1, K7, K8)", async ({ page }) => {
     await page.goto("/koolitused");
     const explainer = page.locator("[data-explainer]");
+    const line = page.getByRole("button", { name: "Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?" });
+    await expect(line).toHaveAttribute("aria-expanded", "false");
+    await expect(explainer.locator("[data-format-card]").first()).toBeHidden();
+    await line.click();
+    await expect(line).toHaveAttribute("aria-expanded", "true");
     await expect(explainer.getByText("Õppevormid")).toBeVisible();
     await expect(explainer.locator("[data-format-card]")).toHaveCount(3);
     await expect(page.locator("[data-course-card]")).toHaveCount(6);
@@ -178,6 +183,22 @@ test.describe("catalogue", () => {
     expect(h1).toBeLessThanOrEqual(52);
     expect(await page.locator("[data-catalogue-intro]").evaluate((e) => getComputedStyle(e).fontSize)).toBe("17px");
     expect(await page.locator("[data-explainer-text]").evaluate((e) => getComputedStyle(e).fontSize)).toBe("16px");
+  });
+
+  test("at 390 the chip rows stand together, „Õppevormid“ waits behind one line and the first course starts on the first screen (UX pass P6)", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "phone width");
+    await page.goto("/koolitused");
+    const format = (await page.locator("[data-filter-row='format']").boundingBox())!;
+    const level = (await page.locator("[data-filter-row='level']").boundingBox())!;
+    expect(level.y - (format.y + format.height)).toBeLessThanOrEqual(13);
+    const line = page.locator("[data-explainer-toggle]");
+    await expect(line).toHaveText(/Mis vahe on e-õppel, kontaktõppel ja hübriidõppel\?/);
+    expect((await line.boundingBox())!.y).toBeGreaterThan(level.y + level.height);
+    expect((await line.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator("[data-catalogue-count]")).toHaveText("6 koolitust");
+    expect((await page.locator("[data-course-card]").first().boundingBox())!.y).toBeLessThan(page.viewportSize()!.height);
+    await page.goto("/ru/koolitused");
+    await expect(page.locator("[data-catalogue-count]")).toHaveText("6 курсов");
   });
 
   test("at 390 the level chips stay on one row, ET and RU, as 44 px targets (item 9)", async ({ page, isMobile }) => {

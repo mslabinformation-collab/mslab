@@ -1,5 +1,5 @@
 /* Course page: prototype B detail() — .breadcrumb, .course-detail (two columns, sticky image), .detail-info,
-   .detail-bottom (two columns, h2 32px, .check-list, .notice) — in Jost / Manrope (G2). */
+   .detail-bottom (two columns, h2 32px, the check lists (IncludesList), .notice) — in Jost / Manrope (G2). */
 
 .crumb {
   padding: 28px 0 16px;
@@ -45,11 +45,23 @@
   color: var(--ink);
 }
 
+/* UX pass P5: one grid holds the gallery, the facts, the course's texts and a contact course's form. On a computer the
+   gallery spans the facts and the form (rows 1–2), the form sits under the facts and the texts run under both (row 3),
+   as before. In one column (below 980px) the items follow the page's order: facts, „Registreeru ↓“, texts, form. */
 .detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(28px, 4.5vw, 65px);
+  grid-template-rows: auto 1fr auto;
+  column-gap: clamp(28px, 4.5vw, 65px);
+  row-gap: 0;
   align-items: start;
+}
+
+.mediaCell {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: stretch;
+  min-width: 0;
 }
 
 /* B .detail-image: the gallery stays in view while the right column scrolls (below the sticky header). */
@@ -60,7 +72,26 @@
 }
 
 .info {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
+}
+
+.register {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  scroll-margin-top: calc(var(--header-h) + 16px);
+}
+
+/* The form's own title only shows in one column, where the form comes after the texts (Telefon-kursus board). */
+.registerTitle {
+  display: none;
+}
+
+/* „Registreeru ↓“ only shows in one column, where the form is at the end of the page. */
+.jump {
+  display: none;
 }
 
 .tags {
@@ -98,6 +129,8 @@
   font: 400 clamp(36px, 3.6vw, 52px) / 1.06 var(--font-display);
   letter-spacing: -0.015em;
   text-wrap: balance;
+  /* a name kept together (domain/title-breaks.ts) or a long word still breaks rather than run out of a phone's line */
+  overflow-wrap: break-word;
 }
 
 .summary {
@@ -117,6 +150,8 @@
 
 /* B .detail-bottom */
 .bottom {
+  grid-column: 1 / -1;
+  grid-row: 3;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 clamp(35px, 5vw, 70px);
@@ -148,28 +183,6 @@
   margin-bottom: 0;
 }
 
-/* B .check-list */
-.checkList {
-  display: grid;
-  gap: 16px;
-  margin: 0;
-  padding: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  list-style: none;
-}
-
-.checkList li {
-  display: flex;
-  gap: 14px;
-}
-
-.checkList svg {
-  flex: none;
-  margin-top: 3px;
-  color: var(--warn);
-}
-
 /* B .notice */
 .notice {
   margin: 24px 0 0;
@@ -187,7 +200,7 @@
 
 @media (max-width: 1180px) {
   .detail {
-    gap: 35px;
+    column-gap: 35px;
   }
 }
 
@@ -196,12 +209,74 @@
 @media (max-width: 980px) {
   .detail {
     grid-template-columns: 1fr;
-    gap: 28px;
+    grid-template-rows: none;
+    row-gap: 28px;
+  }
+
+  .mediaCell,
+  .info,
+  .register,
+  .bottom {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .media {
     position: relative;
     top: 0;
+  }
+
+  .jump {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 20px 0 0;
+  }
+
+  .jumpLink {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    border-radius: 99px;
+    background: var(--ink);
+    color: var(--paper);
+    font: 600 14px/1.3 var(--font-body);
+    text-decoration: none;
+  }
+
+  .jumpLink:hover {
+    color: var(--paper);
+    background: var(--ink-soft);
+  }
+
+  .jumpHint {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .bottom {
+    margin-top: 12px;
+  }
+
+  /* The board's form block: a full-width tinted band with the title „Registreeru“. */
+  .register {
+    margin: 6px calc(-1 * var(--page)) 0;
+    padding: 26px var(--page) 24px;
+    background: var(--canvas);
+  }
+
+  .registerTitle {
+    display: block;
+    margin: 0;
+    font: 400 clamp(26px, 2.4vw, 32px) / 1.15 var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  .register > .registerTitle + * {
+    margin-top: 14px;
   }
 }
 

@@ -1,3 +1,4 @@
+import type { ListPill } from "@/components/admin/ListToolbar";
 import type { AdminCourse, CourseListRow } from "@/db/queries/admin";
 import { shownBadge } from "@/domain/badge";
 import { euro } from "@/domain/money-text";
@@ -17,7 +18,7 @@ export type CourseRowData = {
   name: string;
   /** The first picture's address, or null. */
   image: string | null;
-  /** „{tase} · /{slug}“. */
+  /** „{tase} · {valdkond} · /{slug}“ (UX pass A5), „{tase} · /{slug}“ without an area. */
   sub: string;
   type: AdminCourse["type"];
   typeLabel: string;
@@ -43,7 +44,8 @@ export function courseStatus(c: Pick<CourseListRow, "published" | "changes">): C
   return !c.published ? "draft" : c.changes ? "changes" : "published";
 }
 
-export function courseRowOf(c: CourseListRow): CourseRowData {
+/** `area`: the Estonian name of the course's area (Seaded → Valdkonnad), null for none. */
+export function courseRowOf(c: CourseListRow, area: string | null = null): CourseRowData {
   const t = adminEt.courses;
   const status = courseStatus(c);
   const image = c.images[0];
@@ -52,7 +54,7 @@ export function courseRowOf(c: CourseListRow): CourseRowData {
     slug: c.slug,
     name: pick(c.title, "et"),
     image: image ? mediaUrl(image.key) : null,
-    sub: `${t.level[c.level]} · /${c.slug}`,
+    sub: [t.level[c.level], area, `/${c.slug}`].filter(Boolean).join(" · "),
     type: c.type,
     typeLabel: t.type[c.type],
     price: priceLines(c),
@@ -61,4 +63,32 @@ export function courseRowOf(c: CourseListRow): CourseRowData {
     statusLabel: status === "published" ? t.published : status === "changes" ? t.changes : t.draft,
     sample: c.isSample,
   };
+}
+
+/** The list's view: the form (`?vorm=e` / `?vorm=k`), the courses without an area (`?valdkond=puudub`, UX pass A5), or null for „Kõik“. */
+export type CourseView = "e" | "k" | "puudub" | null;
+
+const FORMS = { e: "e_learning", k: "contact" } as const;
+
+export function courseView(sp: Record<string, string | string[] | undefined>): CourseView {
+  if (sp.vorm === "e" || sp.vorm === "k") return sp.vorm;
+  return sp.valdkond === "puudub" ? "puudub" : null;
+}
+
+/** The courses a view shows, in their order. */
+export function coursesIn<C extends Pick<CourseListRow, "type" | "areaId">>(all: C[], view: CourseView): C[] {
+  if (view === null) return all;
+  return all.filter((c) => (view === "puudub" ? c.areaId == null : c.type === FORMS[view]));
+}
+
+/** The pills Kõik / E-õpe / Kontaktõpe / Määramata valdkond with their counts; one view at a time. */
+export function coursePills(all: Pick<CourseListRow, "type" | "areaId">[], view: CourseView): ListPill[] {
+  const t = adminEt.courses.filter;
+  const views: { key: CourseView; label: string; href: string }[] = [
+    { key: null, label: t.all, href: "/admin/koolitused" },
+    { key: "e", label: t.e, href: "/admin/koolitused?vorm=e" },
+    { key: "k", label: t.k, href: "/admin/koolitused?vorm=k" },
+    { key: "puudub", label: t.noArea, href: "/admin/koolitused?valdkond=puudub" },
+  ];
+  return views.map((v) => ({ href: v.href, label: v.label, count: coursesIn(all, v.key).length, current: view === v.key }));
 }

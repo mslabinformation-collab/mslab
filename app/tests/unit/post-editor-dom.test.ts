@@ -168,7 +168,7 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent("/uudised/uued-koolituskuupaevad-tartus")}`);
     expect(field("post.body")!.closest("[data-unpublished]")).not.toBeNull();
     expect(remote.log).toEqual([{ version: "l:post", patch: { body: { et: "Detsembris toome LAMI koolituse Tartusse.", ru: "В декабре в Тарту." } } }]);
-    expect(chipWords()).toMatch(/^Mustand salvestatud \d\d:\d\d$/);
+    expect(chipWords()).toMatch(/^Mustand salvestatud kell \d\d:\d\d$/);
   });
 
   it("the footer line: `Avaldatud {dd.mm.yyyy} · /uudised/{slug}` of what the public sees; the switch is on", async () => {
@@ -189,7 +189,7 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     expect(field("post.body")?.tagName).toBe("TEXTAREA");
     // „Avaldamine“ is its own card, with the switch and its hint
     expect(text($("[data-post-publish] h2"))).toBe("Avaldamine");
-    expect(text($("[data-post-publish]"))).toContain("Avaldatud postitus on blogis ja avalehel nähtav.");
+    expect(text($("[data-post-publish]"))).toContain("Avaldatud postitus on uudiste lehel ja avalehel nähtav.");
   });
 });
 
@@ -205,7 +205,7 @@ describe("a post that is not published (R-a): the same header, no bar", () => {
     expect(remote.log.at(-1)?.patch).toEqual({ category: { et: "Uudis" } });
     expect($("[data-publish-bar]")).toBeNull();
     expect($("[data-unpublished]")).toBeNull();
-    expect(chipWords()).toMatch(/^Salvestatud \d\d:\d\d$/);
+    expect(chipWords()).toMatch(/^Salvestatud kell \d\d:\d\d$/);
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(false);
   });
 
@@ -526,7 +526,7 @@ describe("„Kustuta postitus“ (S4-23)", () => {
     await click(button("Kustuta postitus"));
     const panel = $("[data-confirm-panel]");
     expect(text(panel?.querySelector("p") ?? null)).toBe("Kas kustutan selle postituse?");
-    expect($$("[data-confirm-panel] li").map(text)).toEqual(["Postitus kaob blogist ja avalehelt.", "Seda ei saa tagasi võtta."]);
+    expect($$("[data-confirm-panel] li").map(text)).toEqual(["Postitus kaob uudiste lehelt ja avalehelt.", "Seda ei saa tagasi võtta."]);
     expect(button("Jah, kustuta")).not.toBeNull();
     await click(button("Katkesta"));
     expect(document.activeElement).toBe(button("Kustuta postitus"));

@@ -313,6 +313,20 @@ describe("the pages in the admin's preview: the drafts and the bar of the page's
     }
   });
 
+  // UX pass 11.11 P1 (the Vaiksed board): the seeded note to Maria („… Maria täiendab.“) is never shown; her own text shows the block again
+  test("/koolitaja: „Koolitaja teekond“ is hidden while it holds the seeded note, in both languages; her own text shows it", async () => {
+    for (const other of [...(await others(() => trainerPage())), ...(await others(() => trainerPage("ru")))]) {
+      expect(other).toContain('data-story="center_story"');
+      expect(other).not.toContain('data-story="trainer_journey"');
+      expect(other).not.toMatch(/Maria täiendab|Мария дополнит/);
+    }
+    await save("trainer", "trainer_journey", { body: { et: "Alustasin kulmumeistrina." } });
+    await asAdmin();
+    const page = await trainerPage();
+    expect(page).toContain('data-story="trainer_journey"');
+    expect(page).toContain("Alustasin kulmumeistrina.");
+  });
+
   test("/koolitaja: the drafted name and bio under the trainer's bar; a visitor's page is live", async () => {
     await save("trainer", "trainer", { name: { et: "Maria Uus" } });
     await save("trainer", "bio", { body: { et: "Uus tutvustus." } });

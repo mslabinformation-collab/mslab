@@ -33,7 +33,7 @@ export const siteRowFields = (entity: SiteDraftEntity, part: string): readonly s
   entity === "home" && part === "slides" ? Object.keys(SLIDE_FIELDS) : entity === "home" && part === "faq" ? ["q", "a"] : [];
 
 /** The trainer card's fields → their labels (S4-17: the picture and its focal point are „Portree“, every stat is „Numbrid“). */
-const TRAINER_FIELDS: Record<string, string> = { portraitKey: T.trainer.portrait, portraitPos: T.trainer.portrait, contactPhotoKey: T.trainer.contactPhoto, name: T.trainer.name, role: T.trainer.role, stats: T.trainer.stats };
+const TRAINER_FIELDS: Record<string, string> = { portraitKey: T.trainer.portrait, portraitPos: T.trainer.portrait, contactPhotoKey: T.trainer.contactPhoto, contactPhotoPos: T.trainer.contactPhoto, contactPhotoZoom: T.trainer.contactPhoto, name: T.trainer.name, role: T.trainer.role, stats: T.trainer.stats };
 
 /** A package's fields → their labels' templates (S4-34). */
 const PACKAGE_FIELDS: Record<string, string> = { name: T.practice.name, tagline: T.practice.tagline, models: T.practice.models, durationLabel: T.practice.durationLabel, price: T.practice.price };
@@ -142,7 +142,7 @@ function diffOf(a: unknown, b: unknown): Diff {
 const SLIDE_ORDER = ["imageKey", "imagePos", "imagePosMobile", "kicker", "title", "text", "ctaLabel", "ctaHref", "tone", "active"];
 const FAQ_ORDER = ["q", "a"];
 const PACKAGE_ORDER = ["name", "tagline", "price", "models", "durationLabel", "items"];
-const TRAINER_ORDER = ["portraitKey", "portraitPos", "contactPhotoKey", "name", "role", "stats"];
+const TRAINER_ORDER = ["portraitKey", "portraitPos", "contactPhotoKey", "contactPhotoPos", "contactPhotoZoom", "name", "role", "stats"];
 const POST_ORDER = Object.keys(POST_FIELDS);
 const POPUP_ORDER = Object.keys(POPUP_FIELDS);
 /** A list row's keys that are no field of the screen (the row's client key and its stored id). */

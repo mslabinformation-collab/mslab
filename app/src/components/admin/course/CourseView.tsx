@@ -128,7 +128,7 @@ export function CourseView({
     includes: <IncludesCard api={parts.includes} />,
     protocolStages: <StagesCard api={parts.protocolStages} type={type} />,
     test: <TestCard api={parts.test} />,
-    certificate: <CertificateCard api={parts.certificate} outcomes={parts.outcomes.fields.outcomes} designs={designs} />,
+    certificate: <CertificateCard api={parts.certificate} outcomes={parts.outcomes.fields.outcomes} designs={designs} courseName={parts.basics.fields.title.et} />,
     gallery: <GalleryCard api={parts.gallery} />,
     recommendations: <RecommendationsCard api={parts.recommendations} others={others} />,
   };

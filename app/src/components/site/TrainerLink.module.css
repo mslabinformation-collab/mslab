@@ -15,11 +15,20 @@
   text-decoration-color: currentColor;
 }
 
+/* the round frame and the picture in it (see ContactBlock.module.css .avatar) */
 .avatar {
+  display: block;
   flex: none;
+  overflow: hidden;
   width: 28px;
   height: 28px;
   border-radius: 50%;
+}
+
+.avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: 50% 18%;
 }
@@ -35,12 +44,13 @@
   background: var(--canvas);
 }
 
+/* UX pass P12: the portrait's frame in the card's own colour (a cut-out portrait stands on the card; a photo's own backdrop still shows as it is) */
 .photo {
   position: relative;
   aspect-ratio: 4 / 5;
   overflow: hidden;
   border-radius: 20px;
-  background: #e6dfe0;
+  background: var(--canvas);
 }
 
 .image {
@@ -66,8 +76,8 @@
   font: 500 14px/1.4 var(--font-body);
 }
 
+/* the card's full width (UX pass P12; it stopped at 620 px) */
 .text {
-  max-width: 620px;
   margin: 16px 0 0;
   color: #3a3437;
   font-size: 16px;

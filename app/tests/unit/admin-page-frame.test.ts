@@ -117,11 +117,14 @@ describe("F17: the Uudised list as the page", () => {
   });
 });
 
-describe("F20: the overview's two cards are as tall as each other", () => {
+// UX pass 11.11 A22 (the Vaiksed board) undoes F20: „Sinu järjekord“ with two rows stood stretched to the height of „Tulevased koolitused“, a large
+// empty card; the cards now align at their tops, each as tall as its content
+describe("A22 (once F20): the overview's two cards align at their tops, each its own height", () => {
   const sheet = css("app", "admin", "(panel)", "overview.module.css");
 
-  it("the row stretches them; the empty queue keeps its two lines at its top", () => {
-    expect(rule(sheet, ".grid")).toMatch(/align-items: stretch;/);
+  it("the row aligns them at the start; the empty queue keeps its two lines at its top", () => {
+    expect(rule(sheet, ".grid")).toMatch(/align-items: start;/);
+    expect(rule(sheet, ".grid")).not.toMatch(/stretch/);
     expect(rule(sheet, ".empty")).toMatch(/display: grid;\s*align-content: start;/);
   });
 });

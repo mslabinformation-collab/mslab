@@ -1,4 +1,4 @@
-import { isHttpsUrl, portraitFraming } from "@/domain/site-editor";
+import { contactZoomOf, DEFAULT_CONTACT_POS, isHttpsUrl, parseFocal, portraitFraming } from "@/domain/site-editor";
 import type { WelcomeCode } from "@/server/discount-codes";
 import { pick, type I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
@@ -43,6 +43,11 @@ export type TrainerSettings = {
   portraitPos: string;
   portraitZoom: boolean;
   contactPhotoKey: string;
+  /**
+   * How the small round avatars cut the contact photo (Koolitaja's „Suurendus“ and drag, UX pass 11.11 A11/P7: domain/site-editor.ts circleCrop);
+   * null while the portrait stands in for it (the avatars' own default framing).
+   */
+  contactPhotoCrop: { pos: string; zoom: number } | null;
   stats: TrainerStat[];
 };
 
@@ -75,6 +80,9 @@ export function trainerSettings(settings: Record<string, unknown>, locale: Local
     portraitPos: framing.pos,
     portraitZoom: framing.zoom,
     contactPhotoKey: str(t.contactPhotoKey) || str(t.portraitKey),
+    contactPhotoCrop: str(t.contactPhotoKey)
+      ? { pos: parseFocal(str(t.contactPhotoPos)) ? str(t.contactPhotoPos).trim() : DEFAULT_CONTACT_POS, zoom: contactZoomOf(t.contactPhotoZoom) }
+      : null,
     stats: stats.flatMap((s) => {
       const value = str(obj(s).value);
       const label = i18n(obj(s).label);

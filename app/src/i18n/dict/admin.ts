@@ -199,12 +199,12 @@ export const adminEt = {
     more: "Veel",
   },
 
-  // SaveStatus (admin UX pass, README §1.4; strings.md D1, D2): the one status chip of a screen. {time} is "HH:MM" in Tallinn; {thing} is the partitive
-  // of what the screen edits („registreerimist“). The saved chip shows a ✓ in front (the component's, not the text's).
+  // SaveStatus (admin UX pass, README §1.4; strings.md D1, D2): the one status line of a screen. {time} is "HH:MM" in Tallinn; {thing} is the partitive
+  // of what the screen edits („registreerimist“). The saved line shows a ✓ in front (the component's, not the text's). UX pass 11.11 (A1): „kell“.
   autosave: {
-    saved: "Salvestatud {time}",
+    saved: "Salvestatud kell {time}",
     savedNoTime: "Salvestatud",
-    draft: "Mustand salvestatud {time}",
+    draft: "Mustand salvestatud kell {time}",
     draftNoTime: "Mustand salvestatud",
     // the phone page's short form of the draft chip (the plain one is just the time); drawers keep the full form
     draftShort: "Mustand {time}",
@@ -337,6 +337,10 @@ export const adminEt = {
     ru: "{label} (RU)",
   },
 
+  // A session's seats, one wording on Ülevaade and Kalender (UX pass 11.11 A2, the Kohad board: components/admin/SeatsMeter.tsx): the free seats of
+  // the capacity ({n} free, {cap} the capacity: „2 vaba 6-st“), or „Täis“
+  seats: { free: "{n} vaba", of: "{cap}-st", full: "Täis" },
+
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“
   overview: {
     // a session today: the line over its course (shown in capitals: CSS), the numbers under it ({n} the listed students, {a} the sent protocols,
@@ -374,7 +378,7 @@ export const adminEt = {
       window: "järgmise 30 päeva jooksul: {n}",
       date: "Kuupäev",
       course: "Koolitus ja linn",
-      seats: "Vabu kohti",
+      seats: "Kohad",
       calendar: "Kalender →",
     },
   },
@@ -387,6 +391,9 @@ export const adminEt = {
     // the form pills (A2: „Kõik vormid“ / „E-õpe“ / „Kontaktõpe“) and the status pills („Kõik“ first), each with its count
     type: { all: "Kõik vormid", e: "E-õpe", k: "Kontaktõpe" },
     statusLabel: "Staatus",
+    // UX pass A15: the small words before the two pill rows (the rows' names stay statusLabel and typeLabel)
+    statusCaption: "Olek:",
+    typeCaption: "Õppevorm:",
     statusAll: "Kõik",
     status: { awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" },
     // the toolbar (README A2, B7): the search across name, e-mail and phone, and the scope select's „all“ option
@@ -521,7 +528,7 @@ export const adminEt = {
     eyebrow: "Montonio ja raamatupidamine",
     heading: "Maksed ja arved",
     title: "Maksed",
-    lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.",
+    lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures.",
     // the tabs „Maksed“ | „Arved“ (README A6; each its own page)
     tabs: { payments: "Maksed", invoices: "Arved" },
     // the toolbar's search (piece 2 texts S3-m): name, e-mail and Montonio id
@@ -869,7 +876,8 @@ export const adminEt = {
       lead: "Õpilane kinnitab registreerimisel selle lepingu teksti. Kinnitatud leping jääb selliseks, nagu see kinnitati: hilisem muudatus puudutab ainult uusi lepinguid. Kuni siia teksti pole kirjutatud, näeb õpilane lepinguna lehe „Õppetingimused“ teksti.",
       contact: "Kontaktkoolituse leping",
       // the placeholders (domain/contract.ts PLACEHOLDERS): the chips' lead, and what fills each (the chip's title; piece3-texts §3, ADM:761-768)
-      placeholders: "Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel. Tundmatu sõna looksulgudes jääb tekstis alles.",
+      // UX pass A18: in plain words (it said „kohahoidjaid“ and „looksulgudes“)
+      placeholders: "Nupud „+ nimi“ jne lisavad tekstidesse õpilase andmed.",
       placeholderMeaning: {
         nimi: "õpilase nimi",
         "e-post": "õpilase e-posti aadress",
@@ -891,6 +899,9 @@ export const adminEt = {
       email: "naidis@example.test",
       course: "Näidiskoolitus",
       courseRu: "Пример курса",
+      // the e-course contract's sample (UX pass A18): a made-up e-course, bought whole, with no session
+      ecourse: "Näidis-e-koolitus",
+      ecourseRu: "Пример онлайн-курса",
       city: "Pärnu",
       title: "(lepingu pealkiri)",
       body: "(lepingu tekst)",
@@ -1385,9 +1396,8 @@ export const adminEt = {
       noContracts: "Lepinguid veel pole.",
     },
     grant: {
-      // the folded row at the end of the drawer (README A5, Part 2 prototype): „Ava ligipääs e-koolitusele“ and its one-line summary
-      fold: "Ava ligipääs e-koolitusele",
-      foldSummary: "vali koolitus",
+      // the button at the end of the drawer's „Koolitused“ that opens the form (UX pass A16; once the folded row „Ava ligipääs e-koolitusele“)
+      open: "Ava e-koolitus…",
       title: "Ava ligipääs",
       course: "E-koolitus",
       // the course select's lines: „{course} · mustand · avatud kuni {date}“ (README A5)
@@ -1502,30 +1512,40 @@ export const adminEt = {
     designs: {
       title: "Kujundused",
       lead: "Tunnistuse taust ja teksti värv. Koolituse kaardil „Tunnistus“ valid, millist kujundust see koolitus kasutab. Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
-      // {name}: the design's name (each row's group, for a screen reader)
+      // {name}: the design's name (each box's group, for a screen reader)
       row: "Kujundus „{name}“",
-      name: "Nimi",
+      // the box's header (UX pass 11.11, board 1): the name's field (named for a screen reader), the first design's tag, the tone pills, the count, the sample
+      name: "Kujunduse nimi",
       tone: "Toon",
       tones: { light: "Hele taust, tume tekst", dark: "Tume taust, hele tekst" },
+      defaultTag: "Vaikimisi",
+      // {n}: the courses using the design (live or waiting to be published; the first design also every e-course with none picked)
+      usedOne: "Kasutab 1 koolitus",
+      used: "Kasutab {n} koolitust",
+      unused: "Pole kasutusel",
       background: "Taustapilt",
-      backgroundHint: "JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.",
+      // the picture's hint line: with a picture (the preview is the drop zone), without one
+      backgroundHint: "Lohista uus pilt eelvaatele või vajuta „Vaheta pilt“. JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Pilt kärbitakse lehe järgi.",
+      backgroundNone: "Pilti pole veel. JPEG, kuni 1,5 MB, horisontaalne A4 (näiteks 3508 × 2480 px). Ilma pildita on taust ühtlane.",
       // the first design (lowest in the list): what an e-course with no design picked gets
-      first: "Koolitus, millel kujundust valitud pole, kasutab seda kujundust.",
+      first: "Koolitus, millel kujundust valitud pole, kasutab vaikimisi kujundust.",
       sample: "Vaata näidist",
       remove: "Kustuta",
-      // instead of „Kustuta“: {n} the courses using the design (live or waiting to be published; the first design also every e-course with none picked)
-      usedOne: "Seda kujundust kasutab 1 koolitus.",
-      used: "Seda kujundust kasutab {n} koolitust.",
+      // beside a greyed „Kustuta“: why the design cannot go
+      inUse: "Kasutusel olevat kujundust ei saa kustutada.",
       last: "Viimast kujundust ei saa kustutada.",
       removeQuestion: "Kas kustutan kujunduse „{name}“?",
       removeLine: "Väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
       removeYes: "Jah, kustuta",
-      add: "Lisa kujundus",
+      // the dashed add row at the end: the name's field (its placeholder and name), its button
+      newName: "Uue kujunduse nimi",
+      add: "Lisa kujundus +",
       adding: "Lisan…",
-      // a press that failed (not signed out): „Lisa kujundus“ or „Jah, kustuta“
+      // a press that failed (not signed out): „Lisa kujundus +“ or „Jah, kustuta“
       failed: "Ei õnnestunud. Proovi uuesti.",
       gone: "Seda kujundust enam pole.",
-      // a row's refused field (server/certificate-designs.ts): name required | tooLong | taken, tone invalid, backgroundKey image
+      // a row's or the add row's refused name, a row's refused field (server/certificate-designs.ts): name required | tooLong | taken, tone invalid,
+      // backgroundKey image
       errors: {
         required: "Täida see väli.",
         tooLong: "Nimi võib olla kuni 40 märki.",
@@ -1694,9 +1714,11 @@ export const adminEt = {
   // Prototype D adminBadges ("Koolituse märgis"), Maria C36: "Väga meeldib see blokk. Jätame."
   badge: {
     title: "Koolituse märgis",
-    // (piece3-texts P-5: the card autosaves and a published course's change waits for „Avalda muudatused“)
-    lead: "Lisa koolituse kaardile silt, nt „Uus“ või „Populaarne“. Vali tekst ja värv — muudatus on koolituste lehel näha pärast avaldamist.",
+    // (review of the UX pass 11.11: the Kursus board's short lead; that a published course's change waits for „Avalda muudatused“ the PublishBar says)
+    lead: "Silt koolituse kaardil, nt „Uus“ või „Populaarne“.",
     presets: "Kiirvalik",
+    // UX pass 11.11 A10 (the Kursus board): under the quick picks
+    bestsellerGone: "„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.",
     none: "Puudub",
     own: "Oma tekst (kuni 18 märki)",
     placeholder: "nt. Sügise hitt",
@@ -1716,8 +1738,10 @@ export const adminEt = {
     title: "Koolitused",
     lead: "Järjekord on sama mis avalikul lehel. Lohista ⋮⋮ või kasuta nooli.",
     add: "Lisa koolitus",
-    typeLabel: "Õppevorm",
-    filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe" },
+    // noArea (UX pass A5): the courses with no „Valdkond“ yet
+    filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe", noArea: "Määramata valdkond" },
+    // the pills' row (once „Õppevorm“: the fourth pill is not a form)
+    filterLabel: "Koolituste filter",
     type: { e_learning: "E-õpe", contact: "Kontaktõpe" },
     level: { basic: "Baaskoolitus", advanced: "Täiendkoolitus" },
     col: { order: "Järjekord", course: "Koolitus", type: "Õppevorm", price: "Hind", badge: "Märgis", status: "Staatus" },
@@ -1777,7 +1801,8 @@ export const adminEt = {
       // „Valdkond“ (course areas, spec 2026-11-11 §4.2; Draft): Seaded → Valdkonnad's areas, „Määramata“ first
       area: "Valdkond",
       areaNone: "Määramata",
-      areaHint: "Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valdkondi muudad: Seaded → Valdkonnad.",
+      areaHint: "Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. Valik ilmub kodulehele, kui vähemalt kahel koolitusel on eri valdkond. Valdkondi muudad:",
+      areaLink: "Seaded → Valdkonnad",
       summary: "Lühikirjeldus",
       summaryHint: "Kaardil ja koolituse lehe päises.",
       body: "Pikk kirjeldus",
@@ -1838,22 +1863,28 @@ export const adminEt = {
       testRemoved: "Küsimus eemaldatud.",
       testOptionRemoved: "Vastusevariant eemaldatud.",
       // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
-      certificateLead: "E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      // UX pass 11.11 A9 (the Kursus board): the card's words; one hint for the lines (no second line saying the same when there are none)
+      certificateLead: "E-koolituse tunnistus. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
       certificateTitle: "Pealkiri tunnistusel",
-      certificateTitleHint: "Kui jätad tühjaks, kasutatakse koolituse nime.",
+      certificateTitleHint: "Tühjaks jättes kasutatakse koolituse nime.",
       certificateSkills: "Oskused tunnistusel",
       certificateSkill: "Rida",
-      certificateSkillsHint: "Tühjana kasutatakse „Õpiväljundid“ ridu",
-      certificateSkillsEmpty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.",
+      certificateSkillsHint: "Tühjana kasutatakse kaardi „Õpiväljundid“ read.",
       // no line of its own, and an outcome the certificate would print is over 120 characters (domain/certificate.ts outcomesTooLong)
       certificateSkillsLong: "Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read.",
       certificateSkillsAdd: "Lisa rida",
       certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
       certificateVolume: "Maht",
-      certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
+      certificateVolumeHint: "Tühjaks jättes mahtu tunnistusel ei näidata.",
+      certificateVolumePlaceholder: "nt 10 akadeemilist tundi",
       // (Draft, 2026-11-11 certificate designs spec §5.2) the design the course's certificates are drawn in; none picked shows the first design
       certificateDesign: "Kujundus",
-      certificateDesignHint: "Kujundusi muudad: Seaded → Tunnistus.",
+      // the first design is what a course with no pick gets
+      certificateDesignDefault: "{name} (vaikimisi)",
+      certificateDesignThumb: "Kujunduse {name} pisipilt",
+      certificateDesignSample: "Vaata näidist",
+      certificateDesignHint: "Kujundusi muudad:",
+      certificateDesignLink: "Seaded → Tunnistus",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega.",
       main: "Põhipilt",
       image: "Pilt {n}",
@@ -2413,6 +2444,9 @@ export const adminEt = {
       replace: "Vaheta pilt",
       remove: "Eemalda pilt",
       current: "Praegune pilt",
+      // the one image field (UX pass 11.11, ImageField): the empty drop zone's words, and „Eemalda“ beside „Vaheta pilt“ (named „Eemalda pilt: {label}“)
+      drop: "Lohista pilt siia",
+      removeShort: "Eemalda",
     },
     focal: {
       title: "Fookuspunkt",
@@ -2537,13 +2571,18 @@ export const adminEt = {
     lead: "Koolitaja leht: portree, nimi, tutvustus, numbrid, tööde galerii ja kaks lugu. Avalehe koolitaja plokk kasutab samu andmeid.",
     // the first card: the portrait beside the name, the role and the bio (S4-14)
     card: "Portree ja tutvustus",
+    // the two picture fields (UX pass 11.11, board 1: ImageField; the portrait's point is picked on its preview, its numbers the keyboard's way)
     portrait: "Portree",
-    portraitHint: "Püstine foto sobib kõige paremini. Fookuspunkt jääb alati nähtavale.",
-    portraitWide: "Arvutis (4:5)",
-    portraitNarrow: "Telefonis (4:3)",
-    // the small round photo by the contact forms and on the course page's „Koolitaja“ line, under the portrait (Maria 10.11)
+    portraitHint: "Püstine foto sobib kõige paremini. Vajuta pildil kohale, mis peab alati näha jääma (fookuspunkt).",
+    photoFiles: "JPEG, PNG või WebP. Pilt vähendatakse kuni 2400 pikslini; asukoht ja kaamera andmed eemaldatakse.",
+    // the small round photo by the contact forms and on the course page's „Koolitaja“ line, under the portrait (Maria 10.11), its circle zoomed and
+    // dragged (A11), and how the site shows it (P7: the name only)
     contactPhoto: "Kontaktifoto",
-    contactPhotoHint: "Väike ümar pilt kontaktivormi ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.",
+    contactPhotoHint: "Vali näo lähifoto (pea ja õlad). Suurenda liuguriga ja lohista pilti ringis, kuni nägu on keskel.",
+    contactPhotoWhere: "Näidatakse väikese ringina kontaktivormi, avalehe ja koolituse lehe juures. Kui pilti pole, näidatakse portreed.",
+    contactZoom: "Suurendus",
+    contactPlace: "Pilt ringis: vasakult {x}%, ülevalt {y}%. Nooleklahvid nihutavad pilti.",
+    contactSample: "Nii näeb see lehel välja",
     name: "Nimi",
     role: "Amet",
     roleHint: "Näidatakse koolitaja lehel, kui tutvustus on tühi.",
@@ -2573,10 +2612,11 @@ export const adminEt = {
   // „Lisa postitus +“ (the button's text and the „+“), the row line `{staatus} · {dd.mm}` (`—` without a date), and the lists' empty frames
   // (lists.empty / emptySearch with `things`). The status words: „Avaldatud“, „Mustand“ (never published) and „Avaldamata muudatused“ (a published
   // post with a draft, as courses.changes; never „Mustand“, behaviours B2).
+  // (review of the UX pass 11.11: no „blogi“ — the site's section is „Uudised ja nõuanded“, P10; the eyebrow the other site pages')
   news: {
-    eyebrow: "Blogi",
+    eyebrow: "Koduleht",
     title: "Uudised",
-    lead: "Kõik postitused, ka mustandid, uuemad eespool. Blogis ja avalehel on näha avaldatud postitused.",
+    lead: "Kõik postitused, ka mustandid, uuemad eespool. Uudiste lehel ja avalehel on näha avaldatud postitused.",
     add: "Lisa postitus",
     search: "Otsi pealkirja järgi",
     things: "postitusi",
@@ -2606,7 +2646,7 @@ export const adminEt = {
     slugChanged: "Aadressi muutmisel ei avane vana link enam.",
     slugTaken: "See aadress on juba teisel postitusel.",
     excerpt: "Lühitekst",
-    excerptHint: "Postituse kaardil blogis ja avalehel.",
+    excerptHint: "Postituse kaardil uudiste lehel ja avalehel.",
     body: "Tekst",
     bodyHint: "Tühi rida alustab uut lõiku.",
     category: "Kategooria",
@@ -2615,12 +2655,12 @@ export const adminEt = {
     dateHint: "Näidatakse postituse juures; uuemad postitused on eespool.",
     coverHint: "Kaardil lõigatakse pilt 4:3, postituse lehel 16:9. Avaldatud postitusel peab kaanepilt olemas olema.",
     published: "Avaldatud",
-    publishedHint: "Avaldatud postitus on blogis ja avalehel nähtav. Mustandit näed ainult siin.",
+    publishedHint: "Avaldatud postitus on uudiste lehel ja avalehel nähtav. Mustandit näed ainult siin.",
     remove: {
       button: "Kustuta postitus",
       question: "Kas kustutan selle postituse?",
       // only for a published post: what changes in public (P1 §3.3)
-      public: "Postitus kaob blogist ja avalehelt.",
+      public: "Postitus kaob uudiste lehelt ja avalehelt.",
       final: "Seda ei saa tagasi võtta.",
       yes: "Jah, kustuta",
     },
@@ -2631,7 +2671,8 @@ export const adminEt = {
   // „Pealkiri“, „Tekst“, „Pilt“, „Eelvaade“ and its note. The card's name „Pakkumine“ (S4-27) is siteChanges.popup.offer, the bar's labels S4-30.
   // The three-way choice, the campaign offer's fields, the old lead and the rules list went with the campaign popup (§4).
   campaign: {
-    eyebrow: "Turundus",
+    // UX pass 11.11 A20: the sidebar group's name (nav.groups.site), not „Turundus“
+    eyebrow: "Koduleht ja uudiskiri",
     title: "Hüpikaken",
     shown: "Lehel näidatakse",
     // S4-25: under the switch, in place of the old lead
@@ -2658,7 +2699,7 @@ export const adminEt = {
   settings: {
     eyebrow: "Seaded",
     title: "Seaded",
-    sections: { contact: "Kontakt", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud ja tingimused", admins: "Halduse ligipääs" },
+    sections: { contact: "Kontakt", areas: "Valdkonnad", payment: "Maksmine", certificate: "Tunnistus", legal: "Lepingud", admins: "Halduse ligipääs" },
     contact: "Kontaktandmed",
     contactLead: "Jaluses ja kontaktilehel. Tühja välja ei näidata.",
     email: "E-post",
@@ -2668,6 +2709,10 @@ export const adminEt = {
     instagram: "Instagram",
     facebook: "Facebook",
     socialHint: "Täielik aadress, nt https://www.instagram.com/mslab",
+    facebookHint: "Täielik aadress, nt https://www.facebook.com/mslab",
+    // the card's last line (UX pass 11.11 A13): where the small round photo by the contact forms is changed
+    contactPhotoWhere: "Kontaktifoto muudad:",
+    contactPhotoLink: "Koolitaja → Portree ja tutvustus",
     // „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; components/admin/AreasSettings.tsx). All Draft (Dim's wording
     // sheet): the lead as the spec words it, with the basics card's real name („Põhiinfo“); {name} the area's Estonian name, {n} a count
     areas: {
@@ -2676,15 +2721,20 @@ export const adminEt = {
       empty: "Valdkondi veel pole.",
       nameEt: "Nimi (eesti keeles)",
       nameRu: "Nimi (vene keeles)",
-      // the add form below the rows: its two fields and its button
+      // the dashed add row at the end of the rows (UX pass 11.11, board 1): its name for a screen reader, its two fields' placeholders and names, its button
       newTitle: "Uus valdkond",
-      add: "Lisa valdkond",
+      newEt: "Uue valdkonna nimi (eesti keeles)",
+      newRu: "Uue valdkonna nimi (vene keeles)",
+      newRuPlaceholder: "Новая область",
+      add: "Lisa valdkond +",
       remove: "Kustuta",
       removeQuestion: "Kas kustutan valdkonna „{name}“?",
       removeYes: "Jah, kustuta",
-      // in a used area's row, in place of „Kustuta“ (the spec's „Seda valdkonda kasutab {n} koolitust.“, with its one)
-      usedOne: "Seda valdkonda kasutab 1 koolitus.",
-      usedMany: "Seda valdkonda kasutab {n} koolitust.",
+      // each row's column of how many courses use the area (live or in a draft); a used one's „Kustuta“ is greyed and points to `rule`
+      usedOne: "1 koolitus",
+      usedMany: "{n} koolitust",
+      unused: "Pole kasutusel",
+      rule: "Kasutusel olevat valdkonda ei saa kustutada: vali enne koolitustel teine valdkond.",
       // a row without an Estonian name yet: the handle's and the arrows' name (DragList)
       unnamed: "Nimeta valdkond",
       errors: {

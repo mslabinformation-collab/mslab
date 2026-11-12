@@ -1,11 +1,68 @@
-/* Seaded → „Valdkonnad“ (AreasSettings.tsx; course areas, spec 2026-11-11 §4.1): the rows as the course editor's module boxes (LessonsEditor.module.css:
-   1px var(--line), radius 14, padding 12 14) — ⋮⋮ | the two names side by side | ↑ ↓, then „Kustuta“ or why not — and „Uus valdkond“ below them.
-   Colours from tokens.css only (tests/unit/colour-tokens.test.ts); every control at least 44 px (DragList's handle and arrows, the buttons). Under
-   640 px the two names go one under the other. */
+/* Seaded → „Valdkonnad“ (AreasSettings.tsx; course areas, spec 2026-11-11 §4.1; UX pass 11.11 board 1, A6/A8): one bordered box per area (1px
+   var(--line), radius 14), every box on ONE grid — ⋮⋮ 44 | „Nimi (eesti keeles)“ | „Nimi (vene keeles)“ | the count 104 | ↑ ↓ 92 | „Kustuta“ 96 —
+   so the column labels over the rows, the rows and the dashed add row at the end share their edges. The labels row is padded as a box is (its 1 px
+   border and 14 px padding), so its columns stand over the fields. Colours from tokens.css only (tests/unit/colour-tokens.test.ts); every control at
+   least 44 px (DragList's handle and arrows, the buttons). Under 640 px a box is ⋮⋮ | the names, one under the other | ↑ ↓, with the count and
+   „Kustuta“ on a line under them. */
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 104px 92px 96px;
+  grid-template-areas: "handle et ru use arrows del";
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.handle {
+  grid-area: handle;
+  display: grid;
+}
+
+.et {
+  grid-area: et;
+  min-width: 0;
+}
+
+.ru {
+  grid-area: ru;
+  min-width: 0;
+}
+
+.use {
+  grid-area: use;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.arrows {
+  grid-area: arrows;
+  display: grid;
+}
+
+.del {
+  grid-area: del;
+  display: grid;
+  justify-items: end;
+}
+
+/* the two names' labels, once, over the columns (a box's border + padding: 15 px) */
+.columns {
+  padding: 0 15px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
 
 .rows {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .item {
@@ -19,34 +76,21 @@
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
 
-.head {
+/* the add row: the same box, dashed, at the end; its button over the arrows' and „Kustuta“'s columns */
+.add {
+  margin: 0;
+  border: 1px dashed var(--fog);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.addGo {
+  grid-column: 4 / -1;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0 10px;
-}
-
-/* (the handle and the arrows stand level with the fields, under their labels) */
-.handle,
-.arrows {
-  display: grid;
-  padding-top: 24px;
-}
-
-.names {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 12px 16px;
-  min-width: 0;
-}
-
-.foot {
-  min-width: 0;
-  margin-left: 54px;
+  justify-items: end;
 }
 
 .line {
@@ -54,34 +98,49 @@
 }
 
 .empty {
-  margin: 0 0 18px;
+  margin: 0 0 10px;
 }
 
-.add {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.addTitle {
-  margin: 0;
-  font: 600 14px/1.3 var(--font-body);
-}
-
-.addActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.rule {
+  margin: 4px 15px 0;
 }
 
 @media (max-width: 640px) {
-  .names {
-    grid-template-columns: minmax(0, 1fr);
+  .grid {
+    grid-template-columns: 44px minmax(0, 1fr) 92px;
+    grid-template-areas:
+      "handle et arrows"
+      "handle ru arrows"
+      "handle use del";
+    align-items: start;
   }
 
-  .foot {
-    margin-left: 0;
+  .columns {
+    display: none;
+  }
+
+  .use {
+    align-self: center;
+  }
+
+  .del {
+    grid-column: 3;
+    justify-items: end;
+  }
+
+  /* the add row: the names one under the other, the button under them */
+  .add .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "et" "ru" "go";
+  }
+
+  .addGo {
+    grid-area: go;
+    grid-column: auto;
+    justify-items: start;
+  }
+
+  .rule {
+    margin: 4px 0 0;
   }
 }

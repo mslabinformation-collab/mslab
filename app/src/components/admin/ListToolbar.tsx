@@ -14,10 +14,10 @@ export const SEARCH_DEBOUNCE_MS = 300;
 
 export type ListPill = { href: string; label: string; count?: number; current: boolean };
 /**
- * One row of filter pills (a status, a form …): `label` is the row's accessible name. `tone: "light"` draws a secondary row (the prototype's form
- * pills): the chosen pill is the first-light fill with the ink border, not the ink fill of the first row.
+ * One row of filter pills (a status, a form …): `label` is the row's accessible name; `caption`, when given, is a small grey word before the pills
+ * („Olek:“, „Õppevorm:“), the eye's name of the group (UX pass A15: the rows were told apart by two chosen styles, now one).
  */
-export type ListPillRow = { label: string; pills: ListPill[]; tone?: "light" };
+export type ListPillRow = { label: string; pills: ListPill[]; caption?: string };
 /**
  * A scope select. Each option carries the address the page built for it (`href`: the page knows the other filters, and which parameter the
  * option sets: `?koolitus=` for a whole course, `?toimumine=` for one session), so one select can set either. `value` is the chosen option's value.
@@ -216,7 +216,12 @@ export function ListToolbar({
       {rows.length > 0 && (
         <div className={styles.pillRows} data-list-pills="">
           {rows.map((row, i) => (
-            <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="" data-tone={row.tone} data-with-select={i === 0 && phoneSelects.length > 0 ? "" : undefined}>
+            <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="" data-with-select={i === 0 && phoneSelects.length > 0 ? "" : undefined}>
+              {row.caption && (
+                <span className={styles.caption} aria-hidden="true" data-pill-caption="">
+                  {row.caption}
+                </span>
+              )}
               {row.pills.map((p) => (
                 // a search still waiting is dropped at the click: sent after it, it would take the pill's navigation away
                 <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined} onClick={cancel}>

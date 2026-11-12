@@ -144,7 +144,7 @@ test.describe("course editor", () => {
     await expect(chip(page)).toHaveAttribute("data-save-kind", "dirty");
     await title.blur();
     await saved;
-    await expect(spoken(page)).toHaveText(/^Mustand salvestatud \d\d:\d\d$/);
+    await expect(spoken(page)).toHaveText(/^Mustand salvestatud kell \d\d:\d\d$/);
     await expect(barWords(page)).toHaveText(draftWords("Koolituse nimi"));
     await expect(title.locator("xpath=ancestor::*[@data-i18n-box][1]").locator("[data-unpublished-tag]")).toHaveText("· avaldamata");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
@@ -398,6 +398,68 @@ test.describe("course editor", () => {
     await other.close();
   });
 
+  // Review of the UX pass 11.11 (A1): the old fixed pill stood on the PublishBar's „Loobu muudatustest“. A state that needs her now follows into the
+  // admin's frame — the sidebar under the logo — while the page's own line is scrolled away, and the quiet states never do. The window is a 125 %
+  // laptop's (1229 × 650 CSS px).
+  test("a save that needs her follows into the sidebar while the page's line is scrolled away, over no button; a quiet one never (review of A1)", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "the sidebar's place: the desktop project (the phone bar's is in the unit tests)");
+    const c = mine(info);
+    const id = await changing(c.slug);
+    await signIn(page, context, visitorIp);
+    const other = await context.newPage();
+    for (const p of [page, other]) {
+      await p.setViewportSize({ width: 1229, height: 650 });
+      await p.goto(`/admin/koolitused/${id}`);
+      await adminReady(p);
+    }
+    const summaryOf = (p: Page) => p.getByRole("textbox", { name: "Lühikirjeldus (eesti keeles)" });
+    const first = partSaved(page, "basics");
+    await summaryOf(page).fill("E2E follow A");
+    await summaryOf(page).blur();
+    await first;
+    const refused = partSaved(other, "basics", 409);
+    await summaryOf(other).fill("E2E follow B");
+    await summaryOf(other).blur();
+    await refused;
+    await expect(chip(other)).toHaveAttribute("data-save-kind", "conflict");
+    const copy = other.locator('[data-save-follow-slot="side"] [data-save-follow]');
+    // (the field is down the page: typing in it scrolled the line away, so the copy may stand already) at the top, the line itself says it
+    await other.evaluate(() => window.scrollTo(0, 0));
+    await expect(copy).toHaveCount(0);
+    // the A1 place: the bar scrolled to the window's top edge, its buttons in view — the line beside them is too, so no copy over them
+    const bar = other.locator("[data-publish-bar]");
+    await other.evaluate((top) => window.scrollBy(0, top + 4), (await bar.boundingBox())!.y);
+    await expect(other.locator("[data-publish-discard]")).toBeInViewport();
+    await expect(copy).toHaveCount(0);
+    // scrolled to the foot: the copy in the sidebar, the same words, hidden from a screen reader
+    await other.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(copy).toHaveText("Muudeti teises aknas — vaata üle");
+    await expect(copy).toHaveAttribute("aria-hidden", "true");
+    // over nothing that can be pressed or typed in, on the page or in the menu: whatever stands at any point of the copy (a hit test, so the
+    // menu's rows scrolled out of its own box do not count; they are not there to press)
+    const box = (await copy.boundingBox())!;
+    const under = await other.evaluate(({ x, y, width, height }) => {
+      const found = new Set<string>();
+      for (let i = 1; i < 10; i++)
+        for (let j = 1; j < 4; j++)
+          for (const el of document.elementsFromPoint(x + (width * i) / 10, y + (height * j) / 4)) {
+            const press = el.closest("a, button, input, textarea, select, [role=button], [data-publish-bar]");
+            if (press && !press.closest("[data-save-follow]")) found.add(press.outerHTML.slice(0, 80));
+          }
+      return [...found];
+    }, box);
+    expect(under).toEqual([]);
+    await other.screenshot({ path: info.outputPath("follow-sidebar.png") });
+    // back up: the line is in view again, the copy goes
+    await other.evaluate(() => window.scrollTo(0, 0));
+    await expect(copy).toHaveCount(0);
+    // tab A is saved (a quiet state): at the foot nothing follows
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    await expect(page.locator("[data-save-follow]")).toHaveCount(0);
+    await other.close();
+  });
+
   test("on a 375×812 phone: „Jaotised ▾“ under the H1 in the map's place, „Avaldamine“ next, the PublishBar at the foot of the screen with „Avalda“", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(!isMobile, "a phone's size and touch: the phone project");
     const c = mine(info);
@@ -505,7 +567,7 @@ test.describe("course editor", () => {
 
     const editor = page.locator("[data-badge-editor]");
     await expect(editor.getByRole("heading", { name: "Koolituse märgis" })).toBeVisible();
-    await expect(editor).toContainText("muudatus on koolituste lehel näha pärast avaldamist."); // (P-5)
+    await expect(editor).toContainText("Silt koolituse kaardil, nt „Uus“ või „Populaarne“."); // (the Kursus board's lead; the PublishBar says when it shows)
     await expect(editor.getByRole("button", { name: "Puudub" })).toHaveAttribute("aria-pressed", "true");
     const preview = editor.locator("[data-badge-preview] [data-course-card]");
     await expect(preview).toContainText(c.title); // the real course card, with this course's data
@@ -952,7 +1014,7 @@ test.describe("course editor", () => {
     await page.getByLabel("Individuaalkoolituse hind (€)").fill("250");
     await page.getByLabel("Individuaalkoolituse hind (€)").blur();
     await saved;
-    await expect(spoken(page)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+    await expect(spoken(page)).toHaveText(/^Salvestatud kell \d\d:\d\d$/);
     await expect(publishBar(page)).toHaveCount(0);
     expect(await onLocalDb((sql) => sql`select price_individual from courses where slug = ${slug}`)).toEqual([{ price_individual: 25000 }]);
     // an unpublished course's type changed: the server empties the contact fields (new versions), so the cards wait (inert) until the page is read
@@ -997,18 +1059,22 @@ test.describe("course editor", () => {
     await page.goto("/admin/koolitused");
     await adminReady(page);
 
-    // the columns of the README: the heading row has "Järjekord", and "Muudetud" is gone; the title has "{tase} · /{slug}", the handle says "lohistatav"
+    // the columns of the README: the heading row has "Järjekord", and "Muudetud" is gone; the title has "{tase} · {valdkond} · /{slug}" (UX pass A5:
+    // the area when it has one), the handle says "lohistatav"
     const head = page.locator("[data-course-head]");
     await expect(head).toContainText("Järjekord");
     await expect(head).not.toContainText("Muudetud");
-    await expect(courseRow(page, c.slug).locator("[data-course-sub]")).toHaveText(new RegExp(`koolitus · /${c.slug}$`));
+    await expect(courseRow(page, c.slug).locator("[data-course-sub]")).toHaveText(new RegExp(`^(Baas|Täiend)koolitus( · [^·]+)? · /${c.slug}$`));
     await expect(handleOf(page, c.title)).toHaveAttribute("aria-roledescription", "lohistatav");
     expect(await noOverflow(page)).toBe(true);
-    // the pills carry their counts, and the two forms add up to the whole
+    // the pills carry their counts, and the two forms add up to the whole; the fourth (UX pass A5) counts the courses with no area. The row is named
+    // „Koolituste filter“ (review of the UX pass: not „Vaade“)
+    await expect(page.getByRole("navigation", { name: "Koolituste filter" }).locator("a")).toHaveCount(4);
     const counts = await page.locator("[data-list-pills] a").evaluateAll((links) => links.map((a) => Number((a.textContent ?? "").replace(/\D+/g, ""))));
-    expect(counts).toHaveLength(3);
+    expect(counts).toHaveLength(4);
     expect(counts[1] + counts[2]).toBe(counts[0]);
     expect(counts[0]).toBeGreaterThanOrEqual(6);
+    expect(counts[3]).toBeLessThanOrEqual(counts[0]);
 
     // ↑ moves the course one place: stored, read out, the focus stays on the button, and the public catalogue has it
     await page.getByRole("button", { name: `Liiguta üles: ${c.title}` }).click();
@@ -1061,6 +1127,13 @@ test.describe("course editor", () => {
     await expect(page.locator("[data-drag-tool]")).toHaveCount(0);
     await expect(page.locator("[data-order-hint]")).toHaveText("Järjekorda saab muuta vaates „Kõik“.");
     await expect(page.locator("[data-list-pills] a[aria-current=true]")).toContainText("E-õpe");
+    // „Määramata valdkond“ (UX pass A5): as many rows as its count, none naming an area, and the same hint
+    await page.locator("[data-list-pills] a", { hasText: "Määramata valdkond" }).click();
+    await expect(page).toHaveURL(/\/admin\/koolitused\?valdkond=puudub$/);
+    await expect(page.locator("[data-list-pills] a[aria-current=true]")).toContainText("Määramata valdkond");
+    await expect(page.locator("[data-course-row]")).toHaveCount(counts[3]);
+    for (const sub of await page.locator("[data-course-sub]").allTextContents()) expect(sub).toMatch(/^(Baas|Täiend)koolitus · \//);
+    if (counts[3] > 0) await expect(page.locator("[data-order-hint]")).toHaveText("Järjekorda saab muuta vaates „Kõik“.");
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await expect(page.locator("[data-order-hint]")).toHaveCount(0);
@@ -1235,7 +1308,7 @@ test.describe("calendar", () => {
     const row = page.locator("[data-session-row][data-highlight]");
     await expect(row).toContainText(city);
     await expect(row).toContainText(when.shown);
-    await expect(row).toContainText("0 / 5"); // the seats as drawn: the figure and the bar
+    await expect(row).toContainText("5 vaba 5-st"); // the seats as drawn: the words and the bar (UX pass A2: „{vaba} vaba {kohti}-st“)
 
     // it autosaves (README B3): „Algus“ changed and left is stored, no „Salvesta toimumine“; nobody to tell, so no „Muudetud …“
     await expect(edit.getByRole("button", { name: "Salvesta toimumine" })).toHaveCount(0);
@@ -1375,7 +1448,7 @@ test.describe("calendar", () => {
     // the list does not say „ootab ettemaksu“ any more (Dim 25.10: the seats as drawn): 0 of 4 confirmed
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender$/);
-    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("0 / 4");
+    await expect(page.locator("[data-session-row]", { hasText: city })).toContainText("4 vaba 4-st");
     await expect(page.locator("[data-session-row]", { hasText: city })).not.toContainText("ootab ettemaksu");
     // the drawer's header says it (Dim 25.10): her registration awaits its prepayment — with no seat hold (as a bank transfer's), it still counts
     await page.goto(`/admin/kalender?id=${id}`);

@@ -197,7 +197,8 @@ export function TestEditor({
       tabIndex={listError ? -1 : undefined}
     >
       <div className={ed.listHead}>
-        <h3 id={`${uid}-title`} className={ui.h3}>
+        {/* a card of its own: the cards' title size (UX pass 11.11 A3) */}
+        <h3 id={`${uid}-title`} className={ui.h2}>
           {t.sections.test}
           {unpublished?.questions && (
             <>
@@ -326,7 +327,7 @@ export function TestEditor({
                         onClick={() => addOption(i)}
                         data-option-add=""
                       >
-                        + {f.testOptionAdd}
+                        {f.testOptionAdd} +
                       </button>
                     </div>
                   ) : (
@@ -355,7 +356,7 @@ export function TestEditor({
         </p>
       )}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${ed.addBtn}`} aria-disabled={full || undefined} onClick={add} data-question-add="">
-        + {f.testAdd}
+        {f.testAdd} +
       </button>
       {full && <p className={ui.hint}>{f.testFull}</p>}
     </div>

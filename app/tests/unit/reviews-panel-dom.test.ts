@@ -780,7 +780,7 @@ describe("„Muuda“: the autosave drawer of a review Maria added (R-c; S4-4, S
     await act(async () => void (await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 50)));
     await settle();
     expect(fetched.calls.map((c) => [c.method, c.url, c.body])).toEqual([["POST", `/api/admin/arvustus/${ID}`, { version: "r:v1", patch: { text: "Parandatud tekst." } }]]);
-    expect(text(chip().querySelector("[data-save-text]"))).toBe("✓ Salvestatud 13:03");
+    expect(text(chip().querySelector("[data-save-text]"))).toBe("✓ Salvestatud kell 13:03");
     expect(router.refresh).toHaveBeenCalledOnce();
   });
 

@@ -14,11 +14,13 @@ export const et = {
     calendar: "Koolituskalender",
     practice: "Praktika",
     trainer: "Koolitaja",
-    news: "Uudised",
+    // the news section's one name (UX pass 11.11 P10): the menu, the footer, the home section, the /uudised H1
+    news: "Uudised ja nõuanded",
+    // the last menu item (UX pass 11.11 P9)
+    contact: "Kontakt",
     login: "Logi sisse",
     // the same header button once this browser is signed in (the `mslab_in` hint cookie, components/site/AccountLink.tsx)
     account: "Minu konto",
-    cart: "Ostukorv",
     menu: "Menüü",
     langSwitch: "Vaheta keelt",
     mainLabel: "Põhimenüü",
@@ -52,8 +54,7 @@ export const et = {
     faqTitle: "Korduma kippuvad küsimused",
     contactEyebrow: "Kontakt",
     contactTitle: "Ei tea, milline koolitus sobib?",
-    contactLead: "Kirjuta Mariale — soovitan sulle sobiva koolituse ja õppevormi.",
-    contactReply: "vastab tavaliselt ühe tööpäeva jooksul",
+    contactLead: "Kirjuta Mariale — soovitan sulle sobiva koolituse ja õppevormi. Vastan tavaliselt ühe tööpäeva jooksul.",
   },
 
   // "Kuidas soovid õppida?" block (home) and the format explainer (catalogue). Hybrid has no steps (K8).
@@ -129,7 +130,9 @@ export const et = {
     // Format explainer: the hybrid card and note only explain (K1, K8); they never filter.
     readMore: "Loe lähemalt",
     hybridNote: "Soovid e-õpet ja kontaktõpet omavahel kombineerida?",
-    results: "Leitud koolitusi: {n}",
+    // UX pass P6: the line that opens the three „Õppevormid“ cards under „Kõik“, and the count above the courses (i18n/format.ts pluralForm)
+    explainToggle: "Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?",
+    count: { one: "{n} koolitus", few: "{n} koolitust", many: "{n} koolitust" },
   },
 
   course: {
@@ -150,6 +153,9 @@ export const et = {
     // Järelmaks (Inbank), a quiet line next to the price while the choice is offered (instalments D4; Draft: Dim sees it on the test page)
     financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
     buyNow: "Osta kohe",
+    // a contact course on a phone (UX pass 11.11 P5): under the facts, the jump to the form at the end of the page
+    registerJump: "Registreeru",
+    registerJumpHint: "Kuupäeva ja makseviisi valid lehe lõpus.",
     checkoutSoon:
       "Makse lisandub peagi — saad koolituse osta niipea, kui makse on avatud. Jäta oma e-post, anname teada.",
     includesTitle: "Koolitus sisaldab",
@@ -281,15 +287,16 @@ export const et = {
   },
 
   news: {
-    eyebrow: "Blogi",
+    // (UX pass 11.11 P10: the name's short form over the home section and the /uudised H1; no „Blogi“)
+    eyebrow: "Uudised",
     title: "Uudised ja nõuanded",
     lead: "Nõuanded, uued koolitused ja õpilaste lood. Iga kaart viib täismahus postitusele.",
     all: "Kõik postitused",
     readMore: "Loe edasi",
     more: "Loe veel",
     carouselLabel: "Postituste karussell",
-    // /uudised (prototype D pNewsList: eyebrow "Uudised ja nõuanded", heading "Blogi.").
-    pageTitle: "Blogi.",
+    // /uudised (prototype D pNewsList; UX pass 11.11 P10: the section's one name)
+    pageTitle: "Uudised ja nõuanded.",
     coursesCta: "Vaata koolitusi",
   },
 
@@ -361,7 +368,7 @@ export const et = {
     learnTitle: "Sinu õpiteekond",
     allCourses: "Kõik koolitused",
     orgTitle: "MS LAB",
-    news: "Uudised ja inspiratsioon",
+    news: "Uudised ja nõuanded",
     contact: "Kontakt ja koostöö",
     meetTitle: "Kohtume sinu järgmisel sammul.",
     cities: "Pärnu · Tallinn · Tartu",
@@ -719,6 +726,8 @@ export const et = {
     // The login page /konto/sisene (components/account/LoginForm.tsx): the e-mail, then the 6-digit code from the e-mail.
     // {fixed} is the address with its domain corrected, {email} the address the code went to, {s} the seconds left.
     login: {
+      // UX pass P22: under the heading of the e-mail step, whom the page is for and what happens next
+      intro: "Õpilase konto: saadame su e-postile ühekordse koodi. Konto tekib e-koolituse ostu või registreerimisega.",
       email: "E-post",
       send: "Saada kood",
       typo: "Kas mõtlesid {fixed}?",

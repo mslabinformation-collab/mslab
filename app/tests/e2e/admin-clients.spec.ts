@@ -78,6 +78,12 @@ const openFold = async (scope: Locator, title: string) => {
   if ((await row.getAttribute("open")) === null) await row.locator("summary").click();
   return row;
 };
+/** Opens „Ava e-koolitus…“, the button at the end of the drawer's „Koolitused“ (UX pass A16), when it is closed. */
+const openGrant = async (scope: Locator) => {
+  const grant = scope.locator("[data-client-courses] [data-grant-open]");
+  if ((await grant.getAttribute("open")) === null) await grant.locator("summary").click();
+  return grant;
+};
 
 /** Opens a student's drawer from the list by searching her address. */
 async function openStudent(page: Page, email: string): Promise<Locator> {
@@ -141,8 +147,8 @@ test("Lisa õpilane by e-mail, Ava ligipääs → she logs in and sees the e-cou
 
   // Ava ligipääs: the course picked, the date filled in with today + its 6 months; one press. A course without its own
   // length is filled in with 12 months, and the hint says so
-  const foldRow = await openFold(d, "Ava ligipääs e-koolitusele");
-  await expect(foldRow.locator("[data-fold-summary]")).toHaveText("vali koolitus");
+  const grantButton = (await openGrant(d)).locator("summary");
+  await expect(grantButton).toHaveText("Ava e-koolitus…");
   const grant = d.locator("[data-grant-form]");
   await grant.getByLabel("E-koolitus").selectOption({ label: `${noLength} · mustand` });
   await expect(grant.getByLabel("Ligipääs kuni")).toHaveValue(defaultExpiryDate(new Date(), null));
@@ -345,7 +351,7 @@ test("the list: search as she types, Kõik / E-õpe / Kontaktõpe with their cou
   await expect(d.getByRole("heading", { level: 2 })).toHaveText(`Kai E2E ${info.project.name}`);
   await expect(d.locator("[data-client-newsletter]")).toHaveText("Uudiskiri: ootab kinnitust"); // phase 2c
   // the folded rows, in README's order, each with what is in it (a request: "1")
-  await expect(d.locator("details[data-fold] summary > span > span:first-child")).toHaveText(["Ava ligipääs e-koolitusele", "Maksed", "Lepingud", "Päringud", "Tagasiside"]);
+  await expect(d.locator("details[data-fold] summary > span > span:first-child")).toHaveText(["Maksed", "Lepingud", "Päringud", "Tagasiside"]);
   await expect(fold(d, "Päringud").locator("[data-fold-summary]")).toHaveText("1");
   await expect(fold(d, "Lepingud").locator("[data-fold-summary]")).toHaveText("0");
   const reqs = (await openFold(d, "Päringud")).locator("[data-client-request]");
@@ -805,14 +811,18 @@ test("the phone drawer (375 × 812): a card has no pill — its state is in the 
   await row.getByRole("button", { name: "Katkesta" }).click();
 
   // the folded rows are 52 px rows of the drawer's width
-  for (const title of ["Ava ligipääs e-koolitusele", "Maksed", "Lepingud", "Päringud", "Tagasiside"]) {
+  for (const title of ["Maksed", "Lepingud", "Päringud", "Tagasiside"]) {
     const summary = d.locator("details[data-fold] > summary", { hasText: title });
     await expect(summary).toBeVisible();
     const box = (await summary.boundingBox())!;
     expect(box.height, title).toBeGreaterThanOrEqual(52);
     expect(box.x + box.width, title).toBeLessThanOrEqual(375);
   }
-  await openFold(d, "Ava ligipääs e-koolitusele");
+  // „Ava e-koolitus…“ (UX pass A16) is a 44 px button inside the drawer's width
+  const grantBox = (await d.locator("[data-grant-open] > summary").boundingBox())!;
+  expect(grantBox.height).toBeGreaterThanOrEqual(44);
+  expect(grantBox.x + grantBox.width).toBeLessThanOrEqual(375);
+  await openGrant(d);
   await d.locator("[data-grant-form]").scrollIntoViewIfNeeded();
   await inside("the grant form", d.locator("[data-grant-form]"));
   expect(await noOverflow(page)).toBe(true);

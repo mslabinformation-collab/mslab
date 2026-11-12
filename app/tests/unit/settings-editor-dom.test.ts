@@ -124,7 +124,7 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
       ["Valdkonnad", "#valdkonnad"],
       ["Maksmine", "#maksmine"],
       ["Tunnistus", "#tunnistus"],
-      ["Lepingud ja tingimused", "#lepingud"],
+      ["Lepingud", "#lepingud"],
       ["Halduse ligipääs", "#ligipaas"],
     ]);
     expect($$<HTMLOptionElement>("[data-section-select] option").map((o) => o.value)).toEqual(["kontakt", "valdkonnad", "maksmine", "tunnistus", "lepingud", "ligipaas"]);
@@ -223,11 +223,11 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
     expect(text(document.querySelector('#lepingud [data-legal-editor="course_terms"] [data-legal-publish]'))).toBe("Avalda uus leping");
   });
 
-  test("the map says „{n} avaldamata“ beside „Lepingud ja tingimused“ while texts wait for their publish (P-11, drawn „1 avaldamata“), and follows the typing", async () => {
+  test("the map says „{n} avaldamata“ beside „Lepingud“ (UX pass A19: once „Lepingud ja tingimused“) while texts wait for their publish (P-11, drawn „1 avaldamata“), and follows the typing", async () => {
     await show();
     const status = () => text($('nav a[href="#lepingud"] [data-section-status]'));
     expect(status()).toBe("1 avaldamata");
-    expect($$<HTMLOptionElement>("[data-section-select] option").find((o) => o.value === "lepingud")!.textContent).toBe("Lepingud ja tingimused · 1 avaldamata");
+    expect($$<HTMLOptionElement>("[data-section-select] option").find((o) => o.value === "lepingud")!.textContent).toBe("Lepingud · 1 avaldamata");
     await act(async () => {
       const body = $<HTMLTextAreaElement>('[data-i18n="privacy.body"]')!;
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(body, "Uus privaatsustekst.");
@@ -254,6 +254,17 @@ describe("the page (README B4; the Part 3 and Part 4 frames)", () => {
 });
 
 describe("one status for every card", () => {
+  test("„Kontaktandmed“: Facebook's own example (A12), and the card's last line points to where the contact photo is changed (A13)", async () => {
+    await show();
+    const card = $("[data-contact-card]")!;
+    const hintOf = (name: string) => text(document.getElementById(contactField(name).getAttribute("aria-describedby")!.split(" ")[0]));
+    expect(hintOf("instagram")).toBe("Täielik aadress, nt https://www.instagram.com/mslab");
+    expect(hintOf("facebook")).toBe("Täielik aadress, nt https://www.facebook.com/mslab");
+    const where = card.querySelector("[data-contact-photo-where]")!;
+    expect(text(where)).toBe("Kontaktifoto muudad: Koolitaja → Portree ja tutvustus ↗");
+    expect(where.querySelector("a")!.getAttribute("href")).toBe("/admin/koolitaja#portree");
+  });
+
   test("a contact field autosaves on its part (after the typing, at once when left); the chip says so", async () => {
     await show();
     await type(contactField("phone"), "+372 5555 0101");

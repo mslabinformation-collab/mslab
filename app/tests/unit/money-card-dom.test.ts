@@ -89,7 +89,7 @@ describe("the card: the money, the 50 % marker and the seats", () => {
     expect(text($("[data-money-seat]", card))).toBe("Koht kinnitub 145 € juures · vabu kohti 2 / 4");
     // the panel is closed until „Lisa laekumine“ is pressed (the phone's first screen holds only the button)
     expect($("[data-add-payment-panel]")).toBeNull();
-    expect(text($("[data-add-payment]"))).toBe("Lisa laekumine");
+    expect(text($("[data-add-payment]"))).toBe("Lisa laekumine +");
   });
 
   test("the other choices; a full session reads 0 free; without a session the S3-d line; without a price the notice and no bar", async () => {

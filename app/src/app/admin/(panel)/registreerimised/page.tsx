@@ -222,8 +222,8 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           placeholder={t.searchPlaceholder}
           scope={scope}
           pillRows={[
-            { label: t.statusLabel, pills: statusPills },
-            { label: t.typeLabel, pills: typePills, tone: "light" },
+            { label: t.statusLabel, caption: t.statusCaption, pills: statusPills },
+            { label: t.typeLabel, caption: t.typeCaption, pills: typePills },
           ]}
         />
 

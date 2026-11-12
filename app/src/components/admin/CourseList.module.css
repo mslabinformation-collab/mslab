@@ -16,10 +16,11 @@
    Colours: tokens and the admin's own greys (#ebe8e9 / #5e5559 of the neutral status, SaveStatus.module.css). */
 
 /* A row bleeds 8 px into the card's padding, so that its highlight and the lifted row of a drag (DragList) have room round the text. The divider and the
-   vertical padding are the inner grid's (below), so that the dividers run the width of the content, as the heading's line does. */
+   padding are the inner grid's (below): the grid takes the 8 px as its own padding, so the text stays at the content's edge and the divider runs the
+   width of the highlight, as the heading's line does (Dim 11.11: a highlight longer than the lines over and under it looked off). */
 .row {
   margin: 0 -8px;
-  padding: 0 8px;
+  padding: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -56,7 +57,7 @@
 .grid {
   grid-template-areas: "handle arrows thumb title type price badge status";
   min-height: 84px;
-  padding: 14px 0;
+  padding: 14px 8px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -71,8 +72,8 @@
 }
 
 .head {
-  padding: 0 0 8px;
-  margin: 0 0 2px;
+  padding: 0 8px 8px;
+  margin: 0 -8px 2px;
   border-bottom: 1px solid var(--line);
   color: #716a6d;
   font: 500 11px/1.4 var(--font-body);

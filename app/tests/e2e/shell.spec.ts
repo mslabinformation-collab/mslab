@@ -125,14 +125,14 @@ test.describe("desktop", () => {
 test.describe("mobile", () => {
   test.skip(({ isMobile }) => !isMobile, "mobile layout only");
 
-  test("burger menu opens and lists the five links", async ({ page }) => {
+  test("burger menu opens and lists the six links, „Kontakt“ the last (UX pass 11.11 P9)", async ({ page }) => {
     await page.goto("/");
     const header = page.locator("header");
     await expect(header.getByRole("link", { name: "Koolituskalender", exact: true })).toHaveCount(0); // desktop menu hidden
     await header.getByRole("button", { name: "Ava menüü" }).click();
     const menu = page.getByRole("dialog");
     await expect(menu).toBeVisible();
-    for (const name of ["Koolitused", "Koolituskalender", "Praktika", "Koolitaja", "Uudised"])
+    for (const name of ["Koolitused", "Koolituskalender", "Praktika", "Koolitaja", "Uudised ja nõuanded", "Kontakt"])
       await expect(menu.getByRole("link", { name, exact: true })).toBeVisible();
     await expect(menu.getByRole("link", { name: "Logi sisse" })).toBeVisible();
     await page.keyboard.press("Escape");

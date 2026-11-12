@@ -117,7 +117,7 @@
   background: #fff;
 }
 
-/* ---- Right side: language, cart, login, burger ---- */
+/* ---- Right side: language, login, burger ---- */
 
 .actions {
   display: flex;
@@ -139,25 +139,6 @@
 .menuLang span {
   padding: 0 4px;
   opacity: 0.4;
-}
-
-.cart {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 44px;
-  font-size: 12px;
-}
-
-.cartCount {
-  display: inline-grid;
-  place-items: center;
-  width: 21px;
-  height: 21px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  font-size: 10px;
-  line-height: 1;
 }
 
 .login,
@@ -307,9 +288,11 @@
   padding: 13px 24px;
 }
 
-/* ---- Responsive (B: burger and 84px bar below the desktop menu; phones 78px, 140x55 logo) ---- */
+/* ---- Responsive (B: burger and 84px bar below the desktop menu; phones 78px, 140x55 logo) ----
+   The menu needs 1200 px (review of the UX pass 11.11): at 1100 px its six links with „Uudised ja nõuanded“ / „Новости и советы“ left the language
+   switch at the menu's own gap and squeezed „Logi sisse“ (tests/unit/site-header-fit.test.ts). */
 
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
   .nav {
     display: none;
   }

@@ -58,7 +58,8 @@ function cardOf(key: LegalKey): CardDef {
       return { title: t.terms, href: "/tingimused", contract: false, sample: false };
     case "course_terms":
       // the e-course contract: read in the cart and at the terms gate (account-only, so no public page); its title is the contract's (ruling R3)
-      return { title: t.courseTerms, lead: t.courseTermsLead, titleHint: c.ecourseTitleHint, contract: true, sample: false };
+      // UX pass A18: its own „Näidisleping (PDF)“, an e-course's
+      return { title: t.courseTerms, lead: t.courseTermsLead, titleHint: c.ecourseTitleHint, contract: true, sample: true };
     case "contract_contact":
       return { title: c.contact, lead: c.lead, contract: true, sample: true };
   }
@@ -423,7 +424,7 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
         </p>
       </div>
 
-      {card.sample && <SampleForm title={title} body={body} />}
+      {card.sample && <SampleForm kind={k === "course_terms" ? "ecourse" : "contact"} title={title} body={body} />}
 
       {drawerOpen && (
         <Drawer label={card.title} closeHref="/admin/seaded" closeLabel={adminEt.common.close} returnFocus={openId}>
@@ -442,11 +443,12 @@ function LegalEditor({ k, state, said, onSaid, onReseed, contactEmpty, reaccept,
  * „Näidisleping (PDF)“ (contracts Task 5, spec §4; ruling R-d): a form of its own that posts the card's texts as they stand on the screen — the draft
  * as typed, published or not — to a new tab (a contract text is far too long for an address). Nothing is stored or published by it.
  */
-function SampleForm({ title, body }: { title: I18n; body: I18n }) {
+function SampleForm({ kind, title, body }: { kind: "contact" | "ecourse"; title: I18n; body: I18n }) {
   const c = adminEt.contracts.settings;
   const hasRu = (body.ru ?? "").trim() !== "";
   return (
     <form className={styles.sample} method="post" action="/api/admin/naidisleping" target="_blank" data-contract-sample-form="">
+      <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="titleEt" value={title.et} />
       <input type="hidden" name="titleRu" value={title.ru ?? ""} />
       <input type="hidden" name="bodyEt" value={body.et} />

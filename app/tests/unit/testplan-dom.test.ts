@@ -933,13 +933,14 @@ describe("a note box under every check (Dim 30.10)", () => {
 });
 
 describe("SaveStatus in place of the outbox line (R-i)", () => {
-  test("„✓ Salvestatud“ from the start once the answers were read; „✓ Salvestatud HH:MM“ after a save; „Salvestamata — proovin uuesti“ while one fails", async () => {
+  test("quiet once the answers were read (UX pass 11.11 A17); „✓ Salvestatud kell HH:MM“ after a save; „Salvestamata — proovin uuesti“ while one fails", async () => {
     await showAll();
     expect(chip()).toBe("saved");
-    expect(chipText()).toBe("✓ Salvestatud");
+    expect($("[data-save-status]")!.hasAttribute("data-save-quiet")).toBe(true);
+    expect(chipText()).toBe("");
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
     expect(chip()).toBe("saved");
-    expect(chipText()).toMatch(/^✓ Salvestatud \d\d:\d\d$/);
+    expect(chipText()).toMatch(/^✓ Salvestatud kell \d\d:\d\d$/);
     putReply = async () => {
       throw new TypeError("Failed to fetch");
     };
@@ -950,10 +951,10 @@ describe("SaveStatus in place of the outbox line (R-i)", () => {
     expect(pressed("a2-fresh")).toEqual(["bad"]); // (her press is shown all the same)
   });
 
-  test("the chip is there from the start, so its first change is spoken: the status region says „Salvestan…“ while the first save is on its way", async () => {
+  test("the chip is there from the start, quiet, so its first change is spoken: the status region says „Salvestan…“ while the first save is on its way", async () => {
     await showAll();
     const spoken = () => $('[data-save-status] [role="status"]')!.textContent;
-    expect(spoken()).toBe("Salvestatud");
+    expect(spoken()).toBe("");
     let finish: (r: Response) => void = () => {};
     putReply = () => new Promise<Response>((r) => (finish = r));
     await click(check("a1-plain").querySelector('[data-answer="ok"]')!);

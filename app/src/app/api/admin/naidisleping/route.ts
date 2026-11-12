@@ -11,7 +11,7 @@ export const maxDuration = 30;
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
 /** The card's fields the sample reads (server/contract-sample.ts ContractSampleValues), by their form names. */
-const FIELDS = ["titleEt", "titleRu", "bodyEt", "bodyRu", "lang"] as const;
+const FIELDS = ["titleEt", "titleRu", "bodyEt", "bodyRu", "lang", "kind"] as const;
 /** No text is longer than the legal texts' limit (30 000; the editors take a little more before they refuse it): a longer one is cut, so the sample stays small. */
 const MAX = 40_000;
 /**

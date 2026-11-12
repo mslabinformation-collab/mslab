@@ -17,15 +17,18 @@ import ui from "./ui.module.css";
 import site from "./site-editor.module.css";
 import styles from "./AreasSettings.module.css";
 
-// Seaded → „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1): Maria's list of training areas, by which students choose
-// courses in the calendar and on the catalogue page, and which a course's „Põhiinfo“ picks one of („Valdkond“).
-// - The card's title and lead, then one row per area in her order (DragList: ⋮⋮ and ↑ / ↓, the house's list rows): „Nimi (eesti keeles)“ and „Nimi
-//   (vene keeles)“, each autosaved on the row's own route (api/admin/valdkond/<id>, useSeadedPart: 1.5 s after typing and at once when the row is
+// Seaded → „Valdkonnad“ (course areas, spec 2026-11-11-course-areas-filter-design.md §4.1; UX pass 11.11 board 1, A6/A8): Maria's list of training
+// areas, by which students choose courses in the calendar and on the catalogue page, and which a course's „Põhiinfo“ picks one of („Valdkond“).
+// - The card's title and lead, the two names' column labels once, then one bordered box per area in her order (DragList: ⋮⋮ and ↑ / ↓, the house's
+//   list rows), all on one grid: ⋮⋮ | „Nimi (eesti keeles)“ | „Nimi (vene keeles)“ | how many courses use it („2 koolitust“, „Pole kasutusel“) | ↑ ↓ |
+//   „Kustuta“. The names autosave on the row's own route (api/admin/valdkond/<id>, useSeadedPart: 1.5 s after typing and at once when the row is
 //   left) from the row's version, under the page's one SaveStatus (each row is its part, "area-<id>"); the browser holds a name back while it is
 //   empty or too long (domain/course-areas.ts, the server's rule), the route says `taken` for another area's Estonian name.
-// - Under the names „Kustuta“ (a ConfirmPanel in its place: „Kas kustutan valdkonna „{name}“?“), or, for an area courses use (live or in a draft),
-//   „Seda valdkonda kasutab {n} koolitust.“ in its place: such an area is never deleted (the server refuses it as well).
-// - Below the rows „Uus valdkond“: the two names and „Lisa valdkond“ (POST api/admin/valdkond/uus).
+// - „Kustuta“ is the one delete style of Seaded (red outline, the row's right end): it asks under the row (a ConfirmPanel: „Kas kustutan valdkonna
+//   „{name}“?“). An area courses use (live or in a draft) is never deleted (the server refuses it as well): its „Kustuta“ is greyed (aria-disabled),
+//   described by its count and the rule under the rows, „Kasutusel olevat valdkonda ei saa kustutada: …“.
+// - The add row at the end: the same box, dashed, on the same grid — the two names (placeholders „Uus valdkond“ / „Новая область“) and „Lisa
+//   valdkond +“ (POST api/admin/valdkond/uus).
 // - The adds, moves and deletes are presses (the moves shown at once); each answer is the list as it is after it, which the card takes as it comes (a
 //   row's own names stay what its fields hold). While one is on its way the chip says „Salvestan…“ (part "areas") and another press does nothing; a
 //   refused move goes back with the list's words for it under its row (adminEt.courses.moveError), any other failure says the admin's save line.
@@ -41,8 +44,8 @@ function areasOf(answer: JsonAnswer): AdminArea[] | null {
   return Array.isArray(list) && list.every((a) => typeof a === "object" && a !== null && typeof (a as AdminArea).id === "number") ? (list as AdminArea[]) : null;
 }
 
-/** „Seda valdkonda kasutab {n} koolitust.“ (one: „… 1 koolitus.“). */
-const usedLine = (n: number): string => (n === 1 ? t.usedOne : fill(t.usedMany, { n }));
+/** The row's count: „{n} koolitust“ (one: „1 koolitus“), or „Pole kasutusel“. */
+const usedLine = (n: number): string => (n === 0 ? t.unused : n === 1 ? t.usedOne : fill(t.usedMany, { n }));
 
 const SAVING: AutosaveStatus = { kind: "saving" };
 /** A press that is over: its time when it went through; none when it did not (its row says why). */
@@ -59,11 +62,14 @@ type RowProps = {
   error: string | null;
   busy: boolean;
   onDelete: (discardCopy: () => void) => void;
+  /** The id of the rule under the rows (a used area's greyed „Kustuta“ points to it). */
+  ruleId: string;
 };
 
-/** One area: its two names (autosaved), ⋮⋮ and ↑ ↓, and „Kustuta“ or why not. */
-function AreaRow({ area, handle, arrows, onStatus, onName, error, busy, onDelete }: RowProps) {
+/** One area's box: ⋮⋮, its two names (autosaved), how many courses use it, ↑ ↓ and „Kustuta“ (greyed while it is used). */
+function AreaRow({ area, handle, arrows, onStatus, onName, error, busy, onDelete, ruleId }: RowProps) {
   const part = `area-${area.id}`;
+  const usedId = useId();
   const fields = useMemo(() => ({ et: area.name.et, ru: area.name.ru }), []); // eslint-disable-line react-hooks/exhaustive-deps -- the engine starts from the first read
   const nameNow = useRef(area.name.et);
   const label = useCallback((f: string) => `${nameNow.current.trim() || t.unnamed}: ${f === "ru" ? t.nameRu : t.nameEt}`, []);
@@ -95,22 +101,42 @@ function AreaRow({ area, handle, arrows, onStatus, onName, error, busy, onDelete
 
   const field = (name: "et" | "ru") => ({
     label: name === "et" ? t.nameEt : t.nameRu,
+    labelHidden: true,
     value: String(row.text(name) ?? ""),
     onChange: (v: string) => row.type(name, v),
     error: errorText(row.codeOf(name)),
     name: `${part}.${name}`,
     maxLength: AREA_LIMITS.name,
+    className: name === "et" ? styles.et : styles.ru,
   });
+  const used = area.used > 0;
 
   return (
     <div className={styles.row} data-area={area.id} onBlur={() => void row.flush()}>
-      <div className={styles.head}>
-        {handle && <span className={styles.handle}>{handle}</span>}
-        <div className={styles.names}>
-          <TextField {...field("et")} />
-          <TextField {...field("ru")} />
-        </div>
-        {arrows && <span className={styles.arrows}>{arrows}</span>}
+      <div className={styles.grid}>
+        <span className={styles.handle}>{handle}</span>
+        <TextField {...field("et")} />
+        <TextField {...field("ru")} />
+        <span id={usedId} className={styles.use} data-area-used="">
+          {usedLine(area.used)}
+        </span>
+        <span className={styles.arrows}>{arrows}</span>
+        <span className={styles.del}>
+          <button
+            ref={opener}
+            type="button"
+            className={`${ui.btn} ${ui.danger} ${ui.smallBtn} ${ui.held}`}
+            aria-disabled={used || undefined}
+            aria-describedby={used ? `${usedId} ${ruleId}` : undefined}
+            aria-expanded={used ? undefined : asking}
+            onClick={() => {
+              if (!used) setAsking(true);
+            }}
+            data-area-delete=""
+          >
+            {t.remove}
+          </button>
+        </span>
       </div>
       {row.conflict !== null && (
         <p className={styles.line}>
@@ -119,29 +145,19 @@ function AreaRow({ area, handle, arrows, onStatus, onName, error, busy, onDelete
           </button>
         </p>
       )}
-      <div className={styles.foot}>
-        {area.used > 0 ? (
-          <p className={`${ui.muted} ${ui.small} ${styles.line}`} data-area-used="">
-            {usedLine(area.used)}
-          </p>
-        ) : asking ? (
-          <ConfirmPanel
-            question={fill(t.removeQuestion, { name: et.trim() || area.name.et })}
-            yesLabel={t.removeYes}
-            tone="danger"
-            busy={busy}
-            onYes={() => onDelete(row.discardCopy)}
-            onCancel={() => {
-              refocus.current = true;
-              setAsking(false);
-            }}
-          />
-        ) : (
-          <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-area-delete="">
-            {t.remove}
-          </button>
-        )}
-      </div>
+      {asking && !used && (
+        <ConfirmPanel
+          question={fill(t.removeQuestion, { name: et.trim() || area.name.et })}
+          yesLabel={t.removeYes}
+          tone="danger"
+          busy={busy}
+          onYes={() => onDelete(row.discardCopy)}
+          onCancel={() => {
+            refocus.current = true;
+            setAsking(false);
+          }}
+        />
+      )}
       {error && (
         <p role="alert" className={`${ui.error} ${styles.line}`} data-area-error="">
           {error}
@@ -151,14 +167,16 @@ function AreaRow({ area, handle, arrows, onStatus, onName, error, busy, onDelete
   );
 }
 
-/** „Uus valdkond“ below the rows: the two names and „Lisa valdkond“; emptied once the area is there, the route's words at a name it refused. */
+/** The dashed add row at the end: the two names and „Lisa valdkond +“; emptied once the area is there, the route's words at a name it refused. */
 function AddArea({ busy, onAdd }: { busy: boolean; onAdd: (name: { et: string; ru: string }) => Promise<Record<string, string> | "failed" | null> }) {
   const uid = useId();
   const [name, setName] = useState({ et: "", ru: "" });
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<string | null>(null);
   const field = (lang: "et" | "ru") => ({
-    label: lang === "et" ? t.nameEt : t.nameRu,
+    label: lang === "et" ? t.newEt : t.newRu,
+    labelHidden: true,
+    placeholder: lang === "et" ? t.newTitle : t.newRuPlaceholder,
     value: name[lang],
     onChange: (v: string) => {
       setName((n) => ({ ...n, [lang]: v }));
@@ -168,13 +186,15 @@ function AddArea({ busy, onAdd }: { busy: boolean; onAdd: (name: { et: string; r
     error: errorText(codes[lang]),
     name: `area-new.${lang}`,
     maxLength: AREA_LIMITS.name,
+    className: lang === "et" ? styles.et : styles.ru,
   });
   return (
     <form
-      className={styles.add}
+      className={`${styles.row} ${styles.add}`}
       aria-labelledby={`${uid}-title`}
       noValidate
       data-area-add=""
+      data-add-row=""
       onSubmit={(e) => {
         e.preventDefault();
         if (busy) return;
@@ -191,21 +211,23 @@ function AddArea({ busy, onAdd }: { busy: boolean; onAdd: (name: { et: string; r
         });
       }}
     >
-      <h3 id={`${uid}-title`} className={styles.addTitle}>
+      <h3 id={`${uid}-title`} className={ui.sr}>
         {t.newTitle}
       </h3>
-      <div className={styles.names}>
+      <div className={styles.grid}>
         <TextField {...field("et")} />
         <TextField {...field("ru")} />
+        <span className={styles.addGo}>
+          <button type="submit" className={`${ui.btn} ${ui.smallBtn}`} aria-disabled={busy || undefined}>
+            {busy ? adminEt.common.saving : t.add}
+          </button>
+        </span>
       </div>
-      <div className={styles.addActions}>
-        <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={busy || undefined}>
-          {busy ? adminEt.common.saving : t.add}
-        </button>
-      </div>
-      <p role="status" className={`${ui.error} ${styles.line}`}>
-        {failed ?? ""}
-      </p>
+      {failed && (
+        <p role="alert" className={`${ui.error} ${styles.line}`}>
+          {failed}
+        </p>
+      )}
     </form>
   );
 }
@@ -292,31 +314,46 @@ export function AreasSettings({ initial, onStatus }: { initial: AdminArea[]; onS
         {t.title}
       </h2>
       <p className={`${ui.muted} ${site.cardLead}`}>{t.lead}</p>
-      {areas.length === 0 ? (
-        <p className={`${ui.muted} ${styles.empty}`}>{t.empty}</p>
-      ) : (
-        <DragList<AdminArea>
-          items={areas}
-          keyOf={(a) => String(a.id)}
-          label={(a) => names[a.id] ?? a.name.et}
-          onMove={move}
-          className={styles.rows}
-          rowClassName={styles.item}
-          renderRow={(a, _i, handle, arrows) => (
-            <AreaRow
-              area={a}
-              handle={handle}
-              arrows={arrows}
-              onStatus={onStatus}
-              onName={nameOf}
-              error={rowError?.id === a.id ? rowError.text : null}
-              busy={busy}
-              onDelete={(discardCopy) => remove(a.id, discardCopy)}
+      <div className={styles.list}>
+        {areas.length === 0 ? (
+          <p className={`${ui.muted} ${styles.empty}`}>{t.empty}</p>
+        ) : (
+          <>
+            {/* (each field keeps its own name for a screen reader: the labels are said once, over the columns) */}
+            <div className={`${styles.grid} ${styles.columns}`} aria-hidden="true" data-area-columns="">
+              <span className={styles.et}>{t.nameEt}</span>
+              <span className={styles.ru}>{t.nameRu}</span>
+            </div>
+            <DragList<AdminArea>
+              items={areas}
+              keyOf={(a) => String(a.id)}
+              label={(a) => names[a.id] ?? a.name.et}
+              onMove={move}
+              className={styles.rows}
+              rowClassName={styles.item}
+              renderRow={(a, _i, handle, arrows) => (
+                <AreaRow
+                  area={a}
+                  handle={handle}
+                  arrows={arrows}
+                  onStatus={onStatus}
+                  onName={nameOf}
+                  error={rowError?.id === a.id ? rowError.text : null}
+                  busy={busy}
+                  onDelete={(discardCopy) => remove(a.id, discardCopy)}
+                  ruleId={`${uid}-rule`}
+                />
+              )}
             />
-          )}
-        />
-      )}
-      <AddArea busy={busy} onAdd={add} />
+          </>
+        )}
+        <AddArea busy={busy} onAdd={add} />
+        {areas.length > 0 && (
+          <p id={`${uid}-rule`} className={`${ui.hint} ${styles.rule}`} data-area-rule="">
+            {t.rule}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

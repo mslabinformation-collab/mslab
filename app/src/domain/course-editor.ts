@@ -18,7 +18,6 @@ export type CourseLanguage = (typeof COURSE_LANGUAGES)[number];
 export const BADGE_PRESETS: readonly Required<BadgeLabel>[] = [
   { et: "Uus", ru: "Новинка" },
   { et: "Populaarne", ru: "Популярное" },
-  { et: "Bestseller", ru: "Бестселлер" },
   { et: "Enim müüdud", ru: "Хит продаж" },
   { et: "Viimased kohad", ru: "Последние места" },
   { et: "Soodus", ru: "Скидка" },

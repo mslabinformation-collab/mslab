@@ -169,7 +169,7 @@ test("each point is a card: its newest round's photos (the first one large), the
   const card = $("[data-assess-point='0']")!;
   const order = ["[data-latest-photos]", "[data-assess-title]", "[data-verdict]", "[data-add-note]"].map((selector) => card.querySelector(selector)!);
   order.slice(1).forEach((el, i) => expect(order[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING, `part ${i + 1} follows part ${i}`).toBeTruthy());
-  expect($$("[data-add-note]").map((b) => b.textContent)).toEqual(["Lisa märkus", "Lisa märkus", "Lisa märkus"]);
+  expect($$("[data-add-note]").map((b) => b.textContent)).toEqual(["Lisa märkus +", "Lisa märkus +", "Lisa märkus +"]);
   expect($("[data-note]")).toBeNull();
   // the one send is the informed button; not the course day's buttons
   expect($$("[data-assess-send]").map((b) => b.textContent)).toEqual(["Saada hinnang · 0 kinnitatud"]);

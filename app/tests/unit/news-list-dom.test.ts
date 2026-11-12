@@ -119,10 +119,11 @@ describe("the rows (S4-18, the P4 C3 frame)", () => {
     expect(text($("h2"))).toBe("Uudised");
   });
 
-  it("no post open: the list is the page — eyebrow „Blogi“, H1 „Uudised“, its lead, and „Lisa postitus +“", async () => {
+  it("no post open: the list is the page — eyebrow „Koduleht“, H1 „Uudised“, its lead, and „Lisa postitus +“", async () => {
     await showList();
     expect(text($("h1"))).toBe("Uudised");
-    expect(text(container)).toContain("Blogi");
+    expect(text(container)).toContain("Koduleht");
+    expect(text(container)).not.toContain("Blogi");
     expect(text(container)).toContain("Kõik postitused, ka mustandid, uuemad eespool.");
     expect(text($("[data-add-post]"))).toBe("Lisa postitus +");
   });

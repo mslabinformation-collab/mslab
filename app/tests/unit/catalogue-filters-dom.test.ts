@@ -56,7 +56,8 @@ const t: CatalogueTexts = {
   emptyTitle: "Sobivat koolitust ei leitud",
   emptyText: "Muuda otsingut või vaata kõiki koolitusi.",
   resetFilters: "Lähtesta filtrid",
-  results: "Leitud koolitusi: {n}",
+  explainToggle: "Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?",
+  count: { one: "{n} koolitus", few: "{n} koolitust", many: "{n} koolitust" },
 };
 const format = (name: string) => ({ name, question: `${name}?`, definition: `${name}.`, card: `${name}.` });
 const FORMATS = { e: format("E-õpe"), k: format("Kontaktõpe"), h: format("Hübriidõpe") };
@@ -88,9 +89,9 @@ const chip = (row: string, name: string) => $$<HTMLButtonElement>(`[data-filter-
 const press = async (b: HTMLElement) => {
   await act(async () => b.click());
 };
-const mount = async (query: string, areas: AreaChip[] = AREAS) => {
+const mount = async (query: string, areas: AreaChip[] = AREAS, courses: CatalogueCourse[] = COURSES) => {
   window.history.replaceState(null, "", `/koolitused${query}`);
-  await act(async () => root.render(createElement(CatalogueFilters, { courses: COURSES, areas, formats: FORMATS, t })));
+  await act(async () => root.render(createElement(CatalogueFilters, { courses, areas, formats: FORMATS, t, locale: "et" })));
 };
 
 beforeEach(() => {
@@ -130,7 +131,7 @@ describe("the catalogue's area chips (course areas §5.2)", () => {
     await press(chip("area", "Kulmukoolitused"));
     expect(titles()).toEqual(["Kulmude laminatsioon", "Kulmude e-kursus"]);
     expect(window.location.search).toBe("?valdkond=kulmukoolitused&utm=kiri");
-    expect($("[aria-live]")?.textContent).toBe("Leitud koolitusi: 2");
+    expect($("[aria-live]")?.textContent).toBe("2 koolitust");
     // with the format: both hold (AND), the address in its order
     await press(chip("format", "E-õpe"));
     expect(titles()).toEqual(["Kulmude e-kursus"]);
@@ -167,5 +168,66 @@ describe("the catalogue's area chips (course areas §5.2)", () => {
     expect(area).toMatch(/white-space:\s*normal/);
     expect(area).toMatch(/overflow-wrap:\s*anywhere/);
     expect(css.match(/\n\.pill\s*\{([^}]*)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
+  });
+});
+
+// UX pass 11.11 P6 (the Telefon-koolitused board): the chip rows together right above the courses, „Õppevormid“ (the three explainer cards) behind one
+// line „Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?“ that opens them, and a visible count „6 koolitust“ above the grid. A picked format still
+// shows its journey with the steps (the intro promises it, K5), now under the chips.
+describe("the catalogue's filters together, „Õppevormid“ behind one line (UX pass P6)", () => {
+  const toggle = () => $<HTMLButtonElement>("[data-explainer-toggle]")!;
+  const panel = () => $("[data-explainer-panel]")!;
+  /** where each marker first stands in the page, in document order */
+  const order = (...sel: string[]) => sel.map((x) => [...container.querySelectorAll("*")].indexOf($(x)!));
+
+  test("„Kõik“: the rows, then the closed line, then „4 koolitust“, then the courses; the line opens and closes the three cards", async () => {
+    await mount("");
+    const at = order('[data-filter-row="format"]', '[data-filter-row="level"]', '[data-filter-row="area"]', "[data-explainer-toggle]", "[data-catalogue-count]", "[data-course-card]");
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(at.every((n) => n >= 0)).toBe(true);
+    expect(toggle().textContent).toContain("Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(toggle().getAttribute("aria-controls")).toBe(panel().id);
+    expect(panel().hidden).toBe(true);
+    expect($("[data-catalogue-count]")!.textContent).toBe("4 koolitust");
+    expect($("[data-catalogue-count]")!.getAttribute("aria-live")).toBe("polite");
+    expect($("[data-catalogue-count]")!.className).not.toMatch(/srOnly/);
+    await press(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(panel().hidden).toBe(false);
+    expect(panel().textContent).toContain("Õppevormid");
+    expect(panel().querySelectorAll("[data-format-card]")).toHaveLength(3);
+    await press(toggle());
+    expect(panel().hidden).toBe(true);
+  });
+
+  test("a format picked: its journey shows under the chips at once, no line; the count follows", async () => {
+    await mount("");
+    await press(chip("format", "E-õpe"));
+    expect($("[data-explainer-toggle]")).toBeNull();
+    expect($("[data-explainer] h2")?.textContent).toBe("E-õpe?");
+    const at = order('[data-filter-row="area"]', "[data-explainer]", "[data-catalogue-count]", "[data-course-card]");
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect($("[data-catalogue-count]")!.textContent).toBe("2 koolitust");
+  });
+
+  test("the hybrid note in a format's journey opens the line with the hybrid explanation, focused; ?vorm=h opens it too", async () => {
+    await mount("?vorm=k");
+    await press($$<HTMLButtonElement>("[data-explainer] button").find((b) => b.textContent === "Hübriidõpe")!);
+    expect(window.location.search).toBe("");
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(panel().hidden).toBe(false);
+    expect($("[data-hybrid-panel]")!.hidden).toBe(false);
+    expect(document.activeElement).toBe($("[data-hybrid-panel] h2"));
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await mount("?vorm=h");
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect($("[data-hybrid-panel]")!.hidden).toBe(false);
+  });
+
+  test("one course: „1 koolitus“", async () => {
+    await mount("", AREAS, COURSES.slice(0, 1));
+    expect($("[data-catalogue-count]")!.textContent).toBe("1 koolitus");
   });
 });

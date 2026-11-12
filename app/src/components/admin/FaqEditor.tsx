@@ -214,7 +214,7 @@ export function FaqEditor({ items, live, onUpdate, errors, error }: FaqEditorPro
       )}
       {error && <p className={ui.error}>{error}</p>}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${ed.addBtn}`} onClick={add} data-add-faq="">
-        + {t.add}
+        {t.add} +
       </button>
     </div>
   );

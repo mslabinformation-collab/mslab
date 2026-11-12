@@ -79,6 +79,19 @@ describe("the designs' routes", () => {
     expect(await answer(await post("abc", { version: v2, patch: { name: "X" } }))).toEqual([404, { ok: false, error: "notFound" }]);
   });
 
+  test("„Lisa kujundus +“ with the add row's name: 201 and that name; refused by field (400), nothing added; a body that is no object is 400", async () => {
+    await signIn();
+    const make = (body: string) => create(new Request(`${ORIGIN}/api/admin/tunnistuse-kujundus`, { method: "POST", body, headers: { "content-type": "application/json" } }), undefined);
+    const res = await make(JSON.stringify({ name: "Lilled" }));
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: number };
+    expect((await readCertificateDesign(db, id))!.value.name).toBe("Lilled");
+    expect(await answer(await make(JSON.stringify({ name: "hele" })))).toEqual([400, { ok: false, error: "invalid", fields: { name: "taken" } }]);
+    expect(await answer(await make(JSON.stringify({ name: 5 })))).toEqual([400, { ok: false, error: "invalid", fields: { name: "invalid" } }]);
+    expect(await answer(await make("[1]"))).toEqual([400, { ok: false, error: "invalid" }]);
+    expect((await listCertificateDesigns(db)).map((d) => d.name)).toEqual(["Hele", "Tume", "Lilled"]);
+  });
+
   test("„Kustuta“: 200 for a design no course uses; 409 with the count while one does; 409 `last`; 404 for none", async () => {
     await signIn();
     const [hele, tume] = await listCertificateDesigns(db);

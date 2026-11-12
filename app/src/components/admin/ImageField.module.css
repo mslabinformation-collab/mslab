@@ -1,0 +1,114 @@
+/* ImageField (UX pass 11.11, board 1): the picture's column — the preview that is the drop zone (radius 12, a circle for the contact photo; dashed
+   while there is no picture), „Vaheta pilt · Eemalda“ right under it, the upload's status line — beside the field's label and hint lines. Under
+   640 px the words go under the picture. Colours from tokens.css only; every control at least 44 px. */
+
+.field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px 22px;
+  min-width: 0;
+}
+
+.field:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+.picture {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.picture > p {
+  margin: 0;
+}
+
+.zone {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
+  border-radius: 12px;
+  background: var(--first);
+}
+
+.round {
+  border-radius: 50%;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--iced);
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.zone[data-drag-over] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* „Eemalda“: a quiet, underlined word beside „Vaheta pilt“, 44 px tall */
+.quiet {
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 500 13px/1.2 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.quiet:hover {
+  color: var(--ink);
+}
+
+/* (as tall as the picture's column: what the field puts last, `aside`, may stand at its foot with margin-top: auto) */
+.words {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.words > p {
+  margin: 0;
+}
+
+.label {
+  font: 600 12px/1.3 var(--font-body);
+}
+
+@media (max-width: 640px) {
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

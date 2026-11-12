@@ -6,13 +6,14 @@ import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/ListToolbar";
 import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
+import { SeatsWords } from "@/components/admin/SeatsMeter";
 import { NewSession, SessionDrawer } from "@/components/admin/SessionForm";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { countSessionRegistrations, listAdminSessions, listContactCourses, listSessionCities, sessionCounts, type AdminSessionRow, type SessionFilter } from "@/db/queries/admin";
 import { startOfDayTallinn } from "@/domain/calendar";
 import type { SessionFields } from "@/domain/session-fields";
-import { seatsLeft } from "@/domain/sessions";
+import { seatFill, seatsLeft } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatDayShortMonth, formatTime, formatWeekday } from "@/i18n/format";
@@ -50,10 +51,10 @@ function href(view: View, id?: number | "uus"): string {
   return `/admin/kalender${s ? `?${s}` : ""}`;
 }
 
+/** The state column: „Tühistatud“ or „Toimub“ (a full one too: „Täis“ is the seats column's, UX pass 11.11 A2, and the phone card has no state). */
 function stateTag(s: AdminSessionRow): { text: string; cls: string } {
   const t = adminEt.calendar;
   if (s.status === "cancelled") return { text: t.status.cancelled, cls: ui.bad };
-  if (seatsLeft(s.capacity, s.taken) === 0) return { text: t.full, cls: ui.warn };
   return { text: t.status.scheduled, cls: ui.ok };
 }
 
@@ -226,7 +227,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
                       const cancelled = s.status === "cancelled";
                       const full = !cancelled && seatsLeft(s.capacity, s.taken) === 0;
                       const day = formatDayShortMonth(s.startsAt, "et");
-                      const filled = s.capacity > 0 ? Math.min(100, Math.round((s.confirmed / s.capacity) * 100)) : 0;
+                      const filled = seatFill(s.capacity, s.taken);
                       return (
                         <tr
                           key={s.id}
@@ -276,13 +277,13 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
                           <td data-label={t.col.seats} className={styles.seatsCell}>
                             <span className={styles.seats}>
                               <span className={styles.seatsLong} data-session-seats="">
-                                {s.confirmed} / {s.capacity}
+                                <SeatsWords capacity={s.capacity} taken={s.taken} />
                               </span>
                               <span className={styles.bar} data-seats-bar="" data-full={full ? "" : undefined} aria-hidden="true">
                                 <span style={{ width: `${filled}%` }} />
                               </span>
                               <span className={styles.seatsShort} data-seats-short="">
-                                {s.confirmed}/{s.capacity}
+                                <SeatsWords capacity={s.capacity} taken={s.taken} />
                               </span>
                             </span>
                           </td>

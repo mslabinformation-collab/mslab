@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { AutosaveStatus } from "@/domain/autosave";
 import type { LegalKey, LegalState } from "@/domain/legal-text";
@@ -90,8 +91,15 @@ function ContactCard({ version, value, onStatus }: { version: string; value: Con
         <TextField {...field("phone")} type="tel" inputMode="tel" maxLength={SITE_LIMITS.phone} />
         <TextField {...field("address")} className={ed.wide} maxLength={SITE_LIMITS.address} hint={t.addressHint} />
         <TextField {...field("instagram")} type="url" inputMode="url" maxLength={SITE_LIMITS.url} hint={t.socialHint} placeholder="https://" />
-        <TextField {...field("facebook")} type="url" inputMode="url" maxLength={SITE_LIMITS.url} hint={t.socialHint} placeholder="https://" />
+        <TextField {...field("facebook")} type="url" inputMode="url" maxLength={SITE_LIMITS.url} hint={t.facebookHint} placeholder="https://" />
       </div>
+      {/* (the photo by the contact forms is the trainer's: Koolitaja's „Portree ja tutvustus“, UX pass 11.11 A13) */}
+      <p className={styles.photoWhere} data-contact-photo-where="">
+        {t.contactPhotoWhere}{" "}
+        <Link href="/admin/koolitaja#portree" className={styles.photoLink}>
+          {t.contactPhotoLink} <span aria-hidden="true">↗</span>
+        </Link>
+      </p>
       <Restore conflict={part.conflict !== null} onRestore={() => void part.restore()} />
     </section>
   );

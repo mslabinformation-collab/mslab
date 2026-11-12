@@ -14,10 +14,12 @@ import { getInvoiceSettings } from "./invoices";
 // when a sample is drawn, as contractPdf does (tests/unit/contract-lazy-pdf.test.ts).
 
 /** The card's texts as the route reads them: text by name, anything missing absent. */
-export type ContractSampleValues = Partial<Record<"titleEt" | "titleRu" | "bodyEt" | "bodyRu" | "lang", string>>;
+export type ContractSampleValues = Partial<Record<"titleEt" | "titleRu" | "bodyEt" | "bodyRu" | "lang" | "kind", string>>;
 
 /** The sample's course: a 350 € day on 14.11.2026, which the payment choice "half" splits into two halves of 175 €. */
 const PRICE_CENTS = 35_000;
+/** The e-course contract's sample (`kind` "ecourse", UX pass A18): a 190 € e-course, bought whole, with no session (as the cart fills it). */
+const ECOURSE_PRICE_CENTS = 19_000;
 const SESSION_STARTS = new Date("2026-11-14T08:00:00Z");
 
 /** The PDF of a sample contract as the card shows it at `now`. */
@@ -29,22 +31,25 @@ export async function sampleContractPdf(db: Db, values: ContractSampleValues, no
     const text = locale === "ru" && (other ?? "").trim() ? (other as string) : (et ?? "");
     return text.trim();
   };
-  const input = {
-    name: t.student,
-    email: t.email,
-    course: locale === "ru" ? t.courseRu : t.course,
-    session: { startsAt: SESSION_STARTS, city: t.city },
-    priceCents: PRICE_CENTS,
-    choice: "half" as const,
-    locale,
-  };
+  const ecourse = values.kind === "ecourse";
+  const input = ecourse
+    ? { name: t.student, email: t.email, course: locale === "ru" ? t.ecourseRu : t.ecourse, session: null, priceCents: ECOURSE_PRICE_CENTS, choice: null, locale }
+    : {
+        name: t.student,
+        email: t.email,
+        course: locale === "ru" ? t.courseRu : t.course,
+        session: { startsAt: SESSION_STARTS, city: t.city },
+        priceCents: PRICE_CENTS,
+        choice: "half" as const,
+        locale,
+      };
   const filled = filledContract({ title: pick(values.titleEt, values.titleRu) || t.title, body: pick(values.bodyEt, values.bodyRu) || t.body }, input);
   const { fields } = contractParts(input);
   const school = schoolOf(await getInvoiceSettings(db, now));
   const [{ renderContract }, { loadCertificateAssets }] = await Promise.all([import("./contract-pdf"), import("./certificate-pdf")]);
   const assets = await loadCertificateAssets();
   return renderContract(
-    { title: filled.title, body: filled.body, fields: { school, ...fields }, acceptedAt: now, acceptedVia: "form", locale, supersededAt: null },
+    { title: filled.title, body: filled.body, fields: { school, ...fields }, acceptedAt: now, acceptedVia: ecourse ? "purchase" : "form", locale, supersededAt: null },
     { sans: assets.sans, logoBlack: assets.logoBlack },
   );
 }

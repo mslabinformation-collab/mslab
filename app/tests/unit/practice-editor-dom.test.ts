@@ -171,7 +171,7 @@ describe("the page (S4-31, S4-32) and the two package cards (the P4 C5 frame, S4
       expect(text(c)).toContain("Iga rida on üks punkt paketi kaardil.");
       const list = c.querySelector(`[data-list-editor="${code}.items"]`)!;
       expect(text(list.querySelector("h3"))).toBe("Sisaldab");
-      expect(button("+ Lisa punkt (või Enter viimasel real)", list)).not.toBeNull();
+      expect(button("Lisa punkt + (või Enter viimasel real)", list)).not.toBeNull();
       expect(points(code)).toEqual(LIVE[code].items.map((i) => i.et));
       // each point's field is named by its row (the leave guard's „Jää siia“, SaveStatus's „Näita“)
       expect(labelOf(field(`${code}.items.1`))).toBe("Punkt 2 (eesti keeles)");
@@ -229,7 +229,7 @@ describe("the fields autosave into the package's draft; one bar for both package
     await leave(field("MAXI.price"));
     expect(remote.log).toEqual([{ part: "MAXI", version: "l:MAXI", patch: { price: "230" } }]);
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · MAXI hind. Avalikul lehel on näha eelmine versioon.");
-    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud 13:15");
+    expect(text($("[data-save-status] [role=status]"))).toBe("Mustand salvestatud kell 13:15");
     // the changed field waits for „Avalda muudatused“: its box is marked (editor.module.css: the border in --rose, #9e8993), MINI's is not
     const box = (name: string) => field(name)!.closest("[data-unpublished], [data-plain-field], [data-i18n-box]")!;
     expect(box("MAXI.price").hasAttribute("data-unpublished")).toBe(true);

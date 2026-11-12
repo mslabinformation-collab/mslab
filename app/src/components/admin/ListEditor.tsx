@@ -17,6 +17,8 @@ import styles from "./editor.module.css";
 type Props = {
   /** The heading of the list. */
   title: string;
+  /** The list is a card of its own (a label card: Õpiväljundid, Koolitus sisaldab): its heading has the cards' title size (UX pass 11.11 A3). */
+  cardTitle?: boolean;
   /** The label of one row, numbered: "Õpiväljund 2". */
   itemLabel: string;
   items: I18n[];
@@ -40,7 +42,8 @@ type Props = {
    * S4-33); Enter in any other row does nothing new. Off (the course's lists): Enter does what the field does.
    */
   enterAdds?: boolean;
-  /** The add button's words after its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33); without it, „Lisa rida“. */
+  /** The add button's words before its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33: an aside in brackets comes after the „+“); without
+   * it, „Lisa rida“. UX pass A14: every add button reads „Lisa … +“. */
   addLabel?: string;
   /**
    * Each row's field is named `<name>.<index>` (data-i18n, from 0): the site editors find a row's field by it for the leave guard's „Jää siia“ and
@@ -52,6 +55,12 @@ type Props = {
 /** Where the focus goes after the next render: a row's field (by its place after an add or a removal, by its key after an undo), or "Lisa rida". */
 type Focus = { index: number } | { key: string } | "add" | null;
 
+/** „Lisa rida +“; „Lisa punkt + (või Enter viimasel real)“: the „+“ after the words, an aside in brackets after it (UX pass A14). */
+function addWords(label: string): string {
+  const m = /^(.*?)\s*(\(.*\))$/.exec(label);
+  return m ? `${m[1]} + ${m[2]}` : `${label} +`;
+}
+
 /**
  * An ordered list of texts in two languages (outcomes, „Koolitus sisaldab“, Praktika's items; README B2): each row has the handle „⋮⋮“ and ↑ / ↓
  * (DragList: a drag with a finger or the mouse, the arrows, the arrow keys on the handle, each one move announced), × takes it out at once with the
@@ -60,7 +69,7 @@ type Focus = { index: number } | { key: string } | "add" | null;
  * after an undo the row's own field (when the focus has nowhere else to be). With `enterAdds` (Praktika's points), Enter in the last row adds the
  * next one the same way.
  */
-export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
+export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
   const t = adminEt.list;
   const uid = useId();
   const rows = useRowKeys(items);
@@ -132,7 +141,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
       tabIndex={error ? -1 : undefined}
     >
       <div className={styles.listHead}>
-        <h3 id={`${uid}-title`} className={ui.h3}>
+        <h3 id={`${uid}-title`} className={cardTitle ? ui.h2 : ui.h3}>
           {title}
           {unpublished && (
             <>
@@ -190,7 +199,7 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
         </p>
       )}
       <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`} onClick={add}>
-        + {addLabel ?? t.add}
+        {addWords(addLabel ?? t.add)}
       </button>
     </div>
   );

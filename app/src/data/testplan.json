@@ -65,11 +65,14 @@
         "Üleval on suur pilt ja nupp.",
         "Midagi ei ulatu ekraani servast välja.",
         "Allpool on koolituste kaardid, korduma kippuvate küsimuste plokk ja kontaktiplokk.",
+        "Koolituse kaardil on madal pilt: üks kaart võtab alla poole ekraanist.",
         "Tekst on loetav ja nupud on sõrmega hästi puudutatavad."
       ],
       "why": "Avaleht on esimene, mida tulevane õpilane näeb.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-avaleht-tahvel",
@@ -91,6 +94,34 @@
       "why": "Paljud õpilased vaatavad lehte tahvlis.",
       "risk": "med",
       "writes": false
+    },
+    {
+      "id": "avalik-menuu",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Lehe päis ja menüü",
+      "href": "/",
+      "steps": [
+        "Ava mslab.ee arvutis ja vaata lehe päist.",
+        "Vajuta menüüs „Kontakt“.",
+        "Tee brauseri aken aeglaselt kitsamaks, kuni menüü asemele tuleb ≡ nupp.",
+        "Ava sama leht telefonis ja vajuta „Ava menüü“.",
+        "Keri avaleht jaluseni ja vaata veergu „Uudised ja nõuanded“."
+      ],
+      "expect": [
+        "Menüüs on Koolitused, Koolituskalender, Praktika, Koolitaja, „Uudised ja nõuanded“ ja viimasena „Kontakt“.",
+        "Päises pole ostukorvi ikooni ega numbrit „0“.",
+        "„Kontakt“ avab kontaktilehe.",
+        "Kuni menüü on näha, on „ET / RU“ menüüst selgelt eraldi ja „Logi sisse“ pole kokku surutud.",
+        "Telefoni menüüs on samad lingid samas järjekorras, siis keelevalik ja „Logi sisse“.",
+        "Uudiste nimi on kõikjal „Uudised ja nõuanded“: menüüs, jaluses, avalehel ja uudiste lehel."
+      ],
+      "why": "Kontakti otsitakse menüüst ja tühi ostukorv ajas segadusse.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "avalik-slaidid",
@@ -151,6 +182,7 @@
       "href": "/koolitused",
       "steps": [
         "Ava koolituste loend.",
+        "Vaata lehe algust ja vajuta reale „Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?“.",
         "Vajuta nuppu „E-õpe“.",
         "Vajuta nuppu „Baaskoolitused“.",
         "Kirjuta väljale „Otsi koolitust“ osa mõne koolituse nimest.",
@@ -158,16 +190,20 @@
         "Vajuta nuppu „Lähtesta filtrid“."
       ],
       "expect": [
+        "Filtrinupud on koos, nende all rida „Mis vahe on e-õppel, kontaktõppel ja hübriidõppel?“, arv ja koolitused.",
+        "Telefonis algab esimene koolitus juba esimesel ekraanil.",
+        "Rida avab kolm kaarti „E-õpe“, „Kontaktõpe“ ja „Hübriidõpe“.",
         "Pärast nuppu „E-õpe“ jäävad alles ainult e-õppe koolitused.",
-        "Nupu „E-õpe“ all on selgitus, kuidas e-õpe käib.",
+        "Filtrite all on selgitus, kuidas e-õpe käib.",
         "Pärast nuppu „Baaskoolitused“ jäävad alles ainult baaskoolitused.",
-        "Otsing jätab alles ainult koolitused, mis sisaldavad sinu kirjutatud sõna.",
-        "Võõra sõna korral näed teadet „Sobivat koolitust ei leitud“.",
+        "Otsing jätab alles ainult sobivad koolitused; võõra sõna korral on teade „Sobivat koolitust ei leitud“.",
         "Pärast nuppu „Lähtesta filtrid“ on kõik koolitused jälle nähtaval."
       ],
       "why": "Filtrite abil leiab õpilane oma koolituse.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-kontaktkoolitus-leht",
@@ -177,25 +213,55 @@
       "title": "Kontaktkoolituse leht",
       "href": "/koolitused",
       "steps": [
-        "Ava koolituste loend ja vajuta mõne kontaktõppe koolituse kaardile.",
-        "Keri leht ülevalt alla.",
+        "Ava telefonis koolituste loend ja vajuta mõne kontaktõppe koolituse kaardile.",
+        "Vaata, mis on kohe koolituse andmete all.",
+        "Keri leht ülevalt alla, siis tagasi üles ja vajuta „Registreeru ↓“.",
         "Vali „Osalemisviis“ all „Individuaalkoolitus“.",
-        "Vali tagasi „Grupikoolitus“."
+        "Vali tagasi „Grupikoolitus“.",
+        "Ava sama leht arvutis."
       ],
       "expect": [
-        "Üleval on nimi, „Kestus“, „Õppekeel“, „Linnad“ ja „Koolitaja“.",
-        "„Grupikoolitus“ ja „Individuaalkoolitus“ näitavad kumbki oma hinda.",
-        "„Vali kuupäev ja linn“ all on tulevased kuupäevad, igaühel vabade kohtade arv.",
+        "Üleval on nimi, „Kestus“, „Õppekeel“, „Linnad“ ja „Koolitaja“; nende all nupp „Registreeru ↓“.",
+        "Nupu all on rida „Kuupäeva ja makseviisi valid lehe lõpus.“.",
+        "Edasi tulevad „Koolitusest“, „Pärast koolitust oskad“, „Koolitus sisaldab“ ja „Õppekava“.",
+        "Nupp viib lehe lõpus plokki „Registreeru“, kus on osalemisviis, kuupäevad ja vorm.",
+        "„Grupikoolitus“ ja „Individuaalkoolitus“ näitavad kumbki oma hinda; kuupäevadel on vabade kohtade arv.",
         "„Individuaalkoolitus“ peidab kuupäevad ja küsib „Soovitud periood või kuupäev“.",
-        "Allpool on „Koolitusest“, „Pärast koolitust oskad“, „Koolitus sisaldab“ ja „Õppekava“.",
-        "Telefonis on ploki „Sinu koolitaja“ portree kaardi keskel, mitte vasakus servas.",
-        "Lõpus on plokk „Sulle võiksid huvi pakkuda“."
+        "Ploki „Sinu koolitaja“ portree on kaardi keskel; lõpus on „Sulle võiksid huvi pakkuda“.",
+        "Arvutis on vorm endiselt paremal andmete all ja nuppu „Registreeru ↓“ pole."
       ],
       "why": "Siin teeb õpilane otsuse ja registreerub.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-10T12:39:03.177Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
+    },
+    {
+      "id": "avalik-koolitus-leht-detailid",
+      "area": "avalik",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Koolituse leht: loendid ja koolitaja kaart",
+      "href": "/koolitused",
+      "steps": [
+        "Ava arvutis koolitus „Lash Lift BOTOX baaskoolitus“.",
+        "Vaata kõrvuti plokke „Pärast koolitust oskad“ ja „Koolitus sisaldab“.",
+        "Keri plokini „Sinu koolitaja“.",
+        "Tee brauseri aken kitsaks nagu telefon ja vaata pealkirja."
+      ],
+      "expect": [
+        "Mõlemas loendis on samasugune linnuke ✓ hallis ringis.",
+        "Koolitaja kaardil on amet nime all üks kord; tekst ei alusta sama lausega.",
+        "Portree raam on kaardiga sama värvi; foto enda hall taust paistab, kuni Maria valib väljalõigatud portree.",
+        "Koolitaja tekst ulatub kaardi parema servani, mitte poole peale.",
+        "Kitsas aknas on „Lash Lift BOTOX“ ühel real.",
+        "Kitsas aknas ei ulatu pealkiri ega ükski sõna ekraani servast välja."
+      ],
+      "why": "Koolituse leht näeb ühtne ja korras välja.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "avalik-ekursus-leht",
@@ -316,17 +382,23 @@
         "Ava „Koolituskalender“.",
         "Vajuta linna nupul, näiteks „Pärnu“.",
         "Vajuta „Kõik“.",
+        "Vaata arvutis nuppude veergu, siis ava sama leht vene keeles.",
+        "Ava kalender telefonis ja leia rida „Lash Lift BOTOX baaskoolitus“.",
         "Vajuta mõne kuupäeva real „Registreeru“."
       ],
       "expect": [
         "Igal real on kuupäev, koolitus, linn, koht, keel ja vabade kohtade arv.",
         "Linna nupp jätab alles ainult selle linna kuupäevad.",
+        "Arvutis on kõik nupud ühelaiused ja nende paremad servad on ühel joonel, ka vene keeles.",
+        "Telefonis on „Lash Lift BOTOX“ ühel real; murdub alles enne „baaskoolitus“.",
         "„Registreeru“ avab koolituse lehe ja see kuupäev on vormis juba valitud.",
         "Tühistatud kuupäeval on märge „Tühistatud“ ja nupp „Vaata teisi“."
       ],
       "why": "Kalendrist valib õpilane linna ja kuupäeva.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-praktika",
@@ -338,20 +410,22 @@
       "steps": [
         "Ava „Praktika“.",
         "Vajuta paketi MINI kaardil „Registreeru“.",
-        "Vaata vormi „Registreeru praktikale“."
+        "Vaata vormi „Registreeru praktikale“.",
+        "Ava sama leht arvutis ja vaata vormi."
       ],
       "expect": [
         "Lehel on kirjas „Praktikavõimalus on Pärnus ja Tallinnas.“ ja selle kohal „Personaalne praktika“.",
         "MINI ja MAXI kaardil on hind, kestus ja paketi punktid.",
         "Vormi juures on „Valitud pakett: MINI“.",
         "Vormis on „Nimi“, „E-post“, „Telefon“ ja „Millised ajad sulle sobivad?“.",
-        "Vormis on valik „Linn“: „Pärnu“ ja „Tallinn“, kumbki pole eelvalitud."
+        "Vormis on valik „Linn“: „Pärnu“ ja „Tallinn“, kumbki pole eelvalitud.",
+        "Arvutis algab vorm lehe vasakust servast; pealkirja all on vahe ja paremad veerud on ühel joonel."
       ],
       "why": "Praktika leht toob praktikataotlused.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-koolitaja",
@@ -367,7 +441,8 @@
       ],
       "expect": [
         "Üleval on portree, nimi, tutvustus ja numbrid.",
-        "Allpool on „Koolitaja tööd“, „Koolituskeskuse lugu“ ja „Koolitaja teekond“.",
+        "Allpool on „Koolitaja tööd“ ja „Koolituskeskuse lugu“.",
+        "„Koolitaja teekond“ on näha alles siis, kui seal on Maria enda lugu, mitte „… Maria täiendab.“.",
         "„Koolitaja tööd“ näitab korraga kolm pilti arvutis, tahvlis ja telefonis.",
         "„Vaata koolitusi“ avab koolituste loendi."
       ],
@@ -375,7 +450,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-10T12:39:03.177Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-uudised",
@@ -390,13 +465,15 @@
         "Keri postitus lõpuni."
       ],
       "expect": [
-        "Lehel on pealkiri „Blogi.“ ja postitused, uuemad eespool.",
+        "Lehel on pealkiri „Uudised ja nõuanded.“ ja postitused, uuemad eespool.",
         "Postituse lehel on kaanepilt, kuupäev, kategooria ja tekst.",
         "Postituse all on nupp „Vaata koolitusi“ ja teised postitused."
       ],
-      "why": "Blogi toob lehele uusi lugejaid.",
+      "why": "Uudised ja nõuanded toovad lehele uusi lugejaid.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-kkk",
@@ -572,14 +649,14 @@
         "Eelvaade on samas keeles nagu „Sisu keel“ ja muutub mõne hetke jooksul, kui teksti kirjutad.",
         "Vene keele eelvaates on vene tekst ja kirja lõpus „Отписаться от рассылки“.",
         "Teema all on loendur „ET 17 / 150 · RU … / 150“, teistel väljadel samuti.",
-        "Kirja kaardi päises on „Salvestatud …“ ja nuppu „Salvesta“ pole.",
+        "Kirja kaardi päises on „Salvestatud kell …“ ja nuppu „Salvesta“ pole.",
         "Pärast uuesti laadimist on kõik väljad alles ja loendis on rida „Mustand · muudetud …“."
       ],
       "why": "Maria näeb enne saatmist täpselt, milline kiri tellijale läheb.",
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -866,7 +943,8 @@
       "title": "Kontaktivorm",
       "href": "/kontakt",
       "steps": [
-        "Ava kontaktileht ja vajuta „Saada“ tühja vormiga.",
+        "Ava avaleht ja keri kontaktivormini; siis ava kontaktileht.",
+        "Vajuta kontaktilehel „Saada“ tühja vormiga.",
         "Kirjuta „Nimi“: Proov 3.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
         "Kirjuta „Sõnum“: Proov 3, kontaktivormi test.",
@@ -874,6 +952,7 @@
       ],
       "expect": [
         "Vormi pealkiri on „Võta ühendust.“, avalehe vormil on endiselt „Ei tea, milline koolitus sobib?“.",
+        "Mõlema vormi juhtlause lõpus on „Vastan tavaliselt ühe tööpäeva jooksul.“; pildi kõrval on ainult Maria nimi.",
         "Tühja vormi korral on väljade all „See väli on kohustuslik.“.",
         "Pärast saatmist näed „Aitäh! Sinu sõnum on saadetud.“.",
         "Maria postkasti tuleb kiri „Sõnum kodulehelt — Proov 3“.",
@@ -883,7 +962,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "avalik-ru-avaleht",
@@ -981,16 +1060,16 @@
       "steps": [
         "Ava „Koolitused“ ja vajuta oma päris e-koolituse nimele.",
         "Keri plokini „Moodulid ja õppetunnid“.",
-        "Kirjuta „Uue mooduli nimi“ ja vajuta „+ Lisa moodul“.",
+        "Kirjuta „Uue mooduli nimi“ ja vajuta „Lisa moodul +“.",
         "Muuda uue mooduli nimes üht sõna ja klõpsa väljast välja.",
-        "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund“.",
+        "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund +“.",
         "Vali avanenud paneelis „Õppetunni liik“ all „Tekst“.",
         "Kirjuta „Lühike tekst“ ja klõpsa väljast välja.",
         "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
       ],
       "expect": [
         "Moodul ilmub loendisse oma numbriga, näiteks 01, ja ploki pealkirja kõrval on moodulite ja õppetundide arv.",
-        "Mooduli nime juures pole nuppu „Salvesta“: päises on „Salvestatud“ või „Mustand salvestatud“ koos kellaajaga.",
+        "Mooduli nime juures pole nuppu „Salvesta“: päises „Salvestatud“ või ribal „Mustand salvestatud“ koos kellaajaga.",
         "Õppetund ilmub mooduli alla ja selle paneel avaneb ise.",
         "Paneeli päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga; nuppu „Salvesta“ pole.",
         "Õppetunni real on märge „Tekst“.",
@@ -999,8 +1078,8 @@
       "why": "Alad 4–7 kasutavad seda e-koolitust; see töö on vaja teha ka avamiseks.",
       "risk": "high",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "haldus-ekursus-moodulite-jarjekord",
@@ -1109,15 +1188,15 @@
         "Klõpsa väljast välja; kui koolitus on avaldatud, vajuta pealkirja all ka „Avalda muudatused“."
       ],
       "expect": [
-        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
+        "Päises on „Salvestatud“, avaldatud koolitusel ribal „Mustand salvestatud“, koos kellaajaga.",
         "Pärast lehe uuesti laadimist on mõlemad küsimused alles.",
         "Valikküsimusel on õige vastus märgitud."
       ],
       "why": "Test on e-koolituse lõpetamise teine samm.",
       "risk": "high",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-ekursus-punktid",
@@ -1134,14 +1213,14 @@
       ],
       "expect": [
         "Ploki juures on selgitus, et e-kursusel on need praktilise töö punktid.",
-        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
+        "Päises on „Salvestatud“, avaldatud koolitusel ribal „Mustand salvestatud“, koos kellaajaga.",
         "Mõlemad punktid jäävad alles, kui lehe uuesti laadid."
       ],
       "why": "Õpilane lisab iga punkti juurde fotod ja sina hindad neid.",
       "risk": "high",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-ekursus-tunnistus",
@@ -1152,21 +1231,24 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
+        "Vaata tühja välja „Pealkiri tunnistusel“ ja välja „Maht“.",
         "Kirjuta „Pealkiri tunnistusel“, näiteks Kulmumeistri baaskoolitus, või jäta tühjaks.",
-        "Lisa „Oskused tunnistusel“ alla read nupuga „Lisa rida“ või jäta tühjaks.",
         "Kirjuta „Maht“, näiteks 10 akadeemilist tundi.",
+        "Lisa „Oskused tunnistusel“ alla read nupuga „Lisa rida“ või jäta tühjaks.",
         "Klõpsa väljast välja; kui koolitus on avaldatud, vajuta pealkirja all ka „Avalda muudatused“."
       ],
       "expect": [
-        "Kaardi esimene väli on „Pealkiri tunnistusel“ vihjega „Kui jätad tühjaks, kasutatakse koolituse nime.“.",
-        "Tühja loendi korral on kirjas, et tunnistusel on „Õpiväljundid“ read.",
-        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
+        "Kaardil on järjest „Pealkiri tunnistusel“, „Kujundus“, „Maht“ ja joone all „Oskused tunnistusel“.",
+        "Tühjas pealkirjas on hallilt koolituse nimi ja vihje „Tühjaks jättes kasutatakse koolituse nime.“.",
+        "Tühjas „Maht“ väljas on hallilt „nt 10 akadeemilist tundi“.",
+        "„Oskused tunnistusel“ all on üks vihje: „Tühjana kasutatakse kaardi „Õpiväljundid“ read.“.",
+        "Päises on „Salvestatud“, avaldatud koolitusel ribal „Mustand salvestatud“, koos kellaajaga."
       ],
       "why": "Need read trükitakse õpilase tunnistusele.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-10T15:39:26.721Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-ekursus-tunnistuse-kujundus",
@@ -1178,21 +1260,25 @@
       "steps": [
         "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
         "Vaata välja „Kujundus“ ja selle valikuid.",
+        "Vajuta valiku kõrval „Vaata näidist ↗“.",
         "Vali „Kujundus“ alt kujundus, millega tahad Proov 1 tunnistust näha.",
+        "Vajuta vihjes linki „Seaded → Tunnistus“ ja tule tagasi.",
         "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
       ],
       "expect": [
-        "„Kujundus“ loetleb Seadete kujundused samas järjekorras, esimene on „Hele“.",
+        "„Kujundus“ loetleb Seadete kujundused samas järjekorras, esimene on „Hele (vaikimisi)“.",
         "Kui kujundust pole valitud, on valitud esimene kujundus.",
-        "Välja all on vihje „Kujundusi muudad: Seaded → Tunnistus.“.",
+        "Valiku ees on kujunduse pisipilt; teise kujunduse valides vahetub see kohe.",
+        "„Vaata näidist ↗“ avab uues vahekaardis selle kujundusega näidistunnistuse (PDF).",
+        "Välja all on vihje „Kujundusi muudad: Seaded → Tunnistus.“; link avab Seadetes osa „Tunnistus“.",
         "Kui avaldatud koolitusel valid muu kujunduse kui praegune, on välja juures enne avaldamist „· avaldamata“.",
-        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
+        "Päises on „Salvestatud“, avaldatud koolitusel ribal „Mustand salvestatud“, koos kellaajaga."
       ],
       "why": "Selle koolituse tunnistused tehakse valitud kujundusega.",
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-11-11T10:53:51.477Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-ekursus-avalda",
@@ -1235,14 +1321,14 @@
         "Lae leht uuesti."
       ],
       "expect": [
-        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
+        "Päises on „Salvestatud“, avaldatud koolitusel ribal „Mustand salvestatud“, koos kellaajaga.",
         "Punktid jäävad alles, kui lehe uuesti laadid."
       ],
       "why": "Koolituspäeva protokoll kasutab neid punkte.",
       "risk": "med",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-koolitus-tekst",
@@ -1259,7 +1345,7 @@
         "Kustuta sõna Proov, klõpsa väljast välja ja vajuta uuesti „Avalda muudatused“."
       ],
       "expect": [
-        "Kirjutamise ajal näed päises „Salvestamata muudatused“, siis „Mustand salvestatud“ koos kellaajaga.",
+        "Kirjutamise ajal näed ribal „Salvestamata muudatused“, siis „Mustand salvestatud“ koos kellaajaga.",
         "Pealkirja all on riba „Avaldamata muudatused: 1 · Lühikirjeldus“.",
         "Välja „Lühikirjeldus“ nime järel on „· avaldamata“.",
         "Enne avaldamist on avalikul lehel veel vana tekst.",
@@ -1269,8 +1355,8 @@
       "why": "Maria muudab tekste ise ja muudatus peab kohe näha olema.",
       "risk": "high",
       "writes": false,
-      "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-koolitus-valdkond",
@@ -1283,21 +1369,26 @@
         "Ava mõni avaldatud kulmukoolitus ja leia kaardil „Põhiinfo“ valik „Valdkond“.",
         "Vali „Kulmukoolitused“ ja vaata pealkirja all olevat riba.",
         "Vajuta „Avalda muudatused“.",
+        "Vajuta vihje lõpus linki „Seaded → Valdkonnad“ ja tule tagasi.",
+        "Ava „Koolitused“ ja vajuta nuppu „Määramata valdkond“.",
         "Anna samamoodi valdkond igale koolitusele: kulmukoolitustele „Kulmukoolitused“, ripsmekoolitustele „Ripsmekoolitused“.",
         "Ava avalik koolituste loend ja koolituskalender."
       ],
       "expect": [
+        "„Valdkond“ on samas reas „Koolituse keel“ kõrval; telefonis on see keele all.",
         "Valikus on esimesena „Määramata“, siis „Kulmukoolitused“ ja „Ripsmekoolitused“.",
-        "Välja all on vihje „Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. …“.",
-        "Pärast valikut on pealkirja all riba „Avaldamata muudatused: 1 · Valdkond“.",
-        "Pärast „Avalda muudatused“ on riba kadunud.",
+        "Rea all üle kaardi on vihje „Valdkonna järgi saab õpilane koolitusi kalendris ja koolituste lehel valida. …“.",
+        "Pärast valikut on pealkirja all riba „Avaldamata muudatused: 1 · Valdkond“; pärast avaldamist riba kaob.",
+        "Link „Seaded → Valdkonnad“ avab Seadetes osa „Valdkonnad“.",
+        "Koolituste loendis on nime all valdkond, näiteks „Baaskoolitus · Kulmukoolitused · /…“.",
+        "„Määramata valdkond“ näitab ainult valdkonnata koolitusi; kui kõigil on valdkond, on loend tühi.",
         "Kui kahel koolitusel on eri valdkond, on avalikel lehtedel valdkonna nupud."
       ],
       "why": "Valdkonna järgi leiab õpilane kalendris ja loendis oma koolituse.",
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-11-11T10:53:51.477Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-kalender-valdkond",
@@ -1368,23 +1459,58 @@
         "Ava laial arvutiekraanil „Koolitused“ ja mõni koolitus.",
         "Keri lehte aeglaselt alla kuni lõpuni ja vaata vasakut jaotiste loendit ning paremat veergu.",
         "Vajuta jaotiste loendis „Galerii“.",
-        "Lisa mõne välja teksti lõppu tühik, kustuta see ja liigu väljalt edasi; vaata ekraani ülaosa paremat serva.",
-        "Keri tagasi lehe algusesse.",
-        "Proovi sama lehel „Seaded“."
+        "Ava avaldatud koolitus, lisa „Lühikirjeldus“ lõppu sõna Proov ja liigu väljalt edasi.",
+        "Keri lehte alla ja tagasi üles; vaata, kas miski katab nuppe.",
+        "Vajuta ribal „Loobu muudatustest“ ja kinnita.",
+        "Ava „Seaded“, vaata päist, siis muuda mõnda välja ja liigu edasi.",
+        "Ava „Registreerimised“ ja mõne registreerimise paneel."
       ],
       "expect": [
         "Kerides on jaotiste loendis esile tõstetud see jaotis, mida parajasti loed; lehe lõpus viimane.",
         "„Galerii“ vajutus viib selle kaardini ja „Galerii“ jääb esile tõstetuks.",
-        "Parem veerg („Avaldamine“, „Koolituse märgis“) liigub koos lehega; ükski kaart ei libise teise alla ega jää poolikuks.",
-        "Kui pealkirja rida on ekraanilt läinud, on üleval paremal sama olek: „Salvestan…“, siis „Salvestatud …“ või „Mustand salvestatud …“.",
-        "Lehe algusesse kerides kaob ülemine olek ja sama olek on jälle pealkirja real.",
-        "„Seaded“ käitub samamoodi."
+        "Parem veerg („Avaldamine“, „Koolituse märgis“) liigub koos lehega; kõigi kaartide pealkirjad on ühe suurusega.",
+        "Salvestuse olek on ribal nuppude ees: „Salvestan…“, siis „✓ Mustand salvestatud kell …“.",
+        "Kerides ei uju lehe kohal ühtegi olekut; ükski nupp pole kaetud.",
+        "Riba kaob ja „Lühikirjeldus“ on endine.",
+        "Enne muutmist on päis vaikne; pärast muudatust on seal roheline „✓ Salvestatud kell …“.",
+        "Paneeli päises pole „✓ Salvestatud“ enne, kui midagi muudad."
       ],
       "why": "Pikal lehel näeb Maria alati, kus ta on ja kas muudatus salvestus.",
       "risk": "low",
       "writes": true,
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
+    },
+    {
+      "id": "haldus-salvestus-kaasa",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Salvestamata olek tuleb kerides kaasa",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni koolitus kahes brauseri vahekaardis.",
+        "Logi teises vahekaardis halduse menüüst välja ja tule esimesse tagasi.",
+        "Lisa „Lühikirjeldus“ lõppu sõna Proov ja liigu väljalt edasi.",
+        "Keri lehte alla, kuni päis ja riba on ekraanilt läinud, ja vaata vasakut menüüd.",
+        "Keri tagasi üles.",
+        "Tee aken kitsaks nagu telefon, keri alla ja vaata ülemist tumedat riba.",
+        "Logi teises vahekaardis uuesti sisse ja laadi esimene vahekaart uuesti.",
+        "Kui ribal on muudatus, vajuta „Loobu muudatustest“ ja kinnita."
+      ],
+      "expect": [
+        "Väljalogituna on päises või ribal punane „Salvestamata — logi uuesti sisse“.",
+        "Alla kerides on sama punane rida vasakus menüüs logo all, heledal roosal taustal.",
+        "See rida ei kata ühtegi nuppu ega lehe teksti; menüü nihkub selle võrra alla.",
+        "Üles kerides kaob rida menüüst, kui päis või riba on jälle näha.",
+        "Kitsas aknas on rida ülemisel ribal lehe nime asemel; ≡ nupp jääb alles.",
+        "Roheline „✓ Salvestatud …“ ega „Mustand salvestatud …“ ei tule menüüsse kunagi."
+      ],
+      "why": "Kui salvestus ebaõnnestub, näeb Maria seda ka pika lehe lõpus.",
+      "risk": "med",
+      "writes": false,
       "mark": "new",
-      "markedAt": "2026-11-06T07:47:30.496Z"
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "haldus-koolitus-hind",
@@ -1488,6 +1614,9 @@
         "Pane märgis tagasi, nagu see oli, ja vajuta uuesti „Avalda muudatused“."
       ],
       "expect": [
+        "Kaardi pealkirja all on „Silt koolituse kaardil, nt „Uus“ või „Populaarne“.“.",
+        "„Kiirvalik“ all on „Uus“, „Populaarne“, „Enim müüdud“, „Viimased kohad“ ja „Soodus“; „Bestseller“ pole.",
+        "Nuppude all on vihje „„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.“.",
         "„Eelvaade“ näitab kaarti uue märgisega kohe.",
         "Pealkirja all olev riba nimetab „Koolituse märgis“.",
         "Avalikus loendis on kaardil märgis „Uus“ valitud värviga.",
@@ -1497,7 +1626,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "haldus-koolitus-pildid",
@@ -1543,7 +1672,7 @@
         "Vajuta pealkirja all „Avalda muudatused“ ja ava koolitus avalikul lehel."
       ],
       "expect": [
-        "Rida liigub kohe uude kohta ja päises on „Mustand salvestatud“ koos kellaajaga.",
+        "Rida liigub kohe uude kohta ja ribal on „Mustand salvestatud“ koos kellaajaga.",
         "Eemaldamisel on allservas „Rida eemaldatud.“ või „Küsimus eemaldatud.“ ja nupp „Võta tagasi“.",
         "„Võta tagasi“ paneb rea või küsimuse samale kohale tagasi koos tekstiga.",
         "Kuni avaldad, on ploki pealkirja järel „· avaldamata“.",
@@ -1552,8 +1681,8 @@
       "why": "Maria seab loendeid tahvlis sõrmega ja kogemata eemaldatud rida peab tagasi tulema.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-24T22:46:48.501Z"
+      "mark": "reworded",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-koolitus-mustand-eelvaade",
@@ -1717,7 +1846,7 @@
         "Ava „Avaleht“ ja vajuta esimese slaidi real, siis teise slaidi real.",
         "Lisa teise slaidi „Pealkiri“ lõppu sõna Proov ja oota olekut „Mustand salvestatud“.",
         "Ava avaleht, siis vajuta halduses ribal „Avalda muudatused“ ja ava avaleht uuesti.",
-        "Vajuta „+ Lisa slaid“, kirjuta „Pealkiri“: Proov 2 ja vajuta ribal „Avalda muudatused“.",
+        "Vajuta „Lisa slaid +“, kirjuta „Pealkiri“: Proov 2 ja vajuta ribal „Avalda muudatused“.",
         "Vajuta uuel slaidil „Eemalda slaid“, siis allservas „Võta tagasi“ ja siis uuesti „Eemalda slaid“.",
         "Lohista mõne slaidi käepide ⋮⋮ sõrmega teise kohale, siis vajuta ribal „Loobu muudatustest“ ja kinnita.",
         "Eemalda teise slaidi pealkirjast sõna Proov ja vajuta „Avalda muudatused“.",
@@ -1737,7 +1866,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-avaleht-kkk",
@@ -1748,7 +1877,7 @@
       "href": "/admin/avaleht",
       "steps": [
         "Ava „Avaleht“ ja keri kaardini „KKK“.",
-        "Vajuta „+ Lisa küsimus“ ja kirjuta küsimuseks Proov 1? ning „Vastus“: Proov 1.",
+        "Vajuta „Lisa küsimus +“ ja kirjuta küsimuseks Proov 1? ning „Vastus“: Proov 1.",
         "Oota olekut „Mustand salvestatud“, ava avaleht ja siis vajuta halduses ribal „Avalda muudatused“.",
         "Liiguta see küsimus nupuga ↑ esimeseks või lohista selle käepide ⋮⋮ sõrmega üles.",
         "Vajuta selle rea nupule ×, siis allservas „Võta tagasi“.",
@@ -1766,7 +1895,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-uudised-postitus",
@@ -1784,19 +1913,20 @@
         "Vajuta postituse kaardi all „Kustuta postitus“ ja „Jah, kustuta“."
       ],
       "expect": [
+        "Loendi kohal on „Koduleht“, pealkiri „Uudised“; sõna „Blogi“ pole kusagil.",
         "„Lisa postitus +“ avab kohe postituse „Uus postitus“ ja kursor on väljal „Pealkiri“.",
         "Näed rida „Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.“.",
         "Kaardi all on „Mustand · /uudised/proov-1“ ja loendis on Proov 1 olekuga „Mustand“.",
         "Laial ekraanil on loend postituse kõrval, kitsal on pealkirja kohal „← Uudised“.",
         "Esimesel korral jääb lüliti välja ja selle all on „Puudub: kaanepilt, pealkiri (RU), tekst (RU)“.",
-        "Teisel korral on loendis Proov 1 olekuga „Avaldatud“ ning postitus on blogis ja avalehel.",
-        "Pärast kustutamist näed „Postitus kustutatud.“ ja blogis seda pole."
+        "Teisel korral on loendis Proov 1 olekuga „Avaldatud“ ning postitus on uudiste lehel ja avalehel.",
+        "Kustutamisel küsitakse „Postitus kaob uudiste lehelt ja avalehelt.“; pärast on „Postitus kustutatud.“."
       ],
       "why": "Maria kirjutab uudiseid ise.",
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "haldus-uudised-postitus-telefon",
@@ -1829,7 +1959,7 @@
       "title": "Avaldatud postituse muutmine ja eelvaade",
       "href": "/admin/uudised",
       "steps": [
-        "Avaldatud muudatus on kohe päris blogis näha: tee see kontroll kiiresti ja kustuta sõna kohe.",
+        "Avaldatud muudatus on kohe päris uudiste lehel näha: tee see kontroll kiiresti ja kustuta sõna kohe.",
         "Ava „Uudised“ ja vali loendist mõni avaldatud postitus.",
         "Lisa „Tekst“ lõppu sõna Proov ja oota, kuni olek on „Mustand salvestatud“.",
         "Ava sama postitus teises brauseris, kus sa pole sisse logitud.",
@@ -1845,11 +1975,11 @@
         "Pärast „Avalda muudatused“ on sõna Proov ka teises brauseris, riba kaob ja olek on „Avaldatud“.",
         "Pärast tagasimuutmist ja avaldamist on sõna kadunud."
       ],
-      "why": "Avaldatud postituse muudatus on blogis näha alles pärast „Avalda muudatused“.",
+      "why": "Avaldatud postituse muudatus on uudiste lehel näha alles pärast „Avalda muudatused“.",
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "haldus-praktika",
@@ -1897,7 +2027,7 @@
         "Ava avalik koolitaja leht, siis vajuta halduses ribal „Eelvaade ↗“.",
         "Tule tagasi ja vajuta ribal „Avalda muudatused“, siis lohista pilt tagasi ja avalda uuesti.",
         "Eemalda üks pilt ✕ nupuga ja vajuta allservas „Võta tagasi“.",
-        "Puuduta portree pildil teist kohta, et fookuspunkt liiguks.",
+        "Puuduta „Portree“ eelvaates teist kohta, et fookuspunkt liiguks.",
         "Tühjenda „Koolitaja teekond“ pealkiri ja tekst, oota olekut „Mustand salvestatud“ ja lae leht uuesti.",
         "Vajuta loo real „Lisa tekst“, siis ribal „Loobu muudatustest“ ja kinnita."
       ],
@@ -1907,7 +2037,7 @@
         "Avalikul lehel on piltide vana järjekord, eelvaates uus ja all riba „Avaldamata 1“.",
         "Pärast avaldamist on koolitaja lehel uus järjekord, pärast teist avaldamist jälle vana.",
         "✕ võtab pildi kohe ära, allservas on „Pilt eemaldatud.“ ja nupp „Võta tagasi“.",
-        "Riba on „Avaldamata muudatused: 1 · Portree. Avalikul lehel on näha eelmine versioon.“; eelvaated näitavad uut fookuspunkti.",
+        "Täpp on uues kohas, numbrid selle kõrval muutuvad; riba ütleb „Avaldamata muudatused: 1 · Portree.“ ja edasi.",
         "Pärast laadimist on tühi lugu üks rida „tühi · Lisa tekst ▸“ ja jaotistes „tühi“.",
         "„Lisa tekst“ avab loo, kursor on pealkirjas; „Loobu muudatustest“ järel on lugu ja portree endised."
       ],
@@ -1915,7 +2045,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-koolitaja-kontaktifoto",
@@ -1925,22 +2055,26 @@
       "title": "Kontaktifoto",
       "href": "/admin/koolitaja",
       "steps": [
-        "Ava „Koolitaja“ ja vaata kaardil „Portree ja tutvustus“ portree all olevat välja „Kontaktifoto“.",
-        "Lae väljale „Kontaktifoto“ mõni teine pilt ja oota olekut „Mustand salvestatud“.",
+        "Ava „Koolitaja“ ja vaata kaardil „Portree ja tutvustus“ välja „Kontaktifoto“.",
+        "Lohista liugurit „Suurendus“ paremale, siis lohista sõrmega pilti ringis, kuni nägu on keskel.",
+        "Vaata kasti „Nii näeb see lehel välja“ ja oota olekut „Mustand salvestatud“.",
+        "Vajuta „Vaheta pilt“ ja vali mõni teine pilt.",
         "Vajuta ribal „Eelvaade ↗“ ja ava eelvaates „Kontakt“, siis mõni koolituse leht.",
         "Tule tagasi, vajuta ribal „Loobu muudatustest“ ja kinnita."
       ],
       "expect": [
-        "Väljal on praegune väike ümar pilt ja vihje „Väike ümar pilt kontaktivormi ja koolituse lehe juures.“.",
-        "Riba on „Avaldamata muudatused: 1 · Kontaktifoto. Avalikul lehel on näha eelmine versioon.“.",
+        "Väljal on ümar pilt, selle all „Suurendus“, „Vaheta pilt“ ja „Eemalda“; kõrval kaks vihjerida.",
+        "Pilt ringis suureneb ja liigub sõrme järgi; ringi serva ei jää tühja kohta.",
+        "Kastis on väike ümar pilt samamoodi lõigatuna ja Maria nimi; riba ütleb „Kontaktifoto“.",
+        "Uus pilt täidab ringi, suurendus on jälle algusest.",
         "Eelvaates on uus ümar pilt kontaktivormi juures ja koolituse lehel rea „Koolitaja“ nime ees.",
         "Pärast loobumist on väljal endine pilt ja avalikul lehel ei muutunud midagi."
       ],
       "why": "Maria vahetab kontaktivormi väikese pildi ise.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-11-10T12:39:03.177Z"
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-koolitaja-galerii-tais",
@@ -1951,23 +2085,23 @@
       "href": "/admin/koolitaja",
       "steps": [
         "Ava „Koolitaja“ ja vaata kaardi „Galerii“ loendurit.",
-        "Vajuta plaadil „+ Lisa“ ja vali korraga nii mitu pilti, et loendur jõuaks 24-ni.",
-        "Vajuta uuesti plaadil „+ Lisa“.",
-        "Eemalda üks pilt ✕ nupuga ja vajuta plaadil „+ Lisa“; sulge failivalik ilma pildita.",
+        "Vajuta plaadil „Lisa +“ ja vali korraga nii mitu pilti, et loendur jõuaks 24-ni.",
+        "Vajuta uuesti plaadil „Lisa +“.",
+        "Eemalda üks pilt ✕ nupuga ja vajuta plaadil „Lisa +“; sulge failivalik ilma pildita.",
         "Vajuta ribal „Loobu muudatustest“ ja kinnita."
       ],
       "expect": [
         "Loenduril on piltide arv, näiteks „Lohista järjekorra muutmiseks · 7 / 24“.",
         "Pildid tulevad galerii lõppu ja loendur on „Lohista järjekorra muutmiseks · 24 / 24“.",
-        "Täis galeriis on „+ Lisa“ plaat tuhmim ja failivalik ei avane.",
-        "Pärast eemaldamist on loendur „… · 23 / 24“ ja „+ Lisa“ avab jälle failivaliku.",
+        "Täis galeriis on „Lisa +“ plaat tuhmim ja failivalik ei avane.",
+        "Pärast eemaldamist on loendur „… · 23 / 24“ ja „Lisa +“ avab jälle failivaliku.",
         "Pärast loobumist on galerii nagu enne ja riba on kadunud."
       ],
       "why": "Galeriis on kuni 24 pilti; rohkem ei saa lisada.",
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-hupikaken",
@@ -1994,7 +2128,7 @@
         "Eelvaates avaneb aken kohe uue pealkirjaga ja eelvaate riba ütleb „Avaldamata 2“.",
         "Umbes 8 sekundi pärast avaneb aken uue pealkirja ja tekstiga.",
         "Väljade all on vihje, mis viib lehele „Sooduskoodid“; välja „Soodustus (%)“ pole.",
-        "Lehel pole nuppu „Salvesta“ ega kuskil sõna „kampaania“."
+        "Lehel pole nuppu „Salvesta“ ega sõna „kampaania“; pealkirja kohal on „Koduleht ja uudiskiri“, nagu külgmenüüs."
       ],
       "why": "Maria otsustab, kas avaleht pakub uudiskirja ja mida pakkumine ütleb.",
       "risk": "low",
@@ -2092,19 +2226,23 @@
         "Ava „Seaded“ ja vali jaotiste loendist „Kontakt“.",
         "Paranda vajadusel „E-post“, „Telefon“ ja „Aadress“ ja liigu väljalt edasi.",
         "Vaata lehe päises salvestamise olekut.",
-        "Ava avaliku lehe jalus ja kontaktileht."
+        "Ava avaliku lehe jalus ja kontaktileht.",
+        "Vaata „Facebook“ välja vihjet ja kaardi viimast rida.",
+        "Vajuta kaardi viimasel real „Koolitaja → Portree ja tutvustus ↗“."
       ],
       "expect": [
         "Nuppu „Salvesta“ pole: muudatus salvestub ise ja päis ütleb „Salvestatud …“.",
         "Jaluses on sama e-post ja telefon.",
         "Kontaktilehel on sama e-post ja aadress.",
-        "Tühja välja ei näidata."
+        "Tühja välja ei näidata.",
+        "„Facebook“ vihje näide on https://www.facebook.com/mslab; viimane rida ütleb „Kontaktifoto muudad:“.",
+        "Avaneb „Koolitaja“ kaart „Portree ja tutvustus“, kus on väli „Kontaktifoto“."
       ],
       "why": "Õpilane võtab ühendust nende andmete järgi.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-valdkonnad",
@@ -2115,26 +2253,27 @@
       "href": "/admin/seaded",
       "steps": [
         "Ava „Seaded“ ja vali jaotiste loendist „Valdkonnad“.",
-        "Kirjuta „Uus valdkond“ alla mõlemaks nimeks Proov 1 ja vajuta „Lisa valdkond“.",
+        "Kirjuta katkendjoonega rea „Uus valdkond“ ja vene välja nimeks Proov 1, vajuta „Lisa valdkond +“.",
         "Tühjenda Proov 1 vene nimi ja liigu väljalt edasi; kirjuta siis Proov 1 tagasi.",
         "Muuda eesti nimeks Proov 2 ja liigu väljalt edasi.",
         "Liiguta Proov 2 noolega üles, värskenda lehte ja liiguta see tagasi viimaseks.",
-        "Vaata valdkonna rida, mida mõni koolitus kasutab.",
+        "Vajuta valdkonna real, mida mõni koolitus kasutab, „Kustuta“.",
         "Vajuta Proov 2 real „Kustuta“ ja kinnita „Jah, kustuta“."
       ],
       "expect": [
         "Kaardi juhend ütleb, et koolituse valdkonna valid koolituse kaardil „Põhiinfo“.",
-        "Pärast „Lisa valdkond“ on Proov 1 loendi lõpus ja päis ütleb „Salvestatud …“.",
+        "Iga valdkond on oma kastis: kaks nime, koolituste arv, nooled ja punane „Kustuta“.",
+        "Pärast „Lisa valdkond +“ on Proov 1 loendi lõpus ja päis ütleb „Salvestatud kell …“.",
         "Tühja nime all on „Kirjuta nimi.“ ja tühja nime ei salvestata.",
         "Pärast värskendamist on Proov 2 nimi ja koht samad.",
-        "Kasutatud valdkonna real pole „Kustuta“, vaid teade, mitu koolitust seda kasutab.",
+        "Kasutatud valdkonna „Kustuta“ on hall ega küsi midagi; real on näiteks „2 koolitust“.",
         "Pärast „Jah, kustuta“ on Proov 2 loendist kadunud."
       ],
       "why": "Maria lisab valdkondi ise, kui tulevad uued koolitused.",
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-11-11T10:53:51.477Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-ettemaks",
@@ -2174,25 +2313,26 @@
       "steps": [
         "Ava „Seaded“ ja keri kaardini „E-koolituse leping“.",
         "Kirjuta „Pealkiri“: „E-koolituse leping“, ja oma päris lepingu tekst.",
+        "Vajuta kaardi all „Näidisleping (PDF)“ ja sulge avanenud PDF.",
         "Vajuta „Avalda uus leping“, loe küsimus läbi ja vajuta „Katkesta“.",
         "Vajuta uuesti „Avalda uus leping“ ja siis „Jah, avalda“.",
         "Ava e-koolituse ostukorv."
       ],
       "expect": [
         "Pealkirja all on vihje, mis soovitab pealkirjaks „E-koolituse leping“.",
-        "Teksti all on samad kohahoidjate nupud mis kaardil „Kontaktkoolituse leping“.",
+        "Teksti all on nupud „+ nimi“ jne ja vihje „Nupud „+ nimi“ jne lisavad tekstidesse õpilase andmed.“.",
+        "Näidis-PDF-is on sinu tekst, koolitus „Näidis-e-koolitus“ ja hind 190,00 €; toimumist pole.",
         "Kirjutamise ajal on kaardil „Avaldamata muudatus“.",
         "Küsimus on „Kas avaldan uue e-koolituse lepingu?“ ja selle all on aktiivsete õpilaste arv, kes peavad uuesti kinnitama.",
         "„Katkesta“ sulgeb küsimuse ja midagi ei avaldata.",
         "Pärast „Jah, avalda“ näed „Uus e-koolituse leping on avaldatud.“.",
-        "Ostukorvis on „Loe lepingut“ all uus pealkiri ja tekst.",
-        "Õpilane loeb seda enne ostmist ja enne tasuta avatud koolituse esimest avamist."
+        "Ostukorvis on „Loe lepingut“ all uus tekst, mida õpilane loeb ka enne tasuta koolituse esimest avamist."
       ],
       "why": "Õpilane nõustub selle lepinguga enne e-koolituse ostmist või alustamist.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -2257,26 +2397,26 @@
       "href": "/admin/seaded",
       "steps": [
         "Ava „Seaded“, vali „Tunnistus“ ja keri kaardini „Kujundused“.",
-        "Vajuta „Lisa kujundus“ ja kirjuta uue rea väljale „Nimi“: Proov 1.",
-        "Vali „Toon“: „Tume taust, hele tekst“.",
+        "Kirjuta katkendjoonega rea välja „Uue kujunduse nimi“: Proov 1 ja vajuta „Lisa kujundus +“.",
+        "Vali Proov 1 kastis „Toon“: „Tume taust, hele tekst“.",
         "Vajuta „Taustapilt“ juures „Vali pilt“ ja vali horisontaalne JPEG-pilt.",
-        "Vajuta selle rea „Vaata näidist“.",
-        "Vajuta selle rea „Kustuta“ ja kinnita „Jah, kustuta“."
+        "Vajuta Proov 1 kastis „Vaata näidist“.",
+        "Vajuta Proov 1 kastis „Kustuta“ ja kinnita „Jah, kustuta“."
       ],
       "expect": [
-        "Kaardil on kujundused „Hele“ ja „Tume“, igaühel „Nimi“, „Toon“, „Taustapilt“ ja „Vaata näidist“.",
-        "Esimese kujunduse all on „Koolitus, millel kujundust valitud pole, kasutab seda kujundust.“.",
-        "Kasutusel kujundusel pole „Kustuta“, vaid rida „Seda kujundust kasutab …“.",
+        "Iga kujundus on oma kastis: „Kujunduse nimi“, „Toon“, „Taustapilt“ ja „Vaata näidist“.",
+        "Esimese kujunduse juures on „Vaikimisi“ ja „Koolitus, millel kujundust valitud pole, kasutab vaikimisi kujundust.“.",
+        "Kasutusel kujunduse „Kustuta“ on hall, kõrval „Kasutusel olevat kujundust ei saa kustutada.“.",
         "Pildi juures on vihje „JPEG, kuni 1,5 MB, horisontaalne A4 …“.",
         "Näidis avaneb uues aknas: hele tekst tumedal taustal, taustapilt katab kogu lehe.",
-        "Päises on pärast igat muudatust „Salvestatud“ koos kellaajaga.",
-        "Pärast kustutamist rida Proov 1 enam pole."
+        "Päises on pärast igat muudatust „Salvestatud kell …“.",
+        "Pärast kustutamist Proov 1 kasti enam pole."
       ],
       "why": "Maria valib, milline näeb välja iga koolituse tunnistus.",
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-11-11T10:53:51.477Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-arve",
@@ -2345,7 +2485,7 @@
       "title": "Seaded: kontaktkoolituse leping",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja vali jaotis „Lepingud ja tingimused“; leia kaart „Kontaktkoolituse leping“.",
+        "Ava „Seaded“ ja vali jaotis „Lepingud“; leia kaart „Kontaktkoolituse leping“.",
         "Kirjuta „Tekst“ ja lisa nuppudega „+ nimi“, „+ koolitus“ ja „+ hind“ kohahoidjad sinna, kus on kursor.",
         "Jäta „Pealkiri“ tühjaks ja vajuta „Avalda uus leping“.",
         "Kirjuta „Pealkiri“, vali lehe päises „Sisu keel“ juures RU ja kirjuta sama vene keeles.",
@@ -2357,7 +2497,7 @@
         "Teksti all on „Tühi rida alustab uut lõiku.“ ja kuus nuppu „+ nimi“ kuni „+ ettemaks“.",
         "Nupp lisab kohahoidja, näiteks {nimi}, täpselt kursori kohale.",
         "Tühja pealkirja korral näed välja all „Täida see väli (eesti keeles).“ ja midagi ei küsita.",
-        "Kirjutamise ajal on kaardil „Avaldamata muudatus“ ja jaotiste loendis „1 avaldamata“.",
+        "Kirjutamise ajal on kaardil „Avaldamata muudatus“ ja jaotise „Lepingud“ kõrval silt „1 avaldamata“.",
         "Enne avaldamist on kontaktkoolituse lehel veel vana tekst.",
         "„Avalda uus leping“ küsib „Kas avaldan uue kontaktkoolituse lepingu?“ ja ütleb, et uus tekst kehtib uutele registreeringutele.",
         "Pärast „Jah, avalda“ näed „Uus kontaktkoolituse leping on avaldatud.“ ja lehel on uus tekst täidetud kohahoidjatega.",
@@ -2367,7 +2507,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -2409,7 +2549,7 @@
       "title": "Seaded: lepingu ja privaatsuse tekst telefonis",
       "href": "/admin/seaded",
       "steps": [
-        "Ava telefonis „Seaded“ ja vali „Jaotised“ alt „Lepingud ja tingimused“.",
+        "Ava telefonis „Seaded“ ja vali „Jaotised“ alt „Lepingud“.",
         "Vajuta kaardil „Privaatsus“ nuppu „Muuda teksti“.",
         "Lisa teksti lõppu lause „Proov 1.“ ja vajuta „Sulge“.",
         "Ava teises vahelehes leht /privaatsus.",
@@ -2430,7 +2570,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-seaded-jarelmaks",
@@ -2523,20 +2663,21 @@
         "Vajuta menüüs järjest „Maksed ja arved“, „Õpilased“ ja „Koolitused“.",
         "Vajuta brauseri nuppu „Tagasi“ kaks korda.",
         "Ava „Õpilased“ ja vajuta mõne rea tühjale kohale.",
-        "Liiguta hiirt üle „Maksed ja arved“ loendi ridade."
+        "Liiguta hiirt üle „Maksed ja arved“ loendi ridade, siis üle „Registreerimised“ ja „Koolitused“ loendi ridade."
       ],
       "expect": [
         "Vajutatud menüürida on kohe esile tõstetud, juba enne kui uus leht on kohal.",
         "Kui leht tuleb aeglasemalt, jookseb ekraani ülaservas õhuke roosa joon; see kaob, kui leht on kohal.",
         "Pärast „Tagasi“ on menüüs esile tõstetud selle lehe rida, kuhu tagasi jõudsid: „Õpilased“, siis „Maksed ja arved“.",
         "Vajutatud rida jääb esile tõstetuks, kuni paneel avaneb.",
-        "Hiire all olev rida on esile tõstetud ka veidi enne esimest ja pärast viimast veergu; tekst ei nihku."
+        "Hiire all olev rida on esile tõstetud ka veidi enne esimest ja pärast viimast veergu; tekst ei nihku.",
+        "Ridade vahel olevad jooned on sama pikad kui roosakas taust; iga joon on ühes tükis, ilma astmeta."
       ],
       "why": "Maria näeb kohe, et vajutus läks kohale, ka siis, kui leht veel tuleb.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-11-06T09:06:42.394Z"
+      "mark": "redo",
+      "markedAt": "2026-11-11T12:14:57.301Z"
     },
     {
       "id": "haldus-menuu-grupid",
@@ -2715,13 +2856,13 @@
         "Ala päises on „… / …“ ja riba; kokku pannes kaovad ka ala märkus ja kontrollid.",
         "Avatud kontrolli sammud, „Mida näed“ ja „Miks“ on kohe näha; „Sammud ▸“ peidab need, teine vajutus avab.",
         "Väljalogituna on päises „Salvestamata — logi uuesti sisse“ ja „Läbitud“ jääb vajutatuks.",
-        "Pärast uuesti sisselogimist on vastus „Läbitud“ salvestatud ja päises on „Salvestatud …“."
+        "Pärast uuesti sisselogimist on vastus „Läbitud“ salvestatud ja päises on „Salvestatud kell …“."
       ],
       "why": "Testija peab nägema, mis on veel teha, ja väljalogituna ei tohi ükski vastus kaduda.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-30T02:29:49.820Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "testimine-tehtud-ja-tagasi",
@@ -2765,14 +2906,14 @@
         "Ava halduses „Testimine“ ja vali „Kes“ juures „Kõik“ ning „Olek“ juures „Avatud“.",
         "Leia samast alast teine avatud kontroll, mille all pole ühtegi vastuse rida ega „Varasem vastus“ rida.",
         "Kirjuta teise kontrolli märkuse kasti Proov, ühtegi nuppu vajutamata, ja klõpsa kastist välja.",
-        "Oota, kuni päises on „Salvestatud …“, ja laadi leht uuesti.",
+        "Oota, kuni päises on „Salvestatud kell …“, ja laadi leht uuesti.",
         "Kustuta teise kontrolli märkus, klõpsa kastist välja ja laadi leht uuesti.",
         "Vali „Olek“ juures „Läbitud“ ja leia kolmas kontroll: roheline „Automaattest: Läbitud“, all pole vastuse ega „Varasem vastus“ rida.",
         "Kui kolmas kontroll on olemas, kirjuta tema kasti Proov, klõpsa välja, siis kustuta märkus ja klõpsa välja.",
         "Kui kõik oli nii, nagu all kirjas, vajuta selle kontrolli juures „Läbitud“."
       ],
       "expect": [
-        "Pärast kastist välja klõpsamist on päises „Salvestatud …“ ja kontrolli ees on ikka tühi ring.",
+        "Pärast kastist välja klõpsamist on päises „Salvestatud kell …“ ja kontrolli ees on ikka tühi ring.",
         "Ükski nupp pole vajutatud ja kasti all on rida „Dim · … · Märkus“.",
         "Selle rea lõpus pole „Võta vastus tagasi“: märkuse kustutamine võtab selle ära.",
         "Pärast uuesti laadimist on märkus kastis alles ja kontroll on valiku „Avatud“ all.",
@@ -2784,7 +2925,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-30T08:09:10.347Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "testimine-automaattest-sama-seis",
@@ -2887,7 +3028,7 @@
         "Ava „Praktika“, vali arendaja tööriistades (F12) Network all „Offline“ ja kirjuta paketi MINI „Lühitekst“ lõppu Proov.",
         "Vajuta menüüs „Koolitaja“, siis brauseri nuppu Tagasi; iga küsimuse järel vajuta „Jää siia“.",
         "Vajuta ühenduseta ribal „Avalda muudatused“.",
-        "Vali Network all „No throttling“ ja oota, kuni päises on „Mustand salvestatud“.",
+        "Vali Network all „No throttling“ ja oota, kuni ribal on „Mustand salvestatud“.",
         "Kirjuta MAXI „Hind (€)“ asemele abc, vajuta ribal „Avalda muudatused“, siis klaviatuuril Enter ja kirjuta hind tagasi.",
         "Vajuta menüüs „Koolitaja“.",
         "Tee sama lehtedel „Koolitaja“ („Nimi“), „Avaleht“ (avatud slaidi „Pealkiri“), „Uudised“ (avaldatud postituse „Tekst“) ja „Hüpikaken“ („Pealkiri“).",
@@ -2896,9 +3037,9 @@
       "expect": [
         "Ühenduseta küsivad menüü ja Tagasi ülaosas: „Muudatust „MINI lühitekst“ ei saanud veel salvestada.“.",
         "„Jää siia“ jätab lehe lahti, kirjutatud tekst on alles ja kursor on väljal „Lühitekst“.",
-        "Ühenduseta „Avalda muudatused“ ei avalda midagi ja päises on näha „Salvestamata — proovin uuesti“.",
-        "Hinnaga abc ei avaldata midagi ja päises on „Salvestamata — kontrolli märgitud välja“ koos nupuga „Näita“.",
-        "Enter vajutab „Näita“: kursor on hinnaväljal; hinna tagasi kirjutamisel on päises jälle „Mustand salvestatud“.",
+        "Ühenduseta „Avalda muudatused“ ei avalda midagi ja ribal on näha „Salvestamata — proovin uuesti“.",
+        "Hinnaga abc ei avaldata midagi ja ribal on „Salvestamata — kontrolli märgitud välja“ koos nupuga „Näita“.",
+        "Enter vajutab „Näita“: kursor on hinnaväljal; hinna tagasi kirjutamisel on ribal jälle „Mustand salvestatud“.",
         "Ühendusega viib menüü järgmisele lehele ilma küsimuseta.",
         "Koolitajal, Avalehel, Uudistes ja Hüpikaknas küsib leht samamoodi ja „Jää siia“ viib kursori väljale, mida küsimus nimetab.",
         "Pärast loobumist on väljad endised ja riba on kadunud."
@@ -2907,7 +3048,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "2026-10-27T18:11:44.836Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -2961,13 +3102,14 @@
         "Loend muutub kirjutamise ajal, nuppu vajutamata, ja aadressis on „otsi=“.",
         "Otsing „zzz“ ütleb, et selle järgi registreerimisi ei leitud, ja pakub nuppu „Tühjenda otsing ja filtrid“.",
         "Valitud kuupäev jätab loendisse ainult selle toimumise registreeringud ja nuppude arvud muutuvad kaasa.",
-        "Paneeli sulgemisel jäävad loendisse sama otsing ja sama valik."
+        "Paneeli sulgemisel jäävad loendisse sama otsing ja sama valik.",
+        "Nupuridade ees on „Olek:“ ja „Õppevorm:“; valitud nupp on mõlemas reas sama musta täitega."
       ],
       "why": "Maria leiab inimese üles ka siis, kui mäletab vaid osa nimest või telefoni.",
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-loend-tahvel",
@@ -3015,13 +3157,14 @@
         "Iga rida avab oma loendi: ettemaksu ootajad, Hindamine, Päringud, Arved, arvustused „Ootab kinnitust“ ja Maksed „Ootel kontrollil“.",
         "Rea „Päringut tegemata“ arv sisaldab ka „Muutmine“ päringuid, nagu menüü märk.",
         "Tühja järjekorra asemel on „Järjekord on tühi.“ ja „Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.“.",
-        "Hiire all olev rida on esile tõstetud ümarate nurkadega ja esiletõst algab veidi enne numbrit, mitte numbri servast."
+        "Hiire all olev rida on esile tõstetud ümarate nurkadega ja esiletõst algab veidi enne numbrit, mitte numbri servast.",
+        "Kaart on kõrvalkaardiga ülaservast joondatud ja nii kõrge, kui selle read vajavad."
       ],
       "why": "Maria näeb ühest kohast, mis ootab teda, ja jõuab sinna ühe vajutusega.",
       "risk": "low",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-11-06T07:47:30.496Z"
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "haldus-kommentaar-nupp",
@@ -3662,19 +3805,22 @@
       "href": "/koolituskalender",
       "steps": [
         "Ava avalikus koolituskalendris Proov 1 kuupäeva rida.",
-        "Ava halduses „Kalender“ ja sama kuupäeva rida."
+        "Ava halduses „Kalender“ ja sama kuupäeva rida.",
+        "Ava halduses „Ülevaade“ ja vaata kaarti „Tulevased koolitused“."
       ],
       "expect": [
-        "Halduse real on Proov 1 arvestatud kinnitatute hulka, näiteks „1 / 4“ arvutis ja „1/4“ telefonis.",
-        "Avalikus kalendris on vabu kohti sama palju või vähem kui halduse real: teine arv miinus esimene.",
-        "Vähem on siis, kui tasumata registreering hoiab kohta kinni (30 minutit, järelmaksul 60).",
+        "Halduse real on veerus „Kohad“ näiteks „3 vaba 4-st“: Proov 1 võttis ühe koha.",
+        "Avalikus kalendris on vabu kohti sama palju kui halduse real.",
+        "Tasumata registreering hoiab kohta kinni 30 minutit, järelmaksul 60; see koht pole vaba kummalgi lehel.",
+        "Ülevaate veerus „Kohad“ on sama „… vaba …-st“; täis toimumisel on helehall „Täis“.",
+        "Kohtade all on ploomikarva riba võetud kohtadest; täis toimumisel on riba terve, sama värvi.",
         "Kui number pole veel muutunud, on see õige 5 minuti pärast."
       ],
       "why": "Täis kuupäevale ei tohi rohkem registreerida.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "mark": "redo",
+      "markedAt": "2026-11-11T20:51:50.371Z"
     },
     {
       "id": "registreerimine-ulejaanud",
@@ -4545,6 +4691,29 @@
       "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
+      "id": "haldus-maksed-tuhi",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Maksed: tühi loend",
+      "href": "/admin/maksed",
+      "steps": [
+        "Tee see kontroll ainult siis, kui veebimakseid veel pole; muidu jäta vahele.",
+        "Ava „Maksed ja arved“ ja loe lehe sissejuhatust.",
+        "Vaata otsinguvälja alla."
+      ],
+      "expect": [
+        "Sissejuhatus lõpeb lausega „…pangaülekanded märgid registreerimise juures.“.",
+        "Filtrinuppe „Kõik 0“, „Makstud 0“ jne pole.",
+        "Loendi kohal on „Makseid veel pole.“."
+      ],
+      "why": "Tühi leht ei näita kuut nulli ega viita varasemale.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-11-11T19:04:44.922Z"
+    },
+    {
       "id": "konto-sisene-arvutis",
       "area": "konto",
       "who": "maria",
@@ -4587,6 +4756,7 @@
         "Ava uuesti lehe menüü ☰."
       ],
       "expect": [
+        "Pealkirja „Logi sisse“ all on rida „Õpilase konto: saadame su e-postile ühekordse koodi. …“.",
         "Pärast „Saada kood“ näed „Saatsime 6-kohalise koodi aadressile …“.",
         "Kiri „… — MS LAB sisselogimiskood“ tuleb mõne minuti jooksul.",
         "Pärast sisselogimist näed „Tere, Proov!“ ja oma registreeringut.",
@@ -4594,7 +4764,9 @@
       ],
       "why": "Kood on õpilase peamine viis kontole pääseda.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "konto-link",
@@ -5804,13 +5976,13 @@
         "Ava „Õpilased“ ja vajuta „Lisa õpilane +“.",
         "Kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov5.",
         "Vajuta „Lisa õpilane“.",
-        "Ava paneelis voldirida „Ava ligipääs e-koolitusele“ ja vali testiks valmistatud e-koolitus.",
+        "Vajuta paneelis ploki „Koolitused“ lõpus nuppu „Ava e-koolitus…“ ja vali testiks valmistatud e-koolitus.",
         "Vaata üle „Ligipääs kuni“ ja vajuta „Ava ligipääs“.",
         "Logi teises seadmes sisse kui Proov 5."
       ],
       "expect": [
         "Pärast „Lisa õpilane“ avaneb uue õpilase paneel.",
-        "Voldirea selgituses on „vali koolitus“ ja valikus „… · mustand“ või „… · avatud kuni …“.",
+        "„Ava e-koolitus…“ on selge nupp ja valikus on „… · mustand“ või „… · avatud kuni …“.",
         "Pärast avamist näed „Ligipääs on avatud.“.",
         "Kaardil „Koolitused“ all on „Avatud kuni …“ ja „Avas …“.",
         "Proov 5 „Minu koolitused“ all on see e-koolitus nupuga „Ava koolitus“."
@@ -5819,7 +5991,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "ekursus-ligipaas-pikenda",
@@ -5860,19 +6032,19 @@
         "Ava telefonis „Õpilased“ ja vajuta nimele Proov 1.",
         "Vaata e-koolituse ja registreeringu kaarte.",
         "Vajuta e-koolituse kaardil „Pikenda ▾“ ja siis „Veel ▾“.",
-        "Keri paneeli lõpuni ja ava voldirida „Ava ligipääs e-koolitusele“."
+        "Vajuta ploki „Koolitused“ lõpus „Ava e-koolitus…“ ja keri paneeli lõpuni."
       ],
       "expect": [
         "Kaardil pole olekusilti: olek on kaardi ülemisel real, nt „E-ÕPE · AVATUD KUNI …“.",
         "Registreeringu kaardil on kõrvuti nupud „Registreering“ ja „Protokoll“ või „Lisa protokoll“.",
         "Mõlemad menüüd avanevad ekraani sees ja leht ei kerigi küljele.",
-        "Voldiread on täislaiuses ja ligipääsu vorm mahub ekraanile."
+        "Ligipääsu vorm mahub ekraanile ja voldiread on täislaiuses."
       ],
       "why": "Telefonis ei tohi paneeli osad ekraanilt välja minna.",
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "ekursus-tingimused-leping",
@@ -5948,14 +6120,14 @@
       "expect": [
         "Enne on küsimus „Kas lõpetan ligipääsu koolitusele „…“?“ ja rida „Õpilane ei saa seda enam avada.“.",
         "Kaardil on nüüd „Ligipääs lõpetatud …“; „Pikenda ▾“ ja „Veel ▾“ kaovad.",
-        "Uuesti avamiseks on voldirida „Ava ligipääs e-koolitusele“.",
+        "Uuesti avamiseks on ploki „Koolitused“ lõpus nupp „Ava e-koolitus…“.",
         "Proov 5 kaardil on „Ligipääs on lõppenud.“ ja nuppu „Ava koolitus“ pole."
       ],
       "why": "Lõpetatud ligipääsuga ei saa koolitust enam avada.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
       "id": "kontakt-protokoll",

@@ -115,7 +115,8 @@ describe("paymentsAttention", () => {
 });
 
 describe("ownFaults", () => {
-  const [first, second, third] = testPlan.items.map((i) => i.id);
+  // checks without a redo/new mark: a mark newer than the answers below (21.10) reopens a Viga, and the plan's first checks do get marked
+  const [first, second, third] = testPlan.items.filter((i) => !i.mark).map((i) => i.id);
   const answer = (status: "ok" | "bad" | "skip", by: string) => ({ status, note: "", at: "2026-10-21T08:00:00.000Z", by });
   const save = (answers: Record<string, ReturnType<typeof answer>>) => setSetting(db, "testplan_answers", { v: 1, answers });
 

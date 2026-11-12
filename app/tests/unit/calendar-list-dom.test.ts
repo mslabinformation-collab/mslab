@@ -209,4 +209,16 @@ describe("the calendar's area chips (course areas §5.1)", () => {
     expect(area).toMatch(/overflow-wrap:\s*anywhere/);
     expect(css.match(/\n\.chip\s*\{([^}]*)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
   });
+
+  // UX pass 11.11 P17 (the Vaiksed board): „Liitu ootenimekirjaga“ was wider than „Registreeru“, so the buttons' right edge was ragged. The action
+  // column has one width from 600 px up (216 px: the Russian „Встать в лист ожидания“ fits), and every button fills it
+  test("the stylesheet: one action column of 216 px on two lines and on one line; its buttons fill it", () => {
+    const css = readFileSync("src/components/site/Calendar.module.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const at = (query: string) => css.slice(css.indexOf(query));
+    expect(at("@container (min-width: 600px)").match(/\.row\s*\{([^}]*)\}/)?.[1]).toMatch(/grid-template-columns:\s*96px minmax\(0, 1fr\) 216px;/);
+    expect(at("@container (min-width: 1000px)").match(/\.row\s*\{([^}]*)\}/)?.[1]).toMatch(/grid-template-columns:\s*100px minmax\(0, 1fr\) 190px 180px 216px;/);
+    const button = at("@container (min-width: 600px)").match(/\.action > \*\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(button).toMatch(/width:\s*100%/);
+    expect(button).not.toMatch(/min-width:\s*168px/);
+  });
 });

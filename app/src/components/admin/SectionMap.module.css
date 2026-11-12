@@ -67,8 +67,12 @@
   color: var(--warn);
 }
 
-/* „1 avaldamata“ (Seaded's legal texts waiting for their publish), in the same #6b4f5c */
+/* „1 avaldamata“ (Seaded's legal texts waiting for their publish), in the same #6b4f5c: a small tag of its own (UX pass A19, the Vaiksed board) */
 .status [data-unpublished] {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
   color: var(--warn);
 }
 

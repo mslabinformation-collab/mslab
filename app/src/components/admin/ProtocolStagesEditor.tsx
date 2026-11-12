@@ -67,7 +67,8 @@ export function ProtocolStagesEditor({
         add: t.fields.certificateSkillsAdd,
         full: t.fields.certificateSkillsFull,
         hint: t.fields.certificateSkillsHint,
-        empty: t.fields.certificateSkillsEmpty,
+        // the hint already says what none does (UX pass 11.11 A9: one hint)
+        empty: undefined,
       }
     : {
         title: t.sections.protocolStages,
@@ -137,7 +138,9 @@ export function ProtocolStagesEditor({
       tabIndex={error ? -1 : undefined}
     >
       <div className={styles.listHead}>
-        <h3 id={`${uid}-title`} className={ui.h3}>
+        {/* the protocol points are a card of their own: the cards' title size (UX pass 11.11 A3); the skills are the last field of „Tunnistus“,
+            titled as its fields are (A9) */}
+        <h3 id={`${uid}-title`} className={skills ? ui.legend : ui.h2}>
           {words.title}
           {unpublished && (
             <>
@@ -156,7 +159,7 @@ export function ProtocolStagesEditor({
         </p>
       )}
       {items.length === 0 ? (
-        <p className={`${ui.muted} ${ui.small}`}>{empty ?? words.empty}</p>
+        (empty ?? words.empty) && <p className={`${ui.muted} ${ui.small}`}>{empty ?? words.empty}</p>
       ) : (
         <DragList
           items={items.map((item, i) => ({ item, key: keys[i] }))}
@@ -212,7 +215,7 @@ export function ProtocolStagesEditor({
         onClick={add}
         {...(skills ? { "data-add-skill": "" } : { "data-add-stage": "" })}
       >
-        + {words.add}
+        {words.add} +
       </button>
       {full && <p className={ui.hint}>{words.full}</p>}
     </div>

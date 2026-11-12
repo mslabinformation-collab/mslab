@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 import type { SeatState } from "@/domain/sessions";
+import { keepNameTogether } from "@/domain/title-breaks";
 import type { Locale } from "@/i18n/locales";
 import { Icon } from "./Icon";
 import { WaitlistForm, type WaitlistTexts } from "./WaitlistForm";
@@ -60,7 +61,7 @@ export function CalendarRow({ row, locale, t }: { row: CalendarRowData; locale: 
 
       <div className={styles.main}>
         <h2 className={styles.name} data-course-name="">
-          <Link href={row.courseHref}>{row.title}</Link>
+          <Link href={row.courseHref}>{keepNameTogether(row.title)}</Link>
         </h2>
         <p className={styles.place}>
           <Icon name="pin" size={16} className={styles.pin} />
@@ -85,7 +86,7 @@ export function CalendarRow({ row, locale, t }: { row: CalendarRowData; locale: 
         </p>
       </div>
 
-      <div className={styles.action}>
+      <div className={styles.action} data-calendar-action="">
         {bookable ? (
           <Link className={ui.btn} href={row.registerHref}>
             {t.register}

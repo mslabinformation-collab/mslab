@@ -389,11 +389,12 @@ describe("the overview page", () => {
       expect(html).not.toContain("Kuressaare");
       const link = (id: number) => new RegExp(`<a [^>]*data-upcoming-session="${id}"[^>]*>(.*?)</a>`).exec(html)!;
       expect(link(full.id)[0]).toContain(`href="/admin/kalender?id=${full.id}"`);
-      expect(text(link(full.id)[1])).toBe("28.10 Kulmumeistri baaskoolitus Tartu Vabu kohti 0 / 2");
+      // the seats in Kalender's wording (UX pass 11.11 A2): „Täis“, or the free seats of the capacity
+      expect(text(link(full.id)[1])).toBe("28.10 Kulmumeistri baaskoolitus Tartu Kohad Täis");
       expect(link(full.id)[0]).toContain('data-seats-left="0"');
-      expect(text(link(today.id)[1])).toBe("21.10 Kulmumeistri baaskoolitus Pärnu Vabu kohti 4 / 4");
+      expect(text(link(today.id)[1])).toBe("21.10 Kulmumeistri baaskoolitus Pärnu Kohad 4 vaba 4-st");
       expect(link(today.id)[0]).toContain('data-seats-left="4"');
-      expect(text(html)).toContain("Kuupäev Koolitus ja linn Vabu kohti");
+      expect(text(html)).toContain("Kuupäev Koolitus ja linn Kohad");
       expect(html).toMatch(/<a [^>]*href="\/admin\/kalender"[^>]*>Kalender →<\/a>/);
     });
 

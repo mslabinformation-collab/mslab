@@ -80,7 +80,7 @@ describe("GET /api/admin/margid", () => {
     // a review waiting for „Avalda“
     await db.insert(reviews).values({ courseId: fixture.course.id, kind: "manual", text: "Super", name: "Kati", locale: "et", writtenAt: new Date("2026-10-01T09:00:00Z"), status: "pending" });
     // two „Viga“ answers of the signed-in admin and one of another
-    const [one, two, three] = testPlan.items.map((i) => i.id);
+    const [one, two, three] = testPlan.items.filter((i) => !i.mark).map((i) => i.id); // unmarked: a newer redo/new mark would reopen these 21.10 answers
     const bad = (by: string) => ({ status: "bad", note: "", at: "2026-10-21T08:00:00.000Z", by });
     await setSetting(db, "testplan_answers", { v: 1, answers: { [one]: bad(ME), [two]: bad(ME), [three]: bad("dim@example.test") } });
 
@@ -115,7 +115,7 @@ describe("GET /api/admin/margid", () => {
 
   test("the answer is the signed-in admin's own: another admin does not see Maria's „Viga“ answers", async () => {
     vi.stubEnv("ADMIN_EMAILS", `${ME},dim@example.test`);
-    const [one] = testPlan.items.map((i) => i.id);
+    const [one] = testPlan.items.filter((i) => !i.mark).map((i) => i.id); // unmarked, as above
     await setSetting(db, "testplan_answers", { v: 1, answers: { [one]: { status: "bad", note: "", at: "2026-10-21T08:00:00.000Z", by: ME } } });
     state.cookie = await createSession(db, "dim@example.test");
     expect(((await (await get()).json()) as { badges: Record<string, unknown> }).badges.testing).toBeUndefined();

@@ -131,23 +131,27 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
             )}
           </ul>
         )}
+        {/* UX pass A16 (the Vaiksed board): the access form behind a clear button „Ava e-koolitus…“ at the end of the block (it looked like the info
+            rows of the folds below); a native disclosure, so it opens with no script */}
+        <details className={styles.grant} data-grant-open="">
+          <summary className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.grantButton}`}>{g.open}</summary>
+          <div className={styles.grantBody}>
+            {first ? (
+              <GrantAccessForm
+                clientId={c.id}
+                courses={ecourses.map((e) => ({ id: e.id, label: courseLabel(e), until: e.until, defaulted: !e.accessMonths }))}
+                initialCourseId={first.id}
+                today={tallinnToday(now)}
+                t={{ ...g, untilHintDefault: fill(g.untilHintDefault, { n: DEFAULT_ACCESS_MONTHS }), saving: adminEt.common.saving, error: adminEt.common.saveError }}
+              />
+            ) : (
+              <p className={ui.notice}>{g.noCourses}</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <div className={styles.folds}>
-        {/* the existing form, in a row of its own (README A5): "Ava ligipääs e-koolitusele", "vali koolitus" */}
-        <FoldRow title={g.fold} summary={first ? g.foldSummary : ""}>
-          {first ? (
-            <GrantAccessForm
-              clientId={c.id}
-              courses={ecourses.map((e) => ({ id: e.id, label: courseLabel(e), until: e.until, defaulted: !e.accessMonths }))}
-              initialCourseId={first.id}
-              today={tallinnToday(now)}
-              t={{ ...g, untilHintDefault: fill(g.untilHintDefault, { n: DEFAULT_ACCESS_MONTHS }), saving: adminEt.common.saving, error: adminEt.common.saveError }}
-            />
-          ) : (
-            <p className={ui.notice}>{g.noCourses}</p>
-          )}
-        </FoldRow>
 
         {/* her online payments (phase 2b), newest first: how many, and the sum paid */}
         <FoldRow title={adminEt.payments.title} summary={detail.payments.length === 0 ? "0" : [detail.payments.length, formatEUR(paid, "et")].join(" · ")}>
