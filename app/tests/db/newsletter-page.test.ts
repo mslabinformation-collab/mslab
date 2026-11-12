@@ -362,7 +362,9 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
     await sub("naidis@example.test");
     const html = await render(search);
     expect(html).toMatch(/data-send-all="">Saada kõigile \(3\)</);
-    expect(text(html)).toContain("2 eesti, 1 vene keeles · näidisaadressidele ei saadeta");
+    // (the count is the button's alone, UX audit 2 A31; the hint says the sample part)
+    expect(text(html)).toContain("Näidisaadressidele ei saadeta.");
+    expect(text(html)).not.toContain("2 eesti, 1 vene keeles");
   });
 
   // The coming-soon gate (final review I1): the page reads SITE_GATE the way the middleware does (lib/site-gate.ts gateOn) and hands the editor the flag, so the

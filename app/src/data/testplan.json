@@ -669,7 +669,7 @@
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
         "Ava „Kirjad“ all Proov 3 kiri.",
-        "Vali kaardil „Saatmine“ Maria aadress „… · eesti keeles“ ja vajuta „Saada proov“.",
+        "Vali kaardil „Saatmine“ välja „Proovi aadress ja keel“ alt Maria aadress „… · eesti keeles“ ja vajuta „Saada proov“.",
         "Vali oma aadress „… · vene keeles“, muuda „Eelvaate rida“ ja vajuta kohe „Saada proov“.",
         "Ava oma postkastis venekeelne proov ja vajuta selle lõpus „Отписаться от рассылки“.",
         "Ava Proov 3 kiri kahes vahekaardis ja kirjuta teises „Eelvaate rida“: Proov 3 teine vahekaart.",
@@ -690,7 +690,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -735,6 +735,7 @@
         "Ava Proov 3 postkastis saadud kiri ja vaata selle originaali: kirja menüüst leiad kirja päised."
       ],
       "expect": [
+        "Nupu all pole arve keelte kaupa; näidisaadresside korral on seal ainult „Näidisaadressidele ei saadeta.“.",
         "Küsimus on „Kas saadan kirja „Proov 3 kiri“?“, arv on sama mis nupul ja @example.test aadresse ei loeta.",
         "Kuni sait on suletud, on küsimuse all rida „Koduleht pole veel avatud — kirja lingid ja nupp viivad „Tulekul“ lehele.“.",
         "Esimene partii läheb kohe välja ja Proov 3 postkasti tuleb tavaline kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
@@ -747,7 +748,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",

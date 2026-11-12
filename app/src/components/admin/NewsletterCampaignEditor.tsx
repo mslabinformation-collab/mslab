@@ -621,16 +621,11 @@ function panelLines(plan: Plan): string[] {
   return [counts, ...(plan.samples > 0 ? [a.samples] : []), ...(n > CAMPAIGN_DAILY_ROOM ? [a.room] : []), a.final];
 }
 
-/** The hint under the buttons (drawn): „3 eesti, 1 vene keeles · näidisaadressidele ei saadeta“, a zero part and the sample part left out when empty. */
-function hintOf(a: Audience): string {
-  const h = t.all.hint;
-  const counts = a.et > 0 && a.ru > 0 ? fill(h.both, { a: a.et, b: a.ru }) : a.ru === 0 ? fill(h.et, { a: a.et }) : fill(h.ru, { b: a.ru });
-  return [counts, ...(a.samples > 0 ? [h.samples] : [])].join(" · ");
-}
-
 /**
- * The sends (README B5, the Part 3 frame): the select „{address} · {eesti|vene keeles}“ (Maria's address or the signed-in admin's, each in both languages),
- * „Saada proov“, „Saada kõigile ({n})“ (n: `audience`, the page's read, B9; at 0 the existing „Kinnitatud tellijaid pole …“ in its place), and the hint.
+ * The sends (README B5, the Part 3 frame): the select „{address} · {eesti|vene keeles}“ (Maria's address or the signed-in admin's, each in both languages)
+ * under its label „Proovi aadress ja keel“, „Saada proov“, „Saada kõigile ({n})“ (n: `audience`, the page's read, B9; at 0 the existing „Kinnitatud
+ * tellijaid pole …“ in its place), and under them „Näidisaadressidele ei saadeta.“ when a sample address is among the confirmed. The count is the
+ * button's alone; the panel splits it by language (UX audit 2 A31: the select had no label, the hint said the count again).
  * Both sends flush the editor first (`flush`): what goes out is the stored letter, so it must be the screen's; then the sends' rules (`sendable`, the
  * server's too). While the text cannot be saved (`blocked`: the reason) the two buttons give way to S3-P3-l. `gated`: the gate is on (the notice under
  * the panel and the test's result); the section says so in `data-gated`. On a phone the two buttons stand at the foot of the screen (the stylesheet).
@@ -777,8 +772,8 @@ function Sends({
         {t.send}
       </h2>
       {testTargets.length > 0 && (
-        <div className={styles.target}>
-          <label className={ui.sr} htmlFor={`${uid}-target`}>
+        <div className={`${ui.field} ${styles.target}`}>
+          <label htmlFor={`${uid}-target`}>
             {t.test.to}
           </label>
           <select id={`${uid}-target`} className={styles.select} value={choice} onChange={(e) => setChoice(e.target.value)} data-test-target="">
@@ -850,9 +845,9 @@ function Sends({
           {line.text}
         </p>
       </div>
-      {n > 0 && (
-        <p className={`${ui.small} ${ui.muted} ${styles.hint}`} data-send-hint="">
-          {hintOf(audience)}
+      {n > 0 && audience.samples > 0 && (
+        <p className={`${ui.hint} ${styles.hint}`} data-send-hint="">
+          {t.all.samplesHint}
         </p>
       )}
     </section>

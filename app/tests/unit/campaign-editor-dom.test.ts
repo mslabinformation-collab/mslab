@@ -4,6 +4,7 @@ import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { DEBOUNCE_MS } from "@/components/admin/autosave/constants";
+import ui from "@/components/admin/ui.module.css";
 import { CAMPAIGN_LIMITS } from "@/domain/newsletter-campaign";
 
 // Maria's letter editor on the „Kirjad“ tab (newsletter campaigns, Task 4; spec D4, D5; the 20.10 design §3; admin UX pass piece 3b, Task 6: README B5,
@@ -442,18 +443,33 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     // the phone's button carries the choice (Part 4): „Saada proov · maria@… · ET“
     expect(words($("[data-test-send] [data-label-phone]"))).toBe("Saada proov · maria@… · ET");
     expect(text("[data-send-all]")).toBe("Saada kõigile (3)");
-    expect(text("[data-send-hint]")).toBe("2 eesti, 1 vene keeles · näidisaadressidele ei saadeta");
+    // UX audit 2 A31: the count is in the button only; the hint keeps the sample part
+    expect(text("[data-send-hint]")).toBe("Näidisaadressidele ei saadeta.");
     for (const hook of ["data-test-to", "data-test-locale", "data-campaign-save-first", "data-mark-not-sent", "data-send-missing", "data-campaign-stop"]) expect($(`[${hook}]`), hook).toBeNull();
-    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "Sünkrooni", "Kellele"]) expect(words(container).includes(gone) && gone !== "Kellele", gone).toBe(false);
+    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "Sünkrooni", "Kellele"]) expect(words(container).includes(gone), gone).toBe(false);
     expect($("[data-send-confirm]")).toBeNull();
   });
 
-  test("the hint without its zero part, and without the sample part when no sample is among the confirmed; n = 0 replaces the button with the existing words", async () => {
+  // UX audit 2 A31: the select stood unlabelled next to „Saada kõigile“; its label is visible and says it is the test's, over the select, and the
+  // card's order is the select, „Saada proov“, „Saada kõigile ({n})“
+  test("the select has a visible label „Proovi aadress ja keel“ over it; „Saada proov“ is the first button", async () => {
+    await show(DRAFT);
+    const select = $<HTMLSelectElement>("[data-test-target]")!;
+    const label = container.querySelector<HTMLLabelElement>(`label[for="${select.id}"]`)!;
+    expect(words(label)).toBe("Proovi aadress ja keel");
+    expect(label.classList.contains(ui.sr)).toBe(false);
+    expect(label.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const buttons = [...$("[data-campaign-send]")!.querySelectorAll("button")];
+    expect(buttons.map((b) => b.hasAttribute("data-test-send") ? "test" : b.hasAttribute("data-send-all") ? "all" : "?")).toEqual(["test", "all"]);
+  });
+
+  test("no hint when no sample is among the confirmed (the count is the button's); n = 0 replaces the button with the existing words", async () => {
     await show(DRAFT, { audience: { et: 4, ru: 0, samples: 0 } });
     expect(text("[data-send-all]")).toBe("Saada kõigile (4)");
-    expect(text("[data-send-hint]")).toBe("4 eesti keeles");
+    expect($("[data-send-hint]")).toBeNull();
     await show({ ...DRAFT, id: 8 }, { audience: { et: 0, ru: 2, samples: 3 } });
-    expect(text("[data-send-hint]")).toBe("2 vene keeles · näidisaadressidele ei saadeta");
+    expect(text("[data-send-all]")).toBe("Saada kõigile (2)");
+    expect(text("[data-send-hint]")).toBe("Näidisaadressidele ei saadeta.");
     await show({ ...DRAFT, id: 9 }, { audience: { et: 0, ru: 0, samples: 2 } });
     expect($("[data-send-all]")).toBeNull();
     expect(text("[data-send-empty]")).toBe("Kinnitatud tellijaid pole: kirja pole kellelegi saata.");

@@ -503,7 +503,8 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       await page.reload();
       await adminReady(page);
       await expect(page.locator("[data-send-all]")).toHaveText("Saada kõigile (3)");
-      await expect(page.locator("[data-send-hint]")).toHaveText(/^2 eesti, 1 vene keeles( · näidisaadressidele ei saadeta)?$/);
+      // (the count is the button's alone, UX audit 2 A31: the hint is only „Näidisaadressidele ei saadeta.“, when a sample is confirmed)
+      await expect(page.locator("[data-send-hint]", { hasText: "eesti" })).toHaveCount(0);
       await editLang(page, "et");
       await page.locator('[data-campaign-form] [data-i18n="preheader"]').fill(`E2E viimane rida ${tag}`);
       await page.locator("[data-send-all]").click();

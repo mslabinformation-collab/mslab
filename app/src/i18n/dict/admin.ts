@@ -2349,8 +2349,9 @@ export const adminEt = {
       // S3-P3-l: what stands in the two buttons' place while the letter's text cannot be saved (with the leave guard's reason, adminEt.leave.reasons)
       blocked: "Saatmiseks peab kiri olema salvestatud.",
       test: {
-        // the select's name (for a screen reader: the design draws the select without a label)
-        to: "Kellele",
+        // the select's label over it: the address and the language of „Saada proov“, not of „Saada kõigile“
+        // (Draft, UX audit 2 A31)
+        to: "Proovi aadress ja keel",
         // the select's line: „maria@example.test · eesti keeles“ (README B5)
         option: "{email} · {lang}",
         optionLang: { et: "eesti keeles", ru: "vene keeles" },
@@ -2374,8 +2375,10 @@ export const adminEt = {
         room: "Päevas läheb välja nii palju kirju, kui mahub; ülejäänud lähevad järgmisel päeval.",
         final: "Saadetud kirja ei saa tagasi võtta ega muuta.",
         yes: "Jah, saada {n} tellijale",
-        // the hint under the buttons (drawn: „3 eesti, 1 vene keeles · näidisaadressidele ei saadeta“): a zero part and the sample part left out when empty
-        hint: { both: "{a} eesti, {b} vene keeles", et: "{a} eesti keeles", ru: "{b} vene keeles", samples: "näidisaadressidele ei saadeta" },
+        // the hint under the buttons, only when a sample address is among the confirmed (the count is the button's alone; it was „3 eesti, 1 vene
+        // keeles · näidisaadressidele ei saadeta“)
+        // (Draft, UX audit 2 A31)
+        samplesHint: "Näidisaadressidele ei saadeta.",
         fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
         working: "Saadan…",
         done: "Kiri on saadetud.",
