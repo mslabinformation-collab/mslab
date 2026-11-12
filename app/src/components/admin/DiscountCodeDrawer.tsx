@@ -423,6 +423,15 @@ export function DiscountCodeDrawer(p: DrawerProps) {
   /** The form's fields and its `adopt` as of the newest render, for the save (which runs after renders; the engine is made after it). */
   const latest = useRef<CodeFields>(stored);
   const adopt = useRef<(name: string, value: unknown) => boolean>(() => false);
+  /** The adoptions waiting for the engine to take a save's answer (below): cleared when the drawer goes (P27). */
+  const adoptions = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const waiting = adoptions.current;
+    return () => {
+      for (const timer of waiting) clearTimeout(timer);
+      waiting.clear();
+    };
+  }, []);
   const save = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/sooduskood/${p.id}`);
     return async (body, opts) => {
@@ -432,9 +441,11 @@ export function DiscountCodeDrawer(p: DrawerProps) {
       const v = versions.current;
       const version = v.same.has(body.version) ? v.known : body.version;
       // I-1: a kind goes with its value, always (the engine may think the value confirmed while the server cleared it when the kind last changed: the server
-      // checks the stored row merged with the patch, and a kind alone would meet the empty value)
+      // checks the stored row merged with the patch, and a kind alone would meet the empty value). The value the engine sent with it first (P27: a text typed
+      // while this save waited for the switch is the engine's next save, not this one's), else the field as it is now.
       const kind = body.patch.kind;
-      const patch: Fields = kind === "percent" || kind === "euro" ? { ...body.patch, [kind === "percent" ? "percent" : "amount"]: latest.current[kind === "percent" ? "percent" : "amount"] } : body.patch;
+      const valueField = kind === "percent" ? "percent" : kind === "euro" ? "amount" : null;
+      const patch: Fields = valueField ? { ...body.patch, [valueField]: body.patch[valueField] ?? latest.current[valueField] } : body.patch;
       const answer = await base({ ...body, patch, version }, opts);
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 200 && reply?.ok === true && typeof reply.version === "string") {
@@ -448,7 +459,13 @@ export function DiscountCodeDrawer(p: DrawerProps) {
           if (norm !== value) taken.push([name, norm]);
         }
         // (after the engine has taken this answer: a field it has just sent is not yet its confirmed text before that)
-        if (taken.length > 0) setTimeout(() => taken.forEach(([name, value]) => adopt.current(name, value)), 0);
+        if (taken.length > 0) {
+          const timer = setTimeout(() => {
+            adoptions.current.delete(timer);
+            taken.forEach(([name, value]) => adopt.current(name, value));
+          }, 0);
+          adoptions.current.add(timer);
+        }
         setRefused({});
         setSwitchConflict(false);
         if (reply.version !== version) startTransition(() => nav.current.refresh());

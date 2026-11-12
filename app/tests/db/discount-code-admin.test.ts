@@ -2,9 +2,11 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseAccess, courses, discountCodeCourses, discountCodes, discountRedemptions, type Course, type CourseSession, type DiscountCode } from "@/db/schema";
+import { tallinnToday } from "@/domain/client-access";
 import { discountGiven, emptyCodeFields, type CodeFields } from "@/domain/discount-code-fields";
+import { personRefusal } from "@/domain/discount-codes";
 import { createSession as signInSession } from "@/server/auth";
-import { insertRedemption } from "@/server/discount-codes";
+import { findCode, insertRedemption, personFacts, ruleOf } from "@/server/discount-codes";
 import { clientWithAccess, contactCourse, ecourseCourse, ecoursePayment, registrationOn } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -198,6 +200,22 @@ describe("T13-3: the welcome row's text stays changeable", () => {
     // a text another code has is still refused
     const other = await make({ code: "MUU10" });
     expect(await write(welcome.id, { code: "muu10" })).toEqual({ ok: false, error: "invalid", fields: { code: `codeTaken:${other.id}` } });
+  });
+
+  test("P27: a renamed used welcome code still counts her use: the new text is the same code, once per person", async () => {
+    const welcome = await make({ code: "TERE10" }, { welcome: true });
+    const booked = await bookedUse(welcome.id);
+    expect((await write(welcome.id, { code: "uus 15" })).ok).toBe(true);
+    const found = (await findCode(db, "uus15"))!;
+    expect(found.id).toBe(welcome.id);
+    expect(found.oncePerPerson).toBe(true);
+    const at = { subscribing: false, today: tallinnToday(NOW) };
+    // her use of the old text is a use of the renamed one (the uses hang on the row, not the text)
+    const hers = await personFacts(db, booked.email, { codeId: found.id, courseId: ecourse.id }, NOW);
+    expect(hers.uses).toBe(1);
+    expect(personRefusal(ruleOf(found), hers, at)).toBe("used");
+    // someone else's facts have none
+    expect((await personFacts(db, "muu@example.test", { codeId: found.id, courseId: ecourse.id }, NOW)).uses).toBe(0);
   });
 });
 

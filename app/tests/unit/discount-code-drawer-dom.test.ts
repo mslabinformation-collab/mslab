@@ -564,6 +564,20 @@ describe("fix round 1", () => {
     expect(field("code").value).toBe("SUVI10");
   });
 
+  it("P27: a kind goes with the value the engine sent with it, not one typed while the save waited for the switch", async () => {
+    let answer!: (r: unknown) => void;
+    actions.setCodeActiveAction.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await show();
+    await click(sw()); // (the switch's action on its way: a field save waits for it)
+    await click(radio("kind", "euro"));
+    await type(field("amount"), "25");
+    await leave(field("amount"));
+    await type(field("amount"), "30"); // (typed meanwhile; its own save comes after its pause)
+    await act(async () => answer({ ok: true, version: "k:v2" }));
+    await settle();
+    expect(fetched.calls[0].body).toMatchObject({ patch: { kind: "euro", amount: "25" } });
+  });
+
   it("M-7a: choosing a kind empties a field that held a typed, unsaved value", async () => {
     await show();
     await click(radio("kind", "euro"));
