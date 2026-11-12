@@ -123,15 +123,6 @@ p.notice {
   font: 600 12px/1.3 var(--font-body);
 }
 
-.fixed {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--paper, #f6f4f5);
-  color: #5e5359;
-  font-size: 13px;
-}
-
 .takenLink {
   display: inline-flex;
   align-items: center;

@@ -192,6 +192,8 @@ function CodeFieldList({ view }: { view: FieldView }) {
     </div>
   );
   const valueField: CodeField = f.kind === "percent" ? "percent" : "amount";
+  // the value's hint: Eurod's 1 € line, and the line of a used code's changed value; none, no line (UX audit 2 A35: an empty line was a ~40 px gap)
+  const valueHint = [f.kind === "euro" ? t.form.euroHint : null, view.valueNote ? t.form.valueChanged : null].filter(Boolean).join(" ");
   const scopes = (["all", "ecourse", "contact", "courses"] as const).map((s) => ({ value: s, label: t.scope[s] }));
   const audiences = (["all", "first", "returning"] as const).map((a) => ({ value: a, label: t.form.audiences[a] }));
   return (
@@ -247,11 +249,13 @@ function CodeFieldList({ view }: { view: FieldView }) {
             readOnly={view.busy || undefined}
             onChange={(ev) => view.set(valueField, ev.target.value)}
             aria-invalid={view.error(valueField) ? true : undefined}
-            aria-describedby={describedBy(valueField, true)}
+            aria-describedby={describedBy(valueField, valueHint !== "")}
           />
-          <p id={id(`${valueField}-hint`)} className={ui.hint}>
-            {[f.kind === "euro" ? t.form.euroHint : null, view.valueNote ? t.form.valueChanged : null].filter(Boolean).join(" ") || " "}
-          </p>
+          {valueHint && (
+            <p id={id(`${valueField}-hint`)} className={ui.hint}>
+              {valueHint}
+            </p>
+          )}
           {error(valueField)}
         </div>
       </div>
@@ -294,7 +298,8 @@ function CodeFieldList({ view }: { view: FieldView }) {
       {view.welcome ? (
         <>
           {text("daysAfterSignup", t.form.days, { inputMode: "numeric", maxLength: 3, className: `${ui.input} ${styles.short}` }, t.form.daysHint)}
-          <p className={styles.fixed} data-welcome-rules="">
+          {/* (the hint style of every other hint: UX audit 2 A35) */}
+          <p className={ui.hint} data-welcome-rules="">
             {t.form.welcomeRules}
           </p>
         </>

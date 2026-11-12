@@ -29,6 +29,7 @@ import { Drawer } from "@/components/admin/Drawer";
 import { DiscountCodeDrawer, NewDiscountCode } from "@/components/admin/DiscountCodeDrawer";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { UndoProvider } from "@/components/admin/UndoBar";
+import ui from "@/components/admin/ui.module.css";
 
 const ID = 7;
 const COURSES: CodeCourse[] = [
@@ -196,6 +197,10 @@ describe("a stored code's drawer", () => {
     await show();
     expect(labelOf(field("percent"))).toBe("Soodustus (%)");
     expect(text(dialog())).not.toContain("Tasuda jääb alati vähemalt 1 €.");
+    // UX audit 2 A35: no empty hint line under „Soodustus (%)“ (it left a ~40 px gap before „Kehtib“), and the field names no hint it does not have
+    const percentField = field("percent").closest("[data-field='percent']")!;
+    expect([...percentField.querySelectorAll("p")].map((p) => p.textContent)).toEqual([]);
+    expect(field("percent").hasAttribute("aria-describedby")).toBe(false);
     await click(radio("kind", "euro"));
     expect(labelOf(field("amount"))).toBe("Soodustus (€)");
     expect(dialog().querySelector("input[name='percent']")).toBeNull();
@@ -234,6 +239,8 @@ describe("a stored code's drawer", () => {
     expect(field("daysAfterSignup").value).toBe("30");
     expect(text(dialog())).toContain("Tervituskiri ütleb selle õpilasele. Tühjaks jättes tähtajatu.");
     expect(text($("[data-welcome-rules]"))).toBe("Tervituskood kehtib uudiskirjaga liitunud aadressil, esimesel koolitusel ja üks kord.");
+    // UX audit 2 A35: the rules line in the hint style every other hint has (it was 14 px body text in a box of its own)
+    expect($("[data-welcome-rules]")!.className).toBe(ui.hint);
     expect($("[data-field='audience']")).toBeNull();
     expect($("[data-field='oncePerPerson']")).toBeNull();
     expect(text($("[data-code-hint]"))).toContain("Juba saadetud tervituskirjades on vana kood.");
