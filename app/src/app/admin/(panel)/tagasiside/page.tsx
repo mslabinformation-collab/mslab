@@ -218,7 +218,8 @@ async function answersPage(parsed: Parsed) {
         {chosen && <CourseNumbers stats={chosen} searching={view.otsi !== ""} />}
 
         <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
-          <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
+          {/* (an empty list says so once, in its empty line: no „Vastuseid: 0“, UX audit 2 A41) */}
+          {list.total > 0 && <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>}
           {list.rows.length === 0 ? (
             // (a selection with no answer is the list frame, S4-40; with no answer at all there is nothing to clear)
             filtered ? <ListEmpty things={t.things} filtered search={view.otsi} clearHref="/admin/tagasiside" /> : <p className={ui.empty}>{t.empty}</p>

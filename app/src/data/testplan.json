@@ -6449,7 +6449,7 @@
         "Loendis on Proov 1 vastus koos hindega.",
         "Lehe üleval on nupud „Vastused“ ja „Arvustused“; arvustuste arvuga nuppu seal enam ei ole.",
         "Valikus „Koolitus“ on ka „Kõik koolitused“; koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
-        "Osa nimest või e-postist leiab Proov 1, lehel on üks „Vastuseid: …“; tundmatu tekst: „… järgi vastuseid ei leitud“.",
+        "Osa nimest või e-postist leiab Proov 1, lehel on üks „Vastuseid: …“; tundmatu tekst: ainult „… järgi vastuseid ei leitud“.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
         "Paneelis on lingid „Vaata arvustust →“, „Ava õpilane →“ ja „Ava registreering →“; esimene viib arvustuse kaardile.",
         "Registreeringu paneelis on voldirida „Tagasiside“; suletuna näitab see kokkuvõtet „Saadetud …“.",
@@ -6459,7 +6459,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-29T16:31:21.085Z"
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-arvustus-toend",

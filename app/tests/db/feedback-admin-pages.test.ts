@@ -230,6 +230,8 @@ test("the pager of a searched list keeps the search (and the course) on both of 
 test("the search finds nothing: „{q}“ järgi vastuseid ei leitud. and the way back; with no answers at all, only that there are none", async () => {
   const none = await render(FeedbackPage, { otsi: "xyz" });
   expect(none).toContain("„xyz“ järgi vastuseid ei leitud.");
+  // UX audit 2 A41: an empty list says it once — no „Vastuseid: 0“ over the empty line
+  expect(none).not.toContain("Vastuseid: 0");
   expect(none).toMatch(/<a [^>]*href="\/admin\/tagasiside"[^>]*>Tühjenda otsing ja filtrid<\/a>/);
   expect(rowIds(none)).toEqual([]);
   // what was typed is shown as text, never as markup
@@ -245,6 +247,10 @@ test("the search finds nothing: „{q}“ järgi vastuseid ei leitud. and the wa
     const empty = await render(FeedbackPage);
     expect(empty).toContain("Tagasisidet pole veel antud.");
     expect(empty).not.toContain("Tühjenda otsing ja filtrid");
+    expect(empty).not.toContain("Vastuseid: 0");
+    // UX audit 2 A41: the lead points at no course select that is not there
+    expect(empty).toContain("Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Koolituse keskmine hinne ilmub siia, kui tagasisidet on tulnud.");
+    expect(empty).not.toContain("Vali koolitus");
   } finally {
     state.db = filled;
   }

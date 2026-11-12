@@ -48,9 +48,12 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
       <TabPills label={adminEt.assessment.title} tabs={assessmentTabs("certificates", waiting)} />
 
       <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
-        <p className={`${ui.muted} ${ui.small}`} data-register-count="">
-          {fill(t.count, { n: list.total })}
-        </p>
+        {/* (an empty list says so once, in its empty line: no „Tunnistusi: 0“, UX audit 2 A41) */}
+        {list.total > 0 && (
+          <p className={`${ui.muted} ${ui.small}`} data-register-count="">
+            {fill(t.count, { n: list.total })}
+          </p>
+        )}
         {list.rows.length === 0 ? (
           <p className={ui.empty}>{t.empty}</p>
         ) : (

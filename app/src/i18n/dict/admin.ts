@@ -1176,7 +1176,8 @@ export const adminEt = {
   feedback: {
     eyebrow: "Õpilased",
     title: "Tagasiside",
-    lead: "Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Vali koolitus, et näha selle keskmist hinnet ja iga vastusevariandi arvu.",
+    // (Draft, UX audit 2 A41) the second sentence: it asked to choose a course, and with no answers there is no course select
+    lead: "Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Koolituse keskmine hinne ilmub siia, kui tagasisidet on tulnud.",
     filterLabel: "Koolitus",
     all: "Kõik koolitused",
     byCourse: "Koolituste kaupa",

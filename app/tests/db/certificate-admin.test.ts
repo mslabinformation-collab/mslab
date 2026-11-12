@@ -169,7 +169,11 @@ test("the register's first tab counts what waits in Hindamine, whatever the kind
 });
 
 test("the register: nothing issued says so; 50 a page, the pager to the next (?leht=2)", async () => {
-  expect(await register()).toContain("Tunnistusi pole veel väljastatud.");
+  const none = await register();
+  expect(none).toContain("Tunnistusi pole veel väljastatud.");
+  // UX audit 2 A41: an empty list says it once — no „Tunnistusi: 0“ over the empty line
+  expect(none).not.toContain("data-register-count");
+  expect(none).not.toContain("Tunnistusi: 0");
   const course = await ecourse(db, { test: null });
   const people = await db
     .insert(clients)
