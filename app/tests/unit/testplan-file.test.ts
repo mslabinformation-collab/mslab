@@ -1691,7 +1691,8 @@ describe("discount codes (F1 Task 17)", () => {
     for (const words of [`„${d.welcomeTag}“`, `„${d.form.audiences.first}“`, `„${d.form.oncePerPerson}“`, `„${d.form.days}“`]) expect(whole("haldus-sooduskoodid-tervituskood"), words).toContain(words);
     for (const words of [`„${d.form.maxUses}“`, `„${d.paused}“`, `„${d.remove.used}“`, `„${d.uses.total.split(":")[0]}: …“`, `„${f.errors.usedUp}“`, "„Kasutused“"])
       expect(whole("haldus-sooduskoodid-kasutused"), words).toContain(words);
-    for (const words of [`„${d.registration.add}“`, `„${d.registration.remove}“`, `„${d.registration.removeYes}“`, `„${d.registration.errors.paid}“`, `„${d.registration.submit}“`])
+    // (the add's refusal for money is a race's now, M6: with money in, the card has no buttons; the removal's own words are what the two windows show, M5)
+    for (const words of [`„${d.registration.add}“`, `„${d.registration.remove}“`, `„${d.registration.removeYes}“`, `„${d.registration.errors.removePaid}“`, `„${d.registration.submit}“`])
       expect(whole("haldus-sooduskood-registreeringule"), words).toContain(words);
     expect(whole("haldus-uudiskiri-kood-hoiatus")).toContain(`„${d.form.code}“`);
     expect(whole("haldus-uudiskiri-kood-hoiatus")).toContain(`„${adminEt.newsletter.campaigns.codeNotActive.split(". ")[0]}. …“`);

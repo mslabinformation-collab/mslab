@@ -3060,14 +3060,14 @@
       "title": "Sooduskoodid: kasutused ja piir",
       "href": "/admin/sooduskoodid",
       "steps": [
-        "Tee see kontroll pärast kontrolle „Registreerimine sooduskoodiga“ ja „E-koolituse ost sooduskoodiga“: need annavad koodile kasutused.",
+        "Tee see kontroll pärast kontrolle „Registreerimine sooduskoodiga“ ja „E-koolituse ost sooduskoodiga“ ning „Sooduskood ja järelmaks“: need annavad koodidele kasutused.",
         "Ava „Sooduskoodid“ ja vajuta koodile PROOV-16.",
         "Vaata plokki „Kasutused“ ja kirjuta märkusesse, mis read seal on.",
         "Kirjuta „Kasutuskordi kokku“: loendi veerus „Kasutatud“ näidatud arv, ja liigu väljalt edasi.",
         "Ava kontaktkoolituse registreerimisvorm ja kirjuta „E-post“: proov.piir@example.test.",
         "Vajuta „Mul on sooduskood“, kirjuta PROOV-16 ja vajuta „Rakenda“, vormi saatmata.",
         "Tühjenda „Kasutuskordi kokku“, liigu väljalt edasi ja lülita „Aktiivne“ välja.",
-        "Vaata riba, vajuta „Võta tagasi“ ja vaata kustutamisnupu asemel olevat teksti."
+        "Vaata riba ja vajuta „Võta tagasi“; vaata kustutamisnupu kohta siin ja koodi PROOV-16T aknas."
       ],
       "expect": [
         "Koodi aknas on „Kasutused“ all Proov 16 registreering ja Proov 18 ost.",
@@ -3075,7 +3075,7 @@
         "Kui „Kasutuskordi kokku“ on täis, saab järgmine teate „Selle sooduskoodi kasutuskorrad on otsas.“.",
         "„Aktiivne“ välja lülitades tuleb riba „Sooduskood peatatud.“ ja nupp „Võta tagasi“.",
         "Kasutatud koodil on tekst „Koodi on kasutatud — kustutada ei saa. Peata see.“.",
-        "Kui kõik kasutused on tühistatud, ütleb tekst „Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, …“."
+        "Koodi PROOV-16T aknas on kustutamisnupu asemel tekst „Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, …“."
       ],
       "why": "Maria näeb, kes koodi kasutas, ja saab selle kasutuskordi piirata või koodi peatada.",
       "risk": "med",
@@ -3092,18 +3092,20 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Tee see kontroll pärast kontrolli „Registreerimine sooduskoodiga“: vajad Proov 16 registreeringut ja kontot.",
-        "Ava „Registreerimised“, vajuta nimele Proov 16 ja vaata kaarti „Raha“.",
+        "Ava „Registreerimised“, vajuta Proov 16 registreeringule kontrollist „Registreerimine sooduskoodiga“ (mitu samal kuupäeval: vanim) ja vaata kaarti „Raha“.",
         "Vajuta „Eemalda sooduskood“ ja „Jah, eemalda“.",
         "Vajuta „Lisa sooduskood“, kirjuta PROOV-16 ja vajuta „Lisa“.",
         "Logi teises aknas sisse kui Proov 16 ja ava „Minu koolitused“.",
-        "Vajuta halduses „Lisa laekumine“, vali „Muu summa“, kirjuta 1 ja vajuta „Lisa …“.",
-        "Vajuta „Eemalda sooduskood“ ja „Jah, eemalda“."
+        "Vajuta „Eemalda sooduskood“, aga jäta küsimus veel vastamata.",
+        "Ava sama registreering teises halduse aknas, vajuta „Lisa laekumine“, vali „Muu summa“, kirjuta 1 ja vajuta „Lisa …“.",
+        "Vajuta esimeses halduse aknas „Jah, eemalda“."
       ],
       "expect": [
         "„Lisa sooduskood“ muudab hinna ja summa õpilase konto nupul „Maksa“.",
         "„Eemalda sooduskood“ toob täishinna tagasi; „Hind“ näitab soodushinda täishinna kõrval.",
         "Õpilase konto kaardil on rida „Sooduskood PROOV-16: −… €“.",
-        "Laekunud rahaga on teade „Sooduskoodi saab lisada, kui midagi pole veel laekunud.“."
+        "Pärast laekumist annab „Jah, eemalda“ teate „Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.“.",
+        "Siis on real „Sooduskood“ ainult kood ja summa, nuppu „Eemalda sooduskood“ pole."
       ],
       "why": "Maria parandab hinna ise, kui õpilane unustas koodi kirjutada.",
       "risk": "high",
@@ -3333,7 +3335,7 @@
         "Vajuta „Mul on sooduskood“, kirjuta kirjast tervituskood ja vajuta „Rakenda“.",
         "Märgi lepingu ruut, vajuta „Registreeru“ ja katkesta Montonio makse, nagu Dimi märkus ütleb.",
         "Saada sama vorm samale koolitusele ja kuupäevale uuesti, kood „Rakenda“-ga, ja katkesta makse.",
-        "Proovi koodi teise koolituse vormil aadressidega +proov17 ja +proov1: vajuta „Rakenda“ ja vaata teadet.",
+        "Proovi koodi teise koolituse vormil aadressidega +proov17 ja +proov1 (Proov 1 on juba registreerunud): vajuta „Rakenda“ ja vaata teadet.",
         "Proovi koodi vormil aadressiga proov.liitumata@example.test, jäta uudiskirja ruut märkimata ja vajuta „Rakenda“."
       ],
       "expect": [
@@ -3358,13 +3360,13 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Ava halduses „Sooduskoodid“ ja kirjuta märkusesse tervituskoodi „Kasutatud“ arv.",
-        "Ava „Registreerimised“ ja vajuta Proov 17 esimese koolituse registreeringule.",
-        "Vajuta „Tühista registreerimine“ ja „Jah, tühista“.",
+        "Ava „Registreerimised“: Proov 17-l on esimesel koolitusel kaks registreeringut (kontrollist „Tervituskood: esimene koolitus, üks kord“).",
+        "Tühista mõlemad: vajuta kummalgi „Tühista registreerimine“ ja „Jah, tühista“.",
         "Ava „Sooduskoodid“ uuesti ja vaata tervituskoodi „Kasutatud“.",
         "Ava teise koolituse vorm, kirjuta Proov 17 andmed ja tervituskood ning vajuta „Rakenda“."
       ],
       "expect": [
-        "Samal päeval: pärast „Tühista registreerimine“ väheneb koodi „Kasutatud“ ühe võrra.",
+        "Samal päeval: pärast kahte tühistamist on koodi „Kasutatud“ kahe võrra väiksem.",
         "Sama aadress saab tervituskoodi kasutada ka teisel koolitusel."
       ],
       "why": "Tühistatud registreering ei võta koodi kasutuskorda ega inimese ainsat võimalust.",
@@ -3382,18 +3384,18 @@
       "href": "/koolitused",
       "steps": [
         "Veendu, et Seaded → „Järelmaks (Inbank)“ on sees; vali kontaktkoolitus, mille grupihind on 200–500 €.",
-        "Lisa lehel „Sooduskoodid“ kood PROOV-16J: „Eurod“, „Soodustus (€)“ on selle hind miinus 90.",
+        "Lisa lehel „Sooduskoodid“ koodid PROOV-16J („Eurod“, „Soodustus (€)“ on selle hind miinus 90) ja PROOV-16T (10%).",
         "Ava selle koolituse vorm, vali teine tulevane kuupäev kui kontrollis „Registreerimine sooduskoodiga“ ja kirjuta „Nimi“: Proov 16.",
         "Kirjuta „E-post“: oma aadress +proov16 ja oma Eesti „Telefon“; vali „Järelmaks (Inbank)“.",
         "Vajuta „Mul on sooduskood“, kirjuta PROOV-16J ja vajuta „Rakenda“.",
-        "Vajuta „Eemalda“, kirjuta PROOV-16 ja vajuta „Rakenda“.",
+        "Vajuta „Eemalda“, kirjuta PROOV-16T ja vajuta „Rakenda“.",
         "Märgi lepingu ruut ja vajuta „Registreeru“; kinnita Inbanki lehel isikukoodiga 10101010005 ja SMS-koodiga 0000.",
         "Kirjuta märkusesse Inbanki summa ja tühista halduses see Proov 16 registreering („Jah, tühista“)."
       ],
       "expect": [
         "Kui soodushind jääb alla 100 €, kaob valik „Järelmaks (Inbank)“ ja näed piiri rida.",
         "Piiri rida on „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“.",
-        "Pärast koodi PROOV-16 on valik „Järelmaks (Inbank)“ tagasi ja valitud.",
+        "Pärast koodi PROOV-16T on valik „Järelmaks (Inbank)“ tagasi ja valitud.",
         "Inbanki testis on taotluse summa soodushind."
       ],
       "why": "Soodushind võib viia hinna Inbanki piirist alla, ja vorm peab seda õpilasele ütlema.",
@@ -5176,12 +5178,14 @@
         "Jäta valituks „Pangalink“ (kui valik on olemas), märgi lepingu ruut ja vajuta „Maksa …“.",
         "Tee makse testpangas, nagu Dimi märkus ütleb, ja kirjuta märkusesse testpanga summa.",
         "Vajuta tagasi lehel „Ava e-koolitus“.",
-        "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja selle arve PDF."
+        "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja selle arve PDF.",
+        "Ava arvutis halduses „Arved“, vajuta „Laadi alla (CSV)“ ja leia failist Proov 18 arve rida."
       ],
       "expect": [
         "Pärast „Rakenda“ on „Kokku“ soodushind ja nupul „Maksa …“ sama summa.",
         "Montonio testpangas on sama summa.",
-        "Arvel on rida „Sooduskood …“ miinusmärgiga ja „Kokku“ on soodushind."
+        "Arvel on rida „Sooduskood …“ miinusmärgiga ja „Kokku“ on soodushind.",
+        "CSV real on „Sooduskood“ PROOV-16 ja „Soodustus“; „Kokku“ ja „Soodustus“ kokku on e-koolituse täishind."
       ],
       "why": "E-koolituse ostja maksab täpselt selle hinna, mille ostukorv talle näitas.",
       "risk": "high",
