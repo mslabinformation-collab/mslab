@@ -640,13 +640,14 @@
         "Ava halduses „Uudiskiri“ vaade „Kirjad“ ja vajuta „Uus kiri +“.",
         "Kirjuta „Nimi“: Proov 3 kiri ja „Teema“: Proov 3 pakkumine.",
         "Kirjuta „Tekst“ kahe lõiguna, nende vahele tühi rida.",
-        "Vali „Pilt“: mõni oma flaier või foto.",
+        "Vajuta „Pilt“ all „Vali pilt“ või lohista sinna mõni oma flaier või foto.",
         "Kirjuta „Kood“: proov3, „Nupu tekst“: Vaata koolitusi ja „Nupu aadress“: /koolitused.",
         "Vali lehe päises „Sisu keel“ juures RU ning kirjuta „Teema“, „Tekst“ ja „Nupu tekst“ vene keeles.",
         "Vaata eelvaadet, vajuta lehe päises „Sisu keel“ juures „ET“ ja laadi leht uuesti."
       ],
       "expect": [
         "„Uus kiri +“ avab kohe mustandi „Uus kiri“ ja kursor on väljal „Nimi“.",
+        "„Pilt“ on üks kast: pilt ise, selle all „Vaheta pilt“ ja „Eemalda“.",
         "Eelvaates on logo, pilt kaardi laiuses, kaks lõiku, kood PROOV3 kastis ja nupp „Vaata koolitusi“.",
         "Eelvaade on samas keeles nagu „Sisu keel“ ja muutub mõne hetke jooksul, kui teksti kirjutad.",
         "Vene keele eelvaates on vene tekst ja kirja lõpus „Отписаться от рассылки“.",
@@ -658,7 +659,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-11T19:04:44.922Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -1965,18 +1966,20 @@
       "steps": [
         "Ava telefonis „Uudised“ ja vajuta „Lisa postitus +“.",
         "Oota, kuni leht on laetud, ja libista postituse kaarti sõrmega vasakule ja paremale.",
+        "Vajuta kaardi ülaosas „Vali pilt“, vali pilt ja vaata kaardi ülaosa.",
         "Vajuta kaardi all „Kustuta postitus“ ja „Jah, kustuta“."
       ],
       "expect": [
-        "Kaanepildi tühi ala „Pilti pole veel valitud.“ on kaardi laiune.",
+        "Kaanepildi tühi ala „Lohista pilt siia“ nupuga „Vali pilt“ on kaardi laiune.",
         "Leht ei liigu külgsuunas ja väljade paremad servad on ekraanil.",
+        "Pilt on kaardi laiune, selle all „Vaheta pilt“ ja „Eemalda“; teist pildikasti pole.",
         "Pärast kustutamist näed „Postitus kustutatud.“."
       ],
       "why": "Uus postitus on alguses ilma kaanepildita ja Maria võib seda alustada telefonis.",
       "risk": "low",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-11-08T13:26:03.991Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-uudised-mustand-eelvaade",

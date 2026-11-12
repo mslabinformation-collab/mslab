@@ -73,6 +73,26 @@
   gap: 6px;
 }
 
+/* the file field: its label is the button („Vali pilt“ / „Vaheta pilt“), the field itself visually hidden (editor.module.css .upload's rule), the
+   label ringed while the field has the keyboard's focus (UX audit 2 A30, as the field went to Uudised and Uudiskiri: no rule hid it here) */
+.field input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.field input[type="file"]:focus-visible + label {
+  outline: 2px solid var(--rose);
+  outline-offset: 3px;
+}
+
+.field label {
+  cursor: pointer;
+}
+
 /* „Eemalda“: a quiet, underlined word beside „Vaheta pilt“, 44 px tall */
 .quiet {
   min-height: 44px;

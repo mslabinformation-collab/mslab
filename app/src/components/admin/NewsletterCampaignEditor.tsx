@@ -15,8 +15,8 @@ import { useAutosave } from "./autosave/useAutosave";
 import { ConfirmPanel } from "./ConfirmPanel";
 import { useEditLang } from "./EditLang";
 import { I18nInput, type Lang } from "./I18nInput";
+import { ImageField } from "./ImageField";
 import { SaveStatus } from "./SaveStatus";
-import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import { usePhoneChip } from "./course/usePhoneChip";
 import { useFootBar } from "./foot-bar";
@@ -483,7 +483,17 @@ function DraftEditor({
             {counterBoth("preheader", values.preheader, L.preheader)}
           </div>
           <div className={styles.picture}>
-            <SingleImage label={t.image} value={values.imageKey} onChange={(imageKey) => set("imageKey", imageKey)} hint={t.imageHint} error={err("imageKey")} removable ratio="4 / 5" name="campaign-image" />
+            {/* the admin's one image field (UX audit 2 A30): the picture in a flyer's 4:5 is the drop zone, „Vaheta pilt · Eemalda“ under it */}
+            <ImageField
+              label={t.image}
+              value={values.imageKey}
+              onChange={(imageKey) => set("imageKey", imageKey)}
+              hints={[t.imageHint, adminEt.upload.hint]}
+              error={err("imageKey")}
+              removable
+              size={{ width: "240px", height: "300px" }}
+              name="campaign-image"
+            />
           </div>
           <div>
             <I18nInput label={t.body} value={values.body} onChange={(v) => set("body", both(v))} multiline rows={8} maxLength={L.body} hint={t.bodyHint} error={err("body")} name="body" />

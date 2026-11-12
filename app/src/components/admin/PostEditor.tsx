@@ -8,10 +8,10 @@ import { POST_PART, type PostPartValue, type SitePartState } from "@/domain/site
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { I18nInput } from "./I18nInput";
+import { ImageField } from "./ImageField";
 import { fullDay, newsHref } from "./news/news-view";
 import { PostFoot } from "./news/PostFoot";
 import { PublishedCard } from "./news/PublishedCard";
-import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SitePage } from "./site/SiteEditorPage";
@@ -174,15 +174,16 @@ function PostCards({
       <PublishedCard page={page} id={id} published={published} waiting={published && Object.keys(v).some((f) => api.unpublished(f))} className={styles.publish} />
       <SiteCard id="postitus" label={adminEt.siteChanges.post.post} parts={[api]} className={styles.post}>
         <div className={styles.cover}>
-          <SingleImage
+          {/* the admin's one image field (UX audit 2 A30): the cover is the drop zone, across the card and 220 px tall, „Vaheta pilt · Eemalda“
+              under it; its label and hints under them (the stylesheet) */}
+          <ImageField
             label={t.sections.cover}
-            labelHidden
             value={v.coverKey}
             onChange={(coverKey) => api.commit("coverKey", coverKey)}
-            hint={t.coverHint}
+            hints={[t.coverHint, adminEt.upload.hint]}
             error={api.error("coverKey")}
-            ratio="16 / 9"
             removable={!published}
+            size={{ width: "100%", height: "220px" }}
             name="cover"
             field="post.coverKey"
           />

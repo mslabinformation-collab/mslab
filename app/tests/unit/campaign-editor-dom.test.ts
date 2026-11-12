@@ -210,6 +210,26 @@ afterEach(async () => {
 });
 
 describe("a draft: its fields autosave", () => {
+  // UX audit 2 A30: one image box, the admin's one image field (ImageField, UX pass 11.11): the preview is the drop zone, „Vaheta pilt · Eemalda“
+  // under it; no grey „Pilti pole veel valitud.“ over a second, dashed upload box
+  test("„Pilt“: the picture is the drop zone with „Vaheta pilt · Eemalda“ under it; with none, the dashed zone „Lohista pilt siia“ with „Vali pilt“", async () => {
+    await show(DRAFT);
+    const image = () => $('[data-single-image="campaign-image"]')!;
+    expect(image().hasAttribute("data-image-field")).toBe(true);
+    expect(image().querySelector("[data-drop-zone] img[data-current-image]")).not.toBeNull();
+    expect(image().querySelector("[data-image-upload]")).toBeNull();
+    expect(image().querySelector("[data-image-remove]")?.getAttribute("aria-label")).toBe("Eemalda pilt: Pilt");
+    expect(words(image())).toContain("Näiteks sinu flaier");
+    await show({ ...DRAFT, id: 8, values: { ...VALUES, imageKey: "" } });
+    const empty = image().querySelector("[data-drop-zone][data-no-image]")!;
+    expect([words(empty.querySelector("span")), words(empty.querySelector("label"))]).toEqual(["Lohista pilt siia", "Vali pilt"]);
+    expect(words(image())).not.toContain("Pilti pole veel valitud.");
+    expect(image().querySelectorAll('input[type="file"]')).toHaveLength(1);
+    // (on a narrow card the words go under the 4:5 picture)
+    const css = readFileSync("src/components/admin/CampaignsPanel.module.css", "utf8").replace(/\r\n/g, "\n");
+    expect(css).toMatch(/@container \(max-width: 559\.98px\) \{\s*\.picture \[data-image-field\] \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+  });
+
   test("its fields as stored, each with its limit and a counter; the button's address suggests the site's pages; no „Salvesta“", async () => {
     await show(DRAFT);
     expect($<HTMLInputElement>('[data-field="name"]')!.value).toBe("Oktoobri pakkumine");

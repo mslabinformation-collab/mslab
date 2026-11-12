@@ -53,18 +53,15 @@
   gap: 16px;
 }
 
-/* the cover, or the empty area before one is chosen: across the card, 220 px tall (drawn) — SingleImage's own box stays as it is elsewhere */
-.cover img[data-current-image],
-.cover [data-no-image] {
-  max-width: none;
-  height: 220px;
-  border-radius: 16px;
+/* the cover, or the dashed drop zone before one is chosen: ImageField's zone across the card, 220 px tall (its size, PostEditor.tsx), radius 16 (drawn);
+   the field's label and hints under the picture's column at every width, as ImageField has them on a phone (UX audit 2 A30: one image box, the
+   preview is the drop zone; it was SingleImage's picture over a second, dashed upload box) */
+.cover [data-image-field] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-/* the empty area keeps SingleImage's 16:9, which at 220 px tall asks for 391 px of width: on a phone it takes the card's width instead (full test 08.11:
-   a new post, which has no cover yet, scrolled sideways at 390 px) */
-.cover [data-no-image] {
-  min-width: 0;
+.cover [data-drop-zone] {
+  border-radius: 16px;
 }
 
 .body textarea {

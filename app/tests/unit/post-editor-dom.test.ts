@@ -219,17 +219,45 @@ describe("a post that is not published (R-a): the same header, no bar", () => {
     expect($("[data-post-publish-line]")).toBeNull();
   });
 
-  it("no cover yet: the empty area is the drawn one, across the card and 220 px tall, with „Vali pilt“ under it (review m10); other screens keep theirs", async () => {
+  // UX audit 2 A30: one image box, the admin's one image field (ImageField, UX pass 11.11): the preview is the drop zone, „Vaheta pilt · Eemalda“ under
+  // it; the second, dashed upload box with its own „Vali pilt“ is gone
+  it("no cover yet: one dashed drop zone across the card, 220 px tall, „Lohista pilt siia“ with „Vali pilt“ in it (review m10); no second upload box", async () => {
     resetRemote(false, NEW);
     await show({ published: false, parts: partsOf(NEW) });
-    const empty = $('[data-single-image="cover"] [data-no-image]');
-    expect(text(empty)).toBe("Pilti pole veel valitud.");
-    expect(empty?.closest('[class*="cover"]')).not.toBeNull();
-    expect(text($('[data-single-image="cover"]'))).toContain("Vali pilt");
+    const cover = $('[data-single-image="cover"]')!;
+    expect(cover.hasAttribute("data-image-field")).toBe(true);
+    const empty = cover.querySelector<HTMLElement>("[data-drop-zone][data-no-image]")!;
+    expect([text(empty.querySelector("span")), text(empty.querySelector("label"))]).toEqual(["Lohista pilt siia", "Vali pilt"]);
+    expect(empty.style.width).toBe("100%");
+    expect(empty.style.height).toBe("220px");
+    expect(empty.closest('[class*="cover"]')).not.toBeNull();
+    expect(cover.querySelector("[data-image-upload]")).toBeNull();
+    expect(cover.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(text(cover)).not.toContain("Pilti pole veel valitud.");
+    // the label and the hints under the zone (as ImageField has them on a phone): the card is the cover's width
+    expect(text(cover)).toContain("Kaanepilt");
+    expect(text(cover)).toContain("Kaardil lõigatakse pilt 4:3, postituse lehel 16:9.");
     const css = readFileSync(join(process.cwd(), "src/components/admin/PostEditor.module.css"), "utf8");
-    expect(css).toMatch(/\.cover img\[data-current-image\],\s*\.cover \[data-no-image\] \{\s*max-width: none;\s*height: 220px;\s*border-radius: 16px;/);
-    // (SingleImage's own box, which the other screens use, is as it was)
-    expect(readFileSync(join(process.cwd(), "src/components/admin/site-editor.module.css"), "utf8")).toMatch(/\.singleImage,\s*\.noImage \{\s*width: 100%;\s*max-width: 420px;/);
+    expect(css).toMatch(/\.cover \[data-image-field\] \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+    expect(css).toMatch(/\.cover \[data-drop-zone\] \{\s*border-radius: 16px;/);
+  });
+
+  it("a cover: the picture is the drop zone with „Vaheta pilt“ under it; „Eemalda“ only while the post is not published (a published one needs its cover)", async () => {
+    await show();
+    const cover = () => $('[data-single-image="cover"]')!;
+    expect(cover().querySelector("[data-drop-zone] img[data-current-image]")?.getAttribute("data-current-image")).toBe(POST.coverKey);
+    expect(cover().querySelector("[data-image-upload]")).toBeNull();
+    expect(text(cover().querySelector("label"))).toBe("Vaheta pilt");
+    expect(cover().querySelector("[data-image-remove]")).toBeNull();
+    resetRemote(false, POST);
+    await show({ published: false });
+    expect(cover().querySelector("[data-image-remove]")?.getAttribute("aria-label")).toBe("Eemalda pilt: Kaanepilt");
+  });
+
+  it("the image field's file input is visually hidden (its label is the button); the zone is its one box", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ImageField.module.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(css).toMatch(/\.field input\[type="file"\] \{\s*position: absolute;\s*width: 1px;\s*height: 1px;\s*overflow: hidden;\s*clip: rect\(0 0 0 0\);/);
+    expect(css).toMatch(/\.field input\[type="file"\]:focus-visible \+ label \{\s*outline: 2px solid var\(--rose\);/);
   });
 
   it("„Lisa postitus +“ opened it (`?loodud=1`): ADM:2273's line, and the cursor is in „Pealkiri“", async () => {

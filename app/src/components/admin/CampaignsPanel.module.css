@@ -170,9 +170,12 @@
   margin: 6px 0 0;
 }
 
-/* the picture's thumbnail (or its empty frame) in a flyer's 4:5, kept small: the mail shows it at the card's width */
-.picture [style*="aspect-ratio"] {
-  max-width: 240px;
+/* „Pilt“: ImageField, the picture in a flyer's 4:5 kept small (240 × 300: the mail shows it at the card's width), its words beside it; on a card
+   narrower than 560 px (the 399 px card at 1440, a phone) the words go under it (UX audit 2 A30: one image box, the preview is the drop zone) */
+@container (max-width: 559.98px) {
+  .picture [data-image-field] {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* „Kood“ | „Nupu tekst“ | „Nupu aadress“ in one row (the frame) where the card has the room for three fields with their counters (640 px of card:
