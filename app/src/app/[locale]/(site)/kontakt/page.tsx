@@ -5,6 +5,7 @@ import { trainerSettings } from "@/components/site/settings";
 import { isHttpsUrl } from "@/domain/site-editor";
 import ui from "@/components/site/ui.module.css";
 import { getSiteSettings } from "@/server/site-data";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "./contact.module.css";
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.footer.contact} — ${d.common.siteName}`, description: d.forms.contactPageLead };
+  return { title: `${d.footer.contact} — ${d.common.siteName}`, description: d.forms.contactPageLead, alternates: pageAlternates(locale, "/kontakt") };
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");

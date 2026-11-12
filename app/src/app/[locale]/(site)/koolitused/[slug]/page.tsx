@@ -32,6 +32,7 @@ import { keepNameTogether } from "@/domain/title-breaks";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "./course.module.css";
@@ -80,7 +81,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = pick(course.summary, locale);
   // the course's own link preview ("Jaga koolitust"): its title, summary and first picture
   const share = await shareMetadata(locale, { path: `/koolitused/${course.slug}`, title, description, image: mediaUrl(course.images[0]?.key ?? "") || undefined });
-  return { title: `${title} — ${d.common.siteName}`, description, ...share };
+  return { title: `${title} — ${d.common.siteName}`, description, ...share, alternates: pageAlternates(locale, `/koolitused/${course.slug}`) };
 }
 
 /**

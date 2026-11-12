@@ -8,6 +8,7 @@ import { listPosts } from "@/db/queries/public";
 import { pick } from "@/i18n/field";
 import { formatDate } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import { previewActive } from "@/server/preview";
@@ -19,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.nav.news} — ${d.common.siteName}`, description: d.news.lead };
+  return { title: `${d.nav.news} — ${d.common.siteName}`, description: d.news.lead, alternates: pageAlternates(locale, "/uudised") };
 }
 
 /**

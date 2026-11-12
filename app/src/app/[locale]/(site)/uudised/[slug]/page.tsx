@@ -13,6 +13,7 @@ import { paragraphs } from "@/domain/catalogue";
 import { pick } from "@/i18n/field";
 import { formatDate } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "../news.module.css";
@@ -48,7 +49,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = pick(post.excerpt, locale);
   // the post's own link preview: its title, excerpt and cover
   const share = await shareMetadata(locale, { path: `/uudised/${post.slug}`, title, description, image: mediaUrl(post.coverKey) || undefined });
-  return { title: `${title} — ${d.common.siteName}`, description, ...share };
+  return { title: `${title} — ${d.common.siteName}`, description, ...share, alternates: pageAlternates(locale, `/uudised/${post.slug}`) };
 }
 
 /**

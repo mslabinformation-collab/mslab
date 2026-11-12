@@ -30,6 +30,7 @@ import { welcomeCode } from "@/server/discount-codes";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import { DELETED_MARK } from "@/lib/account-marks";
 import { mediaUrl } from "@/lib/media";
@@ -53,7 +54,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return shareMetadata(locale, { path: "/", title: d.meta.title, description: d.meta.description });
+  return { ...(await shareMetadata(locale, { path: "/", title: d.meta.title, description: d.meta.description })), alternates: pageAlternates(locale, "/") };
 }
 
 /**

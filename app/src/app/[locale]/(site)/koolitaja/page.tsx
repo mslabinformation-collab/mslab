@@ -16,6 +16,7 @@ import { isJourneyPlaceholder } from "@/domain/trainer-journey";
 import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale, type Locale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "./trainer.module.css";
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.nav.trainer} — ${d.common.siteName}` };
+  return { title: `${d.nav.trainer} — ${d.common.siteName}`, alternates: pageAlternates(locale, "/koolitaja") };
 }
 
 /**

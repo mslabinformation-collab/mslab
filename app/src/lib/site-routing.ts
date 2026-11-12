@@ -9,8 +9,8 @@ import { isSlug } from "./slug";
 // Every entry ends at a path boundary or is one exact file: "/admin.php", "/administrator" or "/media.php" are unknown
 // addresses (the cached 404 page), not the admin or /media. The static files are lib/root-files.ts's list, which the
 // coming-soon gate shares. The pay page of a registration (/maksa/<token>, phase 2b) is a route handler at its own path: one segment after it,
-// nothing deeper.
-const PASS = new RegExp(`^\\/(ru(\\/|$)|admin(\\/|$)|media(\\/|$)|_next(\\/|$)|maksa\\/[^/]+$|${ROOT_FILE_SOURCE})`);
+// nothing deeper. "/sitemap.xml" (app/sitemap.ts, SEO G4) is a route at its own path; it is not in the shared list, so the gate still answers it.
+const PASS = new RegExp(`^\\/(ru(\\/|$)|admin(\\/|$)|media(\\/|$)|_next(\\/|$)|maksa\\/[^/]+$|sitemap\\.xml$|${ROOT_FILE_SOURCE})`);
 
 /** API routes answer at their own path: no trailing-slash or locale redirect (a POST must not be redirected). */
 const API = /^\/api(\/|$)/;

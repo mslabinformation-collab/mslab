@@ -11,6 +11,7 @@ import { areaChips, areaSlug } from "@/domain/course-areas";
 import { nextSessionByCourse } from "@/domain/home";
 import { pick } from "@/i18n/field";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import styles from "./catalogue.module.css";
 import { upcomingFrom } from "@/domain/calendar";
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.nav.courses} — ${d.common.siteName}`, description: d.catalogue.intro };
+  return { title: `${d.nav.courses} — ${d.common.siteName}`, description: d.catalogue.intro, alternates: pageAlternates(locale, "/koolitused") };
 }
 
 /**

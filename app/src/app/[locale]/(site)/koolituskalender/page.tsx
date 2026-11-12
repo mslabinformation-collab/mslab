@@ -11,6 +11,7 @@ import { seatState, seatsLeft } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
 import { formatDayMonth, formatWeekday } from "@/i18n/format";
 import { href } from "@/i18n/href";
+import { pageAlternates } from "@/lib/alternates";
 import { getDict, isLocale } from "@/i18n/locales";
 import styles from "./calendar.module.css";
 
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.calendar.title} — ${d.common.siteName}`, description: d.calendar.lead };
+  return { title: `${d.calendar.title} — ${d.common.siteName}`, description: d.calendar.lead, alternates: pageAlternates(locale, "/koolituskalender") };
 }
 
 /**
