@@ -1034,6 +1034,30 @@
       "writes": false
     },
     {
+      "id": "avalik-vanad-aadressid",
+      "area": "avalik",
+      "who": "dim",
+      "device": "any",
+      "title": "Vana lehe aadress viib uude lehte",
+      "href": "/meist",
+      "steps": [
+        "Ava aadress mslab.ee/meist.",
+        "Ava aadress mslab.ee/product/kulmud-baaskoolitus/.",
+        "Ava aadress mslab.ee/kursused/taiendkoolitus-1-keeruliste-ripsmete-lash-lift-meistriklass/."
+      ],
+      "expect": [
+        "Esimene aadress avab uue saidi lehe „Koolitaja“.",
+        "Teine avab Kulmumeistri baaskoolituse lehe.",
+        "Kolmas avab koolituste loendi.",
+        "Igal juhul näed aadressiribal uut aadressi, mitte seda, mille sisestasid."
+      ],
+      "why": "Google ja vanad lingid viivad veel vana kodulehe aadressidele: õpilane ei tohi sattuda veateatele.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "avalik-ootelehekulg",
       "area": "avalik",
       "who": "dim",

@@ -18,15 +18,18 @@ The switches below are **Vercel environment variables** (Project → Settings �
 - [x] The Telegram chat (`TELEGRAM_CHAT_ID`, or the `tg:chat` row in `kv_entries`) → Maria's: done, the notices go to the group „MS Lab orders and tests“ with Maria and Dim (Dim, 06.11.2026). `MARIA_EMAIL` (Vercel env var) is Maria's own inbox since 12.10.2026, so every notice mail already reaches her.
 - [x] ~~Rotate the Telegram bot token~~: not needed, the token stays (Dim, 06.11.2026).
 - [ ] `NEXT_PUBLIC_REVIEW_TOOLS` → "0" in `app/next.config.ts` (removes the review comment widget and its anonymous Telegram ping). Since 22.10 (Dim) the same switch also takes the widget out of the admin: every signed-in admin page carries it while it is "1" (not the login page: while the gate is on, only a signed-in admin has the preview cookie a comment needs). On an admin page the widget sends no words of a picked element, only its place.
-- [ ] Remove noindex: the `X-Robots-Tag` rule in the `headers()` of `app/next.config.ts` (keep `frame-ancestors` and `Referrer-Policy`), `ROBOTS` in `app/src/middleware.ts` (its redirects set their own header), `public/robots.txt`, the `robots` metadata of the pages; check the headers on the deployment afterwards.
+- [ ] Indexing turns on by itself on production once `SITE_GATE` is removed (and redeployed): no file to edit (`docs/deploy.md` section 31). Check afterwards: `curl -sI https://mslab.ee/ | grep -i x-robots` shows nothing, while `https://www.mslab.ee/` and the `*.vercel.app` address still say `noindex, nofollow`; `https://mslab.ee/robots.txt` shows the `Sitemap:` line.
 - [ ] New OG image for the final home page (`public/og.jpg`; strip metadata with `tools/strip_provenance.py`).
 - [ ] Cloudflare clean-up: done 08.10.2026 for the Workers `mslab-web` and `mslab-guide`, the Hyperdrive config, the D1 database `mslab-next-tags`, Dim's R2 bucket `mslab-media` and the KV namespace (checked against `kv_entries` first). Left: delete the R2 bucket `mslab-next-cache` once its one-day expiry has emptied it.
 - [ ] After a few weeks: remove Dim's old Vercel project (the mslab.diipsolutions.eu redirect) and the `mslab` CNAME in the Cloudflare zone `diipsolutions.eu`.
 
 ## 1b. Domain, e-mail and Google (mslab.ee is at Elkdata today: DNS, MX, old site)
 - [ ] Confirm with Maria: does a mailbox on mslab.ee exist (e.g. info@mslab.ee — MX points to Elkdata, but the mail service may not be ordered) and who can log in to Elkdata.
-- [ ] Business Google account with the mslab.ee address as login (owned by Maria, Dim added as user/owner) for Search Console, Business Profile, Analytics if used.
-- [ ] Search Console **now** on the current mslab.ee (Domain property, DNS TXT at Elkdata): collect the old site's indexed URLs and traffic → 301 redirect map from old WordPress URLs to the new pages at launch.
+- [ ] Business Google account with the mslab.ee address as login (owned by Maria, Dim added as user/owner) for Search Console, Business Profile, Analytics if used. Business Profile waits until the company Maria starts with is known (Dim, 12.11.2026).
+- [x] Search Console: Dim created the property for mslab.ee (12.11.2026). The old addresses are already mapped (`docs/deploy.md` section 31); Search Console's pages report can show any others to add to `app/src/data/old-addresses.json`.
+- [ ] After the launch: submit `https://mslab.ee/sitemap.xml` in Search Console.
+- [ ] `www.mslab.ee` redirects to `mslab.ee` (Vercel → Domains).
+- [ ] Run `node app/tools/old-addresses-check.mjs https://mslab.ee/sitemap.xml`; point any missing course target at a real page in `app/src/data/old-addresses.json`.
 - [x] Done 08.10.2026: mslab.ee and www point at Vercel; the DNS stays at veebimajutus (Elkdata), the old WordPress site is gone and the mail records were kept.
 - [x] Done 08.10.2026: the site's e-mail is on `send.mslab.ee` in Maria's Resend (DKIM/SPF/return-path records). Do not use Resend as Maria's personal SMTP (shared 100/day free quota).
 - [ ] Optional: mailbox in Gmail via forwarding + "Send mail as" through the mailbox host's SMTP.

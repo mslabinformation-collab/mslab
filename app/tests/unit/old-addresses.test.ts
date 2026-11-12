@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import map from "@/data/old-addresses.json";
+import { PUBLIC_SITEMAP_PATHS } from "@/lib/alternates";
 import { oldAddressTarget } from "@/lib/old-addresses";
 import { isKnownPage } from "@/lib/site-routing";
 
@@ -38,5 +41,15 @@ describe("oldAddressTarget", () => {
     for (const { prefix } of map.prefixes) expect(isKnownPage("/et" + prefix.replace(/\/$/, "")), prefix).toBe(false);
     const targets = [...Object.values(map.exact), ...map.prefixes.map((p) => p.to)];
     for (const to of targets) expect(isKnownPage("/et" + to), to).toBe(true);
+  });
+});
+
+describe("the check tool's copy of the public sitemap paths", () => {
+  test("equals PUBLIC_SITEMAP_PATHS (a plain-Node tool cannot import TypeScript)", () => {
+    const source = readFileSync(resolve(__dirname, "../../tools/old-addresses-check.mjs"), "utf8");
+    const list = /const PUBLIC_PATHS = new Set\(\[([^\]]*)\]\)/.exec(source);
+    expect(list).not.toBeNull();
+    const paths = [...list![1].matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+    expect(paths).toEqual([...PUBLIC_SITEMAP_PATHS]);
   });
 });
