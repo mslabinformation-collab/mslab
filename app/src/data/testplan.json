@@ -289,7 +289,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T08:08:55.869Z"
     },
     {
       "id": "avalik-kursus-jarelmaks-rida",
@@ -322,7 +322,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T08:08:55.869Z"
     },
     {
       "id": "avalik-galerii",
@@ -400,7 +400,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T08:08:55.869Z"
     },
     {
       "id": "avalik-praktika",
