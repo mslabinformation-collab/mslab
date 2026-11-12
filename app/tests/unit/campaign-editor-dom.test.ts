@@ -832,6 +832,12 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
     const css = readFileSync("src/components/admin/CampaignsPanel.module.css", "utf8");
     expect(css).toMatch(/\.target\s*\{[^}]*max-width:\s*100%/);
   });
+
+  test("UX audit 2 A29: „Kood“, „Nupu tekst“ and „Nupu aadress“ are top-aligned, so their inputs share one top and one height (no cell stretched)", () => {
+    const css = readFileSync("src/components/admin/CampaignsPanel.module.css", "utf8");
+    // (a stretched TextField grid hands the row's extra height to its label, input and hint rows: „Kood“ was 54 px tall and 6 px lower)
+    expect(css).toMatch(/\.trio\s*\{[^}]*align-items:\s*start/);
+  });
 });
 
 describe("a letter going out (`status` sending)", () => {

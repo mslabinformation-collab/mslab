@@ -176,9 +176,11 @@
 }
 
 /* „Kood“ | „Nupu tekst“ | „Nupu aadress“ in one row (the frame) where the card has the room for three fields with their counters (640 px of card:
-   from about 1024 px of screen, where the 380 px column stands under the card; at 1440 px the card is 399 px and they stack) */
+   from about 1024 px of screen, where the 380 px column stands under the card; at 1440 px the card is 399 px and they stack). Top-aligned (UX audit 2
+   A29): a cell stretched to the row's tallest would hand its extra height to its own grid's rows, and „Kood“'s input stood 6 px lower and 6 px taller. */
 .trio {
   display: grid;
+  align-items: start;
   gap: 22px 12px;
 }
 
