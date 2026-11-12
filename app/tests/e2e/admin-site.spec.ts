@@ -305,8 +305,10 @@ test.describe("home page, desktop: the slides (C1 Avaleht on the draft layer)", 
     await adminReady(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Avaleht");
     await expect(page.locator("[data-site-eyebrow]")).toHaveText("Koduleht");
-    await expect(page.locator("[data-home-editor] > section > h2")).toHaveText(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK", "Koolitaja plokk"]);
-    await expect(page.getByRole("link", { name: "Muuda lehel Koolitaja →", exact: true })).toHaveAttribute("href", "/admin/koolitaja");
+    // (UX audit 2 A44: the way to Koolitaja is the hint under the lead, no fifth card)
+    await expect(page.locator("[data-home-editor] > section > h2")).toHaveText(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK"]);
+    await expect(page.locator("[data-site-lead-hint]")).toHaveText("Koolitaja plokki muudad: Koolitaja →");
+    await expect(page.locator("[data-site-lead-hint]").getByRole("link", { name: "Koolitaja →", exact: true })).toHaveAttribute("href", "/admin/koolitaja");
     await expect(page.getByRole("button", { name: "Salvesta", exact: true })).toHaveCount(0);
     await expect(publishBar(page)).toHaveCount(0);
 

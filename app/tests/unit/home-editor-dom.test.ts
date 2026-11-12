@@ -15,7 +15,7 @@ import { stubFetch } from "../fakes";
 // Hele/Tume tag | ↑/↓. Errors are keyed by row id. „Koolitaja plokk“ becomes the link row „Muuda lehel Koolitaja →“", the Part 3 / Part 4 C1 frames;
 // piece4-texts S4-5…S4-12, S4-3; builder notes §5; rulings R-a, R-d): the site editors' page (site/SiteEditorPage.tsx) with the cards in the public
 // page's order — „Slaidid“ (rows; one slide open inline at a time), „MS LABi lause“, „Koolitaja kaart“, „KKK“ (the question shows, the answer folds) —
-// and the link row „Koolitaja plokk“. Every field autosaves into its part's draft (POST /api/admin/sisu/home/0/osa/<part>); ONE bar publishes them all.
+// and the way to Koolitaja as a hint under the lead (UX audit 2 A44; the link row „Koolitaja plokk“ before). Every field autosaves into its part's draft (POST /api/admin/sisu/home/0/osa/<part>); ONE bar publishes them all.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -194,24 +194,29 @@ describe("the page (S4-5, S4-6) and its cards in the public page's order (the P4
     expect(button("Salvesta")).toBeNull();
   });
 
-  it("„Slaidid“, „MS LABi lause“, „Koolitaja kaart“, „KKK“, then the link row „Koolitaja plokk“ with „Muuda lehel Koolitaja →“; the map's five entries, the link's value „→“", async () => {
+  // UX audit 2 A44: „Koolitaja plokk →“ stood as a fifth section of the page (a card and a map entry) while it leaves for Koolitaja; it is a hint under the
+  // page's lead now
+  it("„Slaidid“, „MS LABi lause“, „Koolitaja kaart“, „KKK“ (the map's four entries); the way to Koolitaja is the hint under the lead", async () => {
     await show();
     const cards = $$<HTMLElement>("[data-home-editor] > section");
-    expect(cards.map((c) => text(c.querySelector("h2")))).toEqual(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK", "Koolitaja plokk"]);
+    expect(cards.map((c) => text(c.querySelector("h2")))).toEqual(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK"]);
     for (const c of cards) {
       expect(c.getAttribute("tabindex")).toBe("-1");
       expect(c.getAttribute("aria-labelledby")).toBe(c.querySelector("h2")!.id);
     }
-    // the link row: one link to the trainer's page, nothing else to fill in
-    const linkRow = cards[4];
-    const link = linkRow.querySelector<HTMLAnchorElement>("a")!;
-    expect(text(link)).toBe("Muuda lehel Koolitaja →");
+    expect($("[data-trainer-note]")).toBeNull();
+    // the hint under the lead: one link to the trainer's page
+    const hint = $("[data-site-lead-hint]")!;
+    expect(hint.previousElementSibling).toBe($("[data-site-lead]"));
+    expect(text(hint)).toBe("Koolitaja plokki muudad: Koolitaja →");
+    const link = hint.querySelector<HTMLAnchorElement>("a")!;
+    expect(text(link)).toBe("Koolitaja →");
     expect(link.getAttribute("href")).toBe("/admin/koolitaja");
-    expect(linkRow.querySelector("input, textarea")).toBeNull();
-    // the map (from 1180 px; 170 px wide on the C screens): the slides, the questions, „RU puudub“ where a Russian text is missing, the link's „→“
+    expect(text(container)).not.toContain("Muuda lehel Koolitaja");
+    // the map (from 1180 px; 170 px wide on the C screens): the slides, the questions, „RU puudub“ where a Russian text is missing
     const links = $$<HTMLAnchorElement>("nav[aria-label='Jaotised'] a");
-    expect(links.map((a) => text(a.querySelector("[data-section-label]")))).toEqual(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK", "Koolitaja plokk"]);
-    expect(links.map((a) => text(a.querySelector("[data-section-status]")))).toEqual(["3 · RU puudub", "", "", "2 · RU puudub", "→"]);
+    expect(links.map((a) => text(a.querySelector("[data-section-label]")))).toEqual(["Slaidid", "MS LABi lause", "Koolitaja kaart", "KKK"]);
+    expect(links.map((a) => text(a.querySelector("[data-section-status]")))).toEqual(["3 · RU puudub", "", "", "2 · RU puudub"]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual(cards.map((c) => `#${c.id}`));
     expect($("nav[aria-label='Jaotised']")!.className).toMatch(/narrow/);
   });

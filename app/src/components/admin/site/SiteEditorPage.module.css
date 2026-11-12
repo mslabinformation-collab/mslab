@@ -12,6 +12,11 @@
   overflow-wrap: anywhere;
 }
 
+/* a hint line under the lead (Avaleht's way to Koolitaja, UX audit 2 A44); (two classes: ui.hint's margin 0 has one, and either sheet may come later) */
+.headText .leadHint {
+  margin-top: 6px;
+}
+
 /* the H1 takes the focus after a publish or a discard, when the bar it was pressed in is gone: no ring for that, one for the keyboard */
 .title:focus {
   outline: none;

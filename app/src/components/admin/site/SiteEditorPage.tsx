@@ -107,6 +107,8 @@ export type SiteEditorProps<A extends SiteValues = SiteValues> = {
   /** The H1, or how the parts make it (a post's title as typed). */
   title: string | ((apis: SiteApis<A>) => string);
   lead?: string;
+  /** A hint line under the lead (Avaleht's way to Koolitaja, UX audit 2 A44). */
+  leadHint?: ReactNode;
   /** Over the eyebrow and the H1: a way back („← Uudised“, the screen's own element). */
   back?: ReactNode;
   /** Under the header and the bar, before the cards: a line of the screen's own („Postitus loodud. …“). */
@@ -199,7 +201,7 @@ function PartHooks({ names, index, apis, ...form }: Form & { names: string[]; in
 }
 
 function SiteForm(props: Form & { apis: SiteApis }) {
-  const { entity, eyebrow, title, lead, back, notice, viewHref, previewPath, sections, render, partOptions, drafted = true, thing } = props;
+  const { entity, eyebrow, title, lead, leadHint, back, notice, viewHref, previewPath, sections, render, partOptions, drafted = true, thing } = props;
   const { seeds, generation, waiting, waits, refocus, said, setSaid, apis } = props;
   const { route } = waits;
   const { entity: row, id } = siteRowOf(entity);
@@ -352,6 +354,11 @@ function SiteForm(props: Form & { apis: SiteApis }) {
           {lead && (
             <p className={ui.lead} data-site-lead="">
               {lead}
+            </p>
+          )}
+          {leadHint && (
+            <p className={`${ui.hint} ${styles.leadHint}`} data-site-lead-hint="">
+              {leadHint}
             </p>
           )}
         </div>

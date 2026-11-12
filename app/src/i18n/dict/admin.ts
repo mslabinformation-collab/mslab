@@ -2534,12 +2534,12 @@ export const adminEt = {
       // S4-11: a row's state when its question and its answer both have their Russian text; else „RU puudub“ (sectionMap.ru)
       both: "ET · RU",
     },
+    // the hint under the page's lead: the home page's trainer block shows Koolitaja's fields (it was S4-8's link row „Koolitaja plokk“ and the map's „→“)
     trainer: {
-      title: "Koolitaja plokk",
-      // S4-8: the link row under the title (its fields are Koolitaja's)
-      link: "Muuda lehel Koolitaja →",
-      // S4-7: the section map's value for the link row
-      mapValue: "→",
+      // (Draft, UX audit 2 A44)
+      hint: "Koolitaja plokki muudad:",
+      // (Draft, UX audit 2 A44)
+      link: "Koolitaja →",
     },
   },
 

@@ -1901,7 +1901,7 @@
       "title": "Avalehe küsimused",
       "href": "/admin/avaleht",
       "steps": [
-        "Ava „Avaleht“ ja keri kaardini „KKK“.",
+        "Ava „Avaleht“, vaata lehe pealkirja alla ja keri kaardini „KKK“.",
         "Vajuta „Lisa küsimus +“ ja kirjuta küsimuseks Proov 1? ning „Vastus“: Proov 1.",
         "Oota olekut „Mustand salvestatud“, ava avaleht ja siis vajuta halduses ribal „Avalda muudatused“.",
         "Liiguta see küsimus nupuga ↑ esimeseks või lohista selle käepide ⋮⋮ sõrmega üles.",
@@ -1909,6 +1909,7 @@
         "Eemalda küsimus uuesti nupuga ×, vajuta ribal „Avalda muudatused“ ja ava avaleht."
       ],
       "expect": [
+        "Lehe sissejuhatuse all on „Koolitaja plokki muudad: Koolitaja →“; viimane kaart on „KKK“.",
         "Igal real on küsimus, olek „ET · RU“ või „RU puudub“ ja kokku volditud vastus ▸.",
         "Uus rida tuleb lõppu, selle vastus on lahti ja kursor on küsimuses.",
         "Enne avaldamist pole küsimust avalehel; pärast avaldamist on avalehe küsimuste lõpus „Proov 1?“.",
@@ -1920,7 +1921,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-11-11T19:04:44.922Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-uudised-postitus",

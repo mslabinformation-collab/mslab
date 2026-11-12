@@ -15,18 +15,20 @@ import { SlidesEditor } from "./SlidesEditor";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SiteApis } from "./site/SiteEditorPage";
 import { refusalText, rowRefusals, type SitePartApi } from "./site/useSitePart";
+import ed from "./editor.module.css";
 import ui from "./ui.module.css";
 import styles from "./HomeEditor.module.css";
 
 // C1 Avaleht on the draft layer (admin UX pass piece 4a, Task 6; README §4 C1, the Part 3 template and the Part 4 C1 frame; piece4-texts S4-5…S4-12,
 // S4-3; builder notes §5; rulings R-a, R-d, R-i). The pattern of Praktika and Koolitaja (PracticeEditor.tsx, TrainerEditor.tsx): page.tsx
 // (requireAdmin, readSiteEditor) → this wrapper → SiteEditorPage (header, one chip, the PublishBar, the parts' autosave, publish and discard, the
-// 170 px section map of the five entries) → `render` → the cards, one component each, every one a SiteCard (site/SiteCard.tsx), in the screen's
+// 170 px section map of the four cards) → `render` → the cards, one component each, every one a SiteCard (site/SiteCard.tsx), in the screen's
 // marker `data-home-editor` (admin-inbox.spec.ts opens every content section from the menu by it). In the public page's order:
 // - „Slaidid“ (the part `slides`): the rows and the one slide open inline (SlidesEditor.tsx), „+ Lisa slaid“ at the right of the title;
 // - „MS LABi lause“ (`statement`) and „Koolitaja kaart“ (`teaser`, S4-7): their text;
 // - „KKK“ (`faq`, S4-7): the questions, each answer folded (FaqEditor.tsx);
-// - then the link row „Koolitaja plokk“ with „Muuda lehel Koolitaja →“ (S4-8): the home page's trainer block shows the trainer page's fields.
+// The home page's trainer block shows the trainer page's fields: the way there is a hint under the lead, „Koolitaja plokki muudad: Koolitaja →“ (UX
+// audit 2 A44; it was S4-8's link row „Koolitaja plokk“ after the cards and a fifth entry of the map, as if a section of this page).
 // Every field autosaves into its part's draft — a new slide without its picture or title too (R-d: the draft's check is loose) — and the page's ONE
 // bar publishes them all (S4-12: „Slaid 2 pealkiri“, „Slaidid“, „MS LABi lause“, „Koolitaja kaart“, „KKK küsimus 4“, „KKK“); what the publish holds
 // back is said under it („Puudub: slaid 3 pilt“). A refused row's words are placed by the row's key (rowRefusals, README §4 "errors keyed by row id"):
@@ -36,7 +38,7 @@ import styles from "./HomeEditor.module.css";
 type Home = HomePartValues;
 
 /** The cards' ids (the section map's links), in the public page's order. */
-const CARD = { slides: "slaidid", statement: "lause", teaser: "koolitaja-kaart", faq: "kkk", trainer: "koolitaja-plokk" } as const;
+const CARD = { slides: "slaidid", statement: "lause", teaser: "koolitaja-kaart", faq: "kkk" } as const;
 
 /** Each row's refused fields' codes (rowRefusals) in words. */
 const inWords = (placed: Map<string, Record<string, string>>): Map<string, Record<string, string>> =>
@@ -58,6 +60,14 @@ export function HomeEditor({ parts, stamp, links }: { parts: Record<string, Site
       eyebrow={t.eyebrow}
       title={t.title}
       lead={t.lead}
+      leadHint={
+        <>
+          {t.trainer.hint}{" "}
+          <Link className={ed.hintLink} href="/admin/koolitaja">
+            {t.trainer.link}
+          </Link>
+        </>
+      }
       viewHref="/"
       previewPath="/"
       parts={parts}
@@ -69,8 +79,8 @@ export function HomeEditor({ parts, stamp, links }: { parts: Record<string, Site
 }
 
 /**
- * The section map's five entries (the P4 frame): „Slaidid“ with its slides, „MS LABi lause“, „Koolitaja kaart“, „KKK“ with its questions, and the
- * link row's „→“ (S4-7); „Kontrolli“ on a card whose part needs a look (a field held back, a conflict, held by the publish), else „RU puudub“ when one
+ * The section map's four entries (the P4 frame): „Slaidid“ with its slides, „MS LABi lause“, „Koolitaja kaart“, „KKK“ with its questions (S4-7; the
+ * link row's „→“ went with it, UX audit 2 A44); „Kontrolli“ on a card whose part needs a look (a field held back, a conflict, held by the publish), else „RU puudub“ when one
  * of its texts has Estonian and no Russian.
  */
 function sectionsOf(apis: SiteApis<Home>): SectionEntry[] {
@@ -93,11 +103,10 @@ function sectionsOf(apis: SiteApis<Home>): SectionEntry[] {
     { id: CARD.statement, label: t.statement.title, ...body(statement) },
     { id: CARD.teaser, label: t.teaser.title, ...body(teaser) },
     { id: CARD.faq, label: t.faq.title, count: items.length, ...flag(faq.attention || faq.error("faq") !== undefined, items.some((x) => lacksRu(x.q) || lacksRu(x.a))) },
-    { id: CARD.trainer, label: t.trainer.title, note: t.trainer.mapValue },
   ];
 }
 
-/** The cards in the public page's order, then the link row, in the screen's marker. */
+/** The cards in the public page's order, in the screen's marker. */
 function HomeCards({ apis, links }: { apis: SiteApis<Home>; links: string[] }) {
   const t = adminEt.home;
   return (
@@ -106,7 +115,6 @@ function HomeCards({ apis, links }: { apis: SiteApis<Home>; links: string[] }) {
       <BodyCard id={CARD.statement} part="statement" api={apis.statement} texts={t.statement} max={SITE_LIMITS.statement} />
       <BodyCard id={CARD.teaser} part="teaser" api={apis.teaser} texts={t.teaser} max={SITE_LIMITS.teaser} teaser />
       <FaqCard faq={apis.faq} />
-      <TrainerRow />
     </div>
   );
 }
@@ -194,18 +202,6 @@ function FaqCard({ faq }: { faq: SitePartApi<{ faq: FaqDraft[] }> }) {
     <SiteCard id={CARD.faq} title={t.title} parts={[faq]} unpublished={rowsMoved(items, live)} className={styles.card} titleClassName={`${ui.h2} ${styles.title}`}>
       <p className={styles.lead}>{t.lead}</p>
       <FaqEditor items={items} live={live} onUpdate={(fn) => faq.update("faq", fn)} errors={errors} error={errors.size === 0 ? faq.error("faq") : undefined} />
-    </SiteCard>
-  );
-}
-
-/** „Koolitaja plokk“: one row with the way to Koolitaja, whose fields the home page's trainer block shows (S4-8). */
-function TrainerRow() {
-  const t = adminEt.home.trainer;
-  return (
-    <SiteCard id={CARD.trainer} title={t.title} parts={[]} className={styles.linkRow} titleClassName={styles.linkTitle} data-trainer-note="">
-      <Link className={`${ui.link} ${styles.link}`} href="/admin/koolitaja">
-        {t.link}
-      </Link>
     </SiteCard>
   );
 }
