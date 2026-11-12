@@ -194,6 +194,35 @@ describe("Eemalda sooduskood", () => {
     expect(text($("[data-discount-remove-sure] [data-discount-error]"))).toBe("Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.");
   });
 
+  // M5 × M6: the refusal's refresh brings the money, which closes the question (no buttons now): the reason stays, under the row, in the refused
+  // action's words, whichever of the two (the answer, the page's new props) comes first
+  describe.each([["the answer first"], ["the refreshed page first"]] as const)("the refusal for money that the page's refresh then shows (%s)", (order) => {
+    test.each([
+      ["removal", WITH_CODE, "Jah, eemalda", "Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.", "JOULUD-20 · −70 €"],
+      ["add", {}, "Lisa", "Sooduskoodi saab lisada, kui midagi pole veel laekunud.", null],
+    ] as const)("the %s: the reason stays without the buttons", async (_what, over, press, reason, row) => {
+      await show(over);
+      await click($("[data-discount-open]"));
+      if (press === "Lisa") await type($<HTMLInputElement>("[data-discount-code-input]"), "joulud-20");
+      let answer!: (r: unknown) => void;
+      (press === "Lisa" ? actions.addRegistrationDiscountAction : actions.removeRegistrationDiscountAction).mockImplementation(() => new Promise((r) => (answer = r)));
+      await click(button(press));
+      const answered = async () => {
+        await act(async () => answer({ ok: false, error: "paid" }));
+        await settle();
+      };
+      if (order === "the answer first") await answered();
+      await show({ ...over, paidCents: 100 }); // (the server action's refresh: the page's new props)
+      if (order === "the refreshed page first") await answered();
+      expect($("[data-discount-remove-sure]")).toBeNull();
+      expect($("[data-discount-form]")).toBeNull();
+      expect($("[data-discount-open]")).toBeNull();
+      expect(row === null ? $("[data-discount-code]") : text($("[data-discount-code]"))).toBe(row);
+      expect(text($("[data-discount-error]"))).toBe(reason);
+      expect($("[data-discount-error]")!.getAttribute("role")).toBe("alert");
+    });
+  });
+
   test("Jah, eemalda sends the registration; a refusal shows its text and keeps the question", async () => {
     await show(WITH_CODE);
     await click($("[data-discount-open]"));

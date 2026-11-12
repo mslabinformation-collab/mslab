@@ -111,6 +111,12 @@
   white-space: normal;
 }
 
+/* a refusal whose refresh closed the field or question (money or an invoice arrived meanwhile): under the row, as the field's own line is */
+.closedBy {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
 /* the refusal's line is in place from the start (a live region is announced when it fills); empty it takes no row */
 .refusal:empty {
   display: none;

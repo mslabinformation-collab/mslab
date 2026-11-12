@@ -19,7 +19,8 @@ import styles from "./RegistrationDiscount.module.css";
 // The buttons are there only while D11 lets them work (the final review's M6, ruling F-M6; Dim's rule: no button that can only be refused): nothing in
 // „Laekunud summa“, not cancelled, no unpaid invoice. Otherwise a code is its row „{code} · −{amount}“ alone, and no code is no „Sooduskood“ row at all
 // (the approved design draws only the unpaid states). The server checks the same under its locks, so a refusal is left only for a race (money or an
-// invoice arriving while the drawer is open), and a removal refused for money says so in its own words (M5).
+// invoice arriving while the drawer is open), and a removal refused for money says so in its own words (M5). The refusal's refresh then brings the
+// money and closes the field or question, so its reason stays under the row.
 
 type Texts = typeof adminEt.discounts.registration;
 type Answer = Awaited<ReturnType<typeof addRegistrationDiscountAction>>;
@@ -58,7 +59,7 @@ export function RegistrationDiscount({
   const [chosenMode, setMode] = useState<"idle" | "adding" | "removing">("idle");
   // D11's „When“ (the server's openRegistration checks the same under its locks)
   const changeable = !cancelled && paidCents === 0 && !unpaidInvoice;
-  // (a refresh that brings money or an invoice closes an open field or question)
+  // (a refresh that brings money or an invoice closes an open field or question; a refusal it came with stays under the row: `closedBy` below)
   const mode = changeable ? chosenMode : "idle";
   const [typed, setTyped] = useState("");
   const [refusal, setRefusal] = useState<Refusal | null>(null);
@@ -103,7 +104,10 @@ export function RegistrationDiscount({
 
   const off = listCents - totalCents;
   const applied = code !== null;
-  const refusalLine = refusal ? refusalText(refusal, t, mode === "removing") : "";
+  // (in the words of the action that was refused: chosenMode is still it when a refresh has closed it)
+  const refusalLine = refusal ? refusalText(refusal, t, chosenMode === "removing") : "";
+  /** The field or question was closed by the refusal's refresh (money or an invoice arrived meanwhile): its reason is said under the row instead. */
+  const closedBy = mode === "idle" && chosenMode !== "idle" && refusal !== null;
 
   return (
     <div className={styles.rows} data-registration-discount="">
@@ -171,6 +175,11 @@ export function RegistrationDiscount({
           </span>
         </div>
       ) : null}
+      {closedBy && (
+        <p role="alert" className={`${ui.error} ${styles.refusal} ${styles.closedBy}`} data-discount-error="">
+          {refusalLine}
+        </p>
+      )}
 
       {mode === "removing" && (
         <div className={styles.sure} role="group" aria-label={t.remove} data-discount-remove-sure="">
