@@ -60,6 +60,8 @@ export type ListScope = {
  *   pill of a row has aria-current. A row without pills is not drawn.
  * - `placeholder` is the page's own („Otsi nime, e-posti või telefoni järgi“, …) and is the field's accessible name. A list with nothing to search
  *   (Koolitused: six courses, B1) leaves it out and gets no search field at all: the pills and the count line stand alone.
+ * - `phoneLine` (UX audit 2 A25, Registreerimised): on a phone (up to 640 px) all the pill rows stand in one line that scrolls sideways, captions and
+ *   counts as they are, so the list starts under the search and one filter line. Give the select a `short` word too, and it is a pill in that line.
  */
 export function ListToolbar({
   placeholder,
@@ -67,6 +69,7 @@ export function ListToolbar({
   scope,
   scopes,
   countLine,
+  phoneLine,
 }: {
   /** The search field's placeholder and name; without it there is no search field. */
   placeholder?: string;
@@ -76,6 +79,8 @@ export function ListToolbar({
   /** Several selects, side by side in this order. */
   scopes?: ListScope[];
   countLine?: string;
+  /** On a phone the pill rows are one line that scrolls sideways. */
+  phoneLine?: boolean;
 }) {
   const t = adminEt.lists;
   const router = useRouter();
@@ -214,7 +219,7 @@ export function ListToolbar({
       )}
 
       {rows.length > 0 && (
-        <div className={styles.pillRows} data-list-pills="">
+        <div className={styles.pillRows} data-list-pills="" data-phone-line={phoneLine ? "" : undefined}>
           {rows.map((row, i) => (
             <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="" data-with-select={i === 0 && phoneSelects.length > 0 ? "" : undefined}>
               {row.caption && (
@@ -303,8 +308,9 @@ function ScopeSelect({
   return (
     <span className={styles.selectBox} data-scope-phone="">
       {/* (the select is the control; the pill only draws it, and is not read a second time) */}
+      {/* (an option's indent in the list — Registreerimised' session under its course — is not the pill's) */}
       <span className={styles.selectPill} data-scope-pill="" data-chosen={picked ? "" : undefined} aria-hidden="true">
-        {picked ? picked.label : scope.short}
+        {picked ? picked.label.trim() : scope.short}
       </span>
       {select}
     </span>

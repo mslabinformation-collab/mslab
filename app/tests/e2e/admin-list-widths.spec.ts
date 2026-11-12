@@ -214,9 +214,10 @@ test("phone 390 and 375 px: label rows at one indent with every value in column 
 });
 
 // The toolbar's scope select on a phone (admin polish F13; the sweep's guard, Task 6, a test of its own since the final fix wave): at 390 and 375 px it is
-// a line of its own as wide as the search over it, not as wide as its longest option: Registreerimised „Koolitus ja toimumine“, Tagasiside „Koolitus“
-// (shown once a course has answers: the seeded student's), Arved „Kuu“; and Kalender's „Koolitus“, which has no search over it, as wide as its row
-// (Kalender's city is the pill „Linn ▾“, its own test below). The select measured must have that name, so no other select can stand in for it.
+// a line of its own as wide as the search over it, not as wide as its longest option: Tagasiside „Koolitus“ (shown once a course has answers: the seeded
+// student's), Arved „Kuu“; and Kalender's „Koolitus“, which has no search over it, as wide as its row (Kalender's city is the pill „Linn ▾“, its own test
+// below; Registreerimised' „Koolitus ja toimumine“ is the pill „Koolitus ▾“ in its one filter line since UX audit 2 A25, the test after this one). The
+// select measured must have that name, so no other select can stand in for it.
 test("phone 390 and 375 px: the toolbar's scope select is as wide as the search over it, or as Kalender's row (F13)", async ({ page, context, visitorIp, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   info.setTimeout(info.timeout + 90_000);
@@ -242,7 +243,6 @@ test("phone 390 and 375 px: the toolbar's scope select is as wide as the search 
   for (const width of [390, 375]) {
     await page.setViewportSize({ width, height: 844 });
     for (const { url, label, by } of [
-      { url: "/admin/registreerimised", label: "Koolitus ja toimumine", by: "search" },
       { url: "/admin/tagasiside", label: "Koolitus", by: "search" },
       { url: "/admin/arved", label: "Kuu", by: "search" },
       { url: "/admin/kalender", label: "Koolitus", by: "row" },
@@ -259,6 +259,42 @@ test("phone 390 and 375 px: the toolbar's scope select is as wide as the search 
       expect.soft(t.select.left + t.select.width, `${where}: inside the screen`).toBeLessThanOrEqual(width);
       expect.soft(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
     }
+  }
+});
+
+// UX audit 2 A25: Registreerimised on a 390 px phone drew the search, the course select and four pill lines, the first registration at y ≈ 630 of 740.
+// Now the search, then one filter line: „Olek:“ and its pills with their counts, the course pill „Koolitus ▾“ (the select itself over it), „Õppevorm:“
+// and its pills, side by side in one line that scrolls sideways; the field above the pills is not drawn, so one combobox has the select's name.
+test("phone 390 and 375 px: Registreerimised has the search and one filter line that scrolls sideways (UX audit 2 A25)", async ({ page, context, visitorIp, isMobile }) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  await signInAsAdmin(page, context, visitorIp, created);
+  const pageScroll = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  for (const width of [390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/admin/registreerimised");
+    await adminReady(page);
+    const m = await page.locator("[data-list-toolbar]").evaluate((tb) => {
+      const line = tb.querySelector<HTMLElement>("[data-list-pills]")!;
+      const pills = Array.from(line.querySelectorAll("a, [data-scope-pill]")).map((el) => el.getBoundingClientRect());
+      const search = tb.querySelector("form[role=search]")!.getBoundingClientRect();
+      return {
+        tops: [...new Set(pills.map((r) => Math.round(r.top)))],
+        lineTop: line.getBoundingClientRect().top,
+        searchBottom: search.bottom,
+        scrolls: line.scrollWidth > line.clientWidth,
+        pill: tb.querySelector("[data-scope-pill]")?.textContent ?? null,
+        fields: Array.from(tb.querySelectorAll("select")).filter((s) => !s.closest("[data-scope-phone]") && s.getBoundingClientRect().width > 0).length,
+      };
+    });
+    const where = `/admin/registreerimised at ${width} px (${JSON.stringify(m)})`;
+    expect(m.tops, `${where}: every pill on one line`).toHaveLength(1);
+    expect(m.lineTop, `${where}: the line straight under the search`).toBeGreaterThanOrEqual(m.searchBottom);
+    expect(m.lineTop - m.searchBottom, `${where}: the line straight under the search`).toBeLessThanOrEqual(12);
+    expect(m.scrolls, `${where}: the line scrolls sideways`).toBe(true);
+    expect(m.pill, `${where}: the course pill`).toBe("Koolitus");
+    expect(m.fields, `${where}: no select field above the pills`).toBe(0);
+    await expect(page.getByRole("combobox", { name: "Koolitus ja toimumine" }), `${where}: one course select`).toHaveCount(1);
+    expect(await pageScroll(), `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
   }
 });
 

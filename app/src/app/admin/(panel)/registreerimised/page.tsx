@@ -193,6 +193,8 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   ].map((p) => ({ href: href({ ...view, vorm: p.key, leht: 1 }), label: p.label, current: view.vorm === p.key }));
   const scope: ListScope = {
     label: t.col.course,
+    // on a phone the select is the pill „Koolitus ▾“ in the one filter line (UX audit 2 A25, ListToolbar `phoneLine`)
+    short: t.drawer.course,
     value: view.toimumine !== null ? `s${view.toimumine}` : view.koolitus !== null ? `k${view.koolitus}` : "",
     options: [
       { value: "", label: t.scopeAll, href: href({ ...view, koolitus: null, toimumine: null, leht: 1 }) },
@@ -225,6 +227,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
             { label: t.statusLabel, caption: t.statusCaption, pills: statusPills },
             { label: t.typeLabel, caption: t.typeCaption, pills: typePills },
           ]}
+          phoneLine
         />
 
         <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>

@@ -3138,6 +3138,31 @@
       "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
+      "id": "haldus-registreerimised-telefon",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Registreerimised telefonis",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava telefonis „Registreerimised“.",
+        "Libista otsingu all olevat nuppude rida vasakule ja tagasi.",
+        "Vajuta „Ootab ettemaksu“, siis „Koolitus ▾“ ja vali oma proovi koolitus.",
+        "Vajuta „Kõik“ ja vali „Koolitus ▾“ alt „Kõik koolitused ja toimumised“."
+      ],
+      "expect": [
+        "Otsingu all on üks nuppude rida: „Olek:“ arvudega, „Koolitus ▾“ ja „Õppevorm:“; loend algab kohe selle all.",
+        "Nuppude rida liigub küljele, leht ise mitte.",
+        "Valikud filtreerivad loendi nagu arvutis ja aadressis on „staatus=“ ning „koolitus=“.",
+        "Valitud koolitusel on „Koolitus ▾“ asemel koolituse nimi; pärast „Kõik koolitused ja toimumised“ jälle „Koolitus“."
+      ],
+      "why": "Telefonis peab loend algama inimestest, mitte filtritest.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-loend-tahvel",
       "area": "haldus",
       "who": "dim",

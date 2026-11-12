@@ -403,6 +403,37 @@ describe("ListToolbar: pill rows and the count line", () => {
     expect(caption).toMatch(/font:\s*600 12px/);
   });
 
+  // UX audit 2 A25: Registreerimised on a 390 px phone drew the search, the course select and the two pill rows in four lines, the first registration
+  // at y ≈ 630 of 740. `phoneLine`: on a phone the rows stand in one line that scrolls sideways (the counts stay), the select a pill in it (`short`)
+  it("`phoneLine`: the rows' box is marked for the phone's one line, with the scope's phone pill at the end of the first row; without it, not", async () => {
+    const scope = { label: "Koolitus ja toimumine", value: "", short: "Koolitus", options: [{ value: "", label: "Kõik koolitused ja toimumised", href: "/admin/registreerimised" }] };
+    await show("/admin/registreerimised?staatus=ootab&vorm=k", { pillRows: [status, kind], scope, phoneLine: true });
+    const box = $("[data-list-pills]")!;
+    expect(box.hasAttribute("data-phone-line")).toBe(true);
+    const navs = Array.from(box.querySelectorAll("nav"));
+    expect(navs.map((n) => n.getAttribute("aria-label"))).toEqual(["Staatus", "Vorm"]);
+    expect(navs[0].lastElementChild!.hasAttribute("data-scope-phone")).toBe(true);
+    // the same links as before: the filters are the page's addresses
+    expect(Array.from(box.querySelectorAll("a")).map((a) => a.getAttribute("href"))).toEqual([...status.pills, ...kind.pills].map((p) => p.href));
+    await show("/admin/registreerimised", { pillRows: [status, kind] });
+    expect($("[data-list-pills]")!.hasAttribute("data-phone-line")).toBe(false);
+  });
+
+  it("the stylesheet: on a phone a `phoneLine` box is one line that scrolls sideways, its rows and pills unwrapped, room kept for the focus ring", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const phone = /@media \(max-width: 640px\) \{\r?\n([\s\S]*?)\r?\n\}/.exec(css)?.[1] ?? "";
+    const line = /\.pillRows\[data-phone-line\] \{([^}]*)\}/.exec(phone)?.[1] ?? "";
+    expect(line).toMatch(/flex-wrap:\s*nowrap;/);
+    expect(line).toMatch(/overflow-x:\s*auto;/);
+    expect(line).toMatch(/padding:\s*4px;/);
+    expect(line).toMatch(/margin:\s*-4px;/);
+    const rows = /\.pillRows\[data-phone-line\] > \.pills \{([^}]*)\}/.exec(phone)?.[1] ?? "";
+    expect(rows).toMatch(/flex:\s*none;/);
+    expect(rows).toMatch(/flex-wrap:\s*nowrap;/);
+    // above a phone the rows wrap as before
+    expect(/\n\.pillRows \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/flex-wrap:\s*wrap;/);
+  });
+
   it("there is no row without pills, and no nav without rows", async () => {
     await show("/admin/registreerimised");
     expect($("nav")).toBeNull();
@@ -788,6 +819,24 @@ describe("ListToolbar: several selects (B3 Kalender: the course and the city)", 
     expect(phoneCopy().value).toBe("");
     expect(selects()[1].value).toBe("");
     expect(pill()!.hasAttribute("data-chosen")).toBe(false);
+  });
+
+  // UX audit 2 A25: Registreerimised' select indents a session under its course with two no-break spaces; the pill says the choice without them
+  it("the pill says a chosen option without the indent its option text has in the list", async () => {
+    const indent = String.fromCharCode(160, 160);
+    const scope = {
+      label: "Koolitus ja toimumine",
+      short: "Koolitus",
+      value: "s7",
+      options: [
+        { value: "", label: "Kõik koolitused ja toimumised", href: "/admin/registreerimised" },
+        { value: "k3", label: "Kulmumeistri baaskoolitus", href: "/admin/registreerimised?koolitus=3" },
+        { value: "s7", label: `${indent}05.12.2026 Pärnu`, href: "/admin/registreerimised?toimumine=7" },
+      ],
+    };
+    await show("/admin/registreerimised?toimumine=7", { scope, pillRows: [pillRow] });
+    expect(pill()!.textContent).toBe("05.12.2026 Pärnu");
+    expect(Array.from(phoneCopy().options).map((o) => o.textContent)[2]).toBe(`${indent}05.12.2026 Pärnu`); // the list keeps it
   });
 
   it("only the first pill row gets the copy; with no pill row the select stays one plain field (nothing to hide on a phone); a select without `short` never has a copy", async () => {

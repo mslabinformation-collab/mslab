@@ -256,4 +256,18 @@
     outline: 2px solid var(--rose);
     outline-offset: 2px;
   }
+
+  /* `phoneLine` (UX audit 2 A25, Registreerimised): every pill row in one line that scrolls sideways, so the list starts under the search and this one
+     line. 4 px of room inside the scrolling box, given back by the margin, keep the pills' focus ring (2 px at 2 px) whole at its edges. */
+  .pillRows[data-phone-line] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: -4px;
+    padding: 4px;
+  }
+
+  .pillRows[data-phone-line] > .pills {
+    flex: none;
+    flex-wrap: nowrap;
+  }
 }
