@@ -69,6 +69,13 @@
   gap: 8px;
 }
 
+/* „Lisa“: the 44 px of the field and „Katkesta“ beside it (ui.btn alone is 49 px; P29) */
+.submit {
+  min-height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .input {
   flex: 1 1 140px;
   min-width: 0;

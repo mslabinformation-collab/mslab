@@ -435,7 +435,16 @@ function RegistrationDetail({
           paymentLines={payments.length > 0 ? <PaymentLines rows={payments} /> : null}
           discountRow={
             total === null || list === null ? undefined : (
-              <RegistrationDiscount registrationId={r.id} listCents={list} totalCents={total} code={r.discountCode === "" ? null : r.discountCode} cancelled={r.status === "cancelled"} />
+              <RegistrationDiscount
+                registrationId={r.id}
+                listCents={list}
+                totalCents={total}
+                code={r.discountCode === "" ? null : r.discountCode}
+                cancelled={r.status === "cancelled"}
+                // D11's other two conditions, so the card offers its buttons only while they can work (M6)
+                paidCents={r.paidCents}
+                unpaidInvoice={invoices.some((i) => i.status === "unpaid")}
+              />
             )
           }
           today={today}

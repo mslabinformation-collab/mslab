@@ -90,7 +90,6 @@ export async function listCodes(q: Q, now: Date): Promise<CodeListRow[]> {
   });
 }
 
-/** A course the drawer can choose, and the price a euro amount is held under (R18): its title (Estonian), kind, whether it is public, its list price. */
 /**
  * The texts of the codes that are on and inside their dates today (Tallinn), the welcome code included: what the newsletter editor checks its „Kood“
  * against (D13). Uses, limits and scope are not looked at: the editor's warning only says „no such active code“, a full code is still a code Maria made.
@@ -101,6 +100,7 @@ export async function activeCodeTexts(q: Q, now: Date): Promise<string[]> {
   return rows.filter((row) => codeState(ruleOf({ ...row, courseIds: [] }), today, 0) === "active").map((row) => row.code);
 }
 
+/** A course the drawer can choose, and the price a euro amount is held under (R18): its title (Estonian), kind, whether it is public, its list price. */
 export type CodeCourse = { id: number; title: string; type: "e_learning" | "contact"; published: boolean; listCents: number | null };
 
 /** Every course for the checklist, contact courses and e-courses, by their place in the catalogue. */

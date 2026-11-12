@@ -2202,6 +2202,8 @@ export const adminEt = {
       removeYes: "Jah, eemalda",
       errors: {
         paid: "Sooduskoodi saab lisada, kui midagi pole veel laekunud.",
+        // (Draft, the final review's M5) „Eemalda sooduskood“ refused because money arrived meanwhile: the removal's own words
+        removePaid: "Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.",
         unpaidInvoice: "Tühista enne maksmata arve.",
         unknown: "Sellist sooduskoodi ei ole.",
         // (Draft) the registration already has a code, or has none to remove, or is gone: the page has just been refreshed

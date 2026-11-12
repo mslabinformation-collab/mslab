@@ -933,6 +933,11 @@ describe("the „Kood“ warning (F1 Task 15)", () => {
     const input = $<HTMLInputElement>('[data-field="code"]')!;
     expect(input.getAttribute("aria-describedby")!.split(" ")).toContain($("[data-code-warning]")!.id);
     expect($("[data-send-all]")!.getAttribute("aria-disabled")).toBeNull();
+    // P31: in the field's own gap, as the F1 design's Haldus-paneel spaces a field's lines (not the 25 px a notice keeps under a section)
+    expect($("[data-code-warning]")!.className).toMatch(/inField/);
+    const ui = readFileSync("src/components/admin/ui.module.css", "utf8");
+    expect(ui).toMatch(/\.inField\s*\{\s*margin:\s*0;\s*\}/);
+    expect(ui.indexOf(".inField")).toBeGreaterThan(ui.indexOf(".notice {"));
     await type(input, " sugis15 ");
     expect($("[data-code-warning]")).not.toBeNull();
     await type(input, "");

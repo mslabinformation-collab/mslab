@@ -316,6 +316,12 @@
   font-size: 13px;
 }
 
+/* a notice inside a field (TextField's warning under the newsletter's „Kood“, P31): placed by the field's gap like its hint, as the F1 design's
+   Haldus-paneel board spaces a field's lines, not by the 25 px a notice keeps under a section */
+.inField {
+  margin: 0;
+}
+
 .empty {
   margin: 0;
   padding: 28px 0;

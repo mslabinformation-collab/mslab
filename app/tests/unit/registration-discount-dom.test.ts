@@ -18,7 +18,7 @@ vi.mock("@/server/actions/admin-discounts", () => actions);
 import { RegistrationDiscount } from "@/components/admin/RegistrationDiscount";
 
 type Props = Parameters<typeof RegistrationDiscount>[0];
-const props = (over: Partial<Props> = {}): Props => ({ registrationId: 7, listCents: 35000, totalCents: 35000, code: null, cancelled: false, ...over });
+const props = (over: Partial<Props> = {}): Props => ({ registrationId: 7, listCents: 35000, totalCents: 35000, code: null, cancelled: false, paidCents: 0, unpaidInvoice: false, ...over });
 const WITH_CODE = { totalCents: 28000, code: "JOULUD-20" };
 
 let container: HTMLDivElement;
@@ -79,6 +79,30 @@ describe("the rows", () => {
     await show({ ...WITH_CODE, cancelled: true });
     expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €");
     expect($("[data-discount-open]")).toBeNull();
+  });
+
+  // M6 (ruling F-M6, D11): the actions only while they can work — nothing received, not cancelled, no unpaid invoice; no button that can only be refused
+  test.each([
+    ["money received", { paidCents: 100 }],
+    ["an unpaid invoice", { unpaidInvoice: true }],
+  ])("with %s: a code is its row without „Eemalda sooduskood“", async (_why, over) => {
+    await show({ ...WITH_CODE, ...over });
+    expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €");
+    expect($("[data-discount-open]")).toBeNull();
+    expect(button("Eemalda sooduskood")).toBeNull();
+    // „Hind“ still shows the list price struck through and the total
+    expect(text($("[data-discount-price]"))).toBe("350 €280 €");
+  });
+
+  test.each([
+    ["money received", { paidCents: 100 }],
+    ["an unpaid invoice", { unpaidInvoice: true }],
+    ["a cancelled registration", { cancelled: true }],
+  ])("with %s and no code: no „Sooduskood“ row, „Hind“ alone", async (_why, over) => {
+    await show(over);
+    expect($("[data-discount-code]")).toBeNull();
+    expect(button("Lisa sooduskood")).toBeNull();
+    expect(text($("[data-registration-discount]"))).toBe("Hind350 €");
   });
 });
 
@@ -152,6 +176,22 @@ describe("Eemalda sooduskood", () => {
     await click(button("Katkesta"));
     expect($("[data-discount-remove-sure]")).toBeNull();
     expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €Eemalda sooduskood");
+  });
+
+  test("P29: while the question is asked, the row keeps „Eemalda sooduskood“ (design C)", async () => {
+    await show(WITH_CODE);
+    await click($("[data-discount-open]"));
+    expect($("[data-discount-remove-sure]")).not.toBeNull();
+    expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €Eemalda sooduskood");
+    expect($("[data-discount-open]")!.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  test("M5: money that arrived meanwhile refuses the removal in its own words", async () => {
+    await show(WITH_CODE);
+    await click($("[data-discount-open]"));
+    actions.removeRegistrationDiscountAction.mockResolvedValue({ ok: false, error: "paid" });
+    await click(button("Jah, eemalda"));
+    expect(text($("[data-discount-remove-sure] [data-discount-error]"))).toBe("Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.");
   });
 
   test("Jah, eemalda sends the registration; a refusal shows its text and keeps the question", async () => {

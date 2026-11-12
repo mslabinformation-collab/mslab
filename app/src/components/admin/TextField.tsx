@@ -97,7 +97,7 @@ export function TextField({
         </p>
       )}
       {warning && (
-        <p id={`${id}-warning`} className={`${ui.notice} ${ui.warn}`} data-code-warning="">
+        <p id={`${id}-warning`} className={`${ui.notice} ${ui.warn} ${ui.inField}`} data-code-warning="">
           {warning}
         </p>
       )}
