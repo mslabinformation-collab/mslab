@@ -52,11 +52,12 @@
   margin: 0;
 }
 
-/* the bar: what has come in, against the price; the marker at 50 % (from where the place is confirmed) reaches out of it */
+/* the bar: what has come in, against the price; the marker at 50 % (from where the place is confirmed) reaches out of it, „50 %“ under it (UX audit 2
+   A46: the bar's foot margin is the label's room) */
 .bar {
   position: relative;
   height: 8px;
-  margin: 5px 0;
+  margin: 5px 0 21px;
   border-radius: 4px;
   background: var(--line);
 }
@@ -77,6 +78,16 @@
   width: 2px;
   margin-left: -1px;
   background: var(--ink);
+}
+
+/* „50 %“, centred under the marker */
+.markLabel {
+  position: absolute;
+  top: calc(100% + 7px);
+  transform: translateX(-50%);
+  color: var(--muted-2);
+  font: 600 11px/1.2 var(--font-body);
+  white-space: nowrap;
 }
 
 .seat {

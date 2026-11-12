@@ -455,6 +455,8 @@ export const adminEt = {
         chosen: { half: "Valitud: ettemaks 50%", full: "Valitud: kogu summa (100%)", financing: "Valitud: järelmaks (Inbank)" },
         // „{laekunud} / {hind} laekunud“: the money (large) and the rest of the line
         of: "/ {price} laekunud",
+        // (Draft, UX audit 2 A46) under the bar's marker: from here the place is confirmed
+        mark: "50 %",
         seat: "Koht kinnitub {pool} juures · vabu kohti {free} / {cap}",
         seatAlone: "Registreering kinnitub {pool} juures",
         add: "Lisa laekumine",

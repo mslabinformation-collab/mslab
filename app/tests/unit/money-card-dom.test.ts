@@ -86,6 +86,10 @@ describe("the card: the money, the 50 % marker and the seats", () => {
     expect(text($("[data-money-total]", card))).toBe("/ 290 € laekunud");
     expect($("[data-money-bar]", card)).not.toBeNull();
     expect($<HTMLElement>("[data-money-mark]", card)!.style.left).toBe("50%");
+    // UX audit 2 A46: the marker says what it is, „50 %“ under it (at its place)
+    const label = $<HTMLElement>("[data-money-mark-label]", card)!;
+    expect(text(label)).toBe("50 %");
+    expect(label.style.left).toBe("50%");
     expect(text($("[data-money-seat]", card))).toBe("Koht kinnitub 145 € juures · vabu kohti 2 / 4");
     // the panel is closed until „Lisa laekumine“ is pressed (the phone's first screen holds only the button)
     expect($("[data-add-payment-panel]")).toBeNull();

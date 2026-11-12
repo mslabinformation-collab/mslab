@@ -259,6 +259,10 @@ export function MoneyCard({
           <div className={styles.bar} aria-hidden="true" data-money-bar="">
             <span className={styles.fill} style={{ width: `${Math.min(100, Math.max(0, (paidCents / Math.max(1, priceCents)) * 100))}%` }} />
             <span className={styles.mark} style={{ left: "50%" }} data-money-mark="" />
+            {/* (what the marker is: UX audit 2 A46; the bar is hidden from a screen reader, the line under it says the same) */}
+            <span className={styles.markLabel} style={{ left: "50%" }} data-money-mark-label="">
+              {m.mark}
+            </span>
           </div>
           <p className={styles.seat} data-money-seat="">
             {session
