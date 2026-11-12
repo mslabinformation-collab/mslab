@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { indexableHost, indexingOn, NOINDEX, PRIVATE_HEADER_SOURCES } from "@/lib/indexing";
+import { hostCondition, indexableHost, indexingOn, isPrivatePath, NOINDEX, PRIVATE_HEADER_SOURCES } from "@/lib/indexing";
 
 // SEO G1: one decision whether search engines may index the site: the gate is off AND this is Vercel's production environment.
 // Every other machine (local, the e2e run, previews) and the gated site say noindex, exactly as before.
@@ -59,4 +59,22 @@ test("the noindex value and the private sources", () => {
     "/p/:path*",
     "/tulekul/:path*",
   ]);
+});
+
+describe("isPrivatePath: the same list as the headers, for the middleware's own redirects (SEO G7)", () => {
+  test("every private source matches, with its trailing slash, an /et prefix and extra leading slashes", () => {
+    const paths = ["/admin", "/admin/x", "/api/feedback", "/konto", "/konto/", "/konto/sisene", "/ru/konto/sisene", "/et/konto/sisene", "//konto", "/ostukorv", "/ru/ostukorv/x", "/makse", "/ru/makse", "/maksa/abc", "/guide", "/guide/", "/p/d/", "/tulekul/et"];
+    for (const path of paths) expect(isPrivatePath(path), path).toBe(true);
+  });
+
+  test("public pages and look-alikes do not", () => {
+    for (const path of ["/", "/ru", "/koolitused", "/koolitused/konto", "/kontakt", "/kontoo", "/ostukorvx", "/maksa", "/maksa/a/b", "/administrator", "/apix", "/pxyz", "/et", "/robots.txt"])
+      expect(isPrivatePath(path), path).toBe(false);
+  });
+});
+
+test("hostCondition escapes the dots of a host, which Next reads as a regular expression", () => {
+  expect(hostCondition("mslab.ee")).toBe("mslab\\.ee");
+  expect(new RegExp(`^${hostCondition("mslab.ee")}$`).test("mslabXee")).toBe(false);
+  expect(new RegExp(`^${hostCondition("mslab.ee")}$`).test("mslab.ee")).toBe(true);
 });

@@ -2,7 +2,7 @@
 // functions, tested without Next.js).
 import { NextResponse, type NextRequest } from "next/server";
 import { ADMIN_PATH_HEADER } from "@/lib/admin-return";
-import { indexableHost, indexingOn, NOINDEX } from "@/lib/indexing";
+import { indexableHost, indexingOn, isPrivatePath, NOINDEX } from "@/lib/indexing";
 import { PREVIEW_COOKIE } from "@/lib/preview-cookie";
 import { gateDecision, gateOn, type GateEnv } from "@/lib/site-gate";
 import { routeSitePath } from "@/lib/site-routing";
@@ -89,7 +89,12 @@ async function gated(req: NextRequest, env: GateEnv): Promise<NextResponse> {
 function noindex(res: NextResponse, req: NextRequest): NextResponse {
   if (res.status < 300 || res.status >= 400) return res;
   const siteUrl = process.env.SITE_URL?.trim() || "https://mslab.ee";
-  const open = indexingOn({ SITE_GATE: process.env.SITE_GATE, VERCEL_ENV: process.env.VERCEL_ENV }) && indexableHost(req.headers.get("host"), siteUrl);
+  // a redirect of a private path (/konto/, the account shells' 303, /admin/) keeps it whatever the host: next.config's rules for the
+  // private areas do not reach the middleware's own answers (SEO G7), so the same list is read here (lib/indexing.ts isPrivatePath)
+  const open =
+    indexingOn({ SITE_GATE: process.env.SITE_GATE, VERCEL_ENV: process.env.VERCEL_ENV }) &&
+    indexableHost(req.headers.get("host"), siteUrl) &&
+    !isPrivatePath(req.nextUrl.pathname);
   if (!open) res.headers.set("X-Robots-Tag", ROBOTS);
   return res;
 }

@@ -53,3 +53,24 @@ export const PRIVATE_HEADER_SOURCES: string[] = [
   "/p/:path*",
   "/tulekul/:path*",
 ];
+
+/** A regular-expression source for each private source (`:path*` is the rest of the path, `:token` one segment), built once from the list. */
+const PRIVATE_PATTERNS = PRIVATE_HEADER_SOURCES.map((source) => {
+  const body = source.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${body.replace(/\/:path\*$/, "(?:/.*)?").replace(/:token/, "[^/]+")}$`);
+});
+
+/**
+ * Is `pathname` one of the private areas (PRIVATE_HEADER_SOURCES)? The middleware asks it for its own redirects, which next.config's
+ * rules do not reach: a redirect of a private path keeps noindex even at the site's own host (SEO G7). Read as the redirect's
+ * address is: extra leading slashes, a trailing slash and the /et prefix (all of which the middleware redirects away) do not hide a path.
+ */
+export function isPrivatePath(pathname: string): boolean {
+  const path = pathname.replace(/^\/+/, "/").replace(/^\/et(?=\/|$)/, "").replace(/(?<=.)\/+$/, "") || "/";
+  return PRIVATE_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+/** The `value` of a next.config `host` condition for `host`: a regular expression that Next anchors itself (^…$), so only the dots need escaping. */
+export function hostCondition(host: string): string {
+  return host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

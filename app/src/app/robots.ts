@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 import { indexingOn } from "@/lib/indexing";
 
 // SEO G2: /robots.txt, replacing public/robots.txt. It is one of the always-through root files (lib/root-files.ts): the gate
-// and the routing serve it as they served the static file. Next.js renders it when asked (the answer reads the environment).
-export const dynamic = "force-dynamic";
+// and the routing serve it as they served the static file. The file is made at build, like next.config.ts's headers (a Vercel build has
+// SITE_GATE and VERCEL_ENV; flipping the gate takes a redeploy anyway), so a bot's fetch costs no function run.
 
 /** Link-preview bots: they may fetch pages while indexing is off, so a shared link shows a card. */
 const PREVIEW_BOTS = [

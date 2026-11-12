@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { NextConfig } from "next";
-import { indexingOn, NOINDEX, PRIVATE_HEADER_SOURCES } from "./src/lib/indexing";
+import { hostCondition, indexingOn, NOINDEX, PRIVATE_HEADER_SOURCES } from "./src/lib/indexing";
 import { MEDIA_CSP } from "./src/server/media";
 
 /**
@@ -87,8 +87,10 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        // indexing on: this rule skips the site's own host only (a `missing` host condition), every other host still gets noindex
-        ...(indexing ? { missing: [{ type: "host" as const, value: siteHost }] } : {}),
+        // indexing on: this rule skips the site's own host only (a `missing` host condition), every other host still gets noindex. The
+        // value is a regular expression that Next anchors (^…$) and matches against the Host header without its port, in lower case
+        // (shared/lib/router/utils/prepare-destination.js), so the dots are escaped and nothing else is needed.
+        ...(indexing ? { missing: [{ type: "host" as const, value: hostCondition(siteHost) }] } : {}),
         headers: [
           { key: "X-Robots-Tag", value: NOINDEX },
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },

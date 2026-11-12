@@ -191,12 +191,12 @@ describe("next.config.ts headers(): indexing on (gate off, Vercel production; SE
       { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     ]);
-    expect(rules[0].missing).toEqual([{ type: "host", value: "mslab.ee" }]);
+    expect(rules[0].missing).toEqual([{ type: "host", value: "mslab\\.ee" }]);
   });
 
   test("the host is SITE_URL's", async () => {
     const rules = (await (await config({ ...on, SITE_URL: "https://example.test/" })).headers!()) as (Rule & { missing?: unknown })[];
-    expect(rules[0].missing).toEqual([{ type: "host", value: "example.test" }]);
+    expect(rules[0].missing).toEqual([{ type: "host", value: "example\\.test" }]);
   });
 
   test("the private areas are noindex whatever the host: an unconditional rule for each, the admin, the API, the account, the cart, the payment result, the pay page, the hub, the prototypes and the coming-soon page", async () => {

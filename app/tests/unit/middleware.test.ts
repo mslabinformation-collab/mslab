@@ -59,6 +59,15 @@ describe("noindex on a redirect follows the indexing switch (SEO G1)", () => {
     expect(run("/koolitused/").headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
+  test("a redirect of a private path keeps noindex even at the site's own host: /konto/ (308), an account shell's 303, /admin/, the cart (SEO G7)", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    for (const path of ["/konto/", "/konto/sisene?viga=link", "/ru/konto/", "/admin/", "/ostukorv/", "/makse/", "/et/konto/sisene"]) {
+      const res = run(path, { headers: { host: "mslab.ee" } });
+      expect(res.status, path).toBeGreaterThanOrEqual(300);
+      expect(res.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
+    }
+  });
+
   test("the shell's 303 follows the same rule", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     const answer = (host: string) => run("/konto/sisene?viga=link", { headers: { host } });
