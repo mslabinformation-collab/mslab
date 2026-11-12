@@ -1,11 +1,11 @@
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
 
-// SEO G3: the canonical address and the language links (hreflang) of a public page, as site paths. `metadataBase`
+// SEO G4: the canonical address and the language links (hreflang) of a public page, as site paths. `metadataBase`
 // (shareMetadata in the locale layout) makes them absolute on SITE_URL. Next replaces a parent's `alternates` wholesale,
 // so every public page sets its own, with this.
 
-/** The pages with a fixed address that the sitemap lists (SEO G4): the public pages, not the account, cart or payment pages. */
+/** The pages with a fixed address that the sitemap lists (SEO G3): the public pages, not the account, cart or payment pages. */
 export const PUBLIC_SITEMAP_PATHS = ["/", "/koolitused", "/koolituskalender", "/praktika", "/koolitaja", "/kontakt", "/uudised", "/privaatsus", "/tingimused"] as const;
 
 /** The language links of one page: its address in each language; Estonian is x-default. */

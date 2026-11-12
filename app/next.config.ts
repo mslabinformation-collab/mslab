@@ -68,7 +68,7 @@ const nextConfig: NextConfig = {
   },
   // Every answer (pages, API, /media and the static files of public/, the hub included):
   // - the whole host stays out of search engines until launch on mslab.ee: with indexing off (the gate on, or not Vercel production:
-  //   lib/indexing.ts, SEO G1) every answer says noindex. With it on, the rule for every path skips the site's own host (SITE_URL's):
+  //   lib/indexing.ts, SEO G1) every answer says noindex. With it on, only the X-Robots-Tag rule skips the site's own host (SITE_URL's; the framing and Referrer-Policy rule stays unconditional):
   //   www and the *.vercel.app addresses still say noindex, and the private areas say it on every host (SEO G7). These two settings
   //   are read when the config is loaded, i.e. at build (a Vercel build has both): flipping the gate takes a redeploy, as it always did;
   // - pages may be framed by this site's own pages only (the hub /guide/ shows the prototypes /p/<dir>/ in a
@@ -84,19 +84,25 @@ const nextConfig: NextConfig = {
     const noStore = [{ key: "Cache-Control", value: "no-store" }];
     const indexing = indexingOn({ SITE_GATE: process.env.SITE_GATE, VERCEL_ENV: process.env.VERCEL_ENV });
     const siteHost = new URL(process.env.SITE_URL?.trim() || "https://mslab.ee").hostname;
+    const framing = { key: "Content-Security-Policy", value: "frame-ancestors 'self'" };
+    const referrer = { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" };
     return [
-      {
-        source: "/:path*",
-        // indexing on: this rule skips the site's own host only (a `missing` host condition), every other host still gets noindex. The
-        // value is a regular expression that Next anchors (^…$) and matches against the Host header without its port, in lower case
-        // (shared/lib/router/utils/prepare-destination.js), so the dots are escaped and nothing else is needed.
-        ...(indexing ? { missing: [{ type: "host" as const, value: hostCondition(siteHost) }] } : {}),
-        headers: [
-          { key: "X-Robots-Tag", value: NOINDEX },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
+      // indexing off: one rule for every path with all three headers, exactly today's answers
+      ...(indexing
+        ? [
+            // indexing on: CSP frame-ancestors and Referrer-Policy stay on an unconditional rule, every host, always (a `missing`
+            // condition skips a rule as a whole, so it must never sit on a rule that carries them)
+            { source: "/:path*", headers: [framing, referrer] },
+            {
+              source: "/:path*",
+              // noindex alone skips the site's own host (a `missing` host condition); every other host still gets it. The value is a
+              // regular expression that Next anchors (^…$) and matches against the Host header without its port, in lower case
+              // (shared/lib/router/utils/prepare-destination.js), so the dots are escaped and nothing else is needed.
+              missing: [{ type: "host" as const, value: hostCondition(siteHost) }],
+              headers: [{ key: "X-Robots-Tag", value: NOINDEX }],
+            },
+          ]
+        : [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: NOINDEX }, framing, referrer] }]),
       // indexing on: the private areas say noindex on every host, the site's own included (SEO G7); the same value, so the later rules
       // that replace other headers of these paths cannot undo it
       ...(indexing ? PRIVATE_HEADER_SOURCES.map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: NOINDEX }] })) : []),

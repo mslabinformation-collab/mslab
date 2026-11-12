@@ -33,7 +33,7 @@ describe("robots.txt while indexing is on", () => {
         {
           userAgent: "*",
           allow: "/",
-          disallow: ["/admin", "/api/", "/konto", "/ru/konto", "/ostukorv", "/ru/ostukorv", "/makse", "/ru/makse", "/maksa/", "/guide", "/p/"],
+          disallow: ["/admin", "/api/", "/maksa/", "/guide", "/p/"],
         },
       ],
       sitemap: "https://mslab.ee/sitemap.xml",

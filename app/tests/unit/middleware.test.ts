@@ -55,12 +55,14 @@ describe("noindex on a redirect follows the indexing switch (SEO G1)", () => {
 
   test("indexing on, any other host: still noindex (www, the Vercel address, no host at all)", () => {
     vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SITE_URL", "https://mslab.ee");
     for (const host of ["www.mslab.ee", "mslab-flax.vercel.app"]) expect(redirectFrom(host).headers.get("x-robots-tag"), host).toBe("noindex, nofollow");
     expect(run("/koolitused/").headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
   test("a redirect of a private path keeps noindex even at the site's own host: /konto/ (308), an account shell's 303, /admin/, the cart (SEO G7)", () => {
     vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SITE_URL", "https://mslab.ee");
     for (const path of ["/konto/", "/konto/sisene?viga=link", "/ru/konto/", "/admin/", "/ostukorv/", "/makse/", "/et/konto/sisene"]) {
       const res = run(path, { headers: { host: "mslab.ee" } });
       expect(res.status, path).toBeGreaterThanOrEqual(300);

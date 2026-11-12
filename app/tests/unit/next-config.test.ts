@@ -8,7 +8,7 @@ import { MEDIA_CSP } from "@/server/media";
 // stricter ones of single routes. A header given there replaces the route's own, and the later rule for the same path
 // and header wins, so those come after the rule for every path. The e2e headers spec checks the answers themselves.
 
-type Rule = { source: string; headers: { key: string; value: string }[] };
+type Rule = { source: string; headers: { key: string; value: string }[]; missing?: { type: string; value?: string }[]; has?: unknown };
 
 async function config(env: Record<string, string | undefined> = {}) {
   for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
@@ -19,7 +19,15 @@ async function config(env: Record<string, string | undefined> = {}) {
 afterEach(() => vi.unstubAllEnvs());
 
 /** The value `path`'s answer gets for `key` from the rules (the last matching rule wins; simple sources only). */
-function valueFor(rules: Rule[], path: string, key: string): string | undefined {
+function valueFor(rules: Rule[], path: string, key: string, host?: string): string | undefined {
+  // a rule with a `missing` host condition applies only when no condition matches the host (Next anchors the value as ^…$ on the lowercase Host, no port);
+  // without a host given, a rule with conditions is left out
+  const applies = (rule: Rule) => {
+    if (rule.has) return false;
+    if (!rule.missing) return true;
+    if (host === undefined) return false;
+    return rule.missing.every((c) => !(c.type === "host" && new RegExp(`^${c.value}$`).test(host)));
+  };
   const matches = (source: string) => {
     if (source.endsWith("/:path*")) return path === source.slice(0, -7) || path.startsWith(source.slice(0, -6));
     if (!source.includes("/:")) return path === source;
@@ -29,7 +37,7 @@ function valueFor(rules: Rule[], path: string, key: string): string | undefined 
     return want.length === got.length && want.every((segment, i) => (segment.startsWith(":") ? got[i] !== "" : segment === got[i]));
   };
   let value: string | undefined;
-  for (const rule of rules) if (matches(rule.source)) for (const h of rule.headers) if (h.key.toLowerCase() === key.toLowerCase()) value = h.value;
+  for (const rule of rules) if (applies(rule) && matches(rule.source)) for (const h of rule.headers) if (h.key.toLowerCase() === key.toLowerCase()) value = h.value;
   return value;
 }
 
@@ -183,20 +191,39 @@ describe("next.config.ts headers(): indexing on (gate off, Vercel production; SE
   const on = { SITE_GATE: undefined, VERCEL_ENV: "production", SITE_URL: undefined };
   const robotsOf = (rule: Rule) => rule.headers.find((h) => h.key === "X-Robots-Tag")?.value;
 
-  test("the rule for every path carries noindex for every host but mslab.ee, and keeps its other two headers", async () => {
-    const rules = (await (await config(on)).headers!()) as (Rule & { missing?: unknown })[];
-    expect(rules[0].source).toBe("/:path*");
-    expect(rules[0].headers).toEqual([
-      { key: "X-Robots-Tag", value: "noindex, nofollow" },
-      { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
-      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-    ]);
-    expect(rules[0].missing).toEqual([{ type: "host", value: "mslab\\.ee" }]);
+  test("every host, public or private path: framing by this site only and the origin as referrer, always; noindex for every host but mslab.ee (final review C1)", async () => {
+    const rules = (await (await config(on)).headers!()) as Rule[];
+    for (const host of ["mslab.ee", "www.mslab.ee", "mslab-abc.vercel.app"]) {
+      for (const path of ["/", "/koolitused/x", "/admin/x", "/konto", "/ru/konto/sisene", "/guide/"]) {
+        const at = `${host}${path}`;
+        expect(valueFor(rules, path, "content-security-policy", host), at).toBe("frame-ancestors 'self'");
+        expect(valueFor(rules, path, "referrer-policy", host), at).toBe("strict-origin-when-cross-origin");
+      }
+    }
+    // noindex: the public pages say it at every host but the site's own; the private areas at every host
+    for (const path of ["/", "/koolitused/x"]) {
+      expect(valueFor(rules, path, "x-robots-tag", "mslab.ee"), `mslab.ee${path}`).toBeUndefined();
+      expect(valueFor(rules, path, "x-robots-tag", "www.mslab.ee"), `www.mslab.ee${path}`).toBe("noindex, nofollow");
+      expect(valueFor(rules, path, "x-robots-tag", "mslab-abc.vercel.app"), `vercel.app${path}`).toBe("noindex, nofollow");
+    }
+    for (const host of ["mslab.ee", "www.mslab.ee"]) for (const path of ["/admin/x", "/konto"]) expect(valueFor(rules, path, "x-robots-tag", host), `${host}${path}`).toBe("noindex, nofollow");
+  });
+
+  test("the framing and referrer rule carries no condition (a `missing` skips a rule as a whole)", async () => {
+    const rules = (await (await config(on)).headers!()) as Rule[];
+    const shared = rules.filter((r) => r.source === "/:path*" && r.headers.some((h) => h.key === "Content-Security-Policy" || h.key === "Referrer-Policy"));
+    expect(shared).toHaveLength(1);
+    expect(shared[0].missing).toBeUndefined();
+    expect(shared[0].has).toBeUndefined();
+    expect(shared[0].headers.map((h) => h.key)).toEqual(["Content-Security-Policy", "Referrer-Policy"]);
+    const robots = rules.find((r) => r.source === "/:path*" && r.headers.some((h) => h.key === "X-Robots-Tag"))!;
+    expect(robots.headers).toHaveLength(1);
+    expect(robots.missing).toEqual([{ type: "host", value: "mslab\\.ee" }]);
   });
 
   test("the host is SITE_URL's", async () => {
-    const rules = (await (await config({ ...on, SITE_URL: "https://example.test/" })).headers!()) as (Rule & { missing?: unknown })[];
-    expect(rules[0].missing).toEqual([{ type: "host", value: "example\\.test" }]);
+    const rules = (await (await config({ ...on, SITE_URL: "https://example.test/" })).headers!()) as Rule[];
+    expect(rules.find((r) => r.missing)!.missing).toEqual([{ type: "host", value: "example\\.test" }]);
   });
 
   test("the private areas are noindex whatever the host: an unconditional rule for each, the admin, the API, the account, the cart, the payment result, the pay page, the hub, the prototypes and the coming-soon page", async () => {
@@ -213,9 +240,9 @@ describe("next.config.ts headers(): indexing on (gate off, Vercel production; SE
   test("every other rule is where it was: the same sources as with indexing off, the unconditional noindex rules added after the first", async () => {
     const off = (await (await config({ SITE_GATE: undefined, VERCEL_ENV: undefined })).headers!()) as Rule[];
     const onRules = (await (await config(on)).headers!()) as Rule[];
-    const noindexRules = onRules.slice(1).filter((r) => r.headers.length === 1 && robotsOf(r) === "noindex, nofollow");
+    const noindexRules = onRules.slice(2).filter((r) => r.headers.length === 1 && robotsOf(r) === "noindex, nofollow");
     expect(noindexRules.map((r) => r.source)).toEqual(PRIVATE_HEADER_SOURCES);
-    expect(onRules.filter((r) => !noindexRules.includes(r)).slice(1)).toEqual(off.slice(1));
+    expect(onRules.filter((r, i) => i >= 2 && !noindexRules.includes(r))).toEqual(off.slice(1));
   });
 
   test("with the gate on, or off Vercel production, the answers are today's: no host condition, no extra rules", async () => {

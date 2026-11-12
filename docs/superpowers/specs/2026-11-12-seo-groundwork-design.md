@@ -16,8 +16,9 @@ Search Console property exists (Dim created it).
   pages' robots meta (layout), robots.txt. Today (gate on) and on every machine that is not Vercel production: exactly today's
   noindex behaviour.
 - **G2 robots.txt** made by `app/robots.ts` (replaces `public/robots.txt`). Indexing off: today's text (link-preview bots allowed,
-  everything else disallowed). Indexing on: allow all, disallow the private areas (`/admin`, `/api/`, `/konto`, `/ru/konto`,
-  `/ostukorv`, `/ru/ostukorv`, `/makse`, `/ru/makse`, `/maksa/`, `/guide`, `/p/`), and `Sitemap: <SITE_URL>/sitemap.xml`.
+  everything else disallowed). Indexing on: allow all, disallow `/admin`, `/api/`, `/maksa/`, `/guide`, `/p/`
+  (not the account, cart and payment-result pages: they are noindex always, and a crawler barred from them would never read it;
+  final review M1), and `Sitemap: <SITE_URL>/sitemap.xml`.
 - **G3 sitemap.xml** (`app/sitemap.ts`, rendered per request, no build-time database read): the public pages in ET and RU
   (`/`, `/koolitused`, `/koolituskalender`, `/praktika`, `/koolitaja`, `/kontakt`, `/uudised`, `/privaatsus`, `/tingimused`), every
   published course and post, each entry with its ET/RU/x-default alternates; `lastModified` = a course's `updatedAt`, a post's

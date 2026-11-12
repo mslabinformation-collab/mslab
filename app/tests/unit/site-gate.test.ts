@@ -144,7 +144,7 @@ const GATED = [
   "/favicon.ico.bak",
   "/favicon.icox",
   "/robots.txt/x",
-  "/sitemap.xml", // SEO G4: the sitemap is a gated answer, not a root file: the coming-soon page without the preview cookie
+  "/sitemap.xml", // SEO G3: the sitemap is a gated answer, not a root file: the coming-soon page without the preview cookie
   "/og.jpg.bak",
   "/brand",
   "/branding/x.png",

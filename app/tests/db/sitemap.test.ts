@@ -4,7 +4,7 @@ import { courses, posts } from "@/db/schema";
 import { PUBLIC_SITEMAP_PATHS } from "@/lib/alternates";
 import { makeTestDb } from "./helpers";
 
-// SEO G4: /sitemap.xml lists the public pages and each published course and post, in both languages, with their other-language links. It reads the
+// SEO G3: /sitemap.xml lists the public pages and each published course and post, in both languages, with their other-language links. It reads the
 // database when asked (force-dynamic), so a draft is never listed.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));

@@ -6,7 +6,7 @@ import { LOCALES } from "@/i18n/locales";
 import { languageLinks, PUBLIC_SITEMAP_PATHS } from "@/lib/alternates";
 import { siteBase } from "@/server/share-meta";
 
-// SEO G4: /sitemap.xml. Read from the database when asked, never at build (no page is rendered at build, see app/[locale]/layout.tsx; a build has
+// SEO G3: /sitemap.xml. Read from the database when asked, never at build (no page is rendered at build, see app/[locale]/layout.tsx; a build has
 // no database). It is not an always-through root file: the coming-soon gate answers it like any page, and robots.txt names it only once indexing is on.
 export const dynamic = "force-dynamic";
 

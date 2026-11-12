@@ -27,6 +27,17 @@ function languages(field: string): string[] {
     .filter((x) => x === "et" || x === "ru");
 }
 
+/** `{ inLanguage: [...] }`, or nothing when the field names neither Estonian nor Russian (validators flag an empty list). */
+function inLanguage(field: string): { inLanguage?: string[] } {
+  const list = languages(field);
+  return list.length > 0 ? { inLanguage: list } : {};
+}
+
+/** `{ [key]: value }`, or nothing when the text is empty (validators flag an empty value). */
+function text<K extends string>(key: K, value: string): { [P in K]?: string } {
+  return value.trim() ? ({ [key]: value } as { [P in K]?: string }) : {};
+}
+
 export type OrganizationContact = { email: string; phone: string; address: string; instagram: string; facebook: string };
 
 /** The training centre, on every public page: its name, logo and the contact details Seaded → Kontakt has filled in. */
@@ -92,16 +103,16 @@ export function courseLd(base: string, locale: Locale, course: CourseLdInput, se
             courseMode: "onsite",
             startDate: s.startsAt.toISOString(),
             location: { "@type": "Place", ...(s.venue ? { name: s.venue } : {}), address: s.city },
-            inLanguage: languages(s.language),
+            ...inLanguage(s.language),
           }));
   return {
     "@context": CONTEXT,
     "@type": "Course",
     name: pick(course.title, locale),
-    description: pick(course.summary, locale),
+    ...text("description", pick(course.summary, locale)),
     url,
     ...(image ? { image: absolute(base, image) } : {}),
-    inLanguage: languages(course.language),
+    ...inLanguage(course.language),
     provider: { "@id": orgId(base) },
     ...(offers.length > 0 ? { offers } : {}),
     ...(instances.length > 0 ? { hasCourseInstance: instances } : {}),
@@ -118,7 +129,7 @@ export function postLd(base: string, locale: Locale, post: PostLdInput) {
     "@context": CONTEXT,
     "@type": "BlogPosting",
     headline: pick(post.title, locale),
-    description: pick(post.excerpt, locale),
+    ...text("description", pick(post.excerpt, locale)),
     url,
     mainEntityOfPage: url,
     datePublished: post.publishedAt.toISOString(),

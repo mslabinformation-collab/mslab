@@ -122,13 +122,15 @@ test.describe("structured data changes no layout (SEO G5)", () => {
       return { scripts: scripts.length, before, after: record() };
     });
 
-  test("/, /kontakt, a course page with recommendations and a post page look the same with the scripts taken out", async ({ page }) => {
+  test("/, /kontakt, three course pages (one an e-course) and a post page look the same with the scripts taken out", async ({ page }) => {
     await page.goto("/uudised");
     const post = (await page.locator("[data-news-card]").first().getAttribute("href")) ?? "/uudised";
-    for (const path of ["/", "/kontakt", "/koolitused/kulmumeistri-baaskoolitus", post]) {
+    // (the e-course's page and a second contact course too: they end <main> in a different state; the seed has no course the band skips,
+    // so the band is only required on the first)
+    for (const path of ["/", "/kontakt", "/koolitused/kulmumeistri-baaskoolitus", "/koolitused/kulmumeistri-e-koolitus", "/koolitused/lash-lift-botox", post]) {
       await page.goto(path);
       await page.waitForLoadState("load");
-      if (path.startsWith("/koolitused/")) await expect(page.locator("[data-recommendations]"), "the course shows its recommendations band").toHaveCount(1);
+      if (path === "/koolitused/kulmumeistri-baaskoolitus") await expect(page.locator("[data-recommendations]"), "the course shows its recommendations band").toHaveCount(1);
       const { scripts, before, after } = await layout(page);
       expect(scripts, `${path} has structured data`).toBeGreaterThan(0);
       expect(before, path).toEqual(after);

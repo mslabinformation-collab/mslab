@@ -11,8 +11,11 @@ const PREVIEW_BOTS = [
   "SkypeUriPreview", "vkShare", "Pinterestbot", "redditbot",
 ];
 
-/** The areas crawlers are asked to stay out of once indexing is on (the same ones next.config.ts and the pages mark noindex). */
-const PRIVATE = ["/admin", "/api/", "/konto", "/ru/konto", "/ostukorv", "/ru/ostukorv", "/makse", "/ru/makse", "/maksa/", "/guide", "/p/"];
+/**
+ * The areas crawlers are asked to stay out of once indexing is on. Not the client account, the cart and the payment result: they say noindex
+ * (page metadata and header, always), and a crawler that is barred from them never reads it (final review M1).
+ */
+const PRIVATE = ["/admin", "/api/", "/maksa/", "/guide", "/p/"];
 
 export default function robots(): MetadataRoute.Robots {
   // each setting named in full (process.env.NAME), as the middleware reads them

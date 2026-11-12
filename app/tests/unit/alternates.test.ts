@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { PUBLIC_SITEMAP_PATHS, pageAlternates } from "@/lib/alternates";
 
-// SEO G3: every public page names its own address (canonical) and its other language (hreflang), as site paths: metadataBase
+// SEO G4: every public page names its own address (canonical) and its other language (hreflang), as site paths: metadataBase
 // (the locale layout) makes them absolute. Next replaces a parent's `alternates` wholesale, so each page sets its own.
 
 describe("pageAlternates", () => {

@@ -115,6 +115,15 @@ describe("courseLd", () => {
     expect(courseLd(BASE, "et", course({ language: "ET / RU" }), []).inLanguage).toEqual(["et", "ru"]);
   });
 
+  test("an empty summary and a language that is neither ET nor RU are left out, for the course and each instance (no empty values)", () => {
+    const c = courseLd(BASE, "et", course({ summary: { et: "", ru: "" }, language: "EN" }), [session({ language: "" })]);
+    expect(c).not.toHaveProperty("description");
+    expect(c).not.toHaveProperty("inLanguage");
+    const inst = (c.hasCourseInstance as Record<string, unknown>[])[0];
+    expect(inst).not.toHaveProperty("inLanguage");
+    expect(inst.courseMode).toBe("onsite");
+  });
+
   test("the Russian page uses the Russian text and address", () => {
     const c = courseLd(BASE, "ru", course(), []);
     expect(c.name).toBe("Ламинирование бровей");
@@ -148,6 +157,14 @@ describe("postLd", () => {
       author: { "@id": ORG },
       publisher: { "@id": ORG },
     });
+  });
+});
+
+describe("postLd without an excerpt", () => {
+  test("the description is left out", () => {
+    const p = postLd(BASE, "et", { slug: "x", title: { et: "T", ru: "Т" }, excerpt: { et: "", ru: "" }, coverKey: "", publishedAt: new Date("2030-01-02T10:00:00.000Z") });
+    expect(p).not.toHaveProperty("description");
+    expect(p.headline).toBe("T");
   });
 });
 
