@@ -1,6 +1,7 @@
 // Where a request path goes: the decisions of src/middleware.ts as plain functions, without Next.js (tested on their own).
 // ET lives at "/", RU at "/ru"; internally both render app/[locale]/…
 
+import { oldAddressTarget } from "./old-addresses";
 import { ROOT_FILE_SOURCE } from "./root-files";
 import { parseRowId } from "./row-id";
 import { isSlug } from "./slug";
@@ -149,6 +150,9 @@ const hasQuery = (search: URLSearchParams): boolean => search.keys().next().done
 export function routeSitePath(pathname: string, search: URLSearchParams): SiteRoute {
   if (HUB.test(pathname)) return { kind: "hub" };
   if (API.test(pathname)) return { kind: "api" };
+  // The old WordPress site's addresses (ET only: "/ru/…" is never one) lead straight to their new page, in one permanent redirect (SEO G6).
+  const old = oldAddressTarget(canonicalPath(pathname).toLowerCase());
+  if (old) return { kind: "redirect", path: old };
   // The trailing-slash and "/et" redirects, in one permanent redirect.
   const path = canonicalPath(pathname);
   if (path !== pathname) return { kind: "redirect", path };

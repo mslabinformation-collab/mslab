@@ -108,6 +108,14 @@ describe("routeSitePath", () => {
     expect(target("/ru/konto/tagasiside", "utm=1&id=42")).toBe("/ru/konto/tagasiside#id=42");
   });
 
+  test("an old WordPress address is one permanent redirect to its new page; the old site had no /ru (SEO G6)", () => {
+    expect(route("/product/kulmud-baaskoolitus/")).toEqual({ kind: "redirect", path: "/koolitused/kulmumeistri-baaskoolitus" });
+    expect(route("/Meist")).toEqual({ kind: "redirect", path: "/koolitaja" });
+    expect(route("/et/meist")).toEqual({ kind: "redirect", path: "/koolitaja" });
+    expect(route("/koolitused/")).toEqual({ kind: "redirect", path: "/koolitused" });
+    expect(route("/ru/meist")).toEqual({ kind: "page", page: "/ru/leidmata", rewritten: true });
+  });
+
   test("redirects, the hub, the API and everything served as it is", () => {
     expect(route("/koolitused/")).toEqual({ kind: "redirect", path: "/koolitused" });
     expect(route("/et/koolitused")).toEqual({ kind: "redirect", path: "/koolitused" });

@@ -35,6 +35,20 @@ test.describe("sitemap and language links (SEO G3, G4)", () => {
   });
 });
 
+// SEO G6: the old WordPress addresses
+test.describe("old addresses (SEO G6)", () => {
+  test.skip(({ isMobile }) => isMobile, "the same answers for every browser: desktop project only");
+
+  test("an old address is one permanent redirect to its new page", async ({ request }) => {
+    const product = await request.get("/product/kulmud-baaskoolitus/", { maxRedirects: 0 });
+    expect(product.status()).toBe(308);
+    expect(product.headers()["location"]).toMatch(/\/koolitused\/kulmumeistri-baaskoolitus$/);
+    const about = await request.get("/meist", { maxRedirects: 0 });
+    expect(about.status()).toBe(308);
+    expect(about.headers()["location"]).toMatch(/\/koolitaja$/);
+  });
+});
+
 // SEO G5: the structured data scripts, read from the rendered pages
 test.describe("structured data (SEO G5)", () => {
   test.skip(({ isMobile }) => isMobile, "the same answers for every browser: desktop project only");
