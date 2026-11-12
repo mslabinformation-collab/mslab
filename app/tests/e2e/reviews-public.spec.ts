@@ -26,8 +26,8 @@ test.describe("student reviews on the course page", () => {
       await page.goto(`/koolitused/${slug}`);
       const block = page.locator('[data-reviews="course"]');
       await expect(block.getByRole("heading", { level: 2, name: "Õpilaste tagasiside" })).toBeVisible();
-      // after the course's content ("Koolitusest" and the others) and before the trainer's card
-      expect(await block.evaluate((el) => [el.previousElementSibling?.getAttribute("aria-label"), !!el.nextElementSibling?.querySelector("[data-trainer-card]")])).toEqual(["Koolitusest", true]);
+      // after the course's content (the UX pass's one grid of facts, „Koolitusest“ and the others, and the form) and before the trainer's card
+      expect(await block.evaluate((el) => [!!el.previousElementSibling?.querySelector('section[aria-label="Koolitusest"]'), !!el.nextElementSibling?.querySelector("[data-trainer-card]")])).toEqual([true, true]);
 
       const items = block.locator("[data-review]");
       await expect(items).toHaveCount(6);

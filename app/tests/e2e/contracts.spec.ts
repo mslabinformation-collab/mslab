@@ -221,6 +221,8 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
     course: courseTitle,
     session: when,
     price: euro(price),
+    // F1: the contract states what a code took off; this registration has none
+    discount: "",
     payment: "50% registreerimisel + 50% koolituspäeval",
   });
 
