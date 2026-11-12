@@ -162,9 +162,13 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     expect(text($("h1"))).toBe("Uued koolituskuupäevad Tartus");
     expect($<HTMLAnchorElement>("[data-site-view]")?.getAttribute("href")).toBe("/uudised/uued-koolituskuupaevad-tartus");
     expect($("[data-publish-bar]")).toBeNull();
+    // UX audit 2 A43: no publishing line in „Avaldamine“ while nothing waits for the bar
+    expect($("[data-post-publish-line]")).toBeNull();
     await type(field("post.body"), "Detsembris toome LAMI koolituse Tartusse.");
     await leave(field("post.body"));
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Tekst. Avalikul lehel on näha eelmine versioon.");
+    // UX audit 2 A43: the switch „Avaldatud“ and the bar's „Avalda muudatused“ at once — the card says how the two go together
+    expect(text($("[data-post-publish] [data-post-publish-line]"))).toBe("Avaldatud. Muudatused jõuavad lehele pärast „Avalda muudatused“.");
     expect($<HTMLAnchorElement>("[data-publish-preview]")?.getAttribute("href")).toBe(`/api/admin/eelvaade?tee=${encodeURIComponent("/uudised/uued-koolituskuupaevad-tartus")}`);
     expect(field("post.body")!.closest("[data-unpublished]")).not.toBeNull();
     expect(remote.log).toEqual([{ version: "l:post", patch: { body: { et: "Detsembris toome LAMI koolituse Tartusse.", ru: "В декабре в Тарту." } } }]);
@@ -175,6 +179,11 @@ describe("a published post: the template with its bar (S4-24, S4-20)", () => {
     await show();
     expect(text($("[data-post-where]"))).toBe("Avaldatud 02.10.2026 · /uudised/uued-koolituskuupaevad-tartus");
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(true);
+    // UX audit 2 A43: the switch's tap target is its whole label row „Avaldatud“, at least 44 px tall (Switch.module.css), not only the 48×28 pill
+    const row = $('[data-post-publish] label[data-switch-row]')!;
+    expect(row.contains($('[data-field="post.published"]'))).toBe(true);
+    expect(text(row)).toBe("Avaldatud");
+    expect(readFileSync(join(process.cwd(), "src/components/admin/Switch.module.css"), "utf8")).toMatch(/\.row \{[^}]*min-height: 44px;/);
   });
 
   it("the editor's card: the cover, „Pealkiri“, „Tekst“ (its 150 px box), then „Aadress“, „Kategooria“, „Lühitekst“, „Kuupäev“", async () => {
@@ -207,6 +216,7 @@ describe("a post that is not published (R-a): the same header, no bar", () => {
     expect($("[data-unpublished]")).toBeNull();
     expect(chipWords()).toMatch(/^Salvestatud kell \d\d:\d\d$/);
     expect($<HTMLInputElement>('[data-field="post.published"]')?.checked).toBe(false);
+    expect($("[data-post-publish-line]")).toBeNull();
   });
 
   it("no cover yet: the empty area is the drawn one, across the card and 220 px tall, with „Vali pilt“ under it (review m10); other screens keep theirs", async () => {

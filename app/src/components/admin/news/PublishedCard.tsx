@@ -16,9 +16,10 @@ import styles from "./PublishedCard.module.css";
  * stamp) on POST /api/admin/uudised/<id>/avaldatud `{ on }`. The switch (site/InstantSwitch.tsx) shows what was asked until the editor starts over from
  * that read, or until the press ends otherwise. Refused on (a post that is not published): `Puudub: …` under the switch (S4-22), until the post's next
  * save; the address another post has is said at „Aadress“ ("invalid", ADM:2281). Refused off: a draft changed meanwhile, listed on the bar after the
- * page's read. A failure says its line under the switch. `className`: the card's place in the post's layout.
+ * page's read. A failure says its line under the switch. `className`: the card's place in the post's layout. `waiting`: a published post's draft differs
+ * from live (the bar's „Avalda muudatused“ is there): one line under the switch says how the two go together (UX audit 2 A43).
  */
-export function PublishedCard({ page, id, published, className }: { page: SitePage; id: number; published: boolean; className?: string }) {
+export function PublishedCard({ page, id, published, waiting, className }: { page: SitePage; id: number; published: boolean; waiting: boolean; className?: string }) {
   const t = adminEt.post;
   const uid = useId();
   const [failed, setFailed] = useState<string | null>(null);
@@ -46,6 +47,11 @@ export function PublishedCard({ page, id, published, className }: { page: SitePa
         {t.sections.publish}
       </h2>
       <InstantSwitch page={page} label={t.published} checked={published} hint={t.publishedHint} said={said} press={press} data-field="post.published" />
+      {published && waiting && (
+        <p className={ui.hint} data-post-publish-line="">
+          {t.publishedWaiting}
+        </p>
+      )}
     </section>
   );
 }

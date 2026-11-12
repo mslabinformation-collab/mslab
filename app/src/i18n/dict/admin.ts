@@ -2661,6 +2661,8 @@ export const adminEt = {
     coverHint: "Kaardil lõigatakse pilt 4:3, postituse lehel 16:9. Avaldatud postitusel peab kaanepilt olemas olema.",
     published: "Avaldatud",
     publishedHint: "Avaldatud postitus on uudiste lehel ja avalehel nähtav. Mustandit näed ainult siin.",
+    // (Draft, UX audit 2 A43) under the switch while a published post has changes waiting for the bar's „Avalda muudatused“
+    publishedWaiting: "Avaldatud. Muudatused jõuavad lehele pärast „Avalda muudatused“.",
     remove: {
       button: "Kustuta postitus",
       question: "Kas kustutan selle postituse?",

@@ -171,7 +171,7 @@ function PostCards({
 
   return (
     <div className={styles.cards} data-post-editor="">
-      <PublishedCard page={page} id={id} published={published} className={styles.publish} />
+      <PublishedCard page={page} id={id} published={published} waiting={published && Object.keys(v).some((f) => api.unpublished(f))} className={styles.publish} />
       <SiteCard id="postitus" label={adminEt.siteChanges.post.post} parts={[api]} className={styles.post}>
         <div className={styles.cover}>
           <SingleImage
