@@ -44,9 +44,11 @@ describe("Estonian date and time of a session", () => {
 
 describe("badges (prototype D)", () => {
   test("D's presets and swatches, every swatch from the palette", () => {
-    // UX pass 11.11 A10: no English „Bestseller“ (it was „Enim müüdud“ twice); the card's hint says so
+    // UX pass 11.11 A10: no English „Bestseller“ (it was „Enim müüdud“ twice); UX audit 2 A36: and no note about it under the quick picks (a
+    // changelog line, not an instruction for Maria)
     expect(BADGE_PRESETS.map((p) => p.et)).toEqual(["Uus", "Populaarne", "Enim müüdud", "Viimased kohad", "Soodus"]);
-    expect(adminEt.badge.bestsellerGone).toBe("„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.");
+    expect(Object.hasOwn(adminEt.badge, "bestsellerGone")).toBe(false);
+    expect(JSON.stringify(adminEt.badge)).not.toContain("Bestseller");
     // (review of the UX pass) the card's lead is the Kursus board's, short
     expect(adminEt.badge.lead).toBe("Silt koolituse kaardil, nt „Uus“ või „Populaarne“.");
     // round 2 item 1c: each with its Russian text

@@ -1717,8 +1717,6 @@ export const adminEt = {
     // (review of the UX pass 11.11: the Kursus board's short lead; that a published course's change waits for „Avalda muudatused“ the PublishBar says)
     lead: "Silt koolituse kaardil, nt „Uus“ või „Populaarne“.",
     presets: "Kiirvalik",
-    // UX pass 11.11 A10 (the Kursus board): under the quick picks
-    bestsellerGone: "„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.",
     none: "Puudub",
     own: "Oma tekst (kuni 18 märki)",
     placeholder: "nt. Sügise hitt",

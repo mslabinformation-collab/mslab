@@ -60,9 +60,6 @@ export function BadgeEditor({ value, onChange, card, error }: { value: Badge; on
             </button>
           ))}
         </div>
-        <p className={`${ui.muted} ${ui.small}`} data-badge-gone="">
-          {t.bestsellerGone}
-        </p>
       </div>
 
       <div className={ui.field}>

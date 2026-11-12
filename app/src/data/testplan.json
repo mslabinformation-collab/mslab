@@ -1641,8 +1641,7 @@
       ],
       "expect": [
         "Kaardi pealkirja all on „Silt koolituse kaardil, nt „Uus“ või „Populaarne“.“.",
-        "„Kiirvalik“ all on „Uus“, „Populaarne“, „Enim müüdud“, „Viimased kohad“ ja „Soodus“; „Bestseller“ pole.",
-        "Nuppude all on vihje „„Bestseller“ on eemaldatud: sama mis „Enim müüdud“.“.",
+        "„Kiirvalik“ all on „Uus“, „Populaarne“, „Enim müüdud“, „Viimased kohad“ ja „Soodus“; „Bestseller“ pole, ka mitte märkusena.",
         "„Eelvaade“ näitab kaarti uue märgisega kohe.",
         "Pealkirja all olev riba nimetab „Koolituse märgis“.",
         "Avalikus loendis on kaardil märgis „Uus“ valitud värviga.",
@@ -1652,7 +1651,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-11T20:51:50.371Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-pildid",
