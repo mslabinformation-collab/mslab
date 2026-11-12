@@ -253,11 +253,16 @@ export function ContactRegister({
   }, [state, id]);
 
   // The code's refusal at „Registreeru“ sits above „Tasumine“, out of sight on a phone: focus goes to the box while it is there, else to what the
-  // field says (its message, or the range line when the submit's own check moved the total), and that is scrolled into view.
+  // field says (its message, or the range line when the submit's own check moved the total out of järelmaks' range), else — the submit's own code
+  // brought the total back into the range and her järelmaks is the choice again (T9-1 the other way, P19) — to the choice now made, and that is
+  // scrolled into view.
   useEffect(() => {
     if (discountFocus === 0) return;
     const form = formRef.current;
-    const target = form?.querySelector<HTMLElement>("[data-discount] input") ?? form?.querySelector<HTMLElement>("[data-discount-error], [data-financing-range]");
+    const target =
+      form?.querySelector<HTMLElement>("[data-discount] input") ??
+      form?.querySelector<HTMLElement>("[data-discount-error], [data-financing-range]") ??
+      form?.querySelector<HTMLElement>("input[name='payment']:checked");
     target?.focus();
     target?.scrollIntoView?.({ block: "center" });
   }, [discountFocus]);
@@ -517,7 +522,7 @@ export function ContactRegister({
           </div>
 
           {/* Group only (F1): under „Sõnum“, above „Tasumine“; the individual request has no code. */}
-          {kind === "group" && contract.priceCents !== null && <DiscountField state={discount} t={t.discount} locale={locale} idPrefix={id} />}
+          {kind === "group" && contract.priceCents !== null && <DiscountField state={discount} t={t.discount} locale={locale} idPrefix={id} place="form" />}
 
           {/* Group only: an individual course's time and payment are agreed with Maria afterwards. */}
           {kind === "group" && (

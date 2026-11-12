@@ -1,16 +1,28 @@
 /* The sooduskood of the registration form (F1 design "Sooduskoodi väli"): closed as a quiet button, open as a field with „Rakenda“, applied as
-   one line with „Eemalda“ and the total under it. The look follows the form's own fields (CourseBuy.module.css). */
+   one line with „Eemalda“ and the total under it. The look follows the form's own fields (CourseBuy.module.css). The spacing is the design's
+   (boards Main and Väli-olekud, P16): a message or hint 6 px under what it is about, „Kokku“ 12 px under the applied line and 18 px under a
+   message or hint. The field has no outer margin of its own: its host places it (`.inForm`, `.inCart`). */
 
 .discount {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+/* in the registration form's block flow: the 22 px under it of the form's other groups (CourseBuy .fields, .options) */
+.inForm {
   margin: 0 0 22px;
+}
+
+/* in the cart's grid (PurchaseInterest .form, gap 8 px): 6 px more makes the design's 14 px to „Nimi“ */
+.inCart {
+  margin: 0 0 6px;
 }
 
 .quiet {
   display: inline-flex;
   align-items: center;
-  justify-self: start;
+  align-self: flex-start;
   min-height: 44px;
   padding: 0;
   border: 0;
@@ -41,12 +53,12 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 46px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   border: 1px solid var(--heather);
   border-radius: 12px;
   background: var(--paper);
   color: var(--ink);
-  font: 400 16px/1.4 var(--font-body);
+  font: 400 16px/1.3 var(--font-body);
   text-transform: uppercase;
 }
 
@@ -83,7 +95,7 @@
   padding: 4px 6px 4px 16px;
   border: 1px solid var(--heather);
   border-radius: 14px;
-  background: var(--canvas);
+  background: var(--row-highlight);
   font: 400 14px/1.4 var(--font-body);
 }
 
@@ -92,19 +104,27 @@
 }
 
 .line .quiet {
+  align-self: center;
   padding: 0 12px;
 }
 
 .hint {
-  margin: 0 2px;
+  margin: 6px 2px 0;
   color: var(--muted);
   font: 400 12px/1.5 var(--font-body);
 }
 
 .error {
-  margin: 0 2px;
+  margin: 6px 2px 0;
   color: var(--bad);
   font: 400 13px/1.45 var(--font-body);
+}
+
+/* the message takes the focus after a refusal at the submit (tabIndex -1, T9-2): its ring is drawn whatever pressed the button */
+.error:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .total {
@@ -112,7 +132,22 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 6px 0 0;
+  margin: 12px 0 0;
+}
+
+/* under a message or the code's hint, as the design's form board draws it */
+.live:not(:empty) + .total {
+  margin-top: 18px;
+}
+
+/* the cart's board spaces its card by 14 px, the applied line and „Kokku“ too */
+.inCart .live:empty + .total {
+  margin-top: 14px;
+}
+
+/* the cart's plain total, without a code, in its grid: the 14 px of the design on both sides (with .inCart above it) */
+.cartTotal {
+  margin: 0 0 6px;
 }
 
 .totalLabel {

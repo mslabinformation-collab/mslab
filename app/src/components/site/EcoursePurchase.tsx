@@ -15,7 +15,7 @@ import { navigate } from "@/lib/navigate";
 import { useUrlQuery } from "@/lib/url-query";
 import { buyEcourse } from "@/server/actions/public";
 import { ContractPreview, type FormContract } from "./ContractPreview";
-import { DiscountField, type DiscountTexts } from "./DiscountField";
+import { DiscountField, TotalLine, type DiscountTexts } from "./DiscountField";
 import fieldStyles from "./DiscountField.module.css";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
@@ -216,11 +216,15 @@ export function EcoursePurchase({
   }, [state, id]);
 
   // The code's refusal at „Maksa“ sits above „Nimi“, out of sight on a phone: focus goes to the box while it is there, else to what the field says
-  // (its message, or the range line when the submit's own check moved the total), and that is scrolled into view.
+  // (its message, or the range line when the submit's own check moved the total out of järelmaks' range), else — the submit's own code brought the
+  // total back into the range and her järelmaks is the method again (T9-1 the other way, P19) — to the method now chosen, scrolled into view.
   useEffect(() => {
     if (discountFocus === 0) return;
     const form = formRef.current;
-    const target = form?.querySelector<HTMLElement>("[data-discount] input") ?? form?.querySelector<HTMLElement>("[data-discount-error], [data-financing-range]");
+    const target =
+      form?.querySelector<HTMLElement>("[data-discount] input") ??
+      form?.querySelector<HTMLElement>("[data-discount-error], [data-financing-range]") ??
+      form?.querySelector<HTMLElement>("input[name='method']:checked");
     target?.focus();
     target?.scrollIntoView?.({ block: "center" });
   }, [discountFocus]);
@@ -291,16 +295,9 @@ export function EcoursePurchase({
         startTransition(() => formAction(formData));
       }}
     >
-      <DiscountField state={discount} t={t.discount} locale={locale} idPrefix={id} />
-      {/* one „Kokku“ line: the field's own while a code is applied (list price struck through), else the plain total */}
-      {!discount.applied && (
-        <p className={fieldStyles.total} data-cart-total="">
-          <span className={fieldStyles.totalLabel}>{t.discount.total.replace("{total}", "").trim()}</span>
-          <span className={fieldStyles.totalSum}>
-            <strong>{euro}</strong>
-          </span>
-        </p>
-      )}
+      <DiscountField state={discount} t={t.discount} locale={locale} idPrefix={id} place="cart" />
+      {/* one „Kokku“ line: the field's own while a code is applied (list price struck through), else the plain total — the same line (TotalLine) */}
+      {!discount.applied && <TotalLine template={t.discount.total} listCents={null} totalCents={discount.totalCents} locale={locale} marker="data-cart-total" className={fieldStyles.cartTotal} />}
       <label className={styles.label} htmlFor={`${id}-name`}>
         {t.name}
       </label>

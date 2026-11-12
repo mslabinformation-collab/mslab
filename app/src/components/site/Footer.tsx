@@ -8,6 +8,14 @@ import type { FooterContact, NewsletterSettings } from "./settings";
 import styles from "./Footer.module.css";
 
 /**
+ * The newsletter card's sign-up line (F1, P22): `body` with the welcome code's value in `{discount}` („10%“, „15 €“) while a welcome code is
+ * valid today, else `bodyNoCode`, which promises no discount.
+ */
+export function footerNewsletterBody(t: { body: string; bodyNoCode: string }, discount: string | null): string {
+  return discount === null ? t.bodyNoCode : fill(t.body, { discount });
+}
+
+/**
  * B footer, half its old height (phase 2c, Maria 06.10): one block of two columns — the logo and slogan, "Õpi", the organisation's
  * links and "Kohtume" at the left (about 2/3), the lilac newsletter card at the right (about 1/3) — and the bottom line. The card
  * comes first in the page, so below 900 px, where the two stack, it is on top (as before). Contact details and the newsletter's
@@ -35,7 +43,7 @@ export function Footer({
           locale={locale}
           t={{
             ...d.newsletter,
-            body: newsletter.discount === null ? d.newsletter.bodyNoCode : fill(d.newsletter.body, { discount: newsletter.discount }),
+            body: footerNewsletterBody(d.newsletter, newsletter.discount),
             privacy: d.footer.privacy,
             errorEmail: d.forms.errorEmail,
             errorTooMany: d.forms.errorTooMany,

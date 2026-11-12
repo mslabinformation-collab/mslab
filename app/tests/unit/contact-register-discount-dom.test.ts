@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ContactRegister, type ContactRegisterTexts, type SessionOption } from "@/components/site/ContactRegister";
+import { TotalLine } from "@/components/site/DiscountField";
 import type { CheckAnswer } from "@/domain/discount-codes";
 
 // The sooduskood on the group registration form (F1, Task 9; design "Sooduskoodi väli"): the field under „Sõnum“, the total, the contract filled with
@@ -342,6 +343,31 @@ describe("the total decides järelmaks and the contract", () => {
     expect($("[data-financing-line]")).not.toBeNull();
   });
 
+  test("P19: a typed code applied at submit that brings her järelmaks back is not sent as „100% kohe“; the järelmaks choice takes the focus", async () => {
+    mocks.checkDiscountCode.mockResolvedValue(ok("SUUR", 150000, 600000));
+    mocks.registerContact.mockResolvedValue({ ok: true });
+    await render({ ...on, contract: { ...base.contract, priceCents: 600000 } });
+    await applyCode("suur");
+    await act(async () => choices()[2].click()); // järelmaks, offered at 4 500 €
+    await act(async () => $<HTMLButtonElement>("[data-discount-remove]")!.click());
+    // 6 000 €: out of range, „100% kohe“ is what would go, and the range line says why
+    expect(choices().map((c) => [c.value, c.checked])).toEqual([["full", true], ["half", false]]);
+    expect($("[data-financing-range]")).not.toBeNull();
+    await type("suur");
+    await fillIn();
+    await act(async () => $<HTMLButtonElement>("button[type='submit']")!.focus());
+    await submit();
+    // nothing is sent: she sees 4 500 € and her järelmaks chosen again, and the focus is on it
+    expect(mocks.registerContact).not.toHaveBeenCalled();
+    expect(choices().map((c) => [c.value, c.checked])).toEqual([["full", false], ["half", false], ["financing", true]]);
+    expect($("[data-financing-range]")).toBeNull();
+    expect(document.activeElement).toBe(choices()[2]);
+    // pressing Registreeru again sends it as järelmaks, with the discount
+    await submit();
+    const fd = mocks.registerContact.mock.calls[0][0];
+    expect([fd.get("payment"), fd.get("discountCode"), fd.get("discountCents")]).toEqual(["financing", "SUUR", "150000"]);
+  });
+
   test("the inline contract shows the total", async () => {
     mocks.checkDiscountCode.mockResolvedValue(ok("TERE10", 3500));
     await render();
@@ -626,6 +652,22 @@ describe("fix round 1: late answers", () => {
     await act(async () => first(refused("ended")));
     await settle();
     expect(codeInput().value).toBe("ne");
+  });
+});
+
+describe("TotalLine: the one „Kokku“ line (P17/P21)", () => {
+  const line = async (template: string, listCents: number | null) => {
+    await act(async () => root.render(createElement(TotalLine, { template, listCents, totalCents: 31500, locale: "et", marker: "data-discount-total" })));
+    return [...$("[data-discount-total]")!.children].map((c) => [c.tagName, c.textContent]);
+  };
+  test("the sum takes the {total} slot: the words before and after it keep their places", async () => {
+    expect(await line("Kokku {total}", 35000)).toEqual([["SPAN", "Kokku"], ["SPAN", "350 €315 €"]]);
+    expect(await line("Kokku: {total}", null)).toEqual([["SPAN", "Kokku:"], ["SPAN", "315 €"]]);
+    expect(await line("{total} kokku", null)).toEqual([["SPAN", "315 €"], ["SPAN", "kokku"]]);
+    expect(await line("Итого {total} с кодом", null)).toEqual([["SPAN", "Итого"], ["SPAN", "315 €"], ["SPAN", "с кодом"]]);
+  });
+  test("a text without the slot still shows the sum, after the words", async () => {
+    expect(await line("Kokku", null)).toEqual([["SPAN", "Kokku"], ["SPAN", "315 €"]]);
   });
 });
 

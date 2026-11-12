@@ -52,12 +52,62 @@ function fill(template: string, slots: Record<string, ReactNode>): ReactNode[] {
 }
 
 /**
+ * The one „Kokku“ line of a form (P17/P21): the dictionary's `total` („Kokku {total}“) with the sum in its {total} slot. The words before and after
+ * the slot keep their places, so a reworded text can neither lose the sum nor put it on the wrong side (a text without the slot gets the sum
+ * after it). `listCents` is struck through beside the sum while a code takes something off; null: the plain total. The field's own line under an
+ * applied code (`data-discount-total`) and the cart's plain total (`data-cart-total`) are this one line.
+ */
+export function TotalLine({
+  template,
+  listCents,
+  totalCents,
+  locale,
+  marker,
+  className,
+}: {
+  template: string;
+  listCents: number | null;
+  totalCents: number;
+  locale: Locale;
+  marker: "data-discount-total" | "data-cart-total";
+  className?: string;
+}) {
+  const at = template.indexOf("{total}");
+  const before = (at < 0 ? template : template.slice(0, at)).trim();
+  const after = at < 0 ? "" : template.slice(at + "{total}".length).trim();
+  return (
+    <p className={className ? `${styles.total} ${className}` : styles.total} {...{ [marker]: "" }}>
+      {before && <span className={styles.totalLabel}>{before}</span>}
+      <span className={styles.totalSum}>
+        {listCents !== null && <s>{formatEUR(listCents, locale)}</s>}
+        <strong>{formatEUR(totalCents, locale)}</strong>
+      </span>
+      {after && <span className={styles.totalLabel}>{after}</span>}
+    </p>
+  );
+}
+
+/**
  * The sooduskood field of a form (design "Sooduskoodi väli — olekud"): closed (a quiet „Mul on sooduskood“), open (the field and „Rakenda“),
  * refused (the field with the reason under it), applied (one line with the code and the euros taken off, „Eemalda“, the code's hint, and the one
  * total line „Kokku“ with the list price struck through). Enter applies the code and does not submit the form. The box has no `name`, so the
  * form's own data never carries it: the form sets `discountCode` and `discountCents` itself when it sends (ContactRegister onSubmit).
+ * `place` is its host's spacing (the registration form's block flow, or the cart's grid): the field itself has none (P16).
  */
-export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnType<typeof useDiscountCode>; t: DiscountTexts; locale: Locale; idPrefix: string }) {
+export function DiscountField({
+  state,
+  t,
+  locale,
+  idPrefix,
+  place,
+}: {
+  state: ReturnType<typeof useDiscountCode>;
+  t: DiscountTexts;
+  locale: Locale;
+  idPrefix: string;
+  place: "form" | "cart";
+}) {
+  const root = `${styles.discount} ${place === "form" ? styles.inForm : styles.inCart}`;
   const { typed, applied, error, checking } = state;
   const [opened, setOpened] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +134,7 @@ export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnTyp
 
   if (!open) {
     return (
-      <div className={styles.discount} data-discount="">
+      <div className={root} data-discount="">
         <button
           type="button"
           className={styles.quiet}
@@ -100,9 +150,8 @@ export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnTyp
     );
   }
 
-  const totalLabel = t.total.replace("{total}", "").trim();
   return (
-    <div className={styles.discount} data-discount="">
+    <div className={root} data-discount="">
       {applied ? (
         <div className={styles.line} data-discount-applied="">
           <span>{fill(t.applied, { code: <strong>{applied.code}</strong>, amount: formatEUR(applied.discountCents, locale) })}</span>
@@ -152,7 +201,7 @@ export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnTyp
           </div>
         </div>
       )}
-      <div aria-live="polite">
+      <div className={styles.live} aria-live="polite">
         {errorText && (
           <p id={errorId} className={styles.error} data-discount-error={error?.code} tabIndex={-1}>
             {errorText}
@@ -164,15 +213,7 @@ export function DiscountField({ state, t, locale, idPrefix }: { state: ReturnTyp
           </p>
         )}
       </div>
-      {applied && (
-        <p className={styles.total} data-discount-total="">
-          <span className={styles.totalLabel}>{totalLabel}</span>
-          <span className={styles.totalSum}>
-            <s>{formatEUR(state.listCents, locale)}</s>
-            <strong>{formatEUR(state.totalCents, locale)}</strong>
-          </span>
-        </p>
-      )}
+      {applied && <TotalLine template={t.total} listCents={state.listCents} totalCents={state.totalCents} locale={locale} marker="data-discount-total" />}
     </div>
   );
 }
