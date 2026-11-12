@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { NextRequest, type NextResponse } from "next/server";
 import { canonicalPath, middleware } from "@/middleware";
 
@@ -27,6 +27,43 @@ describe("noindex (the whole host stays out of search engines)", () => {
   test("other answers leave it to next.config headers() (set here too, it could be sent twice)", () => {
     for (const p of ["/", "/koolitused", "/ru/koolitused", "/admin/login", "/api/feedback/", "/media/img/a.jpg", "/guide/", "/robots.txt"])
       expect(run(p).headers.get("x-robots-tag"), p).toBeNull();
+  });
+});
+
+describe("noindex on a redirect follows the indexing switch (SEO G1)", () => {
+  // The middleware reads SITE_GATE, VERCEL_ENV and SITE_URL as it runs. A redirect says noindex unless indexing is on (the gate off, Vercel
+  // production) AND the request came to the site's own host: www.mslab.ee redirected to the apex must not be indexed.
+  afterEach(() => vi.unstubAllEnvs());
+  const redirectFrom = (host: string) => run("/koolitused/", { headers: { host } });
+
+  test("indexing off (the unit run has no VERCEL_ENV, or the gate is on): the header, whatever the host", () => {
+    expect(redirectFrom("mslab.ee").status).toBe(308);
+    expect(redirectFrom("mslab.ee").headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    vi.stubEnv("SITE_GATE", "0"); // an explicit off is off, so only the environment keeps it noindex (a gate on is checked in middleware-gate.test.ts)
+    vi.stubEnv("VERCEL_ENV", "preview");
+    expect(redirectFrom("mslab.ee").headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
+  test("indexing on, the site's own host: no header (nothing says noindex, the redirect may be followed and indexed)", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SITE_URL", "https://mslab.ee");
+    const res = redirectFrom("mslab.ee");
+    expect(res.status).toBe(308);
+    expect(res.headers.get("x-robots-tag")).toBeNull();
+    expect(redirectFrom("MSLAB.EE:443").headers.get("x-robots-tag")).toBeNull();
+  });
+
+  test("indexing on, any other host: still noindex (www, the Vercel address, no host at all)", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    for (const host of ["www.mslab.ee", "mslab-flax.vercel.app"]) expect(redirectFrom(host).headers.get("x-robots-tag"), host).toBe("noindex, nofollow");
+    expect(run("/koolitused/").headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
+  test("the shell's 303 follows the same rule", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    const answer = (host: string) => run("/konto/sisene?viga=link", { headers: { host } });
+    expect(answer("mslab.ee").status).toBe(303);
+    expect(answer("www.mslab.ee").headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 });
 

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import type { NextConfig } from "next";
+import { indexingOn, NOINDEX, PRIVATE_HEADER_SOURCES } from "./src/lib/indexing";
 import { MEDIA_CSP } from "./src/server/media";
 
 /**
@@ -66,7 +67,10 @@ const nextConfig: NextConfig = {
     "/*/koolitused/**": ["./assets/**"],
   },
   // Every answer (pages, API, /media and the static files of public/, the hub included):
-  // - the whole host stays out of search engines until launch on mslab.ee;
+  // - the whole host stays out of search engines until launch on mslab.ee: with indexing off (the gate on, or not Vercel production:
+  //   lib/indexing.ts, SEO G1) every answer says noindex. With it on, the rule for every path skips the site's own host (SITE_URL's):
+  //   www and the *.vercel.app addresses still say noindex, and the private areas say it on every host (SEO G7). These two settings
+  //   are read when the config is loaded, i.e. at build (a Vercel build has both): flipping the gate takes a redeploy, as it always did;
   // - pages may be framed by this site's own pages only (the hub /guide/ shows the prototypes /p/<dir>/ in a
   //   same-origin frame);
   // - links to other sites carry the origin only.
@@ -78,15 +82,22 @@ const nextConfig: NextConfig = {
   // one wins: so the routes with a stricter value of their own get it here again, after the rule for every path.
   async headers() {
     const noStore = [{ key: "Cache-Control", value: "no-store" }];
+    const indexing = indexingOn({ SITE_GATE: process.env.SITE_GATE, VERCEL_ENV: process.env.VERCEL_ENV });
+    const siteHost = new URL(process.env.SITE_URL?.trim() || "https://mslab.ee").hostname;
     return [
       {
         source: "/:path*",
+        // indexing on: this rule skips the site's own host only (a `missing` host condition), every other host still gets noindex
+        ...(indexing ? { missing: [{ type: "host" as const, value: siteHost }] } : {}),
         headers: [
-          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "X-Robots-Tag", value: NOINDEX },
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
+      // indexing on: the private areas say noindex on every host, the site's own included (SEO G7); the same value, so the later rules
+      // that replace other headers of these paths cannot undo it
+      ...(indexing ? PRIVATE_HEADER_SOURCES.map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: NOINDEX }] })) : []),
       { source: "/admin/:path*", headers: noStore },
       { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/admin/:path*", headers: noStore },

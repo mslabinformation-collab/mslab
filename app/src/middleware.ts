@@ -2,6 +2,7 @@
 // functions, tested without Next.js).
 import { NextResponse, type NextRequest } from "next/server";
 import { ADMIN_PATH_HEADER } from "@/lib/admin-return";
+import { indexableHost, indexingOn, NOINDEX } from "@/lib/indexing";
 import { PREVIEW_COOKIE } from "@/lib/preview-cookie";
 import { gateDecision, gateOn, type GateEnv } from "@/lib/site-gate";
 import { routeSitePath } from "@/lib/site-routing";
@@ -10,7 +11,7 @@ import { logNote } from "@/server/log";
 
 export { canonicalPath, cartPage } from "@/lib/site-routing";
 
-export const ROBOTS = "noindex, nofollow";
+export const ROBOTS = NOINDEX;
 
 /** `req`'s URL with another path (and the same query). A plain URL: a NextURL keeps the original trailing slash. */
 function withPath(req: NextRequest, pathname: string): URL {
@@ -40,7 +41,7 @@ function hub(req: NextRequest, pathname: string): NextResponse {
 export function middleware(req: NextRequest): NextResponse | Promise<NextResponse> {
   // each setting named in full (process.env.NAME), the form every runtime and bundler of the middleware is sure to provide
   const env = gateEnv({ SITE_GATE: process.env.SITE_GATE, PREVIEW_SECRET: process.env.PREVIEW_SECRET });
-  if (!gateOn(env.SITE_GATE)) return noindex(route(req));
+  if (!gateOn(env.SITE_GATE)) return noindex(route(req), req);
   return gated(req, env);
 }
 
@@ -66,7 +67,7 @@ async function gated(req: NextRequest, env: GateEnv): Promise<NextResponse> {
     },
     env,
   );
-  if (gate.kind === "pass") return noindex(route(req));
+  if (gate.kind === "pass") return noindex(route(req), req);
   if (gate.json) {
     // a script's call to a gated /api address: no page, "not here", never kept, and noindex said here (an answer of the
     // middleware's own). A browser opening such an address (a mailed login link) gets the coming-soon page below.
@@ -81,9 +82,15 @@ async function gated(req: NextRequest, env: GateEnv): Promise<NextResponse> {
  * The whole host stays out of search engines until launch. Every answer gets X-Robots-Tag from next.config headers();
  * a redirect made here also sets it here, so it carries the header wherever it is answered (and so does the gate's 404 for
  * an /api address, above). Only answers made here: setting it on a rewrite or a pass-through too could send the value twice.
+ * SEO G1: once indexing is on (the gate off, Vercel production) a redirect asked for at the site's own host (SITE_URL's) says
+ * nothing, so a search engine may follow it (the old addresses' 308, the trailing slash); at any other host (www, *.vercel.app) it
+ * still says noindex. The settings are named in full (process.env.NAME), as in middleware().
  */
-function noindex(res: NextResponse): NextResponse {
-  if (res.status >= 300 && res.status < 400) res.headers.set("X-Robots-Tag", ROBOTS);
+function noindex(res: NextResponse, req: NextRequest): NextResponse {
+  if (res.status < 300 || res.status >= 400) return res;
+  const siteUrl = process.env.SITE_URL?.trim() || "https://mslab.ee";
+  const open = indexingOn({ SITE_GATE: process.env.SITE_GATE, VERCEL_ENV: process.env.VERCEL_ENV }) && indexableHost(req.headers.get("host"), siteUrl);
+  if (!open) res.headers.set("X-Robots-Tag", ROBOTS);
   return res;
 }
 

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { PRIVATE_HEADER_SOURCES } from "@/lib/indexing";
 import { MEDIA_CSP } from "@/server/media";
 
 // next.config.ts headers(): the headers every answer carries (pages, API, /media, the static files of public/), and the
@@ -172,6 +173,56 @@ describe("next.config.ts headers()", () => {
     }
     // VERCEL set to nothing is not a Vercel build
     expect((await config({ E2E_PAGE_CACHE: "/tmp/stale", VERCEL: "" })).cacheHandler).toMatch(/page-cache\.cjs$/);
+  });
+});
+
+describe("next.config.ts headers(): indexing on (gate off, Vercel production; SEO G1, G7)", () => {
+  // The rule for every path then says noindex only to the hosts that are not the site's own (www, the *.vercel.app addresses): a header rule
+  // with `missing: host` skips mslab.ee itself. The private areas keep an unconditional noindex, placed after it. The describe above runs with
+  // indexing off (no VERCEL_ENV in the unit run) and pins today's answers.
+  const on = { SITE_GATE: undefined, VERCEL_ENV: "production", SITE_URL: undefined };
+  const robotsOf = (rule: Rule) => rule.headers.find((h) => h.key === "X-Robots-Tag")?.value;
+
+  test("the rule for every path carries noindex for every host but mslab.ee, and keeps its other two headers", async () => {
+    const rules = (await (await config(on)).headers!()) as (Rule & { missing?: unknown })[];
+    expect(rules[0].source).toBe("/:path*");
+    expect(rules[0].headers).toEqual([
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    ]);
+    expect(rules[0].missing).toEqual([{ type: "host", value: "mslab.ee" }]);
+  });
+
+  test("the host is SITE_URL's", async () => {
+    const rules = (await (await config({ ...on, SITE_URL: "https://example.test/" })).headers!()) as (Rule & { missing?: unknown })[];
+    expect(rules[0].missing).toEqual([{ type: "host", value: "example.test" }]);
+  });
+
+  test("the private areas are noindex whatever the host: an unconditional rule for each, the admin, the API, the account, the cart, the payment result, the pay page, the hub, the prototypes and the coming-soon page", async () => {
+    const rules = (await (await config(on)).headers!()) as (Rule & { has?: unknown; missing?: unknown })[];
+    for (const path of ["/admin/x", "/api/feedback", "/konto", "/konto/sisene", "/ru/konto", "/ru/konto/sisene", "/ostukorv", "/ru/ostukorv/x", "/makse", "/ru/makse", "/maksa/abc", "/guide/", "/p/d/styles.css", "/tulekul/et"]) {
+      expect(valueFor(rules.filter((r) => !r.missing && !r.has), path, "x-robots-tag"), path).toBe("noindex, nofollow");
+    }
+    // ...and a public page has none of its own (the conditional first rule is the only one that reaches it)
+    for (const path of ["/", "/koolitused", "/ru/koolitused/x", "/kontakt", "/robots.txt", "/sitemap.xml"]) {
+      expect(valueFor(rules.filter((r) => !r.missing && !r.has), path, "x-robots-tag"), path).toBeUndefined();
+    }
+  });
+
+  test("every other rule is where it was: the same sources as with indexing off, the unconditional noindex rules added after the first", async () => {
+    const off = (await (await config({ SITE_GATE: undefined, VERCEL_ENV: undefined })).headers!()) as Rule[];
+    const onRules = (await (await config(on)).headers!()) as Rule[];
+    const noindexRules = onRules.slice(1).filter((r) => r.headers.length === 1 && robotsOf(r) === "noindex, nofollow");
+    expect(noindexRules.map((r) => r.source)).toEqual(PRIVATE_HEADER_SOURCES);
+    expect(onRules.filter((r) => !noindexRules.includes(r)).slice(1)).toEqual(off.slice(1));
+  });
+
+  test("with the gate on, or off Vercel production, the answers are today's: no host condition, no extra rules", async () => {
+    const today = (await (await config({ SITE_GATE: undefined, VERCEL_ENV: undefined })).headers!()) as Rule[];
+    for (const env of [{ SITE_GATE: "1", VERCEL_ENV: "production" }, { SITE_GATE: undefined, VERCEL_ENV: "preview" }, { SITE_GATE: "1", VERCEL_ENV: undefined }]) {
+      expect(await (await config(env)).headers!(), JSON.stringify(env)).toEqual(today);
+    }
   });
 });
 

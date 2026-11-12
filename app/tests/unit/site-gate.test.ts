@@ -388,9 +388,10 @@ describe("the coming-soon page itself", () => {
 describe("one list of static files for the routing and the gate (lib/root-files.ts)", () => {
   const served = (path: string) => routeSitePath(path, new URLSearchParams()).kind === "other";
 
-  test("every file of the list exists (public/, or app/icon.svg), and so does every folder: no entry for a file that is not there (og.png was one)", () => {
+  test("every file of the list exists (public/, app/icon.svg, or app/robots.ts for robots.txt: SEO G2), and so does every folder: no entry for a file that is not there (og.png was one)", () => {
     expect(ROOT_FILES).not.toContain("og.png"); // the link preview is og.jpg only
-    for (const name of ROOT_FILES) expect(existsSync(join(process.cwd(), name === "icon.svg" ? "src/app" : "public", name)), name).toBe(true);
+    const fromApp: Record<string, string> = { "icon.svg": "src/app/icon.svg", "robots.txt": "src/app/robots.ts" };
+    for (const name of ROOT_FILES) expect(existsSync(join(process.cwd(), fromApp[name] ?? join("public", name))), name).toBe(true);
     for (const folder of ROOT_FOLDERS) expect(existsSync(join(process.cwd(), "public", folder)), folder).toBe(true);
   });
 

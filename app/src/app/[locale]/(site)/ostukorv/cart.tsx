@@ -21,7 +21,7 @@ import styles from "./cart.module.css";
 
 export function cartMetadata(locale: Locale): Metadata {
   const d = getDict(locale);
-  return { title: `${d.cart.title} — ${d.common.siteName}` };
+  return { title: `${d.cart.title} — ${d.common.siteName}`, robots: { index: false, follow: false } };
 }
 
 /**

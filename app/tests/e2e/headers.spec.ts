@@ -252,6 +252,9 @@ function expectSiteHeaders(res: APIResponse, label: string): void {
   expect(h["x-powered-by"], `${label}: no X-Powered-By (N12)`).toBeUndefined();
 }
 
+/** Stands in the list of static files for robots.txt, which is made by src/app/robots.ts and has no file in public/ (SEO G2). */
+const ROBOTS_TXT = "robots.txt (made by src/app/robots.ts)";
+
 /** Is the answer text (HTML, CSS, JavaScript, plain text) by its Content-Type? */
 function isText(contentType: string | undefined): boolean {
   return /^text\/|javascript/i.test(contentType ?? "");
@@ -283,6 +286,8 @@ test.describe("static files and the hub: the same headers as a page (Task 5)", (
     expect(style, "a /_next/static stylesheet in the home page").toBeTruthy();
 
     // [address, content type, the file of public/ it must arrive as, byte for byte (none for a built file)]
+    // robots.txt is no file of public/ any more (SEO G2: src/app/robots.ts makes it), so it has no file to compare with: its answer is read
+    // as groups of rules instead (below), and, with indexing off as here, says what the old file said
     const files: [path: string, type: RegExp, file?: string][] = [
       ["/guide/", /^text\/html/, "guide/index.html"],
       ["/guide/tagasiside/", /^text\/html/, "guide/tagasiside/index.html"],
@@ -292,7 +297,7 @@ test.describe("static files and the hub: the same headers as a page (Task 5)", (
       ["/p/d/app.js", /javascript/, "p/d/app.js"],
       ["/guide/thumbs/a-d.jpg", /^image\/jpeg/, "guide/thumbs/a-d.jpg"],
       ["/og.jpg", /^image\/jpeg/, "og.jpg"],
-      ["/robots.txt", /^text\/plain/, "robots.txt"],
+      ["/robots.txt", /^text\/plain/, ROBOTS_TXT],
       ["/feedback.js", /javascript/, "feedback.js"],
       ["/favicon.ico", /^image\/(x-icon|vnd\.microsoft\.icon)/, "favicon.ico"],
       [script!, /javascript/],
@@ -309,7 +314,14 @@ test.describe("static files and the hub: the same headers as a page (Task 5)", (
         // the value without spaces
         if (file === undefined && TARGET) expect(res.headers()["cache-control"]?.replace(/\s+/g, ""), label).toBe("public,max-age=31536000,immutable");
         // the file itself, not the site's 404 page or another file (the hub's index pages are served by the middleware)
-        if (file !== undefined && method === "GET") {
+        if (file === ROBOTS_TXT && method === "GET") {
+          // the old public/robots.txt's rules: each link-preview bot allowed, everyone else disallowed (the comment lines are gone, the header names are Next's)
+          const groups = (await res.text()).trim().split(/\r?\n\r?\n/).map((g) => g.split(/\r?\n/).map((l) => l.trim().toLowerCase()));
+          expect(groups, label).toEqual([
+            ...["facebookexternalhit", "facebot", "twitterbot", "linkedinbot", "telegrambot", "whatsapp", "slackbot-linkexpanding", "slackbot", "discordbot", "skypeuripreview", "vkshare", "pinterestbot", "redditbot"].map((bot) => [`user-agent: ${bot}`, "allow: /"]),
+            ["user-agent: *", "disallow: /"],
+          ]);
+        } else if (file !== undefined && method === "GET") {
           const onDisk = readFileSync(join(process.cwd(), "public", file));
           const served = await res.body();
           expect(sameFile(served, onDisk, isText(res.headers()["content-type"])), `${label}: the file public/${file}`).toBe(true);

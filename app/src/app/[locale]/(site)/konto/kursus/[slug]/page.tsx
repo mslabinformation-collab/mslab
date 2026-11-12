@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const d = getDict(locale);
-  return { title: `${d.account.shell.courses} — ${d.common.siteName}` };
+  return { title: `${d.account.shell.courses} — ${d.common.siteName}`, robots: { index: false, follow: false } };
 }
 
 /**
