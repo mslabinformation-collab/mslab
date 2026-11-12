@@ -237,6 +237,25 @@ describe("Eemalda sooduskood", () => {
     });
   });
 
+  // the final re-review: once the blocking invoice is cancelled the card is changeable again — the old field must not come back with its old reason
+  test.each([
+    ["add", {}, "Lisa", "Lisa sooduskood"],
+    ["removal", WITH_CODE, "Jah, eemalda", "Eemalda sooduskood"],
+  ] as const)("the %s refused for an invoice that the refresh shows, then the invoice cancelled: the button again, no old field, no old reason", async (_what, over, press, again) => {
+    await show(over);
+    await click($("[data-discount-open]"));
+    if (press === "Lisa") await type($<HTMLInputElement>("[data-discount-code-input]"), "joulud-20");
+    (press === "Lisa" ? actions.addRegistrationDiscountAction : actions.removeRegistrationDiscountAction).mockResolvedValue({ ok: false, error: "unpaidInvoice" });
+    await click(button(press));
+    await show({ ...over, unpaidInvoice: true }); // (the refusal's refresh: the invoice is there)
+    expect(text($("[data-discount-error]"))).toBe("Tühista enne maksmata arve.");
+    await show({ ...over, unpaidInvoice: false }); // (Maria cancelled the invoice: the page's new props)
+    expect($("[data-discount-form]")).toBeNull();
+    expect($("[data-discount-remove-sure]")).toBeNull();
+    expect($("[data-discount-error]")).toBeNull();
+    expect(button(again)).not.toBeNull();
+  });
+
   test("Jah, eemalda sends the registration; a refusal shows its text and keeps the question", async () => {
     await show(WITH_CODE);
     await click($("[data-discount-open]"));

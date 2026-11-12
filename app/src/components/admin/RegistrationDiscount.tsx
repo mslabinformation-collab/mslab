@@ -65,6 +65,16 @@ export function RegistrationDiscount({
   const mode = changeable ? chosenMode : "idle";
   const [typed, setTyped] = useState("");
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  // changeable again (the blocking invoice cancelled, say): the field or question its refusal closed stays closed, and the old reason goes
+  const [wasChangeable, setWasChangeable] = useState(changeable);
+  if (changeable !== wasChangeable) {
+    setWasChangeable(changeable);
+    if (changeable) {
+      setMode("idle");
+      setTyped("");
+      setRefusal(null);
+    }
+  }
   const [pending, start] = useTransition();
   const field = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
