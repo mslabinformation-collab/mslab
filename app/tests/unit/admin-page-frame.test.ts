@@ -128,3 +128,15 @@ describe("A22 (once F20): the overview's two cards align at their tops, each its
     expect(rule(sheet, ".empty")).toMatch(/display: grid;\s*align-content: start;/);
   });
 });
+
+// UX audit 2 A39: in „Tulevased koolitused“ the column heads („Kuupäev“, „Koolitus“, „Kohad“) stood 12 px left of the rows: the head is a row with the
+// rows' 12 px reach into the card's padding but none of their 12 px inside it. One offset for the head and the rows, at every width.
+describe("A39: the overview's „Tulevased koolitused“ heads and rows start at one offset", () => {
+  const sheet = css("app", "admin", "(panel)", "overview.module.css");
+
+  it("the head keeps the row's side padding; no phone rule takes it away", () => {
+    expect(rule(sheet, ".upRow")).toMatch(/margin: 0 -12px;\s*padding: 0 12px;/);
+    expect(rule(sheet, ".upHead")).toMatch(/padding: 6px 12px 8px;/);
+    expect(sheet.match(/\.upHead \{/g)).toHaveLength(1);
+  });
+});

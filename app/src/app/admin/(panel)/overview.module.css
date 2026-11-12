@@ -218,9 +218,11 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* the column heads at the rows' own offset: the row's 12 px inside its -12 px reach (UX audit 2 A39: with no side padding they stood 12 px left of the
+   dates and the course names) */
 .upHead {
   min-height: 0;
-  padding: 6px 0 8px;
+  padding: 6px 12px 8px;
   color: var(--muted);
   font: 500 11px/1.4 var(--font-body);
 }
