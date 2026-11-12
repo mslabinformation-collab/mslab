@@ -2755,7 +2755,7 @@
       "expect": [
         "Ülariba on tume; vasakul on lehe nimi, ülevaates logo; selle all ei ole rida „MS LAB · Halduskeskkond“.",
         "Nupul ≡ on number: menüü märkide summa; kui märke pole, numbrit ei ole.",
-        "Menüü avaneb ülariba alla ja nupp ≡ muutub ✕-ks.",
+        "Menüü avaneb ülariba alla ja nupp ≡ muutub ✕-ks; ✕ peal numbrit pole, märgid on menüü ridadel.",
         "Menüüs on samad rühmad, kõik lahti, ilma kokkupandava rühmata.",
         "Menüü all on „Sisse logitud“, e-post, „Vaata kodulehte“ ja „Logi välja“; muud „Vaata kodulehte“ ekraanil pole.",
         "Reale vajutades menüü sulgub ja ülariba nimi vahetub lehe nimeks.",
@@ -2765,8 +2765,8 @@
       "why": "Telefonis on menüü ainus tee teistele lehtedele.",
       "risk": "low",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-menuu-tahvel",

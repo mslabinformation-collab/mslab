@@ -385,7 +385,8 @@ describe("the phone bar and its menu", () => {
     expect(text(html.querySelector("header [data-admin-bar-title]"))).toBe("Maksed ja arved");
   });
 
-  it("the ≡ button carries the sum of the badges, is a 44 px menu button, and turns into ✕ while the menu is open", async () => {
+  // UX audit 2 A38: the sum stayed on the ✕ while the menu was open, over the counters it sums; it goes while the menu is open
+  it("the ≡ button carries the sum of the badges, is a 44 px menu button, and turns into ✕ with no sum while the menu is open", async () => {
     await at("/admin/maksed", "", { badges: BADGES, total: 12 });
     const button = container.querySelector<HTMLButtonElement>("header [data-admin-menu]")!;
     expect(button.getAttribute("aria-label")).toBe("Ava menüü");
@@ -397,11 +398,15 @@ describe("the phone bar and its menu", () => {
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(iconPath(button)).not.toBe(menuGlyph);
     expect(iconPath(button)).toBe(iconPath(dialog().querySelector("[data-admin-menu-close]")));
-    expect(text(dialog().querySelector("[data-admin-menu-close]"))).toBe("12");
+    // the counters are in the menu itself: no sum on the ✕, the menu's or the bar's behind it
+    expect(text(dialog().querySelector("[data-admin-menu-close]"))).toBe("");
+    expect(text(button)).toBe("");
+    expect(text(dialog().querySelector('[data-badge="registrations"]'))).toBe("3, 3 ootab ettemaksu");
     await click(dialog().querySelector("[data-admin-menu-close]"));
     expect(dialog().open).toBe(false);
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(iconPath(button)).toBe(menuGlyph);
+    expect(text(button)).toBe("12");
   });
 
   it("no sum when nothing waits", async () => {

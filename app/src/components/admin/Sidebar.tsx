@@ -330,7 +330,7 @@ type SidebarProps = {
 /**
  * Prototype B's dark admin sidebar (logo, "Koolituskeskuse haldus", the grouped menu with count badges, then who is signed in and
  * "Logi välja"). Below 900px it becomes a 64px top bar (the page's name, the ≡ button with the badge sum) and the same menu opens as a
- * panel under it, every group open (modal dialog: Esc, ✕, the backdrop, a link or a change of address closes it).
+ * panel under it, every group open (modal dialog: Esc, ✕, the backdrop, a link or a change of address closes it); the ✕ has no sum.
  *
  * The sidebar of the (panel) layout. Shell lives in that layout, which does not render again when the visitor moves between pages, so the
  * active entry is read from the address here, in the browser (admin UX pass, README §1.1; activeSection). The layout is force-dynamic, so
@@ -380,7 +380,8 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
     return lockPageScroll();
   }, [open]);
 
-  const badgeSum = total > 0 && (
+  // the sum on ≡ only: while the menu is open its own counters are on show, and the ✕ carries none (UX audit 2 A38)
+  const badgeSum = total > 0 && !open && (
     <span className={styles.dot} aria-hidden="true">
       {total}
     </span>
@@ -436,7 +437,6 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
           <BarTitle title={title} t={t} />
           <button type="button" className={styles.menuButton} aria-label={t.closeMenu} data-admin-menu-close="" onClick={() => dialog.current?.close()}>
             <AdminIcon name="close" size={22} />
-            {badgeSum}
           </button>
         </div>
         <div className={styles.drawerPanel}>
