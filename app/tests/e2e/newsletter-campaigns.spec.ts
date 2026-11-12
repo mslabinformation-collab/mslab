@@ -27,7 +27,8 @@ import { expect, submitsForms } from "./test";
 // README B5, B9, B17, spec C4, rulings R-g, R-h, the Part 3 frame „B5 Uudiskiri“ and the Part 4 „B5 Kirjad“). What it checks is what Maria sees and what the
 // site stores:
 // 1. „Uudiskiri“ is the list of subscribers and its two CSV downloads, with the tabs „Tellijad“ | „Kirjad“;
-// 2. Maria writes a letter: „Uus kiri +“ makes the draft „Uus kiri“ at once with the cursor in „Nimi“; with a picture, a code and a button, in both
+// 2. Maria writes a letter: „Uus kiri +“ makes a draft at once (no name yet: the list calls it „Nimetu kiri“, then by its subject; UX audit 2 A42) with
+//    the cursor in „Nimi“; with a picture, a code and a button, in both
 //    languages; the preview shows her texts in the language of the page's switch, the picture (loaded), the code, the button and the footer; the fields
 //    autosave (no „Salvesta“) and the sends are open at once;
 // 3. „Kustuta mustand“ asks first, deletes the draft and the list says „Mustand kustutatud.“; a sent letter has no such button;
@@ -506,8 +507,13 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
       await page.reload();
       await adminReady(page);
       await expect(page.locator("[data-send-all]")).toHaveText("Saada kõigile (3)");
-      // (the count is the button's alone, UX audit 2 A31: the hint is only „Näidisaadressidele ei saadeta.“, when a sample is confirmed)
-      await expect(page.locator("[data-send-hint]", { hasText: "eesti" })).toHaveCount(0);
+      // (the count is the button's alone, UX audit 2 A31: the hint is only „Näidisaadressidele ei saadeta.“, when a sample address is confirmed;
+      // other specs may leave one in this database, so the test reads how many there are)
+      const [{ samples }] = await onLocalDb(
+        (sql) => sql<{ samples: number }[]>`select count(*)::int as samples from subscribers where confirmed_at is not null and lower(trim(email)) like '%@example.test'`,
+        { marksPages: false },
+      );
+      await expect(page.locator("[data-send-hint]")).toHaveText(samples > 0 ? ["Näidisaadressidele ei saadeta."] : []);
       await editLang(page, "et");
       await page.locator('[data-campaign-form] [data-i18n="preheader"]').fill(`E2E viimane rida ${tag}`);
       await page.locator("[data-send-all]").click();
