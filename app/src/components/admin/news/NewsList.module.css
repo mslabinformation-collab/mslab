@@ -97,10 +97,16 @@
 
 .rows {
   display: grid;
-  gap: 4px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* one 1 px line between two rows, the --line of Sooduskoodid and Kalender, as wide as the row and its tint (UX audit 2 A32: the rows were apart by
+   whitespace only) */
+.rows > li + li {
+  border-top: 1px solid var(--line);
 }
 
 .row {

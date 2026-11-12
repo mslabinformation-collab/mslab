@@ -115,6 +115,14 @@ describe("F17: the Uudised list as the page", () => {
     // (the rows' old reading width with no post open is gone: the card is the list's width, as every list's)
     expect(sheet).not.toMatch(/max-width: 760px/);
   });
+
+  // UX audit 2 A32: the rows had no line between them (only whitespace); now the 1 px line of Sooduskoodid and Kalender (--line), as wide as the
+  // row and its tint, one line between two rows (the 4 px gap gone, so the line is not off-centre)
+  it("a 1 px --line between two rows, as wide as the row", () => {
+    expect(rule(sheet, ".rows > li + li")).toMatch(/border-top: 1px solid var\(--line\);/);
+    // (the list's own rule, not `.card .rows`)
+    expect(rule(sheet, "\n.rows")).toMatch(/gap: 0;/);
+  });
 });
 
 // UX pass 11.11 A22 (the Vaiksed board) undoes F20: „Sinu järjekord“ with two rows stood stretched to the height of „Tulevased koolitused“, a large
