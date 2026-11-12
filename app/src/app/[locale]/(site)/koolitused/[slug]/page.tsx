@@ -392,9 +392,7 @@ export default async function CoursePage({ params }: Props) {
         </section>
       )}
 
-      <Recommendations title={c.recommendations} cards={recommended} />
-      {previewBar}
-      {/* SEO G5: the course and its trail (scripts: nothing is drawn); the course's sessions are the upcoming ones (loadCourse), cancelled ones dropped in courseLd */}
+      {/* SEO G5: the course and its trail (scripts: nothing is drawn; before the recommendations band, which must stay main's last child: its CSS pulls it down onto the footer); the course's sessions are the upcoming ones (loadCourse), cancelled ones dropped in courseLd */}
       <JsonLd data={courseLd(siteBase(), locale, course, course.sessions)} />
       <JsonLd
         data={breadcrumbLd(siteBase(), [
@@ -403,6 +401,8 @@ export default async function CoursePage({ params }: Props) {
           { name: title, path: to(`/koolitused/${course.slug}`) },
         ])}
       />
+      <Recommendations title={c.recommendations} cards={recommended} />
+      {previewBar}
     </>
   );
 }

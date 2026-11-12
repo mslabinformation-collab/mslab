@@ -49,12 +49,19 @@ test.describe("structured data (SEO G5)", () => {
     expect(courses).toHaveLength(1);
     expect(courses[0].name).toBe((await page.locator("h1").first().innerText()).replace(/\s+/g, " ").trim());
     expect(courses[0].provider).toEqual({ "@id": `${SITE_URL}/#organization` });
+    // the seeded contact course: group 350 € and individual 450 €, and its upcoming scheduled sessions as onsite instances
+    const offers = courses[0].offers as { price: string; priceCurrency: string }[];
+    expect(offers.map((o) => `${o.price} ${o.priceCurrency}`)).toEqual(["350.00 EUR", "450.00 EUR"]);
+    const instances = courses[0].hasCourseInstance as { courseMode: string; startDate: string }[];
+    expect(instances.length).toBeGreaterThan(0);
+    for (const i of instances) {
+      expect(i.courseMode).toBe("onsite");
+      expect(new Date(i.startDate).getTime(), "an upcoming session").toBeGreaterThan(Date.now() - 24 * 3600_000);
+    }
     const crumbs = data.filter((d) => d["@type"] === "BreadcrumbList");
     expect(crumbs).toHaveLength(1);
     expect((crumbs[0].itemListElement as unknown[]).length).toBe(3);
     expect(data.filter((d) => d["@type"] === "EducationalOrganization")).toHaveLength(1);
-    // a script draws nothing: every one has no box
-    for (const box of await page.locator('script[type="application/ld+json"]').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) expect(box).toBe(0);
 
     for (const path of ["/", "/kontakt"]) {
       await page.goto(path);
@@ -76,5 +83,41 @@ test.describe("structured data (SEO G5)", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].url).toBe(`${SITE_URL}${post}`);
     expect(data.filter((d) => d["@type"] === "BreadcrumbList")).toHaveLength(1);
+  });
+});
+
+// SEO G5, the design guard: the structured data scripts change nothing on a page. Record where the page's parts are (main's element children, the footer,
+// the recommendations band, the page height), take every ld+json script out of the document, record again: the two must be the same, to the pixel.
+// A script that is the last child instead of the band, or that sits between two siblings a CSS rule relates, shows up as a shift here. Desktop and phone.
+test.describe("structured data changes no layout (SEO G5)", () => {
+  const layout = async (page: import("@playwright/test").Page) =>
+    page.evaluate(() => {
+      const box = (e: Element) => {
+        const r = e.getBoundingClientRect();
+        return [Math.round(r.x), Math.round(r.y + window.scrollY), Math.round(r.width), Math.round(r.height)];
+      };
+      const record = () => ({
+        main: [...(document.querySelector("main")?.children ?? [])].filter((e) => e.tagName !== "SCRIPT").map((e) => `${e.tagName}.${e.className}:${box(e)}`),
+        footer: [...document.querySelectorAll("footer")].map((e) => box(e)),
+        band: [...document.querySelectorAll("[data-recommendations]")].map((e) => `${getComputedStyle(e).marginBottom}:${box(e)}`),
+        height: document.documentElement.scrollHeight,
+      });
+      const scripts = [...document.querySelectorAll('script[type="application/ld+json"]')];
+      const before = record();
+      for (const s of scripts) s.remove();
+      return { scripts: scripts.length, before, after: record() };
+    });
+
+  test("/, /kontakt, a course page with recommendations and a post page look the same with the scripts taken out", async ({ page }) => {
+    await page.goto("/uudised");
+    const post = (await page.locator("[data-news-card]").first().getAttribute("href")) ?? "/uudised";
+    for (const path of ["/", "/kontakt", "/koolitused/kulmumeistri-baaskoolitus", post]) {
+      await page.goto(path);
+      await page.waitForLoadState("load");
+      if (path.startsWith("/koolitused/")) await expect(page.locator("[data-recommendations]"), "the course shows its recommendations band").toHaveCount(1);
+      const { scripts, before, after } = await layout(page);
+      expect(scripts, `${path} has structured data`).toBeGreaterThan(0);
+      expect(before, path).toEqual(after);
+    }
   });
 });

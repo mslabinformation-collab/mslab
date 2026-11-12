@@ -1,3 +1,4 @@
+import { priceOptions } from "@/domain/course";
 import { pick, type I18n } from "@/i18n/field";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
@@ -78,8 +79,8 @@ export type SessionLdInput = { startsAt: Date; city: string; venue: string; lang
  */
 export function courseLd(base: string, locale: Locale, course: CourseLdInput, sessions: SessionLdInput[]) {
   const url = base + href(locale, `/koolitused/${course.slug}`);
-  const prices = course.type === "e_learning" ? [course.price] : [course.priceGroup, course.priceIndividual];
-  const offers = prices.flatMap((cents) => (cents == null ? [] : [{ "@type": "Offer", price: euros(cents), priceCurrency: "EUR", url }]));
+  // the prices the page itself shows (domain/course.ts priceOptions): an e-course's price, a contact course's group and individual price
+  const offers = priceOptions(course).map((o) => ({ "@type": "Offer", price: euros(o.cents), priceCurrency: "EUR", url }));
   const image = mediaUrl(course.images[0]?.key ?? "");
   const instances =
     course.type === "e_learning"
