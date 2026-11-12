@@ -205,7 +205,7 @@
 }
 
 .row[data-state="full"] .state {
-  color: #5e5559;
+  color: var(--seat-full);
 }
 
 .row[data-state="cancelled"] .state {

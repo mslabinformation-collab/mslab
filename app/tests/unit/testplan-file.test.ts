@@ -847,12 +847,14 @@ describe("the instalments checks (instalments, Task 8)", () => {
   // admin UX pass piece 3b, Task 4: the toggle autosaves (no „Salvesta“): its own check is to be run again, and two that switched it and saved it are
   // reworded (they no longer say „salvesta“)
   const REDONE_BY_SEADED = new Set(["haldus-seaded-jarelmaks"]);
-  const REWORDED_BY_SEADED = new Set(["avalik-kursus-jarelmaks-rida", "ekursus-jarelmaks"]);
+  const REWORDED_BY_SEADED = new Set(["ekursus-jarelmaks"]);
+  // UX pass 11.11 P3 / P13: the e-course page's one pay line instead of a one-option radio, „Tasumine“ stacked: the course page check is run again
+  const REDONE_BY_UX_GAPS = new Set(["avalik-kursus-jarelmaks-rida"]);
 
   test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
     for (const [id, want] of Object.entries(NEW)) {
       if (REDONE.includes(id)) continue;
-      const redo = REDONE_BY_B22.has(id) || REDONE_BY_SEADED.has(id);
+      const redo = REDONE_BY_B22.has(id) || REDONE_BY_SEADED.has(id) || REDONE_BY_UX_GAPS.has(id);
       expect(item(id), id).toMatchObject({ ...want, mark: redo ? "redo" : REWORDED_BY_SEADED.has(id) ? "reworded" : "new" });
       expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
       // a new or reworded check never reopens an answer
@@ -957,7 +959,9 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${ru.forms.payFinancing}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payFull}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payHalf}“`);
-    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.payNow}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.payLineFinancing}“`);
+    for (const word of [et.course.payLine, et.course.payLineFinancing, et.cart.remove, et.cart.emptyTitle]) expect(text("avalik-ekursus-leht"), word).toContain(`„${word}“`);
+    for (const word of [et.calendar.stateFull, et.calendar.stateFew, et.calendar.stateOpen, et.calendar.stateCancelled]) expect(text("avalik-kalender"), word).toContain(`„${word}“`);
     for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-nupud", "ekursus-jarelmaks"]) expect(text(id), id).toContain(`„${et.forms.payFinancing}“`);
     for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
     expect(text("registreerimine-jarelmaks-kinnitatud")).toContain(`„${et.forms.payFinancingContract}“`);
@@ -992,14 +996,15 @@ describe("the instalments checks (instalments, Task 8)", () => {
     }
   });
 
-  test("the e-course page check is reworded: the grey placeholder is gone, the quiet line replaces it", () => {
+  test("the e-course page check is redone: one pay line under the price, no radio, the cart's „Eemalda“ (UX pass 11.11 P3, P24)", () => {
     const check = item("avalik-ekursus-leht");
-    expect(check.mark).toBe("reworded");
+    expect(check.mark).toBe("redo");
     expect(markedSince(check.markedAt)).toBe(true);
-    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // no answer reopens
     const expectText = check.expect.join("\n");
-    expect(expectText).toContain("Hallist valikut „Vormista järelmaks — tulekul“ enam ei ole.");
-    expect(expectText).toContain(`„${et.course.financingLine}“`);
+    expect(expectText).toContain(`„${et.course.payLine}“, valikunuppe pole.`);
+    expect(expectText).toContain(`„${et.course.payLineFinancing}“`);
+    expect(expectText).not.toContain("Maksa kohe");
+    expect(check.steps.at(-1)).toContain(`„${et.cart.remove}“`);
     expect(expectText).not.toContain("on hall");
     // no check still sends anyone to a placeholder: a line that names one says it is gone
     for (const line of plan.items.flatMap((c) => c.expect)) if (/Vormista järelmaks — tulekul|See võimalus lisandub hiljem|Järelmaks — tulekul/.test(line)) expect(line).toContain("enam ei ole");

@@ -48,7 +48,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
 
   if (!course || course.type !== "e_learning" || course.price == null) {
     // at the left edge on every screen, where the cart's own page starts (the other message pages are centred on a wide screen)
-    return <Notice title={d.cart.emptyTitle} text={d.cart.emptyText} links={[{ href: to("/koolitused?vorm=e"), label: d.formats.elearning.link }]} align="start" />;
+    return <Notice title={d.cart.emptyTitle} text={d.cart.emptyText} links={[{ href: to("/koolitused?vorm=e"), label: d.formats.elearning.link }, { href: to("/koolitused?vorm=k"), label: d.formats.contact.link }]} align="start" />;
   }
 
   const title = pick(course.title, locale);
@@ -84,7 +84,6 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
   );
   return (
     <div className={`${ui.wrap} ${styles.page}`}>
-      <p className={ui.eyebrow}>{d.formats.elearning.name}</p>
       <h1 className={styles.title}>{d.cart.title}</h1>
       <div className={styles.layout}>
         <article className={styles.item}>
@@ -115,7 +114,13 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
               </div>
             </dl>
           </div>
-          <p className={styles.itemPrice}>{price}</p>
+          <div className={styles.itemEnd}>
+            <p className={styles.itemPrice}>{price}</p>
+            {/* UX pass 11.11 P24: the cart holds one course in its address, so removing it is the empty cart */}
+            <Link className={styles.remove} href={to("/ostukorv")} data-cart-remove="">
+              {d.cart.remove}
+            </Link>
+          </div>
         </article>
 
         <aside className={styles.summary} data-cart-summary="">

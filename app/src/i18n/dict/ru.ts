@@ -139,7 +139,8 @@ export const ru: Dict = {
     citiesLabel: "Города",
     discountLabel: "Скидка",
     priceLabel: "Цена",
-    payNow: "Оплатить сразу — 100% через интернет-банк",
+    payLine: "Оплата: интернет-банк",
+    payLineFinancing: "Оплата: интернет-банк или рассрочка Inbank (выбор в корзине)",
     // Draft, as the Estonian texts are
     financingLine: "Можно оплатить и в\u00a0рассрочку (Inbank).",
     buyNow: "Купить сразу",
@@ -386,7 +387,8 @@ export const ru: Dict = {
   cart: {
     title: "Корзина",
     emptyTitle: "Корзина пуста",
-    emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
+    emptyText: "Онлайн-курс можно купить на странице курса кнопкой «Купить сразу». На очный курс регистрируются на странице курса.",
+    remove: "Удалить",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их",
     payBank: "Интернет-банк",

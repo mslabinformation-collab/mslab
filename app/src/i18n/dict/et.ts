@@ -148,8 +148,9 @@ export const et = {
     citiesLabel: "Linnad",
     discountLabel: "Soodustus",
     priceLabel: "Hind",
-    // E-learning purchase (P8, P9)
-    payNow: "Maksa kohe — 100% pangalingiga",
+    // E-learning purchase (P8, P9; UX pass 11.11 P3): one quiet line under the price instead of a one-option radio; the cart has the choice
+    payLine: "Maksmine: pangalink",
+    payLineFinancing: "Maksmine: pangalink või Inbanki järelmaks (vali ostukorvis)",
     // Järelmaks (Inbank), a quiet line next to the price while the choice is offered (instalments D4; Draft: Dim sees it on the test page)
     financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
     buyNow: "Osta kohe",
@@ -445,7 +446,10 @@ export const et = {
   cart: {
     title: "Ostukorv",
     emptyTitle: "Ostukorv on tühi",
-    emptyText: "Vali endale sobiv e-koolitus — selle saad osta kohe, kui makse avaneb.",
+    // UX pass 11.11 P4: where a purchase starts, without „kui makse avaneb“ (it read as if payments were not open)
+    emptyText: "E-koolituse saad osta koolituse lehelt nupuga „Osta kohe“. Kontaktkoolitustele registreerud koolituse lehel.",
+    // UX pass 11.11 P24: the line item's quiet link back to the empty cart
+    remove: "Eemalda",
     // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega",
     // the purchase's choice while Järelmaks (Inbank) is offered (instalments §4; Draft): the bank link, beside forms.payFinancing

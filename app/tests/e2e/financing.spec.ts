@@ -253,12 +253,12 @@ test("the e-course page: the quiet line next to the price, no placeholder; Russi
   try {
     await page.goto(`/koolitused/${ECOURSE}`);
     const buy = page.locator("[data-buy]");
-    await expect(buy.locator("[data-financing-line]")).toHaveText("Võimalik tasuda ka järelmaksuga (Inbank).");
+    await expect(buy.locator("[data-financing-line]")).toHaveText("Maksmine: pangalink või Inbanki järelmaks (vali ostukorvis)");
     await expect(buy).not.toContainText("tulekul");
-    await expect(buy.getByRole("radio")).toHaveCount(1); // (the cart has the choice, not the page)
+    await expect(buy.getByRole("radio")).toHaveCount(0); // (the cart has the choice, not the page: UX pass 11.11 P3)
     await expect(buy.getByRole("link", { name: "Osta kohe" })).toHaveAttribute("href", `/ostukorv?kursus=${ECOURSE}`);
     await page.goto(`/ru/koolitused/${ECOURSE}`);
-    await expect(page.locator("[data-buy] [data-financing-line]")).toHaveText("Можно оплатить и в рассрочку (Inbank).");
+    await expect(page.locator("[data-buy] [data-financing-line]")).toHaveText("Оплата: интернет-банк или рассрочка Inbank (выбор в корзине)");
     await page.goto(COURSE.replace("/koolitused", "/ru/koolitused"));
     await page.getByRole("radio", { name: /Групповое обучение/ }).check();
     await expect(page.locator("[data-financing-line]")).toHaveText("Можно оплатить и в рассрочку (Inbank).");
@@ -282,6 +282,7 @@ test("switched off: no line, no third choice, no choice in the cart — the page
     await expect(page.locator("[data-buy]")).toBeVisible();
     await expect(page.locator("[data-financing-line]")).toHaveCount(0);
     await expect(page.locator("[data-buy]").getByText(/järelmaks/i)).toHaveCount(0);
+    await expect(page.locator("[data-buy] [data-pay-line]")).toHaveText("Maksmine: pangalink");
     await page.goto(`/ostukorv?kursus=${ECOURSE}`);
     await expect(page.locator("[data-ecourse-form]")).toBeVisible();
     await expect(page.locator("[data-ecourse-form] input[name='method']")).toHaveCount(0);

@@ -56,6 +56,12 @@
   gap: 10px;
 }
 
+/* „Tasumine“: the three ways stacked full width on every screen, as on a phone (UX pass 11.11 P13: two columns left „Järelmaks (Inbank)“ alone on a row
+   and wrapped „50% registreerimisel + 50% koolituspäeval“) */
+.pay {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .option {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
@@ -206,7 +212,7 @@
   white-space: nowrap;
 }
 
-/* Seat state: word + colour (ok / warn / bad). */
+/* Seat state: word + colour (open --ok, few --warn, full --seat-full, cancelled --bad: the calendar's scale). */
 .sState {
   display: inline-flex;
   align-items: center;
@@ -230,7 +236,11 @@
   color: var(--warn);
 }
 
-.session[data-state="full"] .sState,
+/* the calendar's scale (UX pass 11.11 P16): a full date is grey, only a cancelled one is red */
+.session[data-state="full"] .sState {
+  color: var(--seat-full);
+}
+
 .session[data-state="cancelled"] .sState {
   color: var(--bad);
 }

@@ -13,7 +13,8 @@ import { E2E_MONTONIO } from "./montonio-values";
 
 test("e-learning course page", async ({ page }) => {
   await page.goto("/koolitused/kulmumeistri-e-koolitus");
-  await expect(page.getByText(/Maksa kohe/)).toBeVisible();
+  // UX pass 11.11 P3: one quiet line on how it is paid (the choice is in the cart), no one-option radio
+  await expect(page.locator("[data-buy] [data-pay-line]")).toHaveText(/^Maksmine: pangalink/);
   // the old placeholder „Vormista järelmaks — tulekul“ is gone; the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ shows only while Maria has
   // switched Järelmaks (Inbank) on (financing.spec.ts takes the toggle's turn for that)
   await expect(page.locator("[data-buy]").getByText(/tulekul/)).toHaveCount(0);
@@ -74,13 +75,13 @@ const noErrors = (page: Page) => {
 };
 
 test.describe("e-learning page", () => {
-  test("purchase block: price, pay now default, no instalment placeholder, Osta kohe → cart (P8, P9)", async ({ page }) => {
+  test("purchase block: price, one pay line and no radio, no instalment placeholder, Osta kohe → cart (P8, P9; UX pass 11.11 P3)", async ({ page }) => {
     await page.goto("/koolitused/kulmumeistri-e-koolitus");
     const buy = page.locator("[data-buy]");
     await expect(buy).toContainText("190 €");
-    await expect(page.getByRole("radio", { name: /Maksa kohe/ })).toBeChecked();
-    // no disabled „Vormista järelmaks — tulekul“ any more, whatever the toggle says (the choice of Järelmaks (Inbank) is in the cart: financing.spec.ts)
-    await expect(buy.getByRole("radio")).toHaveCount(1);
+    await expect(buy.locator("[data-pay-line]")).toHaveText(/^Maksmine: pangalink/);
+    // no radio and no disabled „Vormista järelmaks — tulekul“, whatever the toggle says (the choice of Järelmaks (Inbank) is in the cart: financing.spec.ts)
+    await expect(buy.getByRole("radio")).toHaveCount(0);
     await expect(buy.locator("input:disabled")).toHaveCount(0);
     await expect(buy).not.toContainText("tulekul");
     await expect(page.getByRole("link", { name: "Osta kohe" })).toHaveAttribute("href", "/ostukorv?kursus=kulmumeistri-e-koolitus");
@@ -611,7 +612,22 @@ test.describe("cart (/ostukorv)", () => {
     for (const p of ["/ostukorv", "/ostukorv?kursus=kulmumeistri-baaskoolitus", "/ostukorv?kursus=ei-ole"]) {
       await page.goto(p);
       await expect(page.getByRole("heading", { name: "Ostukorv on tühi" }), p).toBeVisible();
+      // UX pass 11.11 P4: where a purchase starts, not „kui makse avaneb“, and a way to both kinds of course
+      await expect(page.getByText("E-koolituse saad osta koolituse lehelt nupuga „Osta kohe“. Kontaktkoolitustele registreerud koolituse lehel."), p).toBeVisible();
       await expect(page.getByRole("link", { name: /Vaata e-õppe koolitusi/ })).toHaveAttribute("href", "/koolitused?vorm=e");
+      await expect(page.getByRole("link", { name: /Vaata kontaktõppe koolitusi/ })).toHaveAttribute("href", "/koolitused?vorm=k");
     }
+  });
+
+  test("a course in the cart: no „E-õpe“ eyebrow, „Eemalda“ empties the cart (UX pass 11.11 P24)", async ({ page }) => {
+    await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ostukorv");
+    await expect(page.locator("main p").filter({ hasText: /^E-õpe$/ })).toHaveCount(0);
+    const remove = page.locator("[data-cart-remove]");
+    await expect(remove).toHaveText("Eemalda");
+    expect((await remove.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await remove.click();
+    await expect(page).toHaveURL(/\/ostukorv$/);
+    await expect(page.getByRole("heading", { name: "Ostukorv on tühi" })).toBeVisible();
   });
 });

@@ -14,6 +14,7 @@
   --ok: #2f5d46;
   --warn: #6b4f5c;
   --bad: #8a3b3b;
+  --seat-full: #5e5559; /* a full date's seat state (prototype A); one scale on the course page and the calendar: open --ok, few --warn, full this, cancelled --bad (UX pass 11.11 P16) */
   --row-highlight: #faf6f8; /* the admin's one extra colour: a selected or linked list row, and the row under the pointer; also the public code field's applied line (F1 design) */
 
   /* Text shades mixed from the palette only (no colours of their own): prototype B's greys #3a3437, #5e5559 and

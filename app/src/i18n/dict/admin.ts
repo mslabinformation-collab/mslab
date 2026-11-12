@@ -2231,12 +2231,12 @@ export const adminEt = {
       remove: "Eemalda sooduskood",
       removeQuestion: "Kas eemaldan sooduskoodi? Hind on jälle {price}.",
       removeYes: "Jah, eemalda",
-      // (Draft, ruling F-M6b) the Raha card with an unpaid invoice: no button the server would refuse, but when the code can change
+      // (ruling F-M6b; Maria approved 12.11) the Raha card with an unpaid invoice: no button the server would refuse, but when the code can change
       addAfterInvoice: "Sooduskoodi saab lisada, kui maksmata arve on tühistatud.",
       removeAfterInvoice: "Sooduskoodi saab eemaldada, kui maksmata arve on tühistatud.",
       errors: {
         paid: "Sooduskoodi saab lisada, kui midagi pole veel laekunud.",
-        // (Draft, the final review's M5) „Eemalda sooduskood“ refused because money arrived meanwhile: the removal's own words
+        // (the final review's M5; Maria approved 12.11) „Eemalda sooduskood“ refused because money arrived meanwhile: the removal's own words
         removePaid: "Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.",
         unpaidInvoice: "Tühista enne maksmata arve.",
         unknown: "Sellist sooduskoodi ei ole.",

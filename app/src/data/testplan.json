@@ -273,22 +273,23 @@
       "steps": [
         "Ava koolituste loend ja vajuta mõne e-õppe koolituse kaardile.",
         "Keri leht ülevalt alla.",
-        "Vajuta „Osta kohe“."
+        "Vajuta „Osta kohe“.",
+        "Vajuta ostukorvis koolituse rea juures „Eemalda“."
       ],
       "expect": [
         "Üleval on „Moodulid“, „Õppevideod“, „Ligipääs“ ja „Õppekeel“.",
-        "„Tasumine“ all on „Maksa kohe — 100% pangalingiga“.",
-        "Hallist valikut „Vormista järelmaks — tulekul“ enam ei ole.",
-        "Kui Seaded → Järelmaks on sees, on hinna all rida „Võimalik tasuda ka järelmaksuga (Inbank).“.",
+        "Hinna all on rida „Maksmine: pangalink“, valikunuppe pole.",
+        "Kui Seaded → Järelmaks on sees, on rida „Maksmine: pangalink või Inbanki järelmaks (vali ostukorvis)“.",
         "„Koolitus sisaldab“ loetleb videod, materjalid, testi, hindamise ja tunnistuse.",
         "Moodulite loendis on iga moodul märkega „Lukustatud“.",
-        "„Osta kohe“ avab ostukorvi selle koolituse ja hinnaga."
+        "„Osta kohe“ avab ostukorvi selle koolituse ja hinnaga; pealkirja kohal pole sõna „E-õpe“.",
+        "„Eemalda“ avab tühja ostukorvi: „Ostukorv on tühi“ ja lingid e-õppe ja kontaktõppe koolitustele."
       ],
       "why": "E-koolitust ostetakse otse sellelt lehelt.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-kursus-jarelmaks-rida",
@@ -309,19 +310,19 @@
       ],
       "expect": [
         "Kontaktkoolituse lehel on hindade all rida „Võimalik tasuda ka järelmaksuga (Inbank).“.",
-        "„Tasumine“ all on kolm valikut: „100% kohe“, „50% registreerimisel + 50% koolituspäeval“ ja „Järelmaks (Inbank)“.",
+        "„Tasumine“ all on kolm valikut üksteise all: „100% kohe“, „50% registreerimisel + 50% koolituspäeval“ ja „Järelmaks (Inbank)“.",
         "„Individuaalkoolitus“ valikul rida ja kolmandat valikut ei ole.",
-        "E-koolituse lehel on hinna all sama rida ja „Tasumine“ all ainult „Maksa kohe — 100% pangalingiga“.",
+        "E-koolituse lehel on hinna all rida „Maksmine: pangalink või Inbanki järelmaks (vali ostukorvis)“, valikunuppe pole.",
         "Hallist valikut „Vormista järelmaks — tulekul“ ega märget „See võimalus lisandub hiljem.“ enam ei ole.",
         "Vene lehtedel on rida „Можно оплатить и в рассрочку (Inbank).“ ja kontaktkoolituse vormis valik „Рассрочка (Inbank)“.",
-        "Väljalülitatult pole ühelgi lehel rida ega kolmandat valikut ja muutus ilmub kohe, ootamata.",
+        "Väljalülitatult pole kontaktkoolituse lehel rida ega kolmandat valikut, e-koolituse lehel on „Maksmine: pangalink“; muutus ilmub kohe.",
         "Hinnaga alla 100 € või üle 5000 € koolituse lehel rida ja valikut pole."
       ],
       "why": "Rida ütleb õpilasele, et järelmaks on olemas, ja ilmub ainult siis, kui see on tõesti võimalik.",
       "risk": "med",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-galerii",
@@ -392,13 +393,14 @@
         "Arvutis on kõik nupud ühelaiused ja nende paremad servad on ühel joonel, ka vene keeles.",
         "Telefonis on „Lash Lift BOTOX“ ühel real; murdub alles enne „baaskoolitus“.",
         "„Registreeru“ avab koolituse lehe ja see kuupäev on vormis juba valitud.",
-        "Tühistatud kuupäeval on märge „Tühistatud“ ja nupp „Vaata teisi“."
+        "Tühistatud kuupäeval on märge „Tühistatud“ ja nupp „Vaata teisi“.",
+        "„Kohad täis“ on hall, „Viimased kohad“ lilla, „Vabu kohti“ roheline ja „Tühistatud“ punane, ka koolituse lehel."
       ],
       "why": "Kalendrist valib õpilane linna ja kuupäeva.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-11T19:04:44.922Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-praktika",

@@ -259,7 +259,7 @@ export default async function CoursePage({ params }: Props) {
                   price={formatEUR(course.price, locale)}
                   href={to(`/ostukorv?kursus=${encodeURIComponent(course.slug)}`)}
                   financing={financing}
-                  t={{ priceLabel: c.priceLabel, paymentLabel: d.forms.paymentLabel, payNow: c.payNow, financingLine: c.financingLine, buyNow: c.buyNow }}
+                  t={{ priceLabel: c.priceLabel, payLine: c.payLine, payLineFinancing: c.payLineFinancing, buyNow: c.buyNow }}
                 />
               )
             ) : (
