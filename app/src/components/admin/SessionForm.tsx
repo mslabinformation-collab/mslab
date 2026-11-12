@@ -438,9 +438,10 @@ export function SessionDrawer(p: DrawerProps) {
             {seatsParts(true)}
           </span>
         </p>
-        {/* the session's protocols (phase protocols, spec §4): one tap to the course day's screen; on the course day the first thing she needs */}
+        {/* the session's protocols (phase protocols, spec §4): one tap to the course day's screen; on the course day the first thing she needs. The
+            outline button (UX audit 2 A34): it only opens another page, the ink primary is for an action */}
         {p.contact && (
-          <Link className={`${ui.btn} ${ui.smallBtn} ${styles.protocols}`} href={`/admin/protokollid?sessioon=${p.id}`} data-session-protocols="">
+          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.protocols}`} href={`/admin/protokollid?sessioon=${p.id}`} data-session-protocols="">
             {adminEt.protocols.open}
           </Link>
         )}
@@ -463,7 +464,8 @@ export function SessionDrawer(p: DrawerProps) {
           </button>
         </p>
       )}
-      <StatusChoice status={status} />
+      {/* one note about „Tühistatud“ (UX audit 2 A34): the hint under the pills, or with registrations the delete refusal in its place */}
+      <StatusChoice status={status} hint={p.counts.all === 0} />
       <SessionDelete id={p.id} all={p.counts.all} />
     </div>
   );
@@ -579,7 +581,8 @@ function useStatus(
   };
 }
 
-function StatusChoice({ status }: { status: ReturnType<typeof useStatus> }) {
+/** `hint`: „Tühistatud toimumine jääb avalikku kalendrisse …“ under the pills; not with registrations, where the delete refusal says „Märgi see „Tühistatud“.“ */
+function StatusChoice({ status, hint }: { status: ReturnType<typeof useStatus>; hint: boolean }) {
   const uid = useId();
   const section = useRef<HTMLElement>(null);
   const { focusTo } = status;
@@ -592,7 +595,11 @@ function StatusChoice({ status }: { status: ReturnType<typeof useStatus> }) {
   const n = status.booked;
   return (
     <section ref={section} className={styles.statusRow} data-session-status="">
-      <fieldset className={styles.status} aria-busy={status.pending || undefined} aria-describedby={`${uid}-hint${status.line ? ` ${uid}-line` : ""}`}>
+      <fieldset
+        className={styles.status}
+        aria-busy={status.pending || undefined}
+        aria-describedby={[hint ? `${uid}-hint` : null, status.line ? `${uid}-line` : null].filter(Boolean).join(" ") || undefined}
+      >
         <legend className={styles.legend}>{t.form.status}</legend>
         <div className={styles.pills}>
           {(["scheduled", "cancelled"] as const).map((s) => (
@@ -621,9 +628,11 @@ function StatusChoice({ status }: { status: ReturnType<typeof useStatus> }) {
           onCancel={status.cancel}
         />
       )}
-      <p id={`${uid}-hint`} className={ui.hint}>
-        {t.form.statusHint}
-      </p>
+      {hint && (
+        <p id={`${uid}-hint`} className={ui.hint}>
+          {t.form.statusHint}
+        </p>
+      )}
       <p id={`${uid}-line`} role="status" className={ui.error} data-status-line="">
         {status.line ?? ""}
       </p>

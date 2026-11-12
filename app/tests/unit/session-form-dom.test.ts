@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import saveStatus from "@/components/admin/SaveStatus.module.css";
+import ui from "@/components/admin/ui.module.css";
 import { DEBOUNCE_MS, SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import type { SessionFields } from "@/domain/session-fields";
 import { stubFetch } from "../fakes";
@@ -174,6 +175,14 @@ describe("the header (README B3; P-7)", () => {
     expect(controls[0]).toBe(protocols);
     expect(buttonNamed("Salvesta toimumine", dialog())).toBeNull();
     expect(dialog().textContent).not.toContain("Salvesta toimumine");
+  });
+
+  // UX audit 2 A34: it only opens another page, so it is the outline button (ui .secondary), not the ink primary
+  it("„Protokollid“ is an outline button, not the black primary", async () => {
+    await show();
+    const protocols = $("[data-session-protocols]")!;
+    expect(protocols.classList.contains(ui.btn)).toBe(true);
+    expect(protocols.classList.contains(ui.secondary)).toBe(true);
   });
 
   it("no waitlist: the last part is left out („… · 0/6 kinnitatud“, the phone „… · 0/6“); a course that is not a contact course has no „Protokollid“", async () => {
@@ -389,11 +398,20 @@ describe("the fields autosave (README B3, §1.3; R-a)", () => {
 
 describe("„Staatus“: instant; „Tühistatud“ with registrations asks first (README B3; P-8)", () => {
   it("the pills „Toimub“ / „Tühistatud“ with the stored one chosen, and the existing hint under them", async () => {
-    await show();
+    await show({ counts: { confirmed: 0, booked: 0, all: 0 } });
     expect(radio("scheduled").checked).toBe(true);
     expect(radio("cancelled").checked).toBe(false);
     expect(text($("[data-session-status] legend"))).toBe("Staatus");
     expect(text($("[data-session-status]"))).toContain("Tühistatud toimumine jääb avalikku kalendrisse märkega „Tühistatud“.");
+    expect(described($("[data-session-status] fieldset")!)).toContain("Tühistatud toimumine jääb avalikku kalendrisse märkega „Tühistatud“.");
+  });
+
+  // UX audit 2 A34: with registrations the delete refusal („… kustutada ei saa. Märgi see „Tühistatud“.“) and the hint said almost the same; one note
+  it("with registrations the hint is gone: the delete refusal is the one note about „Tühistatud“", async () => {
+    await show({ counts: { confirmed: 0, booked: 0, all: 1 } });
+    expect(text($("[data-session-status]"))).not.toContain("avalikku kalendrisse");
+    expect(described($("[data-session-status] fieldset")!)).toEqual([]);
+    expect(text($("[data-delete-refusal]"))).toBe("Toimumisel on registreeringuid — kustutada ei saa. Märgi see „Tühistatud“.");
   });
 
   it("booked: the ConfirmPanel „Kas tühistan toimumise?“ · „2 registreeringut jäävad alles; teavita õpilasi ise.“ · „Jah, tühista“ / „Katkesta“; „Katkesta“ keeps „Toimub“", async () => {
