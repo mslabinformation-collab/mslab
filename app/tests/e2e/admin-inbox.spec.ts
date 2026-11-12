@@ -1521,7 +1521,8 @@ test.describe("signed in", () => {
       await expect(page).toHaveURL(/kampaania=\d+$/);
       id = Number(new URL(page.url()).searchParams.get("kampaania"));
       const form = page.locator(`[data-campaign-form="${id}"]`);
-      await expect(form.locator('[data-field="name"]')).toHaveValue("Uus kiri");
+      // (UX audit 2 A42: a new draft has no name; the list calls it by its subject)
+      await expect(form.locator('[data-field="name"]')).toHaveValue("");
 
       await form.locator('[data-field="name"]').fill(name);
       await editLang(page, "et");

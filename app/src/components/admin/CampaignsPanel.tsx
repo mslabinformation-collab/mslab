@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { NewsletterCampaign } from "@/db/schema";
+import { campaignTitle } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDayMonth, formatTime } from "@/i18n/format";
 import { campaignValues, type Progress } from "@/server/newsletter-campaigns";
@@ -50,7 +51,8 @@ const reachedBy = (row: NewsletterCampaign): number | null => (row.status === "s
 
 export const campaignListRow = (row: NewsletterCampaign, progress: Progress | null = null): CampaignListRow => ({
   id: row.id,
-  name: row.name,
+  // its name, else its subject, else „Nimetu kiri“ (UX audit 2 A42)
+  name: campaignTitle(row),
   status: row.status,
   // a send's time; a draft's last change
   at: (row.status !== "draft" && row.sentAt ? row.sentAt : row.updatedAt).toISOString(),

@@ -341,6 +341,16 @@ describe("the „Kirjad“ view (?vaade=kampaaniad)", () => {
     expect(html).not.toContain("data-campaign-form"); // (none chosen)
   });
 
+  // UX audit 2 A42: a draft is named by its subject; with neither a name nor a subject it is „Nimetu kiri“ (it was „Uus kiri“, the button's words)
+  test("a row without a name says the letter's Estonian subject, else „Nimetu kiri“", async () => {
+    const bySubject = await campaign("", { subject: { et: "Talvepakkumine", ru: "" } });
+    const untitled = await campaign("", { subject: { et: "", ru: "" } });
+    const html = await render({ vaade: "kampaaniad" });
+    const name = (id: number) => text(html.match(new RegExp(`<li[^>]*data-campaign-row="${id}"[\\s\\S]*?</li>`))?.[0] ?? "").split(" Mustand ·")[0];
+    expect(name(bySubject.id)).toBe("Talvepakkumine");
+    expect(name(untitled.id)).toBe("Nimetu kiri");
+  });
+
   test("a chosen draft opens its editor with its fields, the preview and its sends; an id that is not there says so", async () => {
     const draft = await campaign("Mustand");
     const html = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });

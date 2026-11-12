@@ -523,7 +523,9 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
       expect(item(id).mark, id).toBe("reworded");
       expect(atPiece3b(item(id).markedAt), id).toBe(true);
     }
-    expect(item("avalik-uudiskiri-kustuta").mark).toBe("new");
+    // UX audit 2 A42: a new draft has no name and is called by its subject („Nimetu kiri“ until it has one): the delete check, which named its draft
+    // with „Nimi“, now names it with „Teema“ and is run again (it was `new`)
+    expect(item("avalik-uudiskiri-kustuta").mark).toBe("redo");
     expect(atPiece3b(item("avalik-uudiskiri-kustuta").markedAt)).toBe(true);
     expect(item("avalik-uudiskiri-kampaania-ykslink").mark).toBe("new");
     expect(text("avalik-uudiskiri-kampaania")).toContain("„Sisu keel“");
@@ -564,7 +566,8 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(adminEt.newsletter.views.campaigns).toBe("Kirjad");
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${n.views.campaigns}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.new} +“`);
-    expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.newTitle}“`);
+    // (UX audit 2 A42: the new draft is „Nimetu kiri“, no longer „Uus kiri“)
+    expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.untitled}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.name}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${adminEt.autosave.saved.replace("{time}", "…")}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.row.draft.replace("{date}", "…")}“`);

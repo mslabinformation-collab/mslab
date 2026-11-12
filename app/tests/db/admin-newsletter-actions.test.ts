@@ -68,12 +68,12 @@ describe("the letters' actions: „Uus kiri +“, „Kustuta mustand“ and „K
     return r.id;
   };
 
-  test("createDraftAction: the new draft „Uus kiri“ (ruling R-g) and its id; the page is refreshed", async () => {
+  test("createDraftAction: the new draft, its name empty (ruling R-g; UX audit 2 A42: „Nimetu kiri“ until it has a subject), and its id; the page is refreshed", async () => {
     const r = await actions.createDraftAction();
     expect(r).toEqual({ ok: true, id: expect.any(Number) });
     expect(cache.refresh).toHaveBeenCalledTimes(1);
     const [row] = await db.select().from(newsletterCampaigns);
-    expect(row).toMatchObject({ id: (r as { id: number }).id, name: "Uus kiri", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, status: "draft" });
+    expect(row).toMatchObject({ id: (r as { id: number }).id, name: "", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, status: "draft" });
   });
 
   test("deleteDraftAction: a draft is deleted; a letter sent meanwhile is `sent`; one that is gone `notFound`; an id the page never sends `notFound` without a read", async () => {

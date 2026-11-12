@@ -3,6 +3,7 @@
 // share them. It runs in the browser too (the editor), on iOS Safari before 16.4 as well: no lookbehind here nor in what it imports
 // (tests/unit/old-safari.test.ts), and no builtin newer than Safari 15. Not to be confused with domain/campaign.ts, the home page's popup.
 
+import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { isStorableImageKey } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
@@ -51,6 +52,12 @@ export type NewsletterCampaignDraft = {
   buttonLabel: I18n | null;
   buttonHref: string | null;
 };
+
+/**
+ * What a letter is called in the admin (the list's row, the editor's title, the questions of „Kustuta mustand“ and „Saada kõigile“, a copy's name):
+ * its name, else its Estonian subject, else „Nimetu kiri“ (UX audit 2 A42: a new draft was „Uus kiri“, the words of the button that made it).
+ */
+export const campaignTitle = (c: { name: string; subject: { et: string } }): string => c.name.trim() || c.subject.et.trim() || adminEt.newsletter.campaigns.untitled;
 
 /**
  * Why a field is refused: nothing in it, more than its limit, something that is no value of its kind, or (`ruLabel`, on "buttonLabel.ru") a button with
@@ -119,7 +126,8 @@ type Checked = { value: NewsletterCampaignDraft; errors: Errors };
 /**
  * The rules of one letter, for a save (`send` false) or for a send (`send` true; ruling R-g of piece 3b: the required texts are the sends' now).
  * - Every field's own rule, for both: a text no longer than its limit, the code in a discount code's shape (domain/discount-codes: normalizeCode, isCode, CODE_MAX), the picture a key the site stores, the
- *   button's address an https:// address or a path of this site (isCampaignHref); the name is required for both (the list's line).
+ *   button's address an https:// address or a path of this site (isCampaignHref); the name is optional for both (UX audit 2 A42: without one the
+ *   letter is called by its subject, campaignTitle).
  * - The button's rule, for both, as before (ruling R2): any of its fields typed starts it, and then its Estonian label and its address are required,
  *   and its Russian label too when there is a Russian text. Each refusal falls on the field that breaks it.
  * - Required for a send only: the subject's and the text's Estonian (an empty draft, „Uus kiri +“, saves).
@@ -129,7 +137,7 @@ type Checked = { value: NewsletterCampaignDraft; errors: Errors };
 function check(raw: Record<string, unknown>, send: boolean): Checked {
   const errors: Errors = {};
   const L = CAMPAIGN_LIMITS;
-  const name = field(raw.name, "name", L.name, true, true, errors);
+  const name = field(raw.name, "name", L.name, false, true, errors);
   const subject = bilingual(raw.subject, "subject", L.subject, send, true, errors);
   const preheader = bilingual(raw.preheader, "preheader", L.preheader, false, true, errors);
   const body = bilingual(raw.body, "body", L.body, send, false, errors);
@@ -173,7 +181,7 @@ const result = (c: Checked): { ok: true; value: NewsletterCampaignDraft } | { ok
 
 /**
  * A letter as it goes out, checked (the sends': „Saada proov“, „Saada kõigile“). `raw` is a `NewsletterCampaignDraft` as the form holds it (texts as
- * typed, an optional one empty, absent or null, a bilingual one `{ et, ru }`) or as stored. Required: `name`, `subject.et` and `body.et`; the button
+ * typed, an optional one empty, absent or null, a bilingual one `{ et, ru }`) or as stored. Required: `subject.et` and `body.et`; the button
  * whole (see `check`). The code is raised to capitals. Texts come back cleaned (see `textOf`) and trimmed; nothing is cut. A wrong field is named in
  * `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid", or with "ruLabel" on
  * "buttonLabel.ru" (a button and a Russian text without the Russian label, ruling R2); anything but an object is `{ form: "invalid" }`. Keys it

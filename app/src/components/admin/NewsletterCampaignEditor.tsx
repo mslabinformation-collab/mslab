@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type SyntheticEvent } from "react";
-import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_FIELDS, CAMPAIGN_LIMITS, campaignFieldCodes, campaignSaveCheck, checkCampaignDraft, type CampaignField } from "@/domain/newsletter-campaign";
+import {
+  CAMPAIGN_DAILY_ROOM,
+  CAMPAIGN_FIELDS,
+  CAMPAIGN_LIMITS,
+  campaignFieldCodes,
+  campaignSaveCheck,
+  campaignTitle,
+  checkCampaignDraft,
+  type CampaignField,
+} from "@/domain/newsletter-campaign";
 import { CODE_MAX, normalizeCode } from "@/domain/discount-codes";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
@@ -357,6 +366,8 @@ function DraftEditor({
   useEffect(() => {
     nav.current = router;
   });
+  /** The name on the screen (a subject saved while it is empty is the list's row: the save reads the page again). */
+  const nameNow = useRef(campaign.values.name);
   /** The route's refusals (400) by field, until the field is typed in again or saved. */
   const [refused, setRefused] = useState<Codes>({});
   /** The sends' refusals (R-g: the subject and the text required, the button whole) by field, until the field is typed in again. */
@@ -369,9 +380,11 @@ function DraftEditor({
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 200 && reply?.ok === true) {
         setRefused((r) => without(r, Object.keys(body.patch)));
-        // stored: the list's row shows the letter's name, so a new name is read again into it (any other field is the editor's alone: no page read
-        // every 1.5 s of typing; the count on „Saada kõigile ({n})“ does not move with a save, and the press reads it again under its lock)
-        if (reply.version !== body.version && "name" in body.patch) startTransition(() => nav.current.refresh());
+        // stored: the list's row shows what the letter is called, its name or without one its subject (UX audit 2 A42), so a new one is read again
+        // into it (any other field is the editor's alone: no page read every 1.5 s of typing; the count on „Saada kõigile ({n})“ does not move with a
+        // save, and the press reads it again under its lock)
+        const called = "name" in body.patch || ("subject" in body.patch && !nameNow.current.trim());
+        if (reply.version !== body.version && called) startTransition(() => nav.current.refresh());
       } else if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
         const fields = reply.fields;
         const codes: Codes = {};
@@ -390,8 +403,11 @@ function DraftEditor({
   const auto = useAutosave({ owner: OWNER, key: String(id), version: campaign.version, fields: { ...campaign.values }, save, validate, label, focusField });
   const { flush, unconfirmed, discardCopy, versionNow } = auto;
   const values = auto.fields as CampaignValues;
+  useEffect(() => {
+    nameNow.current = values.name;
+  });
 
-  // „Uus kiri +“ made this draft: the cursor in „Nimi“ (S3-P3-h), its text chosen so that typing replaces „Uus kiri“
+  // „Uus kiri +“ made this draft: the cursor in „Nimi“ (S3-P3-h; its name is empty, UX audit 2 A42)
   useEffect(() => {
     if (focusNameOf !== id) return;
     focusNameOf = null;
@@ -458,7 +474,7 @@ function DraftEditor({
       <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-form`} onBlur={() => void flush()} data-campaign-card="">
         <div className={styles.formHead}>
           <h2 id={`${uid}-form`} className={`${ui.h2} ${styles.formTitle}`} data-campaign-title="">
-            {values.name.trim() || t.newTitle}
+            {campaignTitle(values)}
           </h2>
           <SaveStatus status={auto.status} compact={phone} thing={t.thing} onShowInvalid={showInvalid} follow />
         </div>
@@ -526,7 +542,7 @@ function DraftEditor({
           )}
           <DeleteDraft
             id={id}
-            name={values.name.trim() || t.newTitle}
+            name={campaignTitle(values)}
             onGone={(line) => {
               discardCopy();
               // (gone already, or sent meanwhile: the action has read the page again — it shows the letter's state, or that it is not there)
@@ -546,7 +562,7 @@ function DraftEditor({
         </div>
         <Sends
           id={id}
-          name={values.name.trim() || t.newTitle}
+          name={campaignTitle(values)}
           revision={JSON.stringify(values)}
           flush={flush}
           versionNow={versionNow}
@@ -988,7 +1004,7 @@ function SentCampaign({ campaign }: { campaign: CampaignEditorView }) {
       </Link>
       <section className={`${ui.card} ${styles.formCard}`} aria-labelledby={`${uid}-sent`} data-campaign-sent={campaign.status}>
         <h2 id={`${uid}-sent`} className={`${ui.h2} ${styles.formTitle}`}>
-          {campaign.values.name}
+          {campaignTitle(campaign.values)}
         </h2>
         {going && campaign.progress && (
           <p className={`${ui.hint} ${styles.progress}`} data-campaign-progress="">

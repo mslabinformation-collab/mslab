@@ -2294,7 +2294,7 @@ export const adminEt = {
     // {email} an address, {name} the letter's name.
     campaigns: {
       list: "Kirjad",
-      // „Uus kiri +“ (the „+“ is the component's): a draft of this name at once (S3-P3-h, ruling R-g: `newTitle` is its name)
+      // „Uus kiri +“ (the „+“ is the component's): a new draft at once (S3-P3-h, ruling R-g), its name empty
       new: "Uus kiri",
       empty: "Kirju veel pole.",
       // a row's line under its name (P-13; the first two drawn, P3:239-240): {date} „dd.mm hh:mm“ for a draft, „dd.mm“ for a sent letter
@@ -2304,7 +2304,10 @@ export const adminEt = {
         sending: "Saatmine pooleli · {sent} / {n}",
       },
       notFound: "Seda kirja enam pole.",
-      newTitle: "Uus kiri",
+      // what a letter with neither a name nor a subject is called in the list, the card's title and the questions (domain campaignTitle; it was
+      // „Uus kiri“, the button's words)
+      // (Draft, UX audit 2 A42)
+      untitled: "Nimetu kiri",
       // README §1.4's {asja} of SaveStatus' gone state: „Seda kirja enam ei ole. …“ (P-12's „kirja“)
       thing: "kirja",
       // the phone (Part 4 „B5 Kirjad“): the list is its own screen, „← Kirjad“ back to it, and a letter's „Muuda | Eelvaade“
@@ -2313,7 +2316,8 @@ export const adminEt = {
       // the editor's fields
       form: "Kiri",
       name: "Nimi",
-      nameHint: "Ainult sulle: tellijad seda ei näe.",
+      // (Draft, UX audit 2 A42) the second sentence: without a name the list shows the letter's subject
+      nameHint: "Ainult sulle: tellijad seda ei näe. Tühja nime asemel on loendis kirja teema.",
       subject: "Teema",
       preheader: "Eelvaate rida",
       preheaderHint: "Hall rida teema järel enamikus postkastides. Võib jääda tühjaks.",

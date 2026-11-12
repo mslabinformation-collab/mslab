@@ -646,7 +646,7 @@
         "Vaata eelvaadet, vajuta lehe päises „Sisu keel“ juures „ET“ ja laadi leht uuesti."
       ],
       "expect": [
-        "„Uus kiri +“ avab kohe mustandi „Uus kiri“ ja kursor on väljal „Nimi“.",
+        "„Uus kiri +“ avab kohe mustandi „Nimetu kiri“; väli „Nimi“ on tühi ja kursor on selles.",
         "„Pilt“ on üks kast: pilt ise, selle all „Vaheta pilt“ ja „Eemalda“.",
         "Eelvaates on logo, pilt kaardi laiuses, kaks lõiku, kood PROOV3 kastis ja nupp „Vaata koolitusi“.",
         "Eelvaade on samas keeles nagu „Sisu keel“ ja muutub mõne hetke jooksul, kui teksti kirjutad.",
@@ -809,12 +809,15 @@
       "title": "Kustuta mustand",
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
-        "Ava „Kirjad“, vajuta „Uus kiri +“ ja kirjuta „Nimi“: Proov 3 kustuta.",
+        "Ava „Kirjad“, vajuta „Uus kiri +“ ja vaata kaardi pealkirja ja loendit.",
+        "Kirjuta „Teema“: Proov 3 kustuta, vajuta väljast välja ja vaata uuesti.",
         "Vajuta väljade all „Kustuta mustand“, loe küsimust ja vajuta „Katkesta“.",
         "Vajuta uuesti „Kustuta mustand“ ja siis „Jah, kustuta“.",
         "Ava loendis saadetud Proov 3 kiri."
       ],
       "expect": [
+        "Uus mustand on kaardi pealkirjas ja loendis „Nimetu kiri“; väli „Nimi“ on tühi.",
+        "Teema järel on kaardi pealkiri ja loendi rida „Proov 3 kustuta“.",
         "Küsimus on „Kas kustutan mustandi „Proov 3 kustuta“?“ ja selle all „Seda ei saa tagasi võtta.“.",
         "„Katkesta“ jätab mustandi alles ja nupp „Kustuta mustand“ on tagasi.",
         "Pärast „Jah, kustuta“ on loendi kohal „Mustand kustutatud.“ ja Proov 3 kustuta on loendist kadunud.",
@@ -823,8 +826,8 @@
       "why": "Juhuslik mustand ei jää loendisse, saadetud kirja aga kustutada ei saa.",
       "risk": "low",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-26T11:12:35.436Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-jatkub",

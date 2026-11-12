@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { newsletterCampaigns } from "@/db/schema";
-import { CAMPAIGN_LIMITS } from "@/domain/newsletter-campaign";
+import { CAMPAIGN_LIMITS, campaignTitle } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import {
   copyCampaign,
@@ -86,8 +86,8 @@ describe("saveCampaign: a draft through the rules", () => {
   });
 
   test("a refused draft names its fields and stores nothing; a Russian text with a button needs the Russian label (ruling R2)", async () => {
-    // (an empty subject is no refusal of a save any more, ruling R-g: only the name is required to save)
-    expect(await saveCampaign(db, null, { ...DRAFT, name: "", subject: { et: "", ru: "" } }, NOW)).toEqual({ ok: false, fields: { name: "required" } });
+    // (an empty subject is no refusal of a save any more, ruling R-g, nor an empty name, UX audit 2 A42: a letter is called by its subject; the R-g test
+    // below saves both)
     expect(await saveCampaign(db, null, { ...DRAFT, buttonLabel: { et: "Vaata", ru: "" } }, NOW)).toEqual({ ok: false, fields: { "buttonLabel.ru": "ruLabel" } });
     expect(await saveCampaign(db, null, { ...DRAFT, name: "x".repeat(CAMPAIGN_LIMITS.name + 1) }, NOW)).toEqual({ ok: false, fields: { name: "tooLong" } });
     expect(await saveCampaign(db, null, "not a form", NOW)).toEqual({ ok: false, fields: { form: "invalid" } });
@@ -128,7 +128,7 @@ describe("saveCampaign: a draft through the rules", () => {
   test("a refused draft of a sent campaign answers its fields first: nothing is stored either way", async () => {
     const sent = await draft();
     await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, sent));
-    expect(await saveCampaign(db, sent, { ...DRAFT, name: "" }, at(5))).toEqual({ ok: false, fields: { name: "required" } });
+    expect(await saveCampaign(db, sent, { ...DRAFT, name: "x".repeat(CAMPAIGN_LIMITS.name + 1) }, at(5))).toEqual({ ok: false, fields: { name: "tooLong" } });
   });
 });
 
@@ -154,10 +154,10 @@ describe("C4 and R-g: a save that changes nothing, a draft without its subject",
     expect((await rowOf(id)).updatedAt).toEqual(at(7));
   });
 
-  test("R-g: „Uus kiri +“ makes the draft „Uus kiri“ with an empty subject and text; saves take an empty subject and text; the name stays required", async () => {
+  test("R-g, UX audit 2 A42: „Uus kiri +“ makes a draft with an empty name, subject and text (called „Nimetu kiri“ until it has a subject); saves take them empty", async () => {
     const { id } = await createDraft(db, NOW);
     expect(await rowOf(id)).toMatchObject({
-      name: "Uus kiri",
+      name: "",
       subject: { et: "", ru: "" },
       preheader: { et: "", ru: "" },
       body: { et: "", ru: "" },
@@ -169,10 +169,11 @@ describe("C4 and R-g: a save that changes nothing, a draft without its subject",
       createdAt: NOW,
       updatedAt: NOW,
     });
-    expect(adminEt.newsletter.campaigns.newTitle).toBe("Uus kiri");
+    expect(adminEt.newsletter.campaigns.untitled).toBe("Nimetu kiri");
+    expect(campaignTitle(await rowOf(id))).toBe("Nimetu kiri");
     const read = await readCampaign(db, id);
     if (!read) throw new Error("no letter");
-    expect(read.value).toEqual({ name: "Uus kiri", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" });
+    expect(read.value).toEqual({ name: "", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" });
     // a subject typed, then emptied again: both saves go
     const typed = await writeCampaign(db, id, { subject: { et: "Teema", ru: "" } }, read.version, at(1));
     if (!typed.ok) throw new Error(JSON.stringify(typed));
@@ -180,10 +181,13 @@ describe("C4 and R-g: a save that changes nothing, a draft without its subject",
     expect(emptied).toMatchObject({ ok: true });
     expect(await rowOf(id)).toMatchObject({ subject: { et: "", ru: "" }, updatedAt: at(2) });
     expect(await saveCampaign(db, id, { ...DRAFT, subject: { et: "", ru: "" }, body: { et: "", ru: "" } }, at(3))).toEqual({ ok: true, id });
-    // the name is the list's: an empty one is refused by field, nothing stored
+    // the list calls it by its name, without one by its subject: a name emptied saves
+    expect(campaignTitle(await rowOf(id))).toBe(DRAFT.name);
     const now = await readCampaign(db, id);
-    expect(await writeCampaign(db, id, { name: "  " }, now!.version, at(4))).toEqual({ ok: false, error: "invalid", fields: { name: "required" } });
-    expect((await rowOf(id)).updatedAt).toEqual(at(3));
+    const unnamed = await writeCampaign(db, id, { name: "  ", subject: { et: "Talvepakkumine", ru: "" } }, now!.version, at(4));
+    expect(unnamed).toMatchObject({ ok: true });
+    expect(await rowOf(id)).toMatchObject({ name: "", updatedAt: at(4) });
+    expect(campaignTitle(await rowOf(id))).toBe("Talvepakkumine");
   });
 
   test("the autosave of a field: the other fields' rules do not hold it back; the button's rule falls on the field that breaks it; a field too long is refused by name", async () => {
@@ -297,6 +301,13 @@ describe("copyCampaign: „Kopeeri“", () => {
       updatedAt: at(10),
     });
     expect(await rowOf(id)).toEqual(before);
+  });
+
+  // UX audit 2 A42: a letter without a name is called by its subject, so is its copy
+  test("a letter without a name: the copy is named by its subject and „(koopia)“", async () => {
+    const id = await draft({ ...DRAFT, name: "" });
+    const copied = await copyCampaign(db, id, NOW);
+    expect((await rowOf((copied as { id: number }).id)).name).toBe(`${DRAFT.subject.et} (koopia)`);
   });
 
   test("a long name is cut so that the copy's name keeps to its limit; a campaign that is not there gives no copy", async () => {

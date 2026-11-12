@@ -205,11 +205,14 @@ test.describe("„Uudiskiri“ and „Kirjad“", () => {
     await adminReady(page);
     const { id, form } = await newLetter(page);
 
-    await test.step("„Uus kiri +“ made the draft „Uus kiri“ at once (S3-P3-h): the cursor in „Nimi“, the list's row, nothing to save", async () => {
-      await expect(form.locator('[data-field="name"]')).toHaveValue("Uus kiri");
+    // (UX audit 2 A42: the new draft has no name; it is „Nimetu kiri“ until it has a subject — it was „Uus kiri“, the button's words)
+    await test.step("„Uus kiri +“ made a draft at once (S3-P3-h): the cursor in „Nimi“, the list's row „Nimetu kiri“, nothing to save", async () => {
+      await expect(form.locator('[data-field="name"]')).toHaveValue("");
       await expect(form.locator('[data-field="name"]')).toBeFocused();
+      await expect(form.locator("[data-campaign-title]")).toHaveText("Nimetu kiri");
+      await expect(page.locator(`[data-campaign-row="${id}"]`)).toContainText("Nimetu kiri");
       await expect(page.locator(`[data-campaign-row="${id}"] [data-campaign-row-line]`)).toHaveText(/^Mustand · muudetud \d{2}\.\d{2} \d{2}:\d{2}$/);
-      expect(await storedLetter(id)).toMatchObject({ name: "Uus kiri", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, status: "draft" });
+      expect(await storedLetter(id)).toMatchObject({ name: "", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, status: "draft" });
       await expect(page.getByRole("button", { name: "Salvesta" })).toHaveCount(0);
     });
 

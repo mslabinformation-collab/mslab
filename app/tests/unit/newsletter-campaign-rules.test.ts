@@ -9,6 +9,7 @@ import {
   campaignFieldCodes,
   campaignRoomSetting,
   campaignSaveCheck,
+  campaignTitle,
   checkCampaignDraft,
   checkCampaignSave,
   ruFallsBack,
@@ -57,16 +58,18 @@ describe("the limits", () => {
 // and a button half typed; the sends (checkCampaignDraft) require them. The autosave's rule is campaignSaveCheck, by the editor's field names: the browser
 // holds a refused field back by it and the route refuses the patch's fields by it (never a hand copy).
 describe("checkCampaignSave and campaignSaveCheck: the save's rules (R-g)", () => {
-  const empty = { name: "Uus kiri", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" };
+  const empty = { name: "", subject: { et: "", ru: "" }, preheader: { et: "", ru: "" }, imageKey: "", body: { et: "", ru: "" }, code: "", buttonLabel: { et: "", ru: "" }, buttonHref: "" };
 
-  test("an empty subject and text save; the sends refuse them with the required code", () => {
-    expect(checkCampaignSave(empty)).toMatchObject({ ok: true, value: { name: "Uus kiri", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, buttonLabel: null, buttonHref: null } });
+  test("an empty name, subject and text save; the sends refuse the subject and the text with the required code", () => {
+    expect(checkCampaignSave(empty)).toMatchObject({ ok: true, value: { name: "", subject: { et: "", ru: "" }, body: { et: "", ru: "" }, buttonLabel: null, buttonHref: null } });
     expect(checkCampaignDraft(empty)).toEqual({ ok: false, fields: { "subject.et": "required", "body.et": "required" } });
     expect(campaignSaveCheck(empty).codes).toEqual({});
   });
 
-  test("the name stays required, and every field keeps its own rule: the limit, the code's shape, the address, the picture's key", () => {
-    expect(campaignSaveCheck({ ...empty, name: " " }).codes).toEqual({ name: "required" });
+  // UX audit 2 A42: the name may stay empty (a draft is named by its subject); it keeps its limit
+  test("the name is optional, and every field keeps its own rule: the limit, the code's shape, the address, the picture's key", () => {
+    expect(campaignSaveCheck({ ...empty, name: " " }).codes).toEqual({});
+    expect(campaignSaveCheck({ ...empty, name: "x".repeat(CAMPAIGN_LIMITS.name + 1) }).codes).toEqual({ name: "tooLong" });
     expect(campaignSaveCheck({ ...empty, subject: { et: "x".repeat(CAMPAIGN_LIMITS.subject + 1), ru: "" } }).codes).toEqual({ subject: "tooLong" });
     expect(campaignSaveCheck({ ...empty, code: "ei sobi!" }).codes).toEqual({ code: "invalid" });
     expect(campaignSaveCheck({ ...empty, buttonLabel: { et: "Vaata", ru: "" }, buttonHref: "javascript:alert(1)" }).codes).toEqual({ buttonHref: "invalid" });
@@ -140,11 +143,18 @@ describe("checkCampaignDraft: what is refused", () => {
     for (const raw of [undefined, null, "x", 7, [], true]) expect(refused(raw)).toEqual({ form: "invalid" });
   });
 
-  test("the name, the Estonian subject and the Estonian text are required (missing, empty or only white space)", () => {
-    expect(refused({})).toEqual({ name: "required", "subject.et": "required", "body.et": "required" });
-    expect(refused({ name: "   ", subject: { et: "" }, body: { et: "\n \n" } })).toEqual({ name: "required", "subject.et": "required", "body.et": "required" });
+  test("the Estonian subject and the Estonian text are required (missing, empty or only white space); the name is not (UX audit 2 A42)", () => {
+    expect(refused({})).toEqual({ "subject.et": "required", "body.et": "required" });
+    expect(refused({ name: "   ", subject: { et: "" }, body: { et: "\n \n" } })).toEqual({ "subject.et": "required", "body.et": "required" });
     expect(refused({ name: "n", subject: { ru: "Тема" }, body: { ru: "Текст" } })).toEqual({ "subject.et": "required", "body.et": "required" }); // (Russian alone is not enough)
-    expect(refused({ ...minimal, name: undefined })).toEqual({ name: "required" });
+    expect(checkCampaignDraft({ ...minimal, name: undefined })).toMatchObject({ ok: true, value: { name: "" } });
+  });
+
+  // UX audit 2 A42: a letter is called by its name, else by its Estonian subject, else „Nimetu kiri“ (the list, the editor's title, the questions)
+  test("campaignTitle: the name, else the Estonian subject, else „Nimetu kiri“", () => {
+    expect(campaignTitle({ name: " Oktoober ", subject: { et: "Sügispakkumine" } })).toBe("Oktoober");
+    expect(campaignTitle({ name: "  ", subject: { et: " Sügispakkumine " } })).toBe("Sügispakkumine");
+    expect(campaignTitle({ name: "", subject: { et: "" } })).toBe("Nimetu kiri");
   });
 
   test("a text over its limit is tooLong, named by field and language; one over is refused, never cut", () => {
@@ -185,7 +195,7 @@ describe("checkCampaignDraft: what is refused", () => {
   });
 
   test("every wrong field is named at once", () => {
-    expect(refused({ name: "", subject: { et: "s".repeat(151) }, body: { et: "t" }, code: "tere_10" })).toEqual({ name: "required", "subject.et": "tooLong", code: "invalid" });
+    expect(refused({ name: "n".repeat(81), subject: { et: "s".repeat(151) }, body: { et: "t" }, code: "tere_10" })).toEqual({ name: "tooLong", "subject.et": "tooLong", code: "invalid" });
   });
 });
 
@@ -318,7 +328,9 @@ describe("control characters are cleaned and newlines are kept", () => {
   });
 
   test("a text that is only control characters is empty: a required one is then missing", () => {
-    expect(refused({ ...minimal, name: "\u0000\u0007" })).toEqual({ name: "required" });
+    expect(refused({ ...minimal, subject: { et: "\u0000\u0007" } })).toEqual({ "subject.et": "required" });
+    // (the name is optional, UX audit 2 A42: it is empty, and no refusal)
+    expect(ok({ ...minimal, name: "\u0000\u0007" }).name).toBe("");
   });
 });
 

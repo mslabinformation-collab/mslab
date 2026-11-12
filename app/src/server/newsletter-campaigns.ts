@@ -11,6 +11,7 @@ import {
   campaignContentFor,
   campaignRoomSetting,
   campaignSaveCheck,
+  campaignTitle,
   checkCampaignDraft,
   checkCampaignSave,
   isCampaignHref,
@@ -171,12 +172,15 @@ export async function saveCampaign(
   });
 }
 
-/** „Uus kiri +“ (S3-P3-h, ruling R-g): a new draft named „Uus kiri“ with an empty subject and text, at once; the editor opens it with the cursor in „Nimi“. */
+/**
+ * „Uus kiri +“ (S3-P3-h, ruling R-g): a new draft with an empty name, subject and text, at once; the editor opens it with the cursor in „Nimi“. Without
+ * a name it is called by its subject, „Nimetu kiri“ until it has one (UX audit 2 A42: it was named „Uus kiri“, the button's words; campaignTitle).
+ */
 export async function createDraft(db: Db, now: Date): Promise<{ id: number }> {
   const empty = { et: "", ru: "" };
   const [row] = await db
     .insert(newsletterCampaigns)
-    .values({ name: adminEt.newsletter.campaigns.newTitle, subject: empty, preheader: empty, body: empty, status: "draft", createdAt: now, updatedAt: now })
+    .values({ name: "", subject: empty, preheader: empty, body: empty, status: "draft", createdAt: now, updatedAt: now })
     .returning();
   console.info(`[newsletter] campaign ${row.id} created (new letter)`);
   return { id: row.id };
@@ -273,12 +277,15 @@ export async function writeCampaign(db: Db, id: number, patch: Record<string, un
   });
 }
 
-/** „Kopeeri“: a new draft with the content of campaign `id` (sent or not) and „ (koopia)“ after its name, cut to the name's limit. */
+/**
+ * „Kopeeri“: a new draft with the content of campaign `id` (sent or not) and „ (koopia)“ after what it is called (its name, else its subject:
+ * campaignTitle, UX audit 2 A42), cut to the name's limit.
+ */
 export async function copyCampaign(db: Db, id: number, now: Date): Promise<{ ok: true; id: number } | { ok: false }> {
   const row = await getCampaign(db, id);
   if (!row) return { ok: false };
   const suffix = adminEt.newsletter.campaigns.copySuffix;
-  const name = `${row.name.slice(0, CAMPAIGN_LIMITS.name - suffix.length).trimEnd()}${suffix}`;
+  const name = `${campaignTitle(row).slice(0, CAMPAIGN_LIMITS.name - suffix.length).trimEnd()}${suffix}`;
   const [copy] = await db
     .insert(newsletterCampaigns)
     .values({ ...columnsOf(draftOf(row)), name, status: "draft", createdAt: now, updatedAt: now })

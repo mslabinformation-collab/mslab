@@ -275,18 +275,30 @@ describe("a draft: its fields autosave", () => {
     expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
-  test("an empty subject and text save (ruling R-g); an empty name is held back in its field and said there, the others still save", async () => {
+  test("an empty subject and text save (ruling R-g); an empty name saves too (UX audit 2 A42): the letter is called by its subject", async () => {
     await show(DRAFT);
     await type($('[data-i18n="subject"]'), "");
     await leave($('[data-i18n="subject"]'));
     expect(saves.at(-1)?.patch).toEqual({ subject: { et: "", ru: "Осеннее предложение" } });
     await type($('[data-field="name"]'), "");
-    await type($('[data-i18n="preheader"]'), "Rida");
     await leave($('[data-field="name"]'));
-    expect(saves.at(-1)?.patch).toEqual({ preheader: { et: "Rida", ru: "" } });
-    expect(saves.some((s) => "name" in s.patch)).toBe(false);
-    expect(chip()!.getAttribute("data-save-kind")).toBe("invalid");
-    expect(container.textContent).toContain("Täida see väli.");
+    expect(saves.at(-1)?.patch).toEqual({ name: "" });
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+    expect(container.textContent).not.toContain("Täida see väli.");
+  });
+
+  // UX audit 2 A42: a draft is named by its subject; with neither a name nor a subject it is „Nimetu kiri“ (it was „Uus kiri“, the button's words)
+  test("no name: the card's title is the Estonian subject, else „Nimetu kiri“; a subject saved then reads the page again (the list shows it)", async () => {
+    await show({ ...DRAFT, values: { ...VALUES, name: "", subject: { et: "", ru: "" } } });
+    expect(text("[data-campaign-title]")).toBe("Nimetu kiri");
+    await type($('[data-i18n="subject"]'), "Talvepakkumine");
+    expect(text("[data-campaign-title]")).toBe("Talvepakkumine");
+    await leave($('[data-i18n="subject"]'));
+    expect(saves.at(-1)?.patch).toEqual({ subject: { et: "Talvepakkumine", ru: "" } });
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // a name typed is the title again
+    await type($('[data-field="name"]'), "Talv");
+    expect(text("[data-campaign-title]")).toBe("Talv");
   });
 
   test("the route refuses a field (the server's rule): it is said in the field, as the Russian button label of ruling R2", async () => {
@@ -407,7 +419,7 @@ describe("„Kustuta mustand“ (B17, S3-P3-f)", () => {
 });
 
 describe("„Uus kiri +“ (S3-P3-h)", () => {
-  test("makes the draft at once and opens it; the cursor is in „Nimi“", async () => {
+  test("makes the draft at once and opens it, „Nimetu kiri“ until it has a subject; the cursor is in „Nimi“", async () => {
     actions.createDraftAction.mockResolvedValue({ ok: true, id: 12 });
     await act(async () => root.render(createElement(Fragment, null, createElement(NewLetterButton))));
     const button = $("[data-campaign-new]")!;
@@ -416,8 +428,9 @@ describe("„Uus kiri +“ (S3-P3-h)", () => {
     expect(actions.createDraftAction).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith(`${LIST}&kampaania=12`);
     // the page opens the new draft
-    await show({ ...DRAFT, id: 12, values: { ...VALUES, name: "Uus kiri" } });
+    await show({ ...DRAFT, id: 12, values: { ...VALUES, name: "", subject: { et: "", ru: "" } } });
     expect(document.activeElement).toBe($('[data-field="name"]'));
+    expect(text("[data-campaign-title]")).toBe("Nimetu kiri");
     // another letter opened later takes no focus
     await show({ ...DRAFT, id: 13 });
     expect(document.activeElement).not.toBe($('[data-field="name"]'));
@@ -723,13 +736,14 @@ describe("a draft's sends: the select, „Saada proov“, „Saada kõigile ({n}
 
   test("S3-P3-l, a field held back: „Üks väli vajab parandamist.“ stands in the buttons' place until the field is right; then they are back", async () => {
     await show(DRAFT);
-    await type($('[data-field="name"]'), "");
-    await leave($('[data-field="name"]'));
+    // (a code of the wrong shape: the name, the field held back here once, may be empty since UX audit 2 A42)
+    await type($('[data-field="code"]'), "ei sobi!");
+    await leave($('[data-field="code"]'));
     expect(words($("[data-send-blocked]"))).toBe("Saatmiseks peab kiri olema salvestatud. Üks väli vajab parandamist.");
     expect($("[data-send-all]")).toBeNull();
     expect($("[data-test-send]")).toBeNull();
-    await type($('[data-field="name"]'), "Nimi tagasi");
-    await leave($('[data-field="name"]'));
+    await type($('[data-field="code"]'), "SUGIS15");
+    await leave($('[data-field="code"]'));
     expect($("[data-send-blocked]")).toBeNull();
     expect(text("[data-send-all]")).toBe("Saada kõigile (3)");
   });
