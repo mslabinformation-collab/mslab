@@ -33,7 +33,8 @@
   overflow-wrap: anywhere;
 }
 
-.list {
+.list,
+.after {
   color: var(--muted-2);
 }
 

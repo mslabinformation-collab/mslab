@@ -59,6 +59,8 @@ export function RegistrationDiscount({
   const [chosenMode, setMode] = useState<"idle" | "adding" | "removing">("idle");
   // D11's „When“ (the server's openRegistration checks the same under its locks)
   const changeable = !cancelled && paidCents === 0 && !unpaidInvoice;
+  // (ruling F-M6b: an unpaid invoice is a step Maria can take, so the row stays and says when the code can change, instead of a button the server refuses)
+  const afterInvoice = !cancelled && paidCents === 0 && unpaidInvoice;
   // (a refresh that brings money or an invoice closes an open field or question; a refusal it came with stays under the row: `closedBy` below)
   const mode = changeable ? chosenMode : "idle";
   const [typed, setTyped] = useState("");
@@ -154,7 +156,7 @@ export function RegistrationDiscount({
             {refusalLine}
           </p>
         </form>
-      ) : applied || changeable ? (
+      ) : applied || changeable || afterInvoice ? (
         <div className={styles.row}>
           <span className={styles.k}>{t.code}</span>
           <span className={styles.v} data-discount-code="">
@@ -172,6 +174,7 @@ export function RegistrationDiscount({
                 {applied ? t.remove : t.add}
               </button>
             )}
+            {afterInvoice && <span className={styles.after}>{applied ? t.removeAfterInvoice : t.addAfterInvoice}</span>}
           </span>
         </div>
       ) : null}

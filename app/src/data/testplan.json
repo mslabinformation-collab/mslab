@@ -3834,7 +3834,8 @@
         "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu Seaded → „Maksmine“.",
         "Ettemaksu arve PDF-il on väike rida „Hind … − sooduskood PROOV-16 … = …“.",
         "Pärast koostamist pakub „Koosta arve“ ainult summat „Jääk 50%“.",
-        "„Raha“ näitab nulli laekununa ja staatus on „Ootab ettemaksu“."
+        "„Raha“ näitab nulli laekununa ja staatus on „Ootab ettemaksu“.",
+        "Kaardil „Raha“ on kood PROOV-16 ja „Sooduskoodi saab eemaldada, kui maksmata arve on tühistatud.“, nuppu pole."
       ],
       "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
       "risk": "high",

@@ -84,7 +84,7 @@ describe("the rows", () => {
   // M6 (ruling F-M6, D11): the actions only while they can work — nothing received, not cancelled, no unpaid invoice; no button that can only be refused
   test.each([
     ["money received", { paidCents: 100 }],
-    ["an unpaid invoice", { unpaidInvoice: true }],
+    ["a cancelled registration", { cancelled: true }],
   ])("with %s: a code is its row without „Eemalda sooduskood“", async (_why, over) => {
     await show({ ...WITH_CODE, ...over });
     expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €");
@@ -96,13 +96,27 @@ describe("the rows", () => {
 
   test.each([
     ["money received", { paidCents: 100 }],
-    ["an unpaid invoice", { unpaidInvoice: true }],
     ["a cancelled registration", { cancelled: true }],
   ])("with %s and no code: no „Sooduskood“ row, „Hind“ alone", async (_why, over) => {
     await show(over);
     expect($("[data-discount-code]")).toBeNull();
     expect(button("Lisa sooduskood")).toBeNull();
     expect(text($("[data-registration-discount]"))).toBe("Hind350 €");
+  });
+
+  // ruling F-M6b: an unpaid invoice is a step Maria can take (cancel it), so the row stays and says when the code can change; no button that is refused
+  test("with an unpaid invoice and no code: the „Sooduskood“ row says the code can be added once the invoice is cancelled, no button", async () => {
+    await show({ unpaidInvoice: true });
+    expect(text($("[data-discount-code]"))).toBe("Sooduskoodi saab lisada, kui maksmata arve on tühistatud.");
+    expect($("[data-discount-open]")).toBeNull();
+    expect(button("Lisa sooduskood")).toBeNull();
+  });
+
+  test("with an unpaid invoice and a code: the code, then that it can be removed once the invoice is cancelled, no button", async () => {
+    await show({ ...WITH_CODE, unpaidInvoice: true });
+    expect(text($("[data-discount-code]"))).toBe("JOULUD-20 · −70 €Sooduskoodi saab eemaldada, kui maksmata arve on tühistatud.");
+    expect($("[data-discount-open]")).toBeNull();
+    expect(button("Eemalda sooduskood")).toBeNull();
   });
 });
 
