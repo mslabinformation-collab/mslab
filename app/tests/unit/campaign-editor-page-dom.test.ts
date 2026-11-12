@@ -215,7 +215,7 @@ describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
     expect(zone.style.width).toBe("100%");
     const css = readFileSync(join(process.cwd(), "src/components/admin/CampaignEditor.module.css"), "utf8");
     expect(css).toMatch(/\.offer \[data-image-field\] \{\s*grid-template-columns: minmax\(0, 1fr\);/);
-    expect(css).toMatch(/\.offer \[data-drop-zone\] \{\s*aspect-ratio: 16 \/ 9;\s*border-radius: 16px;/);
+    expect(css).toMatch(/\.offer \[data-drop-zone\] \{\s*aspect-ratio: 16 \/ 9;\s*max-width: 420px;\s*border-radius: 16px;/);
   });
 
   it("no picture yet: the dashed zone „Lohista pilt siia“ with „Vali pilt“ in it", async () => {

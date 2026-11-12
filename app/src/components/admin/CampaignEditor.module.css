@@ -80,13 +80,14 @@
   }
 }
 
-/* „Pilt“: ImageField's zone across the card at the popup's own 16:9 (NewsletterPopupCard), radius 16 as Uudised' cover; the label and the hint under
-   the picture at every width (the card is the picture's width) */
+/* „Pilt“: ImageField's zone at the popup's own 16:9 (NewsletterPopupCard), at most 420 px wide as the old picture was (across a 1042 px card it
+   stood 586 px tall), radius 16 as Uudised' cover; the label and the hint under the picture at every width */
 .offer [data-image-field] {
   grid-template-columns: minmax(0, 1fr);
 }
 
 .offer [data-drop-zone] {
   aspect-ratio: 16 / 9;
+  max-width: 420px;
   border-radius: 16px;
 }
