@@ -79,3 +79,14 @@
     padding: 16px;
   }
 }
+
+/* „Pilt“: ImageField's zone across the card at the popup's own 16:9 (NewsletterPopupCard), radius 16 as Uudised' cover; the label and the hint under
+   the picture at every width (the card is the picture's width) */
+.offer [data-image-field] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.offer [data-drop-zone] {
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+}

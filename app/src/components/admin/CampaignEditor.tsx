@@ -14,7 +14,7 @@ import { getDict } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import { useEditLang } from "./EditLang";
 import { I18nInput } from "./I18nInput";
-import { SingleImage } from "./SingleImage";
+import { ImageField } from "./ImageField";
 import { InstantSwitch } from "./site/InstantSwitch";
 import { SiteCard } from "./site/SiteCard";
 import { SiteEditorPage, type SitePage } from "./site/SiteEditorPage";
@@ -237,7 +237,18 @@ function OfferCard({ api }: { api: SitePartApi<PopupOfferValue> }) {
         name="offer.text"
         unpublished={api.unpublished("text")}
       />
-      <SingleImage label={t.image} value={v.imageKey} onChange={(key) => api.commit("imageKey", key)} error={api.error("imageKey")} ratio="16 / 9" name="popup" field="offer.imageKey" />
+      {/* the admin's one image field (as Uudised and Uudiskiri, UX audit 2 A30): the picture is the drop zone, the popup's 16:9 across the card
+          (CampaignEditor.module.css); no „Eemalda“: the popup needs its picture */}
+      <ImageField
+        label={t.image}
+        value={v.imageKey}
+        onChange={(key) => api.commit("imageKey", key)}
+        hints={[adminEt.upload.hint]}
+        error={api.error("imageKey")}
+        size={{ width: "100%", height: "auto" }}
+        name="popup"
+        field="offer.imageKey"
+      />
       <p className={ui.hint}>{t.codeWhere}</p>
     </SiteCard>
   );

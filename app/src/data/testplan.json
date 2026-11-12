@@ -2162,14 +2162,14 @@
         "RU valikul on eelvaates venekeelne tekst ja nupp, ET valikul eestikeelne.",
         "Eelvaates avaneb aken kohe uue pealkirjaga ja eelvaate riba ütleb „Avaldamata 2“.",
         "Umbes 8 sekundi pärast avaneb aken uue pealkirja ja tekstiga.",
-        "Väljade all on vihje, mis viib lehele „Sooduskoodid“; välja „Soodustus (%)“ pole.",
+        "Väljade all on vihje lehele „Sooduskoodid“, „Soodustus (%)“ pole; „Pilt“ on üks kast, selle all „Vaheta pilt“.",
         "Lehel pole nuppu „Salvesta“ ega sõna „kampaania“; pealkirja kohal on „Koduleht ja uudiskiri“, nagu külgmenüüs."
       ],
       "why": "Maria otsustab, kas avaleht pakub uudiskirja ja mida pakkumine ütleb.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-11-12T06:47:11.254Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-sooduskoodid-uus",

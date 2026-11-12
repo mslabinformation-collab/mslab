@@ -1,5 +1,5 @@
-/* The site content editors' shared sheet (Task 13B): Seaded's cards, and the single picture with its focal point and crop previews that every site
-   editor uses (SingleImage, FocalPoint). Each screen has its own sheet besides (Praktika: PracticeEditor.module.css; Koolitaja: TrainerEditor.module.css;
+/* The site content editors' shared sheet (Task 13B): Seaded's cards, and the focal point and crop previews that the site
+   editors use (FocalPoint; a picture itself is ImageField's). Each screen has its own sheet besides (Praktika: PracticeEditor.module.css; Koolitaja: TrainerEditor.module.css;
    Avaleht's slides and FAQ: HomeEditor.module.css, piece 4a; Uudised: PostEditor.module.css and news/; Hüpikaken: CampaignEditor.module.css, piece 4b).
    Prototype B's admin cards and fields (ui.module.css, editor.module.css) plus what these editors add. Palette tokens only. */
 
@@ -22,36 +22,6 @@
 .label {
   margin: 0;
   font: 600 12px/1.3 var(--font-body);
-}
-
-.start {
-  justify-self: start;
-}
-
-/* ---------- one picture (SingleImage) ---------- */
-
-.single {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.singleImage,
-.noImage {
-  width: 100%;
-  max-width: 420px;
-  border-radius: 12px;
-  background: var(--first);
-  object-fit: cover;
-}
-
-.noImage {
-  display: grid;
-  place-items: center;
-  margin: 0;
-  padding: 16px;
-  border: 1px dashed var(--iced);
-  text-align: center;
 }
 
 /* ---------- focal point ---------- */

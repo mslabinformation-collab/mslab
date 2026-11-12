@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -193,6 +195,35 @@ describe("the screen as drawn (the Part 4 C4 frame; S4-25…S4-29)", () => {
     expect($("[data-offer-numbers]")).toBeNull();
     expect(text(card?.lastElementChild ?? null)).toBe("Tervituskoodi ja soodustust saad muuta lehel „Sooduskoodid“.");
     expect(field("offer.text")?.tagName).toBe("TEXTAREA");
+  });
+
+  // the admin's one image field (ImageField, UX pass 11.11; as Uudised and Uudiskiri since UX audit 2 A30): the picture is the drop zone with
+  // „Vaheta pilt“ under it, no second upload box; the zone is the popup's 16:9 across the card, the label and hint under it; no „Eemalda“ (the popup
+  // needs its picture: „Puudub: pilt“)
+  it("„Pilt“ is one image box: the picture is the drop zone, 16:9 across the card, „Vaheta pilt“ under it and no „Eemalda“", async () => {
+    await show();
+    const image = $('[data-single-image="popup"]')!;
+    expect(image.hasAttribute("data-image-field")).toBe(true);
+    expect(image.getAttribute("data-field")).toBe("offer.imageKey");
+    expect(image.querySelector("[data-drop-zone] img[data-current-image]")?.getAttribute("data-current-image")).toBe(OFFER.imageKey);
+    expect(image.querySelector("[data-image-upload]")).toBeNull();
+    expect(image.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(text(image.querySelector("label"))).toBe("Vaheta pilt");
+    expect(text(image)).not.toContain("Eemalda");
+    expect(text(image)).toContain("Pilt");
+    const zone = image.querySelector<HTMLElement>("[data-drop-zone]")!;
+    expect(zone.style.width).toBe("100%");
+    const css = readFileSync(join(process.cwd(), "src/components/admin/CampaignEditor.module.css"), "utf8");
+    expect(css).toMatch(/\.offer \[data-image-field\] \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+    expect(css).toMatch(/\.offer \[data-drop-zone\] \{\s*aspect-ratio: 16 \/ 9;\s*border-radius: 16px;/);
+  });
+
+  it("no picture yet: the dashed zone „Lohista pilt siia“ with „Vali pilt“ in it", async () => {
+    await show({ parts: partsOf({ ...OFFER, imageKey: "" }) });
+    const image = $('[data-single-image="popup"]')!;
+    const empty = image.querySelector<HTMLElement>("[data-drop-zone][data-no-image]")!;
+    expect([text(empty.querySelector("span")), text(empty.querySelector("label"))]).toEqual(["Lohista pilt siia", "Vali pilt"]);
+    expect(image.querySelectorAll('input[type="file"]')).toHaveLength(1);
   });
 
   it("the preview at the right: the popup's card as the home page shows it, a picture of it (inert), with „Reeglid: …“ (S4-29) under it", async () => {
