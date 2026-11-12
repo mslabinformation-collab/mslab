@@ -627,7 +627,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania",
@@ -659,7 +659,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -691,7 +691,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -749,7 +749,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -827,7 +827,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-jatkub",
@@ -1486,7 +1486,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-koolitus-telefon",
@@ -1510,7 +1510,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-salvestus-kaasa",
@@ -1656,7 +1656,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-koolitus-pildid",
@@ -1926,7 +1926,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-uudised-postitus",
@@ -1982,7 +1982,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-uudised-mustand-eelvaade",
@@ -2014,7 +2014,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-praktika",
@@ -2047,7 +2047,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-koolitaja",
@@ -2249,7 +2249,7 @@
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-seaded-kontakt",
@@ -2776,7 +2776,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-menuu-tahvel",
@@ -3170,7 +3170,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "haldus-loend-tahvel",
@@ -3960,7 +3960,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "registreerimine-pangaulekanne",
@@ -4018,7 +4018,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "registreerimine-arve-maksmiseks",
@@ -6374,7 +6374,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "kontakt-tagasiside-luba",
@@ -6468,7 +6468,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-12T10:49:41.928Z"
     },
     {
       "id": "kontakt-arvustus-toend",
