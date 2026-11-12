@@ -42,9 +42,11 @@ type Props = {
    * S4-33); Enter in any other row does nothing new. Off (the course's lists): Enter does what the field does.
    */
   enterAdds?: boolean;
-  /** The add button's words before its „+“ (Praktika's „Lisa punkt (või Enter viimasel real)“, S4-33: an aside in brackets comes after the „+“); without
-   * it, „Lisa rida“. UX pass A14: every add button reads „Lisa … +“. */
+  /** The add button's words before its „+“ (Praktika's „Lisa punkt“; an aside in brackets would come after the „+“); without it, „Lisa rida“. UX pass
+   * A14: every add button reads „Lisa … +“. */
   addLabel?: string;
+  /** A hint line right under the add button, which it describes (Praktika's Enter tip, UX audit 2 A45: it was in the button's words). */
+  addHint?: string;
   /**
    * Each row's field is named `<name>.<index>` (data-i18n, from 0): the site editors find a row's field by it for the leave guard's „Jää siia“ and
    * SaveStatus's „Näita“ (site/useSitePart.ts focusSiteField: `MAXI.items.3`). Off (the course's lists): the rows' fields carry no name.
@@ -55,7 +57,7 @@ type Props = {
 /** Where the focus goes after the next render: a row's field (by its place after an add or a removal, by its key after an undo), or "Lisa rida". */
 type Focus = { index: number } | { key: string } | "add" | null;
 
-/** „Lisa rida +“; „Lisa punkt + (või Enter viimasel real)“: the „+“ after the words, an aside in brackets after it (UX pass A14). */
+/** „Lisa rida +“; „Lisa punkt +“: the „+“ after the words, an aside in brackets after it (UX pass A14). */
 function addWords(label: string): string {
   const m = /^(.*?)\s*(\(.*\))$/.exec(label);
   return m ? `${m[1]} + ${m[2]}` : `${label} +`;
@@ -69,7 +71,7 @@ function addWords(label: string): string {
  * after an undo the row's own field (when the focus has nowhere else to be). With `enterAdds` (Praktika's points), Enter in the last row adds the
  * next one the same way.
  */
-export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, rowNames }: Props) {
+export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished, enterAdds, addLabel, addHint, rowNames }: Props) {
   const t = adminEt.list;
   const uid = useId();
   const rows = useRowKeys(items);
@@ -198,9 +200,20 @@ export function ListEditor({ title, cardTitle, itemLabel, items, onChange, onUpd
           {error}
         </p>
       )}
-      <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`} onClick={add}>
+      <button
+        ref={addBtn}
+        type="button"
+        className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`}
+        onClick={add}
+        aria-describedby={addHint ? `${uid}-add-hint` : undefined}
+      >
         {addWords(addLabel ?? t.add)}
       </button>
+      {addHint && (
+        <p id={`${uid}-add-hint`} className={ui.hint}>
+          {addHint}
+        </p>
+      )}
     </div>
   );
 }

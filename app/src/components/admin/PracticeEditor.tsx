@@ -139,6 +139,7 @@ function PackageCard({ code, api }: { code: string; api: SitePartApi<PackageDraf
         unpublished={api.unpublished("items")}
         enterAdds
         addLabel={t.addItem}
+        addHint={t.addItemHint}
         rowNames
       />
     </SiteCard>

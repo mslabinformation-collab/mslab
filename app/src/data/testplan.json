@@ -2028,7 +2028,7 @@
         "Riba on „Avaldamata muudatused: 1 · MINI lühitekst. Avalikul lehel on näha eelmine versioon.“.",
         "Avalikul lehel pole sõna Proov, eelvaates on see olemas ja all riba „Avaldamata 1“.",
         "Pärast „Avalda muudatused“ on sõna Proov praktika lehel ja avalehe praktikaplokis.",
-        "Enter viimases punktis lisab uue tühja punkti ja kursor on selles.",
+        "Nupu „Lisa punkt +“ all on vihje Enteri kohta; Enter viimases punktis lisab tühja punkti, kursor on selles.",
         "Punkt liigub lohistades ja noolega kohe uude kohta.",
         "× võtab punkti kohe ära, allservas on „Rida eemaldatud.“ ja nupp „Võta tagasi“.",
         "„Võta tagasi“ paneb punkti tekstiga samale kohale; riba avaldamise nupp jääb näha ja vajutatavaks.",
@@ -2038,7 +2038,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-27T02:01:40.147Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitaja",

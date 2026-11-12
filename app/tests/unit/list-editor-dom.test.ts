@@ -28,9 +28,9 @@ const updates = vi.fn();
 let mounts = 0;
 let restoreRect: () => void = () => {};
 
-type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string; enterAdds?: boolean; addLabel?: string; rowNames?: boolean; multiline?: boolean };
+type Opts = { unpublished?: boolean; valueOnly?: boolean; error?: string; enterAdds?: boolean; addLabel?: string; addHint?: string; rowNames?: boolean; multiline?: boolean };
 /** The page around the editor: the card's list, changed by the editor's typing (`onChange`) and by its row changes (`onUpdate`, the card's update). */
-function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, rowNames, multiline }: { initial: I18n[] } & Opts) {
+function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, addHint, rowNames, multiline }: { initial: I18n[] } & Opts) {
   const [items, setItems] = useState(initial);
   useEffect(() => {
     current = items; // (not during the render: react-hooks/globals; act() flushes the effect)
@@ -44,6 +44,7 @@ function Harness({ initial, unpublished, valueOnly, error, enterAdds, addLabel, 
     unpublished,
     enterAdds,
     addLabel,
+    addHint,
     rowNames,
     multiline,
     onChange: setItems,
@@ -299,6 +300,20 @@ describe("ListEditor: Enter on the last row adds a row (Praktika's points; rulin
     expect(button("Lisa rida +")).toBeNull();
     await render();
     expect(button("Lisa rida +")).not.toBeNull();
+  });
+
+  // UX audit 2 A45: Praktika's Enter tip is a hint under the list, not words in its add button
+  it("`addHint`: a hint line right under the add button, which it describes; without it, none", async () => {
+    await render(ITEMS, { addLabel: "Lisa punkt", addHint: "Uue punkti lisab ka Enter viimasel real." });
+    const add = button("Lisa punkt +")!;
+    expect(add).not.toBeNull();
+    const hint = add.nextElementSibling as HTMLElement;
+    expect(text(hint)).toBe("Uue punkti lisab ka Enter viimasel real.");
+    expect(hint.tagName).toBe("P");
+    expect(add.getAttribute("aria-describedby")).toBe(hint.id);
+    await render();
+    expect(button("Lisa rida +")!.nextElementSibling).toBeNull();
+    expect(button("Lisa rida +")!.hasAttribute("aria-describedby")).toBe(false);
   });
 
   it("`rowNames`: each row's field is named `<name>.<index>` (data-i18n, the site editors' focus of „Jää siia“ and „Näita“); without it, none", async () => {

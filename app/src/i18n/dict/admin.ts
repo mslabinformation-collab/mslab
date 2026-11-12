@@ -2552,13 +2552,17 @@ export const adminEt = {
     models: "Modelle",
     modelsHint: "Mitmel modellil praktika toimub.",
     duration: "Kestus",
-    durationHint: "nt 8 ak. Kaardil: „≈ 8 ak“.",
+    // (Draft, UX audit 2 A45) „ak“ said in words once
+    durationHint: "nt 8 ak (akadeemilist tundi). Kaardil: „≈ 8 ak“.",
     price: "Hind (€)",
     items: "Sisaldab",
     item: "Punkt",
     itemsHint: "Iga rida on üks punkt paketi kaardil.",
-    // the points' add button, after its „+“ (ListEditor; R-h: Enter in the last point adds one too)
-    addItem: "Lisa punkt (või Enter viimasel real)",
+    // the points' add button, before its „+“ (ListEditor), and the hint under it (R-h: Enter in the last point adds one too)
+    // (Draft, UX audit 2 A45) „Lisa punkt +“ alone; the Enter tip moves from the button's words to the hint under it
+    addItem: "Lisa punkt",
+    // (Draft, UX audit 2 A45)
+    addItemHint: "Uue punkti lisab ka Enter viimasel real.",
     empty: "Praktikapakette pole.",
   },
 

@@ -112,7 +112,9 @@ test.describe("practice packages (C5 Praktika on the draft layer; admin UX pass 
     // „Sisaldab“: Enter on the last point adds one and puts the cursor in it (R-h); its Russian text too
     const items = card.locator(`[data-list-editor="${code}.items"]`);
     await expect(items.getByRole("heading", { level: 3 })).toHaveText("Sisaldab");
-    await expect(items.getByRole("button", { name: "Lisa punkt + (või Enter viimasel real)", exact: true })).toBeVisible();
+    // (UX audit 2 A45: „Lisa punkt +“, the Enter tip a hint under it)
+    await expect(items.getByRole("button", { name: "Lisa punkt +", exact: true })).toBeVisible();
+    await expect(items.getByText("Uue punkti lisab ka Enter viimasel real.", { exact: true })).toBeVisible();
     const rows = items.locator("[data-row]");
     const count = await rows.count();
     await rows.nth(count - 1).locator("[data-lang-field]").click();
