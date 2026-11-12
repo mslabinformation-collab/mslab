@@ -460,7 +460,7 @@ test.describe("course editor", () => {
     await other.close();
   });
 
-  test("on a 375×812 phone: „Jaotised ▾“ under the H1 in the map's place, „Avaldamine“ next, the PublishBar at the foot of the screen with „Avalda“", async ({ page, context, visitorIp, isMobile }, info) => {
+  test("on a 375×812 phone: „Jaotised ▾“ under the H1 in the map's place, „Põhiinfo“ next, then „Avaldamine“, the PublishBar at the foot of the screen with „Avalda“", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(!isMobile, "a phone's size and touch: the phone project");
     const c = mine(info);
     const id = await changing(c.slug);
@@ -472,10 +472,13 @@ test.describe("course editor", () => {
     const select = page.locator("[data-section-select]");
     await expect(select).toBeVisible();
     await expect(select.locator("[data-section-face]")).toHaveText(/Jaotised · Põhiinfo/);
-    // the order down the page: the H1, the select, „Avaldamine“, then the cards
+    // the order down the page (UX audit 2 A24): the H1, the select, „Põhiinfo“, „Avaldamine“, „Õppevorm ja hind“, „Koolituse märgis“, then the rest
     const top = async (selector: string) => (await page.locator(selector).first().boundingBox())!.y;
-    const [h1, map, side, basics] = [await top("h1"), await top("[data-section-select]"), await top("[data-publish-card]"), await top("#course-basics")];
-    expect(h1 < map && map < side && side < basics).toBe(true);
+    const order = ["h1", "[data-section-select]", "#course-basics", "[data-publish-card]", "#course-type", "#course-badge", "#course-outcomes"];
+    const ys: number[] = [];
+    for (const selector of order) ys.push(await top(selector));
+    expect(ys.every((y, i) => i === 0 || ys[i - 1] < y), order.map((s, i) => `${s} ${ys[i]}`).join(", ")).toBe(true);
+    await expect(page.locator("aside [data-publish-card]")).toHaveCount(0);
     expect(await noOverflow(page)).toBe(true);
     // a choice in the select goes to its card
     await select.locator("select").selectOption((await select.locator("option").filter({ hasText: /^Galerii/ }).getAttribute("value"))!);

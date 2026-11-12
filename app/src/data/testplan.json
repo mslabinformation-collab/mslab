@@ -1484,6 +1484,27 @@
       "markedAt": "2026-11-11T19:04:44.922Z"
     },
     {
+      "id": "haldus-koolitus-telefon",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Koolitus telefonis",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava telefonis „Koolitused“ ja mõni koolitus.",
+        "Keri lehte aeglaselt alla ja vaata kaartide järjekorda."
+      ],
+      "expect": [
+        "Pealkirja ja „Jaotised“ all on esimene kaart „Põhiinfo“, siis „Avaldamine“, „Õppevorm ja hind“ ja „Koolituse märgis“.",
+        "Ülejäänud kaardid tulevad nende järel samas järjekorras nagu „Jaotised“ valikus."
+      ],
+      "why": "Telefonis avab Maria koolituse eelkõige nime, aadressi ja teksti pärast.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-salvestus-kaasa",
       "area": "haldus",
       "who": "dim",

@@ -28,6 +28,7 @@ import { StagesCard } from "./StagesCard";
 import { TestCard } from "./TestCard";
 import { TypeCard } from "./TypeCard";
 import type { AreaOption, CertificateDesignOption, CourseParts, OtherCourse } from "./types";
+import { usePhoneChip } from "./usePhoneChip";
 
 const cents = (s: string) => (s.trim() ? parseEuroCents(s) : null);
 
@@ -55,8 +56,10 @@ export type PublishSwitches = { published: boolean; sample: boolean; onPublished
 /**
  * The course editor's page (README B2; the Part 3 desktop frame, Part 4 phone frame): the header, then under the H1 the PublishBar (`bar`, a published
  * course's), then from 1180 px three columns — the 190 px section map, the cards, the 300 px sticky side column („Avaldamine“, „Koolituse märgis“) —
- * and below 1180 px one: the map's „Jaotised ▾“ select under the header, the side column straight after it, then the cards. The cards are only the
- * ones of the (drafted) type, in screen order; the modules' card is the existing LessonsEditor in its place.
+ * and below 1180 px one: the map's „Jaotised ▾“ select under the header, the side column straight after it, then the cards. Below 900 px (a phone,
+ * UX audit 2 A24) there is no side column: „Avaldamine“ follows „Põhiinfo“ and „Koolituse märgis“ follows „Õppevorm ja hind“ in the page itself, so
+ * the screen's order is the tab order. The cards are only the ones of the (drafted) type, in screen order; the modules' card is the existing
+ * LessonsEditor in its place.
  */
 export function CourseView({
   title,
@@ -120,9 +123,23 @@ export function CourseView({
     parts.basics.conflict || parts.basics.error("type") ? [...blocked, "price"] : blocked,
   );
 
+  // below 900 px (UX audit 2 A24) the side column's two cards stand among the others, so that the page is read and tabbed in the order it is seen
+  const phone = usePhoneChip();
+  const publish = <PublishCard {...switches} />;
+  const badgeCard = <BadgeCard api={parts.badge} card={card} />;
   const cards: Record<string, ReactNode> = {
-    basics: <BasicsCard api={parts.basics} areas={areas} />,
-    price: <TypeCard basics={parts.basics} price={parts.price} locked={locked} liveType={liveType} priceMissing={priceMissing} />,
+    basics: (
+      <>
+        <BasicsCard api={parts.basics} areas={areas} />
+        {phone && publish}
+      </>
+    ),
+    price: (
+      <>
+        <TypeCard basics={parts.basics} price={parts.price} locked={locked} liveType={liveType} priceMissing={priceMissing} />
+        {phone && badgeCard}
+      </>
+    ),
     outcomes: <OutcomesCard api={parts.outcomes} />,
     outline: <ModulesCard courseId={courseId} online={online} modules={modules} />,
     includes: <IncludesCard api={parts.includes} />,
@@ -146,12 +163,12 @@ export function CourseView({
           ))}
         </div>
         {/* (from 1180 px the column scrolls with the page as a whole, nothing in it sticks: 06.11 polish board 2, CourseEditor.module.css .side) */}
-        <aside className={styles.side}>
-          <div data-side-publish="">
-            <PublishCard {...switches} />
-          </div>
-          <BadgeCard api={parts.badge} card={card} />
-        </aside>
+        {!phone && (
+          <aside className={styles.side}>
+            <div data-side-publish="">{publish}</div>
+            {badgeCard}
+          </aside>
+        )}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 /* The course editor (admin UX pass piece 3a, Task 7; README B2; the Part 3 desktop frame "B2 Course editor", the Part 4 phone frame): the header with
    „← Koolitused“ over the H1, then under it the PublishBar, then from 1180 px three columns — the 190 px section map (SectionMap, sticky), the cards,
    the 300 px side column (it scrolls with the page) — 22 px apart; below 1180 px one column: the map's „Jaotised ▾“ select under the header, the
-   side column („Avaldamine“, „Koolituse märgis“) straight after it, then the cards (README: "the side column comes straight after the header"). The
-   cards are 16 px apart, as drawn. No save bar: every card autosaves. */
+   side column („Avaldamine“, „Koolituse märgis“) straight after it, then the cards (README: "the side column comes straight after the header"); below
+   900 px (a phone, UX audit 2 A24) „Põhiinfo“, „Avaldamine“, „Õppevorm ja hind“, „Koolituse märgis“, then the rest (CourseView). The cards are 16 px
+   apart, as drawn. No save bar: every card autosaves. */
 
 .headText {
   min-width: 0;
@@ -124,6 +125,15 @@
 
 .side {
   order: -1;
+}
+
+/* Below 900 px (a phone, UX audit 2 A24) CourseView puts „Avaldamine“ after „Põhiinfo“ and „Koolituse märgis“ after „Õppevorm ja hind“ in the page
+   and draws no side column. The server's first paint has it (it cannot know the width): there it stays after the cards, so the page opens on
+   „Põhiinfo“ and the two cards come into their places under it. */
+@media (max-width: 899.98px) {
+  .side {
+    order: 0;
+  }
 }
 
 .cardTitle {

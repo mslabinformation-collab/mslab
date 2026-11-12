@@ -1269,6 +1269,24 @@ describe("the layout: the section map lists only this type's cards", () => {
     expect(mapEntries()).not.toContain("Koolitus sisaldab 1");
   });
 
+  // UX audit 2 A24: on a phone the side column came first („Avaldamine“, then the 1 277 px „Koolituse märgis“), „Põhiinfo“ at y 1 933, and the screen's
+  // order was not the tab order (the side column is after the cards in the page). Below 900 px the two cards stand among the others, in the page's order
+  it("on a phone (below 900 px) one column in the order it is read and tabbed: „Põhiinfo“, „Avaldamine“, „Õppevorm ja hind“, „Koolituse märgis“, then the rest", async () => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({ matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }) as MediaQueryList,
+    );
+    await show();
+    expect($("aside")).toBeNull();
+    const cards = ["#course-basics", "[data-publish-card]", "#course-type", "#course-badge", "#course-outcomes"].map((s) => $(s)!);
+    for (const [i, card] of cards.entries()) expect(card, String(i)).not.toBeNull();
+    // one column: the same parent, each after the one before it in the page (so in the tab order)
+    expect(new Set(cards.map((c) => c.parentElement)).size).toBe(1);
+    for (let i = 1; i < cards.length; i++) expect(cards[i - 1].compareDocumentPosition(cards[i]) & Node.DOCUMENT_POSITION_FOLLOWING, String(i)).toBeTruthy();
+    // the switches still work there
+    expect($$("[data-publish-card] input").map((i) => i.getAttribute("data-field"))).toEqual(["published", "isSample"]);
+  });
+
   it("a card with an Estonian text and no Russian is flagged „RU puudub“; a card with a field held back „Kontrolli“", async () => {
     const half: CourseDraft = { ...STORED, outcomes: [{ et: "Oskab mõõta" }] };
     resetRemote(half);
