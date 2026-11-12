@@ -29,7 +29,7 @@ export type PublicChange =
   | { kind: "popup" }
   /** The welcome code's row of discount_codes saved, switched or deleted (F1): its value is in the footer of every page and its presence on the home page's popup button */
   | { kind: "welcomeCode" }
-  /** Seaded: contact (footer, every page), newsletter (the welcome code: the home page's popup button, piece 4b S4-Q4), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
+  /** Seaded: contact (footer, every page), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `financing` (the Järelmaks (Inbank) toggle: the course pages and the carts); `prepayment` shows on no public page */
   | { kind: "settings"; parts: string[] };
 
 export type CacheTarget = { path: string; type?: "page" | "layout" };
@@ -101,11 +101,9 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
       // "course_terms" (the e-course terms) is the e-course contract, which every cart shows inline. "financing" (Seaded → Järelmaks (Inbank), the
       // toggle, instalments D4) is the course page's „Võimalik tasuda ka järelmaksuga (Inbank).“ line and its registration form's choice, and the
       // cart's choice, so it revalidates the course pages and the carts. "prepayment" (where to pay) is read through the account's JSON only
-      // (GET /api/konto, never cached), so it has no target
-      // "newsletter" is the welcome code alone since piece 4b (the discount is Hüpikaken's, published as { kind: "popup" }, R-c): only the home page's
-      // popup shows that there is one, on its button („Saa kood“, S4-Q4); the code itself is on no page (the welcome mail, the confirmed notice's fragment)
+      // (GET /api/konto, never cached), so it has no target. (There is no "newsletter" part since F1 Task 12: the welcome code is a discount_codes
+      // row, revalidated as { kind: "welcomeCode" }.)
       return [
-        ...(parts.has("newsletter") ? [HOME] : []),
         ...(parts.has("privacy") ? [page("/privaatsus")] : []),
         ...(parts.has("terms") ? [page("/tingimused")] : []),
         ...(parts.has("terms") || parts.has("contract_contact") || parts.has("financing") ? [COURSE_PAGES] : []),

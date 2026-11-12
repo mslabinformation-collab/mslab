@@ -110,6 +110,7 @@ Today no code reaches the money path:
   - So two orders by one person, and the last use under a limit, are decided one after the other. **What this guarantees** (my call): no two uses that both count at the moment of booking break the limit or once per person.
     - **A re-sent e-course order** takes the code's lock too and checks its rules again (paused, ended, not yet, scope, limit with its own use left out) before it is sent again; a refusal sends nothing and leaves the open attempt as it was. The person's rules are not run again: it is the same order of the same person.
     - **What it does not.** A use that has stopped counting can count again when it is paid late: a booking older than 24 hours, a re-sent order, a pending e-course payment. Its order then keeps its price, even over the rule (§6).
+    - **Known limit: the live check on a reload** (the final review's M3, accepted). The live check (§4.3) has no e-mail by design, so it counts her own pending attempt too. The person holding the last use of an e-course code under a limit who comes back to the cart by a real reload (not a bfcache restore) gets `usedUp` from the remembered code's re-check: the code is dropped and the cart shows the list price. She is never overcharged, and a submit that carries the code still gets the re-send above.
   - **The lock order:**
     - a registration: `course_sessions` → `discount_codes` → the `registrations` insert → the contract;
     - an e-course start: the purchase's advisory lock → `discount_codes` → `payments`.
@@ -134,6 +135,7 @@ Today no code reaches the money path:
     - „Laekunud summa“ is 0;
     - the registration is not cancelled;
     - it has no unpaid invoice („Tühista enne maksmata arve.“).
+  - **The buttons are shown only then** (the final review's M6; Dim's rule: no button that can only be refused). Otherwise a code is its row „{code} · −{amount}“ alone, and no code is no „Sooduskood“ row. The server checks the same under its locks, so a refusal is left for a race only (money or an invoice arriving while the drawer is open); the refusal's refresh then closes the field or question, and its reason stays under the row.
   - **Any existing code applies,** whatever its dates, limit, scope or person rules. This is her deliberate decision, for example honouring a welcome code someone wrote in „Sõnum“ during the switch-over. The use is recorded with `via = 'admin'`.
   - **An open Montonio order for the old sum** is handled as today. If it is paid, it is „Ülemakse“. The next start has a new amount, so it is a new attempt, and B22 replaces the old order.
   - **The contract keeps the price it froze.** Maria may ask again with „Saada leping kinnitamiseks“ (contracts D4).
@@ -261,11 +263,12 @@ Logs name a code by its id only, never by its text, and never name an e-mail.
 **4.6 Submit and start** (`server/submit.ts`, `server/payments/start.ts`). This is the check that decides, under D8's locks.
 - **A registration** (`handleRegistration`'s transaction, after `lockSession` and the seat check):
   1. `lockCode`;
-  2. `codeRefusal` and `personRefusal` (the form's newsletter box counts as subscribing, D5);
-  3. the discount;
-  4. `createRegistration` with `discount_cents` and `discount_code`;
-  5. the redemption;
-  6. the contract, filled with the total.
+  2. `codeRefusal`;
+  3. the discount, compared with the shown one (`changed`, below);
+  4. `personRefusal` (the form's newsletter box counts as subscribing, D5). It comes after the comparison (the final review's M1): a submit with a deliberately wrong amount then answers `changed` whoever the address is, so the person rules cannot be probed silently; a probe needs the right amount, which stores a booking and mails the address's owner and Maria. **Known limit:** an e-course start still answers an eligible address with a payment URL, so the welcome code's "a confirmed subscriber who has not trained" stays guessable there while the code is subscriber-only;
+  5. `createRegistration` with `discount_cents` and `discount_code`;
+  6. the redemption;
+  7. the contract, filled with the total.
 - **An e-course purchase** (`startEcoursePayment`, which takes `discount: { typed, shownCents } | null`). It does the same after `lockEcoursePurchase`:
   - `amountCents` is the total;
   - `financingRefusedNow` is asked about the total;
@@ -321,6 +324,11 @@ Logs name a code by its id only, never by its text, and never name an e-mail.
   - A prepayment or rest invoice prints one small line under its part: „Hind {list} − sooduskood {code} {cents} = {total}“ (Draft).
   - VAT is split on the amount, as today.
 - **The CSV.** The accountant's CSV (`invoicesCsv`) gains the columns „Sooduskood“ and „Soodustus“.
+  - „Soodustus“ is that invoice's share of the booking's discount (the final review's I1), so a month's column sums each booking's discount once and „Kokku“ + „Soodustus“ is the invoice's share of the list price. `total` is list − discount:
+    - a whole-sum invoice (amount = total, an e-course's too): the whole discount;
+    - a first part (a prepayment): `round(discount × amount / total)`;
+    - the last part (the rest): `discount − round(discount × (total − amount) / total)`, so the two parts sum exactly without reading each other (they may fall in two months' files).
+  - An invoice that is none of these (cancelled, an amount above the total, an e-course of less than its total) leaves „Soodustus“ empty and keeps „Sooduskood“.
 - **The contract.**
   - `{hind}` is the total, and `{ettemaks}` is its first part.
   - `ContractFields` gains `discount`, e.g. „−35,00 € (TERE10)“. It is empty when there is no code, and for old rows.
@@ -329,7 +337,7 @@ Logs name a code by its id only, never by its text, and never name an e-mail.
 
 **4.9 Mails, notices and the account.** An order with a code shows the line „Sooduskood {code}: −{amount}“ (in Maria's notices, the row of §5):
 - in the registration confirmation, after the price;
-- in Maria's notice „Uus makse: …“ (`server/messages.ts paymentSummary`), after „Summa“;
+- in Maria's notice „Uus makse: …“ (`server/messages.ts paymentSummary`), after „Summa“: the payment row's code for an e-course, the registration's for its prepayment or rest (the final review's M7);
 - in Maria's notice „Registreerimine: …“ (`server/messages.ts registrationSummary`). It prints no price today, so the code row is added there after „Tasumine“, together with a row „Kokku“ with the total (my call);
 - on the account card, after the price.
 
@@ -435,7 +443,7 @@ Logs name a code by its id only, never by its text, and never name an e-mail.
   - „Lisa sooduskood“ opens the field „Sooduskood“ with „Lisa“.
   - „Eemalda sooduskood“ asks „Kas eemaldan sooduskoodi? Hind on jälle {price}.“, with „Jah, eemalda“ and „Katkesta“.
   - Its refusals:
-    - „Sooduskoodi saab lisada, kui midagi pole veel laekunud.“;
+    - „Sooduskoodi saab lisada, kui midagi pole veel laekunud.“, and for „Eemalda sooduskood“ „Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.“ (the final review's M5);
     - „Tühista enne maksmata arve.“;
     - „Sellist sooduskoodi ei ole.“.
 - **Elsewhere:**
@@ -569,7 +577,7 @@ The note „Koristamine“ adds two steps: pause each Proov code and write it in
   - Proov 1 aadressiga on sama teade ja tervituskoodi vihje jääb selle alla näha.
   - Liitumata aadress ilma uudiste kastita saab sama teate.
 - `registreerimine-sooduskood-tuhistamine` (registreerimine, maria, arvuti) „Tühistamine annab koodi tagasi“
-  - Samal päeval: pärast „Tühista registreerimine“ väheneb koodi „Kasutatud“ ühe võrra.
+  - Samal päeval: pärast kahte tühistamist on koodi „Kasutatud“ kahe võrra väiksem.
   - Sama aadress saab tervituskoodi kasutada ka teisel koolitusel.
 - `registreerimine-sooduskood-jarelmaks` (registreerimine, dim, arvuti) „Sooduskood ja järelmaks“
   - Kui soodushind jääb alla 100 €, kaob valik „Järelmaks (Inbank)“ ja näed piiri rida.
@@ -578,14 +586,17 @@ The note „Koristamine“ adds two steps: pause each Proov code and write it in
   - Pärast „Rakenda“ on „Kokku“ soodushind ja nupul „Maksa …“ sama summa.
   - Montonio testpangas on sama summa.
   - Arvel on rida „Sooduskood …“ miinusmärgiga ja „Kokku“ on soodushind.
+  - CSV real on „Sooduskood“ PROOV-16 ja „Soodustus“; „Kokku“ ja „Soodustus“ kokku on e-koolituse täishind.
 - `haldus-sooduskoodid-kasutused` (haldus, maria, arvuti) „Sooduskoodid: kasutused ja piir“
   - Koodi aknas on „Kasutused“ all Proov 16 registreering ja Proov 18 ost.
   - Kui „Kasutuskordi kokku“ on täis, saab järgmine teate „Selle sooduskoodi kasutuskorrad on otsas.“.
   - „Aktiivne“ välja lülitades tuleb riba „Sooduskood peatatud.“ ja nupp „Võta tagasi“.
   - Kasutatud koodil on tekst „Koodi on kasutatud — kustutada ei saa. Peata see.“.
+  - Koodi PROOV-16T aknas (selle ainus kasutus on tühistatud) on tekst „Koodi on kasutatud tühistatud või pooleli jäänud tellimustel, …“.
 - `haldus-sooduskood-registreeringule` (haldus, maria, arvuti) „Sooduskood registreeringule“
   - „Lisa sooduskood“ muudab hinna ja summa õpilase konto nupul „Maksa“.
-  - Laekunud rahaga on teade „Sooduskoodi saab lisada, kui midagi pole veel laekunud.“.
+  - Pärast laekumist annab „Jah, eemalda“ teate „Sooduskoodi saab eemaldada, kui midagi pole veel laekunud.“.
+  - Siis on real „Sooduskood“ ainult kood ja summa, nuppu „Eemalda sooduskood“ pole.
 - `avalik-jalus-tervituskood` (avalik, maria, any) „Jaluse tervitussoodustus“
   - Jaluses on tervituskoodi soodustus, näiteks „10% tervitussoodustus“.
   - Peatatud tervituskoodiga on jaluses „Uued koolitused ja kasulikud mõtted.“ ja hüpikakna nupp „Liitu“.
@@ -641,7 +652,7 @@ Only questions whose answers change what gets built. Until an answer comes, the 
 ## 12. Additions after comparing Rempire's promo codes (11.11)
 
 Dim asked to look at the discount codes of his other project, Rempire (an e-shop), for ideas. The plan's R14–R20 (`docs/superpowers/plans/2026-11-11-discount-codes.md`, "Amendments") carry them; all are my calls, the texts Draft:
-- **Looser normalising:** spaces, non-breaking and zero-width characters inside a code are removed and dash variants folded to "-", so „tere 10“ copied from a phone works; a code needs at least one letter or digit.
+- **Looser normalising:** NFKC first (fullwidth „ＴＥＲＥ１０“ is TERE10), then spaces, non-breaking and zero-width characters inside a code are removed and dash variants folded to "-", so „tere 10“ copied from a phone works; a code needs at least one letter or digit. Cyrillic look-alikes are not folded (the final review's M2): Latin R has no Cyrillic twin, so a fold would half-work, and a code typed on the Russian layout is `unknown`.
 - **A refund that leaves the access keeps the use:** a refunded e-course payment counts while the student keeps the course access (a partial refund is how Maria corrects a price).
 - **Admin safety:** every save is checked over the whole stored code, not the changed field alone; switching between % and € empties the value; a euro amount above the highest list price in scope is refused („Soodustus on suurem kui koolituse hind.“); a delete racing a booking answers "used"; a code used only on cancelled or abandoned bookings explains why it cannot be deleted.
 - **Small aids:** „Ava see kood“ next to "code already exists"; „Soodustust kokku“ (discount given in total) in the drawer.

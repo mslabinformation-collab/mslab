@@ -58,16 +58,13 @@ describe("the revalidation map", () => {
 
   test("settings: contact is in the footer of every page; privacy and terms their own pages, terms the course pages too (the contact contract's text until Maria writes hers: contracts, D2)", () => {
     expect(paths({ kind: "settings", parts: ["contact"] })).toEqual([`${SITE} (layout)`]);
-    expect(paths({ kind: "settings", parts: ["contact", "newsletter"] })).toEqual([`${SITE} (layout)`]);
     expect(paths({ kind: "settings", parts: ["privacy", "terms"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
     expect(paths({ kind: "settings", parts: [] })).toEqual([]);
   });
 
-  test("settings: „Uudiskiri“ is the welcome code alone (piece 4b; the discount is Hüpikaken's): only the home page shows there is one, on its popup's button (S4-Q4)", () => {
-    expect(paths({ kind: "settings", parts: ["newsletter"] })).toEqual([`${SITE} (page)`]);
-    expect(paths({ kind: "settings", parts: ["newsletter", "terms"] })).toEqual([`${SITE} (page)`, `${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
-    // not the footer of every page any more
-    expect(paths({ kind: "settings", parts: ["newsletter"] })).not.toContain(`${SITE} (layout)`);
+  test("settings: there is no „newsletter“ part since F1 Task 12 (the welcome code is a discount_codes row, { kind: \"welcomeCode\" }): the name revalidates nothing (P24)", () => {
+    expect(revalidationTargets({ kind: "settings", parts: ["newsletter"] })).toEqual([]);
+    expect(paths({ kind: "settings", parts: ["newsletter", "terms"] })).toEqual([`${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
   });
 
   test("settings: the e-course terms (course_terms) are the e-course contract every cart shows inline (contracts, D1): saving them revalidates the carts", () => {
@@ -104,7 +101,6 @@ describe("the revalidation map", () => {
     expect(revalidationTargets({ kind: "settings", parts: ["prepayment"] })).toEqual([]);
     expect(paths({ kind: "settings", parts: ["prepayment", "course_terms"] })).toEqual([`${SITE}/ostukorv (layout)`]);
     expect(paths({ kind: "settings", parts: ["prepayment", "terms"] })).toEqual([`${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
-    expect(paths({ kind: "settings", parts: ["prepayment", "newsletter"] })).toEqual([`${SITE} (page)`]);
   });
 
   test("every route named is a real route of app/[locale]/(site)", () => {

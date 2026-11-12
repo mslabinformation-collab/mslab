@@ -25,9 +25,9 @@ const notFound = () => Response.json({ ok: false, error: "notFound" }, { status:
 
 /**
  * POST /api/admin/seaded/<part> — a Seaded card's autosave (admin UX pass piece 3b, Task 4; README B4, B21): a save of `{ version, patch }` for
- * contact | newsletter | prepayment | invoice | certificate | financing, answered by autosaveHandler (server/autosave-route.ts: 200 the part's new
- * version, 409 what is stored, 400 the field codes — „Järgmine number“'s `taken` among them —, 404 for a name that is no part). Signed-in admins
- * only, a cross-site POST is 403 (withAdmin).
+ * contact | prepayment | invoice | certificate | financing (no newsletter part since F1 Task 12), answered by autosaveHandler
+ * (server/autosave-route.ts: 200 the part's new version, 409 what is stored, 400 the field codes — „Järgmine number“'s `taken` among them —, 404
+ * for a name that is no part). Signed-in admins only, a cross-site POST is 403 (withAdmin).
  */
 export const POST = withAdmin<Ctx>(async (request, ctx, admin) => {
   const { part } = await ctx.params;

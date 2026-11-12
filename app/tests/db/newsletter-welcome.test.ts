@@ -11,7 +11,7 @@ import { fakeKv, stubFetch } from "../fakes";
 import { capRows, countedMails, makeTestDb } from "./helpers";
 
 // Phase 2c (spec 5), one step since 09.10: the welcome mail goes out to a newly subscribed address — the sign-up (actions.test.ts), "Saada mulle
-// uudiskirja" in Minu andmed, or a confirmation link of the old flow (confirmNewsletter, which still sends it only when Seaded has a code) — once,
+// uudiskirja" in Minu andmed, or a confirmation link of the old flow (confirmNewsletter, which still sends it only when a welcome code is valid today) — once,
 // in the address's language, with or without the code, and always with the unsubscribe link; never again for that address this year.
 // Mails go to a stubbed Resend (addresses at example.com: a sample address, @example.test, is never mailed).
 
