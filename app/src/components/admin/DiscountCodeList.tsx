@@ -52,7 +52,7 @@ export function DiscountCodeList({ rows, openId, hrefOf }: { rows: readonly Code
                     {r.code}
                   </Link>
                   {r.welcome && (
-                    <span className={`${ui.tag} ${styles.neutral}`} data-welcome-tag="">
+                    <span className={`${ui.tag} ${styles.neutral} ${styles.welcomeTag}`} data-welcome-tag="">
                       {t.welcomeTag}
                     </span>
                   )}

@@ -19,6 +19,20 @@ tr.selected {
   gap: 4px 8px;
 }
 
+/* „PROOV“ and its „Tervituskood“ tag on one line (Dim 13.11). The code's link keeps its 44 px target (list-table .name), now 12 px over and 12 px under a
+   line as tall as the row's own text (.name draws an 18 px line, 12 px over it and 14 px under, and the tag was centred on that lopsided box, 7 px under
+   the word): the word sits level with the cells beside it, and on a phone with the label „Kood“. The tag takes 3 px back over and under itself, so it
+   is centred on the word and the row is no taller for it. */
+.codeLine > a {
+  padding-bottom: 12px;
+  margin-bottom: -12px;
+  line-height: inherit;
+}
+
+.welcomeTag {
+  margin: -3px 0;
+}
+
 /* the neutral tag: the list's grey (the status tags' #ebe8e9 / #5e5559) */
 .neutral {
   border: 0;

@@ -8,6 +8,7 @@ import { E2E_MONTONIO } from "./montonio-values";
 import { revalidateLocalPages } from "./prod-build";
 import { LOCAL_URL, TARGET } from "./target";
 import { submitsForms, test, expect } from "./test";
+import { takeWelcomeCode } from "./welcome-code";
 
 // Discount codes (F1 Task 16) end to end against the e2e run's fake Montonio (tests/e2e/fake-montonio.ts): the code field of the group registration form and
 // of the e-course cart, what Montonio is asked for, what the invoice says, Maria's Sooduskoodid page, and the järelmaks (Inbank) range that follows the total.
@@ -264,6 +265,49 @@ test("on a 390 px phone the rows of Sooduskoodid and their lines reach the card'
   expect(Math.abs(m.row.right - m.inner.right), `${where}: the row ends at the card's edge`).toBeLessThanOrEqual(0.5);
   expect(Math.abs(m.cell - (m.inner.left + m.padding)), `${where}: the words stay the card's padding in`).toBeLessThanOrEqual(0.5);
   expect(m.page, `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+});
+
+// Dim 13.11: „PROOV“ and its „Tervituskood“ tag did not sit on one line. The code's link is a 44 px target, 12 px over its word and 14 px under it, and the
+// tag was centred on that target, so it stood some 7 px under the word. Now the tag is centred on the word, and the word stays level with the row's other
+// cells (the table's rows; on a phone, its label „Kood“). Measured on the word itself (a Range over the link's text), not on the link's padded box.
+test("the welcome code's „Tervituskood“ tag is centred on its code, the code level with its row (Dim 13.11)", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  const putBack = await takeWelcomeCode(info, { code: "E2E-RIDA", percent: 10 });
+  try {
+    await signInAsAdmin(page, context, visitorIp, created);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/admin/sooduskoodid");
+      await adminReady(page);
+      const row = page.locator("[data-welcome]");
+      await expect(row.locator("[data-welcome-tag]")).toBeVisible();
+      const m = await row.evaluate((tr) => {
+        const words = (node: Node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const r = range.getBoundingClientRect();
+          return { top: r.top, mid: (r.top + r.bottom) / 2 };
+        };
+        const cells = tr.querySelectorAll("td");
+        const tag = tr.querySelector("[data-welcome-tag]")!.getBoundingClientRect();
+        // the next cell's words (−10 %): the row's line on a wide screen
+        const value = words(cells[1]);
+        // the label „Kood“ before the code on a phone card (td::before): the cell's first line, from the top of the cell's content box
+        const cell = cells[0].getBoundingClientRect();
+        const before = getComputedStyle(cells[0], "::before");
+        const lineHeight = parseFloat(before.lineHeight);
+        const line = Number.isNaN(lineHeight) ? parseFloat(before.fontSize) * 1.2 : lineHeight;
+        const labelMid = cell.top + parseFloat(getComputedStyle(cells[0]).paddingTop) + line / 2;
+        return { code: words(tr.querySelector("td a")!), tag: { top: tag.top, mid: (tag.top + tag.bottom) / 2 }, value, labelMid, table: getComputedStyle(cells[0]).display };
+      });
+      const where = `/admin/sooduskoodid at ${width} px (${JSON.stringify(m)})`;
+      expect(Math.abs(m.tag.mid - m.code.mid), `${where}: the tag is centred on the code's word`).toBeLessThanOrEqual(1);
+      if (m.table === "table-cell") expect(Math.abs(m.code.mid - m.value.mid), `${where}: the code's word is level with the next cell's`).toBeLessThanOrEqual(0.5);
+      else expect(Math.abs(m.code.mid - m.labelMid), `${where}: the code's word is on the label's line`).toBeLessThanOrEqual(1.5);
+    }
+  } finally {
+    await putBack();
+  }
 });
 
 test("the järelmaks threshold follows the total", async ({ page }, info) => {
