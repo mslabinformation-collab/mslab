@@ -2271,7 +2271,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "haldus-uudiskiri-kood-hoiatus",
@@ -2791,7 +2791,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "haldus-menuu-kitsas",
@@ -2819,7 +2819,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "haldus-menuu-telefon",
@@ -2903,7 +2903,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "testimine-automaattest",
@@ -3031,7 +3031,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "testimine-automaattest-sama-seis",
@@ -3058,7 +3058,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-11-13T08:44:15.661Z"
     },
     {
       "id": "haldus-sisselogimine-tagasi",
