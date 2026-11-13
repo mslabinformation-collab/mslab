@@ -17,7 +17,7 @@ vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test", adminName: () => "Maria" }));
 vi.mock("@/components/admin/data", async () => {
   const { adminCounts } = await import("@/db/queries/admin");
-  return { getAdminCounts: async (email: string) => adminCounts(state.db as Db, email, new Date()) };
+  return { getAdminCounts: async () => adminCounts(state.db as Db, new Date()) };
 });
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 

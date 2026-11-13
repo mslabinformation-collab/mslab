@@ -15,9 +15,9 @@ const headers = { "cache-control": "no-store" };
  * open, the phone's sum and the card of today's session. The same numbers and the same function (menu.ts menuOf) as the shell's first paint.
  * Signed-in admins only (withAdmin: 401 otherwise); private and never kept; 500 `server` (logged, no data).
  */
-export const GET = withAdmin(async (_request, _ctx, { email }) => {
+export const GET = withAdmin(async () => {
   try {
-    return Response.json({ ok: true, ...menuOf(await adminCounts(getDb(), email, new Date())) }, { headers });
+    return Response.json({ ok: true, ...menuOf(await adminCounts(getDb(), new Date())) }, { headers });
   } catch (e) {
     logFailure("[admin] the menu's badges could not be read", e);
     return Response.json({ ok: false, error: "server" }, { status: 500, headers });

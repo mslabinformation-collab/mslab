@@ -15,7 +15,6 @@ const none: AdminCounts = {
   todaySessions: [],
   waitingReviews: 0,
   paymentsAttention: 0,
-  ownFaults: 0,
 };
 const counts = (over: Partial<AdminCounts>): AdminCounts => ({ ...none, ...over });
 
@@ -33,7 +32,6 @@ describe("menuOf", () => {
         openRequests: { contact: 2, individual: 1, practice: 1, waitlist: 1, change_request: 2 },
         waitingReviews: 1,
         paymentsAttention: 6,
-        ownFaults: 4,
         todaySessions: [{ id: 7, startsAt: new Date("2026-12-01T08:00:00Z"), course: "Kulmumeistri baaskoolitus" }],
       }),
     );
@@ -44,13 +42,14 @@ describe("menuOf", () => {
       requests: { n: 7, label: "7 tegemata" },
       feedback: { n: 1, label: "1 arvustust ootab" },
       payments: { n: 6, label: "6 vajab kontrolli" },
-      testing: { n: 4, label: "4 viga" },
     });
+    // Testimine has no badge any more (it is no menu row): its own „Viga“ answers are not counted here
+    expect(menu.badges).not.toHaveProperty("testing");
   });
 
   it("the phone's sum adds the numeric badges up; „Täna“ adds nothing", () => {
     const today = [{ id: 7, startsAt: new Date("2026-12-01T08:00:00Z"), course: "K" }];
-    expect(menuOf(counts({ awaitingPrepayment: 3, assessment: 2, openRequests: { ...none.openRequests, contact: 7 }, waitingReviews: 1, paymentsAttention: 6, ownFaults: 4, todaySessions: today })).total).toBe(23);
+    expect(menuOf(counts({ awaitingPrepayment: 3, assessment: 2, openRequests: { ...none.openRequests, contact: 7 }, waitingReviews: 1, paymentsAttention: 6, todaySessions: today })).total).toBe(19);
     expect(menuOf(counts({ todaySessions: today })).total).toBe(0);
   });
 
@@ -59,7 +58,7 @@ describe("menuOf", () => {
       registrations: "/admin/registreerimised?staatus=ootab",
       feedback: "/admin/tagasiside?vaade=arvustused&olek=ootel",
     });
-    expect(menuOf(counts({ paymentsAttention: 2, ownFaults: 1, assessment: 1 })).hrefs).toEqual({});
+    expect(menuOf(counts({ paymentsAttention: 2, assessment: 1 })).hrefs).toEqual({});
     expect(menuOf(none).hrefs).toEqual({});
   });
 

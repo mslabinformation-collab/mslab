@@ -1,6 +1,5 @@
 import type { BrowserContext, Page, TestInfo } from "@playwright/test";
-import { planCounts, type AnswersDoc, type TestPlan } from "../../src/domain/testplan";
-import { fill } from "../../src/i18n/format";
+import type { TestPlan } from "../../src/domain/testplan";
 import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { onLocalDb, removeAdminRows } from "./fixtures";
 import { LOCAL_URL, TARGET } from "./target";
@@ -136,32 +135,13 @@ async function openEveryArea(page: Page): Promise<void> {
 }
 const pressed = (page: Page, id: string) => check(page, id).locator('[data-answer][aria-pressed="true"]');
 
-/**
- * What the Avaleht card should say for the signed-in admin, from the API's own answers and Automaattest's under them (Dim 29.10: its answer counts
- * where no person's stands; null: no card, nothing open or failed for his tester).
- */
-async function expectedCard(page: Page): Promise<{ open: number; bad: number } | null> {
-  const { plan, answers, auto, you } = await readApi(page);
-  const stored = (map: Record<string, ApiAnswer>) => Object.fromEntries(Object.entries(map).map(([id, a]) => [id, { status: a.status, note: a.note, at: a.at, by: a.byName }]));
-  const doc: AnswersDoc = { v: 1, answers: stored(answers), auto: stored(auto ?? {}) };
-  const { open, bad } = planCounts(plan, doc, new Date(0).toISOString(), you.tester);
-  return open + bad === 0 ? null : { open, bad };
-}
-/** On Avaleht: the card says what `expectedCard` says (or is not there), and its link goes to the page. */
-async function cardIsRight(page: Page): Promise<boolean> {
-  const expected = await expectedCard(page);
+/** Avaleht has no Testimine card, and the menu has no Testimine row or badge any more (Dim 13.11): the page is reached by its address only. */
+async function testimineIsOnlyByAddress(page: Page): Promise<void> {
   await page.goto("/admin");
   await adminReady(page);
-  const card = page.locator("[data-testplan-card]");
-  if (expected === null) {
-    await expect(card).toHaveCount(0);
-    return false;
-  }
-  await expect(card).toBeVisible();
-  await expect(card).toContainText(fill("Testimine: {open} avatud, {bad} viga", expected));
-  await card.getByRole("link", { name: "Ava" }).click();
-  await expect(page).toHaveURL(/\/admin\/testimine$/);
-  return true;
+  await expect(page.locator("[data-testplan-card]")).toHaveCount(0);
+  await expect(page.locator('main a[href="/admin/testimine"]')).toHaveCount(0);
+  await expect(page.locator('a[data-nav="testing"], [data-badge="testing"]')).toHaveCount(0);
 }
 
 /** At each width: no sideways scrolling, and no control of the page less than 44 px tall. */
@@ -287,8 +267,8 @@ test("answers persist: „Läbitud“ and „Viga“ with their note boxes open,
   await layoutHolds(page, [390, 834]);
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // Avaleht: the card counts the checks still open or failed for this admin's tester (computed from the same API, whatever the plan holds)
-  await cardIsRight(page);
+  // Avaleht and the menu no longer lead to the page
+  await testimineIsOnlyByAddress(page);
 });
 
 test("a second admin session answers the third check differently; the first sees it after „Värskenda“, without a reload", async ({ page, context, browser, visitorIp }, info) => {
@@ -403,19 +383,19 @@ test("a press left on the device by a visit that never got to send it is sent wh
   expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).toBeNull();
 });
 
-test("Avaleht: a failed check of the admin's own tester brings the card, with the counts of the plan; its link opens the page", async ({ page, context, visitorIp }, info) => {
+test("Avaleht and the menu: a failed check of the admin's own tester brings no card, no menu row and no badge; the page opens by its address", async ({ page, context, visitorIp }, info) => {
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await signInAsAdmin(page, context, visitorIp, created);
   const { plan, you } = await readApi(page);
-  // a check that is this admin's own (or shared): the card counts only those. The plan's first one, whatever it is
+  // a check that is this admin's own (or shared). The plan's first one, whatever it is
   const mine = plan.items.find((i) => plan.areas.find((a) => a.id === i.area)?.checks !== false && (you.tester === null || i.who === you.tester || i.who === "koos"));
-  test.skip(!mine, `the plan has no check for ${you.tester} or shared: the card is never shown to this admin (the plan's own, not the page's, choice)`);
+  test.skip(!mine, `the plan has no check for ${you.tester} or shared`);
   answered.add(mine!.id);
   await removeAnswers([mine!.id]);
   const res = await page.request.put("/api/admin/testplan", { data: { answers: { [mine!.id]: { status: "bad", note: "E2E: kaardi proov" } } } });
   expect(res.status()).toBe(200);
-  expect(await expectedCard(page), "a failed check of his own is counted").not.toBeNull();
-  expect(await cardIsRight(page)).toBe(true);
+  await testimineIsOnlyByAddress(page);
+  await openPage(page);
 });
 
 test("two saves at once of different checks both land: the row lock and the merge, on a real database", async ({ page, context, visitorIp }, info) => {

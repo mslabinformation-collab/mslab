@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sharedState, stateIn, testerOf,
+  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, pingsFor, planCounts, readAnswersDoc, sharedState, stateIn, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type StoredAnswer, type TestItem, type TestPlan,
 } from "@/domain/testplan";
 
@@ -706,40 +706,6 @@ describe("planCounts: what the header and the Avaleht card show (spec §4, §5)"
   });
 });
 
-describe("ownFaults: the number on Testimine's menu badge (admin UX pass, B6)", () => {
-  const ME = "maria@example.test";
-  const DIM = "dim@example.test";
-
-  test("counts the standing „Viga“ answers the signed-in admin gave, not another admin's and not their OK or skip", () => {
-    const answers = doc({
-      "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: ME }),
-      "dim-1": answer("bad", "2026-10-21T10:00:00.000Z", { by: DIM }),
-      "koos-1": answer("ok", "2026-10-21T10:00:00.000Z", { by: ME }),
-    });
-    expect(ownFaults(PLAN, answers, BUILD, ME)).toBe(1);
-    expect(ownFaults(PLAN, answers, BUILD, DIM)).toBe(1);
-    expect(ownFaults(PLAN, answers, BUILD, "nobody@example.test")).toBe(0);
-    expect(ownFaults(PLAN, doc(), BUILD, ME)).toBe(0);
-  });
-
-  test("the address is compared without regard to case or white space; an empty address owns nothing", () => {
-    const answers = doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: "Maria@Example.test" }) });
-    expect(ownFaults(PLAN, answers, BUILD, " maria@EXAMPLE.test ")).toBe(1);
-    expect(ownFaults(PLAN, answers, BUILD, "")).toBe(0);
-    expect(ownFaults(PLAN, doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: "" }) }), BUILD, "")).toBe(0);
-  });
-
-  test("a Viga that a redo has reopened is open again and no longer counts; neither does an answer to a check the plan lost", () => {
-    // dim-1 is a redo marked 20.10: a failure of 19.10 is overtaken, one of 21.10 stands
-    const answers = doc({
-      "dim-1": answer("bad", "2026-10-19T10:00:00.000Z", { by: ME }),
-      "koos-1": answer("bad", "2026-10-21T10:00:00.000Z", { by: ME }),
-      gone: answer("bad", "2026-10-21T10:00:00.000Z", { by: ME }),
-    });
-    expect(ownFaults(PLAN, answers, BUILD, ME)).toBe(1);
-  });
-});
-
 // Dim 25.10: a third tester, „Automaattest“ (an automatic tester on the staging site), whose answers are never Maria's or Dim's. They are kept
 // in the doc's own `auto` map, with the same answer shape; Maria's and Dim's stay in `answers` exactly as before. (Since Dim 29.10 its answer is
 // a check's state where no person's answer stands: sharedState, above.)
@@ -823,8 +789,8 @@ describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", ()
   });
 
   // Admin polish Part A (Dim 29.10, reversing D10's "never counts" of 25.10): Automaattest's answer is a check's state where no person's answer
-  // stands, in the counts too (the header, the „Olek“ pills, the area bars, the Avaleht card); the menu badge (ownFaults) is as it was.
-  test("planCounts take Automaattest's answer where no person's answer stands; ownFaults still counts each admin's own standing Vead, Automaattest's in `auto`", () => {
+  // stands, in the counts too (the header, the „Olek“ pills, the area bars, the Avaleht card, gone 13.11, and the page's own line).
+  test("planCounts take Automaattest's answer where no person's answer stands", () => {
     const shared = { "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { by: "m@x.test" }) };
     const auto = {
       "maria-1": answer("bad", "2026-10-24T10:00:00.000Z", { by: AUTO }), // (Maria's OK wins)
@@ -839,8 +805,6 @@ describe("Automaattest: a third tester whose answers stay apart (Dim 25.10)", ()
     expect(planCounts(PLAN, withAuto({}, weak), BUILD, "dim")).toEqual({ total: 2, done: 0, open: 2, bad: 0, redo: 0 });
     // the doc without `auto` (Automaattest's own numbers are its map passed as `answers`) counts as before
     expect(planCounts(PLAN, doc(auto), BUILD, null)).toEqual({ total: 3, done: 1, open: 0, bad: 2, redo: 0 });
-    expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, "m@x.test")).toBe(0);
-    expect(ownFaults(PLAN, withAuto(shared, auto), BUILD, AUTO)).toBe(2);
   });
 
   test("planCounts: Maria's answer taken back on a check Automaattest passed counts it „Läbitud“ again, not open (Review Focus 5)", () => {
@@ -957,7 +921,7 @@ describe("a note on its own (Dim 30.10)", () => {
     expect(stateIn(withAuto({ "maria-1": noted("x") }, { "maria-1": A("ok") }), PLAN.items[0], PLAN, BUILD)).toEqual({ state: "done", answer: noted("x"), overtaken: null });
   });
 
-  test("planCounts and ownFaults: a note counts as nothing (open, or Automaattest's state), never as a redo", () => {
+  test("planCounts: a note counts as nothing (open, or Automaattest's state), never as a redo", () => {
     // maria-1 her note alone; koos-1 her note over Automaattest's OK; dim-1 (redo 20.10) her note typed before the redo, and Automaattest's note
     const notes = withAuto(
       { "maria-1": noted("a"), "koos-1": noted("b"), "dim-1": noted("c", "2026-10-19T10:00:00.000Z") },
@@ -965,8 +929,6 @@ describe("a note on its own (Dim 30.10)", () => {
     );
     expect(planCounts(PLAN, notes, BUILD, null)).toEqual({ total: 3, done: 1, open: 2, bad: 0, redo: 0 });
     expect(planCounts(PLAN, doc({ "maria-1": noted("a") }), BUILD, "maria")).toEqual({ total: 2, done: 0, open: 2, bad: 0, redo: 0 });
-    expect(ownFaults(PLAN, withAuto({ "maria-1": noted("a") }, { "dim-1": noted("d", "2026-10-21T11:00:00.000Z", { by: AUTO }) }), BUILD, "m@x.test")).toBe(0);
-    expect(ownFaults(PLAN, withAuto({}, { "dim-1": noted("d", "2026-10-21T11:00:00.000Z", { by: AUTO }) }), BUILD, AUTO)).toBe(0);
   });
 
   test("readAnswersDoc keeps a stored note by the rules of any answer, in either map; a note whose text cleans to nothing is no entry", () => {

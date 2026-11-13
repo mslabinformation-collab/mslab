@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeSection, SECTIONS } from "@/components/admin/sections";
+import { activeSection, GROUPS, SECTIONS } from "@/components/admin/sections";
 
 // The sidebar's active entry comes from the address (admin UX pass, README §1.1, spec D4): Shell lives in the (panel) layout now and
 // does not re-render per page, so no page passes `active` any more.
@@ -35,6 +35,11 @@ describe("activeSection: the menu entry an admin address highlights", () => {
     ["/admin/seaded", "settings"],
     ["/admin/testimine", "testing"],
   ])("%s → %s", (path, section) => expect(at(path)).toBe(section));
+
+  it("Testimine is still a section (the phone bar names the page) but has no menu row", () => {
+    expect(SECTIONS.some((s) => s.key === "testing")).toBe(true);
+    expect(GROUPS.flatMap((g) => g.items)).not.toContain("testing");
+  });
 
   it("matches whole path segments, with or without a trailing slash", () => {
     expect(at("/admin/koolitused/")).toBe("courses");

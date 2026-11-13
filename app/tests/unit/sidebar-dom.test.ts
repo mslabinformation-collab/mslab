@@ -99,10 +99,10 @@ describe("the sidebar: groups", () => {
     expect(itemsOf(aside(), "daily")).toEqual(["registrations", "protocols", "assessment", "requests", "clients", "feedback", "payments"]);
     expect(itemsOf(aside(), "courses")).toEqual(["courses", "calendar", "practice", "codes"]);
     expect(itemsOf(aside(), "site")).toEqual(["home", "trainer", "news", "campaign", "newsletter"]);
-    expect(itemsOf(aside(), "admin")).toEqual(["settings", "testing"]);
+    expect(itemsOf(aside(), "admin")).toEqual(["settings"]);
   });
 
-  it("the overview stands first with no label, and the menu holds every section exactly once", async () => {
+  it("the overview stands first with no label, and the menu holds every section but Testimine exactly once (the test page has no row, only its address)", async () => {
     await show();
     const nav = aside().querySelector("nav")!;
     expect(nav.getAttribute("aria-label")).toBe("Halduse menüü");
@@ -113,20 +113,19 @@ describe("the sidebar: groups", () => {
     // every other list is named by its heading
     for (const ul of lists.slice(1)) expect(nav.querySelector(`[id="${ul.getAttribute("aria-labelledby")}"]`)?.hasAttribute("data-nav-group")).toBe(true);
     const keys = Array.from(nav.querySelectorAll("[data-nav-item]")).map((li) => li.getAttribute("data-nav-item"));
-    expect(keys).toEqual(SECTIONS.map((s) => s.key));
-    expect(GROUPS.flatMap((g) => g.items)).toEqual(SECTIONS.map((s) => s.key));
+    const withRow = SECTIONS.map((s) => s.key).filter((key) => key !== "testing");
+    expect(keys).toEqual(withRow);
+    expect(GROUPS.flatMap((g) => g.items)).toEqual(withRow);
     expect(GROUPS.map((g) => g.id)).toEqual([null, "daily", "courses", "site", "admin"]);
     expect(GROUPS.filter((g) => g.fold).map((g) => g.id)).toEqual(["site"]);
   });
 
-  it("labels: „Maksed ja arved“, „Protokollid“, „Testimine“, each on its own address", async () => {
+  it("labels: „Maksed ja arved“, „Protokollid“, each on its own address", async () => {
     await show();
     const link = (key: string) => aside().querySelector<HTMLAnchorElement>(`a[data-nav="${key}"]`)!;
     expect([text(link("payments")), link("payments").getAttribute("href")]).toEqual(["Maksed ja arved", "/admin/maksed"]);
     expect([text(link("protocols")), link("protocols").getAttribute("href")]).toEqual(["Protokollid", "/admin/protokollid"]);
-    expect([text(link("testing")), link("testing").getAttribute("href")]).toEqual(["Testimine", "/admin/testimine"]);
     expect(iconPath(link("protocols"))).toBe(iconPath(link("registrations"))); // both the clipboard
-    expect(iconPath(link("testing"))).toBe(iconPath(link("assessment"))); // both the check
   });
 
   it("the group labels are stored in sentence case (CSS shows the capitals)", () => {
@@ -140,8 +139,17 @@ describe("the sidebar: groups", () => {
     expect(current(aside())).toBe("payments");
     await at("/admin/protokollid", "?ligipaas=5");
     expect(current(aside())).toBe("assessment");
+  });
+
+  it("Testimine has no row: no link to it in the sidebar or the phone menu; on its address nothing is marked and the phone bar names the page", async () => {
     await at("/admin/testimine");
-    expect(current(aside())).toBe("testing");
+    expect(aside().querySelector('a[href="/admin/testimine"]')).toBeNull();
+    expect(aside().querySelector('a[data-nav="testing"]')).toBeNull();
+    expect(current(aside())).toBeUndefined();
+    expect(text(container.querySelector("header [data-admin-bar-title]"))).toBe("Testimine");
+    await openMenu();
+    expect(dialog().querySelector('a[href="/admin/testimine"]')).toBeNull();
+    expect(current(dialog())).toBeUndefined();
   });
 
   it("the badges stay where they are, with their words for a screen reader", async () => {
@@ -274,12 +282,12 @@ describe("the sidebar on a short screen (admin polish F6)", () => {
   };
 
   it("the page's own entry is brought into the menu's view, 12 px clear of its foot; an entry in view moves nothing", async () => {
-    // Testimine, the last row, at 900–944: under the menu's foot (600)
+    // Seaded, the last row, at 900–944: under the menu's foot (600)
     geometry((el) => (el.getAttribute("aria-current") === "page" ? 900 : null));
-    mockPath = "/admin/testimine";
+    mockPath = "/admin/seaded";
     await show();
     const nav = aside().querySelector("nav")!;
-    expect(current(aside())).toBe("testing");
+    expect(current(aside())).toBe("settings");
     expect(nav.scrollTop).toBe(944 - 600 + 12);
     // a page whose entry is in view (200–244): the menu stays where it is
     nav.scrollTop = 0;
@@ -314,7 +322,7 @@ describe("the sidebar on a short screen (admin polish F6)", () => {
   });
 
   it("a menu that fits scrolls nothing", async () => {
-    mockPath = "/admin/testimine";
+    mockPath = "/admin/seaded";
     await show();
     expect(aside().querySelector("nav")!.scrollTop).toBe(0);
   });
@@ -422,7 +430,7 @@ describe("the phone bar and its menu", () => {
     expect(d.querySelectorAll("button[data-nav-fold]")).toHaveLength(0);
     expect(itemsOf(d, "site")).toEqual(["home", "trainer", "news", "campaign", "newsletter"]);
     expect(d.querySelectorAll("[hidden]")).toHaveLength(0);
-    expect(d.querySelectorAll("[data-nav-item]")).toHaveLength(SECTIONS.length);
+    expect(d.querySelectorAll("[data-nav-item]")).toHaveLength(SECTIONS.length - 1); // every section but Testimine
     expect(current(d)).toBe("payments");
     expect(d.getAttribute("aria-label")).toBe("Halduse menüü");
   });
@@ -501,13 +509,13 @@ describe("the phone bar and its menu", () => {
 describe("the badges: the words „Täna“ and the new counts", () => {
   it("„Täna“ is a word badge: it shows the word, says „Täna on koolituspäev“ to a screen reader, and adds nothing to the phone's sum", async () => {
     await show({
-      badges: { protocols: { text: "Täna", label: "Täna on koolituspäev" }, feedback: badge(1, "1 arvustust ootab"), payments: badge(6, "6 vajab kontrolli"), testing: badge(2, "2 viga") },
-      total: 9,
+      badges: { protocols: { text: "Täna", label: "Täna on koolituspäev" }, feedback: badge(1, "1 arvustust ootab"), payments: badge(6, "6 vajab kontrolli") },
+      total: 7,
     });
     const b = (key: string) => aside().querySelector(`[data-badge="${key}"]`);
-    expect([text(b("protocols")), text(b("feedback")), text(b("payments")), text(b("testing"))]).toEqual(["Täna, Täna on koolituspäev", "1, 1 arvustust ootab", "6, 6 vajab kontrolli", "2, 2 viga"]);
+    expect([text(b("protocols")), text(b("feedback")), text(b("payments"))]).toEqual(["Täna, Täna on koolituspäev", "1, 1 arvustust ootab", "6, 6 vajab kontrolli"]);
     expect(b("protocols")!.querySelector("[aria-hidden]")!.textContent).toBe("Täna");
-    expect(text(container.querySelector("header [data-admin-menu]"))).toBe("9");
+    expect(text(container.querySelector("header [data-admin-menu]"))).toBe("7");
   });
 });
 

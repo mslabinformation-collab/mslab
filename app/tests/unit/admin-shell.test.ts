@@ -36,9 +36,9 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("Shell", () => {
   it("paints the badges it was given (the control: without a failure the numbers are there)", async () => {
-    mocks.getAdminCounts.mockResolvedValue({ ...emptyCounts(), awaitingPrepayment: 3, ownFaults: 2 });
+    mocks.getAdminCounts.mockResolvedValue({ ...emptyCounts(), awaitingPrepayment: 3 });
     const html = await paint();
-    expect(badges(html)).toEqual(['data-badge="registrations"', 'data-badge="testing"']);
+    expect(badges(html)).toEqual(['data-badge="registrations"']);
     expect(errors).not.toHaveBeenCalled();
   });
 
@@ -82,6 +82,9 @@ describe("the menu's order", () => {
     // (the group „Koolitused“ ends there: the next entry is Avaleht's, a group of its own)
     expect(at("/admin/avaleht")).toBeGreaterThan(at("/admin/sooduskoodid"));
     expect(GROUPS.find((g) => g.id === "courses")!.items).toEqual(["courses", "calendar", "practice", "codes"]);
+    // Testimine is no menu row (Dim 13.11): „Haldus“ keeps Seaded, and the page is reached by its address only
+    expect(GROUPS.find((g) => g.id === "admin")!.items).toEqual(["settings"]);
+    expect(html).not.toContain('href="/admin/testimine"');
     expect(activeSection("/admin/sooduskoodid", new URLSearchParams())).toBe("codes");
     expect(sectionHref("codes")).toBe("/admin/sooduskoodid");
     expect(html).toContain("Sooduskoodid");

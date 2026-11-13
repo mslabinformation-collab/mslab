@@ -128,7 +128,7 @@ test("B14: „Ootel kontrollil“ shows what the overview's „Makse ootel kontr
   const { db, rows } = await everyState();
   const now = new Date("2026-10-23T09:00:00Z");
   const queue = await overviewQueue(db, now);
-  const { paymentsAttention } = await adminCounts(db, "maria@example.test", now);
+  const { paymentsAttention } = await adminCounts(db, now);
   const counts = await paymentCounts(db);
   // the overview row opens /admin/maksed?staatus=kontroll: its count is that list's, its rows are that list's (held, with a reason, voided after it was paid)
   expect(queue.check.count).toBe(3);
@@ -144,7 +144,7 @@ test("B14: „Ootel kontrollil“ shows what the overview's „Makse ootel kontr
   expect(after.kontroll).toBe(4);
   expect(after.pooleli).toBe(0);
   expect((await overviewQueue(db, now)).check.count).toBe(after.kontroll);
-  expect((await adminCounts(db, "maria@example.test", now)).paymentsAttention).toBe(after.kontroll + 1);
+  expect((await adminCounts(db, now)).paymentsAttention).toBe(after.kontroll + 1);
 });
 
 test("B14: the counts are the rows each pill shows, with and without a search (B9)", async () => {

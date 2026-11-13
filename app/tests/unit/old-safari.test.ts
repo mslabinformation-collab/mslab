@@ -77,7 +77,6 @@ const BROWSER_FILES = [
   // the test page, Task 3: the page, its outbox of unsent answers, and the Avaleht card (the card is a server component, listed anyway: it is the phase's file)
   "src/components/admin/TestPlan.tsx",
   "src/components/admin/testplan-outbox.ts",
-  "src/components/admin/TestplanCard.tsx",
   // contracts, Task 1: the placeholders' fill and the session and payment texts the form's and the cart's inline contract and Seaded's sample run in the browser
   "src/domain/contract.ts",
   // student reviews, Task 1: the consent, name and month rules the feedback form, Maria's „Lisa arvustus“ and the review blocks run in the browser (it pulls domain/protocols.ts, domain/calendar.ts, i18n/format.ts and lib/row-id.ts with it)

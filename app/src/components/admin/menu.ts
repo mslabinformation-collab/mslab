@@ -21,7 +21,6 @@ export function menuOf(counts: AdminCounts): MenuState {
     requests: numeric(openRequests, t.badgeRequests),
     feedback: numeric(counts.waitingReviews, t.badgeFeedback),
     payments: numeric(counts.paymentsAttention, t.badgePayments),
-    testing: numeric(counts.ownFaults, t.badgeTesting),
   };
   const badges: MenuState["badges"] = {};
   let total = 0;

@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import { settings } from "@/db/schema";
 import planFile from "@/data/testplan.json";
 import {
-  answerOf, answersIn, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, sideOf, testerOf,
+  answerOf, answersIn, markPinged, mergeAnswers, pingsFor, readAnswersDoc, sideOf, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type StoredStatus, type Tester, type TestPlan,
 } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
@@ -181,24 +181,4 @@ export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: str
     note: note === "" ? t.tg.noNote : note,
     url: `${base}/admin/testimine#${ping.id}`,
   });
-}
-
-/**
- * The Avaleht card's numbers (spec §5): the open and failed checks of the signed-in admin's own tester (Maria: hers and the shared ones; Dim:
- * his and the shared ones; Automaattest and any other admin: all), or null when none is open or failed (the card is then not shown). Every
- * admin's count the shared answers, and Automaattest's where no person's answer stands (planCounts, admin polish Part A, Dim 29.10; for
- * Automaattest's own card too since Dim 07.11, which counted its own answers alone before).
- */
-export async function testplanCard(db: Db, email: string, names: string | undefined): Promise<{ open: number; bad: number } | null> {
-  const tester = testerOf(email, names);
-  const { open, bad } = planCounts(testPlan, await readAnswers(db), testplanBuildAt(), tester === "auto" ? null : tester);
-  return open + bad === 0 ? null : { open, bad };
-}
-
-/**
- * The number on Testimine's menu badge (admin UX pass B6): how many „Viga“ answers the signed-in admin has standing (domain/testplan.ts ownFaults).
- * One read of the answers row. (queries/admin.ts adminCounts calls it with the other menu numbers.)
- */
-export async function ownFaultCount(db: Db, email: string): Promise<number> {
-  return ownFaults(testPlan, await readAnswers(db), testplanBuildAt(), email);
 }

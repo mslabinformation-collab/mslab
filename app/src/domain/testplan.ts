@@ -485,21 +485,3 @@ export function planCounts(
   }
   return counts;
 }
-
-/**
- * The standing „Viga“ answers `email` gave (the menu badge of Testimine, admin UX pass B6): the plan's checks whose valid answer is Viga and was
- * given by that admin (`by` is the session's address, compared without regard to case). A Viga a redo has since reopened is open again and does not
- * count; neither does an answer to a check the plan no longer has. Both maps are read (Dim 25.10): Automaattest's own Vead are in `auto`, so its
- * badge counts them, and Maria's and Dim's, whose addresses are never in `auto`, stay as they were.
- */
-export function ownFaults(plan: TestPlan, doc: AnswersDoc, buildAt: string, email: string): number {
-  const me = email.trim().toLowerCase();
-  if (!me) return 0;
-  let n = 0;
-  for (const map of [doc.answers, doc.auto ?? {}])
-    for (const item of plan.items) {
-      const { state, answer } = checkState(item, answerOf(map, item.id), plan, buildAt);
-      if (state === "failed" && answer !== null && answer.by.trim().toLowerCase() === me) n++;
-    }
-  return n;
-}

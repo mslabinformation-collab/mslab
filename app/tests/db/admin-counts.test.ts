@@ -1,17 +1,14 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
-import { adminCounts, setSetting } from "@/db/queries/admin";
+import { adminCounts } from "@/db/queries/admin";
 import { eq } from "drizzle-orm";
 import { courseSessions, invoices, payments, requests, reviews } from "@/db/schema";
-import { testPlan } from "@/server/testplan";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
 
 // The numbers of the overview and the menu badges (admin UX pass, B6; README §1.1, spec S7) on a real (PGlite) database: what „Täna“ is in
-// Tallinn, the reviews waiting for „Avalda“, what „Maksed ja arved“ asks Maria to look at, and the signed-in admin's own „Viga“ answers.
+// Tallinn, the reviews waiting for „Avalda“, what „Maksed ja arved“ asks Maria to look at.
 
-const ME = "maria@example.test";
-const OTHER = "dim@example.test";
 /** 23:30 UTC on 30.11 is already 01:30 on 1.12 in Tallinn (winter time, UTC+2). */
 const MIDNIGHT = new Date("2026-11-30T23:30:00Z");
 
@@ -24,7 +21,7 @@ beforeEach(async () => {
   fixture = await contactCourse(db, { capacity: 100 });
 });
 
-const counts = (email = ME, now = MIDNIGHT) => adminCounts(db, email, now);
+const counts = (now = MIDNIGHT) => adminCounts(db, now);
 
 describe("todaySessions", () => {
   test("uses the Tallinn date (23:30 UTC on 30.11 is 1.12 in Tallinn): a session at 1.12 10:00 counts, one at 30.11 counts not", async () => {
@@ -111,26 +108,6 @@ describe("paymentsAttention", () => {
     expect((await counts()).paymentsAttention).toBe(1);
     await invoiceFor(catchUp.id, 2);
     expect((await counts()).paymentsAttention).toBe(0);
-  });
-});
-
-describe("ownFaults", () => {
-  // checks without a redo/new mark: a mark newer than the answers below (21.10) reopens a Viga, and the plan's first checks do get marked
-  const [first, second, third] = testPlan.items.filter((i) => !i.mark).map((i) => i.id);
-  const answer = (status: "ok" | "bad" | "skip", by: string) => ({ status, note: "", at: "2026-10-21T08:00:00.000Z", by });
-  const save = (answers: Record<string, ReturnType<typeof answer>>) => setSetting(db, "testplan_answers", { v: 1, answers });
-
-  test("counts only the signed-in admin's „Viga“ answers", async () => {
-    expect((await counts()).ownFaults).toBe(0); // no answers saved yet
-    await save({ [first]: answer("bad", ME), [second]: answer("bad", OTHER), [third]: answer("ok", ME) });
-    expect((await counts(ME)).ownFaults).toBe(1);
-    expect((await counts(OTHER)).ownFaults).toBe(1);
-    expect((await counts("nobody@example.test")).ownFaults).toBe(0);
-  });
-
-  test("the address is compared without regard to case; answers to checks the plan no longer has are ignored", async () => {
-    await save({ [first]: answer("bad", "Maria@Example.test"), "a-check-that-was-removed": answer("bad", ME) });
-    expect((await counts(ME)).ownFaults).toBe(1);
   });
 });
 

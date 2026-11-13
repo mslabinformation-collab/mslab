@@ -3,7 +3,6 @@ import Link from "next/link";
 import { checkReasonLabel } from "@/components/admin/PaymentLines";
 import { adminTitle } from "@/components/admin/sections";
 import { SeatsMeter } from "@/components/admin/SeatsMeter";
-import { TestplanCard } from "@/components/admin/TestplanCard";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { listAdminSessions, type RequestKind } from "@/db/queries/admin";
@@ -16,9 +15,6 @@ import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDayMonth, formatLongDate, formatTime } from "@/i18n/format";
 import { adminName, requireAdmin } from "@/server/auth";
-import { serverEnv } from "@/server/env";
-import { logFailure } from "@/server/log";
-import { testplanCard } from "@/server/testplan";
 import styles from "./overview.module.css";
 
 export const dynamic = "force-dynamic";
@@ -41,23 +37,18 @@ function plusDays(date: string, days: number): string {
  * Overview (admin UX pass piece 2, A1; README A1 and the Part 2 prototype): the date and „Tere, {name}.“; a dark „Täna“ card for each session today,
  * with its protocols' progress and one tap to them; „Sinu järjekord“, one row for each thing Maria has to act on (a count, a label, a hint, the page
  * that lists them; a row with 0 is not drawn, and an empty queue says so); and „Tulevased koolitused“, the next five sessions, each opening its
- * Kalender drawer. On a phone the parts stack in that order; the Testimine card, while checks are open, comes last.
+ * Kalender drawer. On a phone the parts stack in that order. (The Testimine card is gone, Dim 13.11: the test page is reached by its address.)
  */
 export default async function Overview() {
   const email = await requireAdmin();
   const name = adminName(email);
   const now = new Date();
   const db = getDb();
-  const [queue, index, sessions, testing] = await Promise.all([
+  const [queue, index, sessions] = await Promise.all([
     overviewQueue(db, now),
     protocolIndex(db, now),
     // every session from the start of today's Tallinn day, drafts' too and called-off ones included (left out below), as the Kalender lists them
     listAdminSessions(db, { from: startOfDayTallinn(now), upcoming: true }, now),
-    // the test page's card (phase 4, piece 1): a failing read leaves the card out, never the overview
-    testplanCard(db, email, serverEnv().ADMIN_NAMES).catch((e) => {
-      logFailure("[testplan] the card's numbers could not be read", e);
-      return null;
-    }),
   ]);
   const t = adminEt.overview;
   const q = t.queue;
@@ -200,10 +191,6 @@ export default async function Overview() {
           </Link>
         </section>
       </div>
-
-      {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none.
-          README fixes the order Täna → queue → upcoming and says only that this card "stays the same": it comes last, so that order is unbroken. */}
-      {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
     </div>
   );
 }

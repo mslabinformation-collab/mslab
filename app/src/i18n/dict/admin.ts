@@ -140,7 +140,6 @@ export const adminEt = {
     // „kontroll“, voided after paid), the signed-in admin's own „Viga“ checks, and a course day (the badge itself shows „Täna“)
     badgeFeedback: "{n} arvustust ootab",
     badgePayments: "{n} vajab kontrolli",
-    badgeTesting: "{n} viga",
     badgeToday: "Täna on koolituspäev",
     badgeTodayText: "Täna",
   },

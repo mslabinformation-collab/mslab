@@ -2,7 +2,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { parseRowId } from "@/lib/row-id";
 import type { AdminIconName } from "./AdminIcon";
 
-// The admin menu (prototype B sidebar, Maria's A1; grouped by the admin UX pass, README §1.1). Every section has its page.
+// The admin menu (prototype B sidebar, Maria's A1; grouped by the admin UX pass, README §1.1). Every section has its page; every section but "testing" has its row.
 export type Section =
   | "overview"
   | "courses"
@@ -23,11 +23,12 @@ export type Section =
   | "campaign"
   | "newsletter"
   | "settings"
-  // admin UX pass (README §1.1): the protocol index (A3) and the test page (C7) have their menu rows
+  // admin UX pass (README §1.1): the protocol index (A3) has its menu row; the test page (C7) has none since Dim 13.11, only its address,
+  // so it stays a section for its name (the phone bar) and its address (activeSection), but no group lists it
   | "protocols"
   | "testing";
 
-/** Every section, in the menu's order (GROUPS below cuts it into groups). */
+/** Every section, in the menu's order (GROUPS below cuts it into groups; "testing" has no row: it is last, and no group lists it). */
 export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconName }[] = [
   { key: "overview", href: "/admin", icon: "grid" },
   { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
@@ -55,21 +56,23 @@ export type GroupId = "daily" | "courses" | "site" | "admin";
 
 /**
  * The menu's groups (README §1.1). The first has no heading. `fold` is the one that folds: its header is a button, it is open whenever
- * the page is inside it, and otherwise it follows the stored choice (Sidebar.tsx). The phone menu shows every group open.
+ * the page is inside it, and otherwise it follows the stored choice (Sidebar.tsx). The phone menu shows every group open. Every section but
+ * "testing" stands in exactly one group.
  */
 export const GROUPS: readonly { id: GroupId | null; fold?: true; items: readonly Section[] }[] = [
   { id: null, items: ["overview"] },
   { id: "daily", items: ["registrations", "protocols", "assessment", "requests", "clients", "feedback", "payments"] },
   { id: "courses", items: ["courses", "calendar", "practice", "codes"] },
   { id: "site", fold: true, items: ["home", "trainer", "news", "campaign", "newsletter"] },
-  { id: "admin", items: ["settings", "testing"] },
+  { id: "admin", items: ["settings"] },
 ];
 
 export const sectionHref = (key: Section) => SECTIONS.find((s) => s.key === key)!.href;
 
 /**
  * The first address segment after /admin → the menu entry it highlights (README §1.1). A page without a row of its own belongs to a
- * neighbour: Arved to Maksed, Tunnistused and the test page (/admin/hindamine/test) to Hindamine.
+ * neighbour: Arved to Maksed, Tunnistused and the test page (/admin/hindamine/test) to Hindamine. /admin/testimine is its own section
+ * but has no row, so no entry is marked there.
  */
 const BY_SEGMENT: ReadonlyMap<string, Section> = new Map<string, Section>([
   ["koolitused", "courses"],

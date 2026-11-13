@@ -12,7 +12,6 @@ import { REQUEST_TABS, TAB_KIND, type TabKey } from "@/domain/requests";
 import { phoneQuery } from "@/domain/search";
 import type { SubscriberFilter, SubscriberState } from "@/domain/subscribers";
 import { pick, type I18n } from "@/i18n/field";
-import { ownFaultCount } from "@/server/testplan";
 import { assessmentCount } from "./assessment";
 import { paged, type Paged, type Range } from "./paged";
 import { NEEDS_ATTENTION } from "./payment-checks";
@@ -714,8 +713,6 @@ export type AdminCounts = {
   waitingReviews: number;
   /** What „Maksed ja arved“ asks Maria to look at (spec S7): paid payments no invoice names, `held` ones, and ones voided after they were paid. */
   paymentsAttention: number;
-  /** The signed-in admin's own standing „Viga“ answers on the test page (Testimine's menu badge). */
-  ownFaults: number;
 };
 
 /**
@@ -732,7 +729,6 @@ export function emptyCounts(): AdminCounts {
     todaySessions: [],
     waitingReviews: 0,
     paymentsAttention: 0,
-    ownFaults: 0,
   };
 }
 
@@ -751,11 +747,11 @@ export async function requestCounts(db: Db): Promise<Record<TabKey, number>> {
 }
 
 /**
- * The numbers of the menu badges (and Päringud's and Uudiskiri's counts), for the admin `email` at `now`: each count is one query, all read together. The test page's
- * answers are one settings row, read by server/testplan.ts ownFaultCount.
+ * The numbers of the menu badges (and Päringud's and Uudiskiri's counts) at `now`: each count is one query, all read together. (Testimine has no
+ * badge any more, Dim 13.11: its page is reached by its address.)
  */
-export async function adminCounts(db: Db, email: string, now: Date): Promise<AdminCounts> {
-  const [[awaiting], openRequests, [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
+export async function adminCounts(db: Db, now: Date): Promise<AdminCounts> {
+  const [[awaiting], openRequests, [subs], assessment, today, [waiting], [attention]] = await Promise.all([
     db.select({ n: count() }).from(registrations).where(eq(registrations.status, "awaiting_prepayment")),
     openRequestsByKind(db),
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
@@ -765,7 +761,6 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
     db.select({ n: count() }).from(reviews).where(and(eq(reviews.status, "pending"), isNull(reviews.removedAt))),
     // (payment-checks.ts: the unbilled paid payments, the held ones and the ones voided after they were paid)
     db.select({ n: count() }).from(payments).where(NEEDS_ATTENTION),
-    ownFaultCount(db, email),
   ]);
   return {
     awaitingPrepayment: Number(awaiting.n),
@@ -776,7 +771,6 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
     todaySessions: today.map((s) => ({ id: s.id, startsAt: s.startsAt, course: pick(s.title, "et") })),
     waitingReviews: Number(waiting.n),
     paymentsAttention: Number(attention.n),
-    ownFaults,
   };
 }
 

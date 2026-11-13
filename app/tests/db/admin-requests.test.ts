@@ -138,7 +138,7 @@ describe("requestCounts: the open requests of each tab", () => {
   test("open ones only, per tab; the e-learning interest is a Kontakt request; the same numbers as the menu badge", async () => {
     const counts = await requestCounts(db);
     expect(counts).toEqual({ kontakt: 2, individuaal: 1, praktika: 1, ootenimekiri: 1, muutmine: 1 });
-    const badge = (await adminCounts(db, "maria@example.test", new Date("2026-10-21T09:00:00Z"))).openRequests;
+    const badge = (await adminCounts(db, new Date("2026-10-21T09:00:00Z"))).openRequests;
     expect(counts).toEqual({ kontakt: badge.contact, individuaal: badge.individual, praktika: badge.practice, ootenimekiri: badge.waitlist, muutmine: badge.change_request });
   });
 

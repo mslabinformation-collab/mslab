@@ -22,7 +22,7 @@ import styles from "./Shell.module.css";
 export async function Shell({ email, children }: { email: string; children: React.ReactNode }) {
   let counts: AdminCounts;
   try {
-    counts = await getAdminCounts(email);
+    counts = await getAdminCounts();
   } catch (err) {
     logFailure("admin shell: menu counts unavailable", err);
     counts = emptyCounts();

@@ -79,7 +79,7 @@ describe("GET /api/admin/margid", () => {
     await db.update(payments).set({ status: "held" }).where(eq(payments.id, held.id));
     // a review waiting for „Avalda“
     await db.insert(reviews).values({ courseId: fixture.course.id, kind: "manual", text: "Super", name: "Kati", locale: "et", writtenAt: new Date("2026-10-01T09:00:00Z"), status: "pending" });
-    // two „Viga“ answers of the signed-in admin and one of another
+    // two „Viga“ answers of the signed-in admin and one of another: Testimine has no menu badge (Dim 13.11), so they change nothing
     const [one, two, three] = testPlan.items.filter((i) => !i.mark).map((i) => i.id); // unmarked: a newer redo/new mark would reopen these 21.10 answers
     const bad = (by: string) => ({ status: "bad", note: "", at: "2026-10-21T08:00:00.000Z", by });
     await setSetting(db, "testplan_answers", { v: 1, answers: { [one]: bad(ME), [two]: bad(ME), [three]: bad("dim@example.test") } });
@@ -95,7 +95,6 @@ describe("GET /api/admin/margid", () => {
         protocols: { text: "Täna", label: "Täna on koolituspäev" },
         feedback: { n: 1, label: "1 arvustust ootab" },
         payments: { n: 2, label: "2 vajab kontrolli" },
-        testing: { n: 2, label: "2 viga" },
       },
       // (B16: the one session on today, so „Protokollid“ goes straight to it)
       hrefs: {
@@ -103,24 +102,25 @@ describe("GET /api/admin/margid", () => {
         protocols: expect.stringMatching(/^\/admin\/protokollid\?sessioon=\d+$/),
         feedback: "/admin/tagasiside?vaade=arvustused&olek=ootel",
       },
-      total: 7,
+      total: 5,
       today: { href: expect.stringMatching(/^\/admin\/protokollid\?sessioon=\d+$/), time: "10:00", course: "Kulmumeistri baaskoolitus" },
     });
 
     // the shell's first paint is the same function over the same numbers
-    expect(body).toEqual({ ok: true, ...JSON.parse(JSON.stringify(menuOf(await adminCounts(db, ME, NOW)))) });
+    expect(body).toEqual({ ok: true, ...JSON.parse(JSON.stringify(menuOf(await adminCounts(db, NOW)))) });
     // and the sidebar can read what it is sent
-    expect(readMenuState(body)).toEqual(menuOf(await adminCounts(db, ME, NOW)));
+    expect(readMenuState(body)).toEqual(menuOf(await adminCounts(db, NOW)));
   });
 
-  test("the answer is the signed-in admin's own: another admin does not see Maria's „Viga“ answers", async () => {
+  test("„Viga“ answers of the test page give no badge to anyone", async () => {
     vi.stubEnv("ADMIN_EMAILS", `${ME},dim@example.test`);
     const [one] = testPlan.items.filter((i) => !i.mark).map((i) => i.id); // unmarked, as above
     await setSetting(db, "testplan_answers", { v: 1, answers: { [one]: { status: "bad", note: "", at: "2026-10-21T08:00:00.000Z", by: ME } } });
     state.cookie = await createSession(db, "dim@example.test");
     expect(((await (await get()).json()) as { badges: Record<string, unknown> }).badges.testing).toBeUndefined();
     await signIn();
-    expect(((await (await get()).json()) as { badges: Record<string, unknown> }).badges.testing).toEqual({ n: 1, label: "1 viga" });
+    const own = (await (await get()).json()) as { badges: Record<string, unknown> };
+    expect(own.badges.testing).toBeUndefined();
   });
 
   test("a database that fails is 500 { ok: false, error: 'server' }, logged without data, never kept", async () => {

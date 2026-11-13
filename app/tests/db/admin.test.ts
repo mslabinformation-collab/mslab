@@ -197,7 +197,7 @@ describe("pages of 50 (?leht=)", () => {
 
 describe("adminCounts", () => {
   test("registrations waiting for the prepayment, open requests per kind (e-learning purchase interest is a contact request), subscribers", async () => {
-    expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
+    expect(await adminCounts(db, NOW)).toEqual({
       awaitingPrepayment: 0,
       openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
       subscribers: 0,
@@ -206,7 +206,6 @@ describe("adminCounts", () => {
       todaySessions: [],
       waitingReviews: 0,
       paymentsAttention: 0,
-      ownFaults: 0,
     });
     await register();
     await register({ status: "confirmed" });
@@ -224,7 +223,7 @@ describe("adminCounts", () => {
       { email: "s1@example.com", token: "t1", confirmedAt: new Date() },
       { email: "s2@example.com", token: "t2" },
     ]);
-    expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
+    expect(await adminCounts(db, NOW)).toEqual({
       awaitingPrepayment: 2,
       openRequests: { contact: 2, individual: 0, practice: 1, waitlist: 1, change_request: 0 },
       subscribers: 2,
@@ -233,7 +232,6 @@ describe("adminCounts", () => {
       todaySessions: [],
       waitingReviews: 0,
       paymentsAttention: 0,
-      ownFaults: 0,
     });
   });
 });

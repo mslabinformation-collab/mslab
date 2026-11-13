@@ -23,7 +23,6 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 import Overview from "@/app/admin/(panel)/page";
 
 const NOW = new Date("2026-10-21T09:00:00Z");
-const ME = "maria@example.test";
 /** `day` October 2026 at 09:00 UTC. */
 const oct = (day: number) => new Date(Date.UTC(2026, 9, day, 9));
 
@@ -203,7 +202,7 @@ describe("the numbers are the menu badges'", () => {
       const p = await pendingPayment(db, r, {}, oct(4));
       await db.update(payments).set({ status, paidAt }).where(eq(payments.id, p.id));
     }
-    const [q, counts] = [await queue(), await adminCounts(db, ME, NOW)];
+    const [q, counts] = [await queue(), await adminCounts(db, NOW)];
     expect(q.awaiting.count).toBe(counts.awaitingPrepayment);
     expect(q.requests.count).toBe(Object.values(counts.openRequests).reduce((a, b) => a + b, 0));
     expect(q.reviews.count).toBe(counts.waitingReviews);
@@ -253,15 +252,18 @@ describe("the overview page", () => {
       expect(html, gone).not.toContain(gone);
   });
 
-  test("the parts stand in the designed order (and so stack on a phone): Täna → Sinu järjekord → Tulevased koolitused → the Testimine card", async () => {
+  test("the parts stand in the designed order (and so stack on a phone): Täna → Sinu järjekord → Tulevased koolitused (no Testimine card any more: the test page is reached by its address)", async () => {
     const { course } = await protocolCourse(db);
     await sessionAt("2026-10-21T07:00:00Z", { courseId: course.id, city: "Pärnu" });
     await db.insert(requests).values({ kind: "contact", payload: { name: "A", email: "a@example.test" } });
     const html = await render();
-    const marks = ["data-today-session=", "data-overview-queue=", "data-overview-upcoming=", "data-testplan-card="];
+    const marks = ["data-today-session=", "data-overview-queue=", "data-overview-upcoming="];
     const at = marks.map((mark) => html.indexOf(mark));
-    expect(at.map((i) => i > -1), `all four are drawn: ${marks.join(" ")}`).toEqual([true, true, true, true]);
+    expect(at.map((i) => i > -1), `all three are drawn: ${marks.join(" ")}`).toEqual([true, true, true]);
     expect(at).toEqual([...at].sort((a, b) => a - b));
+    expect(html).not.toContain("data-testplan-card");
+    expect(html).not.toContain("Testimine");
+    expect(html).not.toContain("/admin/testimine");
   });
 
   describe("„Täna“", () => {

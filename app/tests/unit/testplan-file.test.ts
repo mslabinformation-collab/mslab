@@ -1393,7 +1393,8 @@ describe("C7 Testimine (admin UX pass piece 4c, Task 4)", () => {
       expect(find(id).mark, id).toBe("redo");
       expect(markedSince(find(id).markedAt), id).toBe(true);
     }
-    expect(whole("haldus-menuu-margid")).toContain(`juba „${t.ok}“ kontroll tulemusega „${t.bad}“`);
+    // (Dim 13.11: Testimine has no menu badge any more, so the check no longer sets a failed check of the test page)
+    expect(whole("haldus-menuu-margid")).not.toContain("Testimine");
     expect(whole("koristamine-aadressid")).toContain(`vajuta „${t.ok}“.`);
   });
 });

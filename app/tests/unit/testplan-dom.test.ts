@@ -4,7 +4,6 @@ import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TestPlan } from "@/components/admin/TestPlan";
-import { TestplanCard } from "@/components/admin/TestplanCard";
 import { OUTBOX_KEY } from "@/components/admin/testplan-outbox";
 import { NOTE_MAX, type TestItem, type TestPlan as Plan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
@@ -1453,21 +1452,5 @@ describe("Automaattest (Dim 25.10; counts for us since Dim 29.10)", () => {
     await show({ initial: {}, auto: {}, people: SERVER, you: AUTO_YOU });
     expect($('[data-area="a0"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("false");
     expect($('[data-area="a1"] [data-area-toggle]')!.getAttribute("aria-expanded")).toBe("true");
-  });
-});
-
-describe("TestplanCard", () => {
-  test("says how many checks are open and failed, and links to the page", async () => {
-    await act(async () => root.render(createElement(TestplanCard, { open: 5, bad: 2 })));
-    const card = $("[data-testplan-card]")!;
-    expect(card.textContent).toContain("Testimine: 5 avatud, 2 viga");
-    const link = card.querySelector("a")!;
-    expect(link.getAttribute("href")).toBe("/admin/testimine");
-    expect(link.textContent).toBe("Ava");
-  });
-
-  test("zero failures still say so (the counts are the plan's, both of them)", async () => {
-    await act(async () => root.render(createElement(TestplanCard, { open: 12, bad: 0 })));
-    expect($("[data-testplan-card]")!.textContent).toContain("Testimine: 12 avatud, 0 viga");
   });
 });
