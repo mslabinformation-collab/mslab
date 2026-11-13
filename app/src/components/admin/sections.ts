@@ -32,7 +32,7 @@ export type Section =
 export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconName }[] = [
   { key: "overview", href: "/admin", icon: "grid" },
   { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
-  { key: "protocols", href: "/admin/protokollid", icon: "clipboard" },
+  { key: "protocols", href: "/admin/protokollid", icon: "notes" },
   // e-course completion (spec §5.2): what waits for Maria's assessment, after Protokollid
   { key: "assessment", href: "/admin/hindamine", icon: "check" },
   { key: "requests", href: "/admin/paringud", icon: "inbox" },

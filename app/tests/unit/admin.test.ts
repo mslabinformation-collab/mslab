@@ -167,7 +167,7 @@ describe("admin menu (prototype B sidebar, A1)", () => {
     expect(adminEt.shell.logout).toBe("Logi välja");
     // Hindamine (e-course completion, spec §5.2): its own address, its badge's words for a screen reader
     expect(SECTIONS.find((s) => s.key === "assessment")).toEqual({ key: "assessment", href: "/admin/hindamine", icon: "check" });
-    expect(SECTIONS.find((s) => s.key === "protocols")).toEqual({ key: "protocols", href: "/admin/protokollid", icon: "clipboard" });
+    expect(SECTIONS.find((s) => s.key === "protocols")).toEqual({ key: "protocols", href: "/admin/protokollid", icon: "notes" }); // (its own icon since the fold, Dim 13.11)
     expect(SECTIONS.find((s) => s.key === "testing")).toEqual({ key: "testing", href: "/admin/testimine", icon: "check" });
     expect(adminEt.shell.badgeAssessment).toBe("{n} ootab hindamist");
   });

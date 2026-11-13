@@ -123,6 +123,9 @@ export const adminEt = {
     home: "Halduse ülevaade",
     openMenu: "Ava menüü",
     closeMenu: "Sulge menüü",
+    // the round button on the sidebar's logo line (Dim 13.11): folds the menu to its icons, and opens it again; its name shows when it is pointed at
+    hideNames: "Peida menüü nimed",
+    showNames: "Näita menüü nimesid",
     newWindow: "avaneb uues aknas",
     // the top line's link through the coming-soon gate (api/admin/preview: the preview cookie, then the home page); the phone menu's footer has it too
     preview: "Vaata kodulehte",

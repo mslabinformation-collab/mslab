@@ -2794,6 +2794,34 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-menuu-kitsas",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Menüü kitsaks ja tagasi",
+      "href": "/admin",
+      "steps": [
+        "Ava halduse ülevaade arvutis, kus aken on lai.",
+        "Vajuta menüüs logo kõrval olevat ringi noolega.",
+        "Liiguta hiir mõne ikooni peale ja siis ringi peale.",
+        "Ava menüüst mõni teine leht ja värskenda lehte.",
+        "Vajuta ringi uuesti."
+      ],
+      "expect": [
+        "Menüü läheb kitsaks: alles jäävad ikoonid, logo ja rühmade nimed kaovad, rühmade vahel on peen joon.",
+        "Kõik ikoonid on näha, ka „Koduleht ja uudiskiri“ omad; numbrid on ikooni nurgas väikese mullina.",
+        "Hiire all oleva ikooni kõrval on selle nimi (ja mida number tähendab); ringi kõrval on „Näita menüü nimesid“.",
+        "Menüü all on „Logi välja“ ikoonina.",
+        "Teisel lehel ja pärast värskendamist on menüü ikka kitsas ega hüppa vahepeal laiaks.",
+        "Uus vajutus teeb menüü jälle laiaks, koos nimedega."
+      ],
+      "why": "Kitsas menüü jätab lehele rohkem ruumi.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-menuu-telefon",
       "area": "haldus",
       "who": "dim",

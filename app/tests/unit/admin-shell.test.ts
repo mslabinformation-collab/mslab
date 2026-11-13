@@ -10,8 +10,12 @@ import { emptyCounts } from "@/db/queries/admin";
 // layout's error is not caught by the (panel)'s error.tsx. A count that cannot be read must cost the badges only: the failure is logged
 // (logFailure: the class and code, never the message), the menu is painted with every badge at zero, and the page below it still renders.
 
-const mocks = vi.hoisted(() => ({ getAdminCounts: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAdminCounts: vi.fn(), navCookie: undefined as string | undefined }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: mocks.getAdminCounts }));
+// the menu folded to its icons or not (Dim 13.11): the cookie the shell reads (nav-width.ts); absent unless a test sets it
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (name: string) => (name === "mslab-admin-nav" && mocks.navCookie !== undefined ? { name, value: mocks.navCookie } : undefined) }),
+}));
 // the sidebar reads the address and the shell the signed-in admin's first name (the environment); neither is the point here
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin", useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 vi.mock("@/server/auth", () => ({ adminName: () => "Maria" }));
@@ -30,6 +34,7 @@ const badges = (html: string) => [...new Set(html.match(/data-badge="[a-z]+"/g) 
 let errors: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   mocks.getAdminCounts.mockReset();
+  mocks.navCookie = undefined;
   errors = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -69,6 +74,32 @@ describe("Shell", () => {
     const logged = JSON.stringify(errors.mock.calls);
     expect(logged).not.toContain(EMAIL);
     expect(logged).not.toContain("mslab");
+  });
+});
+
+describe("the menu folded to its icons (Dim 13.11)", () => {
+  it("without the cookie the first paint is the wide menu", async () => {
+    mocks.getAdminCounts.mockResolvedValue(emptyCounts());
+    const html = await paint();
+    expect(html).toContain('data-admin-nav="wide"');
+    expect(html).not.toContain("data-narrow");
+  });
+
+  it("with the cookie the first paint is already the strip (no jump): the column narrow, the icons carry their tips", async () => {
+    mocks.getAdminCounts.mockResolvedValue({ ...emptyCounts(), awaitingPrepayment: 3 });
+    mocks.navCookie = "narrow";
+    const html = await paint();
+    expect(html).toContain('data-admin-nav="narrow"');
+    expect(html).toContain('data-narrow="true"');
+    expect(html).toContain('aria-label="Näita menüü nimesid"');
+    expect(html).toContain('data-tip="Registreerimised · 3 ootab ettemaksu"');
+  });
+
+  it("any other value of the cookie is the wide menu", async () => {
+    mocks.getAdminCounts.mockResolvedValue(emptyCounts());
+    mocks.navCookie = "wide";
+    const html = await paint();
+    expect(html).toContain('data-admin-nav="wide"');
   });
 });
 

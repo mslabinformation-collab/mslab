@@ -41,6 +41,8 @@ const sidebarTexts = {
   groups: adminEt.nav.groups,
   today: t.today,
   todayLine: t.todayLine,
+  hideNames: t.hideNames,
+  showNames: t.showNames,
 };
 
 const badge = (n: number, label: string) => ({ n, label });
@@ -51,9 +53,9 @@ const BADGES = { registrations: badge(3, "3 ootab ettemaksu"), assessment: badge
 let container: HTMLDivElement;
 let root: Root;
 
-type Over = { today?: TodayCard | null; badges?: Partial<Record<string, NavItem["badge"]>>; total?: number; fbDock?: boolean };
-const element = ({ today = null, badges = {}, total = 0, fbDock }: Over = {}) =>
-  createElement(Sidebar, { items: items(badges), t: sidebarTexts, total, email: EMAIL, today, fbDock });
+type Over = { today?: TodayCard | null; badges?: Partial<Record<string, NavItem["badge"]>>; total?: number; fbDock?: boolean; narrow?: boolean };
+const element = ({ today = null, badges = {}, total = 0, fbDock, narrow }: Over = {}) =>
+  createElement(Sidebar, { items: items(badges), t: sidebarTexts, total, email: EMAIL, today, fbDock, narrow });
 const show = (over?: Over) => act(async () => root.render(element(over)));
 const at = async (path: string, search = "", over?: Over) => {
   mockPath = path;
@@ -125,7 +127,10 @@ describe("the sidebar: groups", () => {
     const link = (key: string) => aside().querySelector<HTMLAnchorElement>(`a[data-nav="${key}"]`)!;
     expect([text(link("payments")), link("payments").getAttribute("href")]).toEqual(["Maksed ja arved", "/admin/maksed"]);
     expect([text(link("protocols")), link("protocols").getAttribute("href")]).toEqual(["Protokollid", "/admin/protokollid"]);
-    expect(iconPath(link("protocols"))).toBe(iconPath(link("registrations"))); // both the clipboard
+    // each its own icon (Dim 13.11): folded to icons, two clipboards in a row would not say which is which
+    expect(iconPath(link("protocols"))).not.toBe(iconPath(link("registrations")));
+    const icons = Array.from(aside().querySelectorAll("nav a[data-nav]")).map((a) => a.querySelector("svg")!.innerHTML);
+    expect(new Set(icons).size).toBe(icons.length);
   });
 
   it("the group labels are stored in sentence case (CSS shows the capitals)", () => {
@@ -241,6 +246,99 @@ describe("the sidebar: the footer", () => {
     expect(text(aside())).not.toContain("Vaata kodulehte");
     expect(aside().querySelector("a[href='/api/admin/preview']")).toBeNull();
     expect(aside().querySelector("[data-admin-view-site]")).toBeNull();
+  });
+});
+
+// The menu folds to its icons (Dim 13.11, the canvas „MS LAB admin sidebar collapse“): the round button on the logo's line, its choice a cookie the
+// server reads (Shell.tsx), every entry still named for a screen reader, and the name shown beside the strip when an icon is pointed at or focused.
+describe("the sidebar folds to its icons", () => {
+  const toggle = () => aside().querySelector<HTMLButtonElement>("button[data-nav-narrow]")!;
+  const tip = () => container.querySelector<HTMLElement>("[data-nav-tip]");
+  const link = (key: string) => aside().querySelector<HTMLAnchorElement>(`a[data-nav="${key}"]`)!;
+  const pointAt = (el: Element) => act(async () => void el.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
+  const leave = (el: Element) => act(async () => void el.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" })));
+  // the lines the sidebar gives document.cookie (the test page is not under /admin, so the browser would not show a Path=/admin cookie back)
+  let written: string[] = [];
+  beforeEach(() => {
+    written = [];
+    const own = Object.getOwnPropertyDescriptor(Document.prototype, "cookie")!;
+    vi.spyOn(document, "cookie", "set").mockImplementation((line: string) => void written.push(line));
+    vi.spyOn(document, "cookie", "get").mockImplementation(() => own.get!.call(document) as string);
+  });
+
+  it("wide by default: the button „Peida menüü nimed“ on the logo's line, no names given as tips", async () => {
+    await at("/admin/seaded");
+    expect(toggle().getAttribute("aria-label")).toBe("Peida menüü nimed");
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().parentElement!.querySelector("a[href='/admin']")).not.toBeNull(); // (beside the logo)
+    expect(container.querySelector("[data-admin-nav]")!.getAttribute("data-admin-nav")).toBe("wide");
+    expect(aside().querySelectorAll("nav [data-tip]")).toHaveLength(0);
+    expect(foldButton()).not.toBeNull();
+  });
+
+  it("a press folds it: the cookie is set, every group is open, and each icon carries its name and its count as its tip", async () => {
+    await at("/admin/seaded", "", { badges: { ...BADGES, protocols: { text: "Täna", label: "Täna on koolituspäev" } } });
+    await click(toggle());
+    expect(container.querySelector("[data-admin-nav]")!.getAttribute("data-admin-nav")).toBe("narrow");
+    expect(aside().hasAttribute("data-narrow")).toBe(true);
+    expect(toggle().getAttribute("aria-label")).toBe("Näita menüü nimesid");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(written).toEqual(["mslab-admin-nav=narrow; Max-Age=31536000; Path=/admin; SameSite=Lax"]);
+    // nothing folds inside the strip: „Koduleht ja uudiskiri“ shows its five icons
+    expect(foldButton()).toBeNull();
+    expect(itemsOf(aside(), "site")).toEqual(["home", "trainer", "news", "campaign", "newsletter"]);
+    expect(aside().querySelector('[data-nav-items="site"]')!.hasAttribute("hidden")).toBe(false);
+    expect(link("registrations").getAttribute("data-tip")).toBe("Registreerimised · 3 ootab ettemaksu");
+    expect(link("protocols").getAttribute("data-tip")).toBe("Protokollid · Täna on koolituspäev");
+    expect(link("settings").getAttribute("data-tip")).toBe("Seaded");
+    // a screen reader still hears the name and the count
+    expect(link("registrations").textContent).toBe("Registreerimised3, 3 ootab ettemaksu");
+    // the way out is an icon with its name
+    const logout = aside().querySelector("[data-nav-foot] button")!;
+    expect([logout.getAttribute("data-tip"), text(logout)]).toEqual(["Logi välja", "Logi välja"]);
+    // the next press opens it again and the cookie goes
+    await click(toggle());
+    expect(container.querySelector("[data-admin-nav]")!.getAttribute("data-admin-nav")).toBe("wide");
+    expect(written[1]).toBe("mslab-admin-nav=; Max-Age=0; Path=/admin; SameSite=Lax");
+    expect(aside().querySelectorAll("nav [data-tip]")).toHaveLength(0);
+  });
+
+  it("folded from the first paint when the server read the cookie (no jump): the server's HTML is the strip", () => {
+    mockPath = "/admin/seaded";
+    const html = renderToString(element({ narrow: true }));
+    expect(html).toContain('data-admin-nav="narrow"');
+    expect(html).toContain('aria-label="Näita menüü nimesid"');
+  });
+
+  it("pointing at an icon shows its tip beside the strip; leaving it, Esc or a press of the button hides it; focus shows it too", async () => {
+    await at("/admin/seaded", "", { badges: BADGES, narrow: true });
+    expect(tip()!.hidden).toBe(true);
+    await pointAt(link("registrations"));
+    expect(tip()!.hidden).toBe(false);
+    expect(tip()!.textContent).toBe("Registreerimised · 3 ootab ettemaksu");
+    expect(tip()!.getAttribute("aria-hidden")).toBe("true"); // (the link's own name says it to a screen reader)
+    await leave(link("registrations"));
+    expect(tip()!.hidden).toBe(true);
+    await act(async () => link("settings").focus());
+    expect(tip()!.textContent).toBe("Seaded");
+    await act(async () => void document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(tip()!.hidden).toBe(true);
+    // a touch shows none (it opens the page)
+    await act(async () => void link("settings").dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "touch" })));
+    expect(tip()!.hidden).toBe(true);
+    // the button's own tip, wide or folded
+    await pointAt(toggle());
+    expect(tip()!.textContent).toBe("Näita menüü nimesid");
+    await click(toggle());
+    expect(tip()!.hidden).toBe(true);
+  });
+
+  it("the phone menu keeps its names and has no tips, folded or not", async () => {
+    await at("/admin/seaded", "", { narrow: true });
+    await openMenu();
+    expect(dialog().querySelectorAll("[data-tip]")).toHaveLength(0);
+    expect(text(dialog().querySelector('a[data-nav="settings"]'))).toBe("Seaded");
+    expect(dialog().querySelector("[data-nav-narrow]")).toBeNull();
   });
 });
 

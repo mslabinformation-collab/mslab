@@ -2,12 +2,13 @@
 
 .layout {
   display: grid;
-  grid-template-columns: 235px minmax(0, 1fr);
+  /* the sidebar's column is as wide as the sidebar: 235 px, or 72 px folded to its icons (Sidebar.module.css .column, which stays dark under the
+     sticky, one-screen-tall sidebar on a long page) */
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   min-height: 100vh;
   min-height: 100dvh;
-  /* The sidebar is sticky and one screen tall; the column under it stays dark on long pages. */
-  background: linear-gradient(to right, #242124 235px, var(--canvas) 235px);
+  background: var(--canvas);
   color: var(--ink);
 }
 

@@ -1,10 +1,11 @@
-/* NavProgress (06.11 polish board 6): a 2 px rose line along the top of the work area — right of the 235 px sidebar from 900 px, under the 64 px phone
-   top bar below it — growing from nothing towards 90 % of the width over 6 s, slower as it goes. It stands over the page and under every dialog. */
+/* NavProgress (06.11 polish board 6): a 2 px rose line along the top of the work area — right of the sidebar from 900 px (235 px, or 72 px folded to its
+   icons: --admin-nav-w, NavProgress.tsx), under the 64 px phone top bar below it — growing from nothing towards 90 % of the width over 6 s, slower as it
+   goes. It stands over the page and under every dialog. */
 
 .line {
   position: fixed;
   top: 0;
-  left: 235px;
+  left: var(--admin-nav-w, 235px);
   z-index: 21;
   width: 0;
   height: 2px;
@@ -20,7 +21,7 @@
   }
 
   to {
-    width: calc((100vw - 235px) * 0.9);
+    width: calc((100vw - var(--admin-nav-w, 235px)) * 0.9);
   }
 }
 

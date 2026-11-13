@@ -7,6 +7,8 @@ const PATHS = {
   user: ["M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", "M4 22v-3a8 8 0 0 1 16 0v3"],
   users: ["M9 4a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z", "M2 21v-1.5a7 7 0 0 1 14 0V21", "M15.5 4.3a3.5 3.5 0 0 1 0 6.4", "M18 14a6.5 6.5 0 0 1 4 6v1"],
   clipboard: ["M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2", "M9 2h6v4H9z", "m8.5 14 2.5 2.5L16 11"],
+  // Protokollid's own (Dim 13.11): folded to icons, Registreerimised' clipboard twice in a row would not say which is which
+  notes: ["M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z", "M9 8h6M9 12h6M9 16h3"],
   card: ["M3 6h18v12H3z", "M3 10h18", "M7 15h4"],
   chat: ["M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-9l-5 4v-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z", "M8 9.5h8M8 12.5h5"],
   inbox: ["M3 13h5l2 3h4l2-3h5", "M5.5 5h13L21 13v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6l2.5-8Z"],
@@ -21,6 +23,9 @@ const PATHS = {
   menu: ["M4 8h16M4 16h16"],
   close: ["m6 6 12 12M6 18 18 6"],
   arrow: ["M4 12h15m-6-6 6 6-6 6"],
+  // the menu's fold button (Dim 13.11): ‹ folds it to its icons, › opens it
+  chevronLeft: ["m14.5 6-6 6 6 6"],
+  chevronRight: ["m9.5 6 6 6-6 6"],
   check: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "m8 12.4 2.7 2.7L16.2 9.4"],
 } as const;
 

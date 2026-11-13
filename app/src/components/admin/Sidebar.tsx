@@ -9,6 +9,7 @@ import { lockPageScroll } from "@/lib/modal";
 import { AdminIcon, type AdminIconName } from "./AdminIcon";
 import { NavProgress } from "./NavProgress";
 import { readMenuState, type MenuState, type NavBadge, type TodayCard } from "./menu-state";
+import { navCookie } from "./nav-width";
 import { activeSection, GROUPS, sectionHref, type GroupId, type Section } from "./sections";
 import styles from "./Sidebar.module.css";
 
@@ -29,6 +30,9 @@ export type SidebarTexts = {
   /** „TÄNA {time}“ and „Protokollid · {course}“: the phone menu's card. */
   today: string;
   todayLine: string;
+  /** „Peida menüü nimed“ / „Näita menüü nimesid“: the fold button's name, wide and folded (Dim 13.11). */
+  hideNames: string;
+  showNames: string;
 };
 
 export type { TodayCard };
@@ -101,7 +105,30 @@ function reveal(nav: HTMLElement | null, first: Element | null | undefined, last
   else if (bottom > 0) nav.scrollTop += Math.min(bottom, top);
 }
 
-function NavContent({ items, active, t, fold, onPress }: { items: NavItem[]; active: Section; t: SidebarTexts; fold: boolean; onPress: (key: Section) => void }) {
+/** An icon's tip while the menu is folded (Dim 13.11): its name, and its count's words when it has one („Registreerimised · 3 ootab ettemaksu“). */
+const tipOf = (item: NavItem) => (item.badge ? `${item.label} · ${item.badge.label}` : item.label);
+
+/**
+ * The menu's groups and rows. `fold`: the sidebar's own menu (the folding group folds, and the page's entry is brought into view on a short screen);
+ * false in the phone menu. `narrow`: the sidebar folded to its icons, where nothing folds (every group open) and each row carries its tip (`data-tip`).
+ */
+function NavContent({
+  id,
+  items,
+  active,
+  t,
+  fold,
+  narrow = false,
+  onPress,
+}: {
+  id?: string;
+  items: NavItem[];
+  active: Section;
+  t: SidebarTexts;
+  fold: boolean;
+  narrow?: boolean;
+  onPress: (key: Section) => void;
+}) {
   const ids = useId();
   const [choice, choose] = useFoldChoice();
   const byKey = new Map(items.map((item) => [item.key, item]));
@@ -119,11 +146,11 @@ function NavContent({ items, active, t, fold, onPress }: { items: NavItem[]; act
   }, [opened]);
 
   return (
-    <nav ref={nav} aria-label={t.nav} className={styles.navWrap}>
+    <nav ref={nav} id={id} aria-label={t.nav} className={styles.navWrap}>
       {GROUPS.map((group) => {
         const rows = group.items.map((key) => byKey.get(key)).filter((item): item is NavItem => item !== undefined);
         const label = group.id ? t.groups[group.id] : null;
-        const folds = fold && group.fold === true;
+        const folds = fold && !narrow && group.fold === true;
         // open whenever the page is inside it; otherwise as chosen (closed until the visitor opens it)
         const inside = rows.some((item) => item.key === active);
         const open = !folds || inside || choice === "open";
@@ -170,6 +197,7 @@ function NavContent({ items, active, t, fold, onPress }: { items: NavItem[]; act
                     className={styles.link}
                     aria-current={item.key === active ? "page" : undefined}
                     data-nav={item.key}
+                    data-tip={narrow ? tipOf(item) : undefined}
                     onClick={(e) => {
                       if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) onPress(item.key);
                     }}
@@ -177,7 +205,7 @@ function NavContent({ items, active, t, fold, onPress }: { items: NavItem[]; act
                     <AdminIcon name={item.icon} />
                     <span className={styles.text}>{item.label}</span>
                     {item.badge && (
-                      <span className={styles.badge} data-badge={item.key}>
+                      <span className={styles.badge} data-badge={item.key} data-badge-word={"text" in item.badge ? "" : undefined}>
                         <span aria-hidden="true">{"text" in item.badge ? item.badge.text : item.badge.n}</span>
                         <span className={styles.sr}>, {item.badge.label}</span>
                       </span>
@@ -215,11 +243,13 @@ export function breakAtSign(email: string) {
   );
 }
 
-function NavFoot({ email, t, withSite, dock = false }: { email: string; t: SidebarTexts; withSite: boolean; dock?: boolean }) {
+function NavFoot({ email, t, withSite, dock = false, narrow = false }: { email: string; t: SidebarTexts; withSite: boolean; dock?: boolean; narrow?: boolean }) {
+  // folded to its icons (Dim 13.11) the way out is its icon, its words kept for a screen reader and shown as its tip
   const logout = (
     <form method="post" action="/api/auth/logout">
-      <button type="submit" className={styles.footLink}>
-        {t.logout}
+      <button type="submit" className={styles.footLink} data-tip={narrow ? t.logout : undefined}>
+        <AdminIcon name="logout" className={styles.footIcon} />
+        <span className={styles.footText}>{t.logout}</span>
       </button>
     </form>
   );
@@ -325,7 +355,11 @@ type SidebarProps = {
   today: TodayCard | null;
   /** The review tools are on (lib/review-tools.ts): the comment bubble's places, at the foot of the sidebar and in the phone bar (FbDock). */
   fbDock?: boolean;
+  /** The menu folded to its icons, as the cookie says (Shell.tsx reads it, nav-width.ts): the first paint is already the strip. */
+  narrow?: boolean;
 };
+
+type Tip = { text: string; top: number; left: number; on: string };
 
 /**
  * Prototype B's dark admin sidebar (logo, "Koolituskeskuse haldus", the grouped menu with count badges, then who is signed in and
@@ -337,7 +371,7 @@ type SidebarProps = {
  * useSearchParams is answered while the page is rendered on the server and needs no <Suspense> boundary: the menu is in the first HTML with its
  * entry marked, its fold and its phone bar title right, and no second copy of it follows.
  */
-export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday, fbDock = false }: SidebarProps) {
+export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday, fbDock = false, narrow: servedNarrow = false }: SidebarProps) {
   const pathname = usePathname();
   const search = useSearchParams();
   // the whole address, query included: a move to another one closes the phone menu
@@ -357,6 +391,40 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const title = active !== "overview" ? (items.find((item) => item.key === active)?.label ?? null) : null;
+  const navId = useId();
+  const aside = useRef<HTMLElement>(null);
+
+  // Folded to its icons (Dim 13.11): the choice is the cookie the server reads for the next page (nav-width.ts). The comment bubble's dock moves with
+  // the foot, and public/feedback.js places it again on a resize (and at the end of the width's transition).
+  const [narrow, setNarrow] = useState(servedNarrow);
+  // The tip beside an icon (or the fold button): a name in a small dark label, fixed beside the sidebar so the menu's scrolling box does not clip it,
+  // level with what is pointed at or focused. Hidden from a screen reader (the link's own name says it); not for a touch (a tap opens the page); gone
+  // with the pointer, the focus, Esc, a scroll of the menu, a press of the button and a change of address (`on`).
+  const [tip, setTip] = useState<Tip | null>(null);
+  const shownTip = tip !== null && tip.on === route ? tip : null;
+  const showTip = (target: EventTarget | null) => {
+    const el = target instanceof Element ? target.closest<HTMLElement>("[data-tip]") : null;
+    const side = aside.current;
+    if (!el || !side || !side.contains(el)) return;
+    const box = el.getBoundingClientRect();
+    setTip({ text: el.dataset.tip ?? "", top: box.top + box.height / 2, left: side.getBoundingClientRect().right + 8, on: route });
+  };
+  const toggleNarrow = () => {
+    const next = !narrow;
+    setNarrow(next);
+    setTip(null);
+    document.cookie = navCookie(next, window.location.protocol === "https:");
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  };
+
+  useEffect(() => {
+    if (!shownTip) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTip(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [shownTip]);
 
   // Close the menu when the window grows into the sidebar layout.
   useEffect(() => {
@@ -389,15 +457,57 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
 
   return (
     <>
-      <aside className={styles.sidebar}>
-        <Logo href="/admin" label={t.home} className={styles.logo} eager />
-        <p className={styles.label}>{t.label}</p>
-        {/* the page's save words while they are scrolled away and need her (SaveStatus `follow`); empty, it takes no room */}
-        <div className={styles.sideFollow} data-save-follow-slot="side" />
-        <NavContent items={items} active={active} t={t} fold onPress={press} />
-        <NavFoot email={email} t={t} withSite={false} dock={fbDock} />
-      </aside>
-      <NavProgress />
+      {/* the sidebar's column, as wide as the sidebar (235 px, 72 px folded): dark the whole height of a long page, under the sticky sidebar */}
+      <div className={styles.column} data-admin-nav={narrow ? "narrow" : "wide"}>
+        <aside
+          ref={aside}
+          className={styles.sidebar}
+          data-narrow={narrow || undefined}
+          onPointerOver={(e) => {
+            if (e.pointerType !== "touch") showTip(e.target);
+          }}
+          onPointerOut={(e) => {
+            const from = e.target instanceof Element ? e.target.closest("[data-tip]") : null;
+            if (from && !(e.relatedTarget instanceof Node && from.contains(e.relatedTarget))) setTip(null);
+          }}
+          onFocus={(e) => showTip(e.target)}
+          onBlur={() => setTip(null)}
+          onScrollCapture={() => setTip(null)}
+        >
+          <div className={styles.head}>
+            <Logo href="/admin" label={t.home} className={styles.logo} eager />
+            <button
+              type="button"
+              className={styles.narrowButton}
+              aria-label={narrow ? t.showNames : t.hideNames}
+              aria-expanded={!narrow}
+              aria-controls={navId}
+              data-nav-narrow=""
+              data-tip={narrow ? t.showNames : t.hideNames}
+              onClick={toggleNarrow}
+            >
+              <span className={styles.ring} aria-hidden="true">
+                <AdminIcon name={narrow ? "chevronRight" : "chevronLeft"} />
+              </span>
+            </button>
+          </div>
+          <p className={styles.label}>{t.label}</p>
+          {/* the page's save words while they are scrolled away and need her (SaveStatus `follow`); empty, it takes no room */}
+          <div className={styles.sideFollow} data-save-follow-slot="side" />
+          <NavContent id={navId} items={items} active={active} t={t} fold narrow={narrow} onPress={press} />
+          <NavFoot email={email} t={t} withSite={false} dock={fbDock} narrow={narrow} />
+          <span
+            className={styles.tip}
+            data-nav-tip=""
+            aria-hidden="true"
+            hidden={!shownTip}
+            style={shownTip ? { top: shownTip.top, left: shownTip.left } : undefined}
+          >
+            {shownTip?.text}
+          </span>
+        </aside>
+      </div>
+      <NavProgress narrow={narrow} />
 
       <header className={styles.bar}>
         {/* the same below 900 px: filled, it takes the page name's place */}

@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { emptyCounts, type AdminCounts } from "@/db/queries/admin";
 import { adminEt } from "@/i18n/dict/admin";
 import { REVIEW_TOOLS } from "@/lib/review-tools";
@@ -5,6 +6,7 @@ import { adminName } from "@/server/auth";
 import { logFailure } from "@/server/log";
 import { getAdminCounts } from "./data";
 import { menuOf } from "./menu";
+import { NARROW, NAV_COOKIE } from "./nav-width";
 import { ReadyMark } from "./ReadyMark";
 import { SECTIONS } from "./sections";
 import { Sidebar, type NavItem, type SidebarTexts } from "./Sidebar";
@@ -44,6 +46,8 @@ export async function Shell({ email, children }: { email: string; children: Reac
     groups: adminEt.nav.groups,
     today: t.today,
     todayLine: t.todayLine,
+    hideNames: t.hideNames,
+    showNames: t.showNames,
   };
   const sidebar = {
     items,
@@ -55,6 +59,8 @@ export async function Shell({ email, children }: { email: string; children: Reac
     today: menu.today,
     // the review tools until launch: the comment bubble stands in the sidebar's foot / the phone bar (admin polish F18; public/feedback.js)
     fbDock: REVIEW_TOOLS,
+    // the menu folded to its icons (Dim 13.11), as this browser left it: painted so from the start, with no jump (nav-width.ts)
+    narrow: (await cookies()).get(NAV_COOKIE)?.value === NARROW,
   };
 
   return (
